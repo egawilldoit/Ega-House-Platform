@@ -2293,3 +2293,133 @@ export async function getTaskDrawerDetail(
 
   return { kind: "found", task: data as TaskDrawerDetail };
 }
+
+/**
+ * Fields the drawer may patch one at a time.
+ *
+ * Deliberately narrow: project/goal, recurrence, reminders and scheduling keep
+ * their dedicated services because they carry side effects a generic patch must
+ * not bypass.
+ */
+export const TASK_FIELD_PATCH_FIELDS = [
+  "title",
+  "status",
+  "priority",
+  "dueDate",
+  "estimateMinutes",
+  "blockedReason",
+] as const;
+
+export type TaskFieldPatchField = (typeof TASK_FIELD_PATCH_FIELDS)[number];
+
+export function isTaskFieldPatchField(value: string): value is TaskFieldPatchField {
+  return (TASK_FIELD_PATCH_FIELDS as readonly string[]).includes(value);
+}
+
+/** The current values a single-field patch must carry forward unchanged. */
+export type TaskFieldPatchCurrent = {
+  title: string;
+  status: string;
+  priority: string;
+  due_date: string | null;
+  estimate_minutes: number | null;
+  blocked_reason: string | null;
+};
+
+/**
+ * Merge one changed field into the task's current values.
+ *
+ * `validateTaskInlineUpdateInput` requires status/priority/due/estimate/blocked
+ * together, so a single-field patch cannot forward only the changed field. The
+ * current values come from the server-side row, never from hidden client fields,
+ * so an unrelated stale field can never be written back.
+ */
+export function buildTaskFieldPatchInput(
+  taskId: string,
+  current: TaskFieldPatchCurrent,
+  field: string,
+  value: string,
+): { errorMessage: null; input: ValidateTaskInlineUpdateInput } | { errorMessage: string } {
+  if (!isTaskFieldPatchField(field)) {
+    return { errorMessage: "Unsupported task field update." };
+  }
+
+  const input: ValidateTaskInlineUpdateInput = {
+    taskId,
+    title: current.title,
+    status: current.status,
+    priority: current.priority,
+    dueDate: current.due_date ?? "",
+    estimateMinutes: current.estimate_minutes,
+    blockedReason: current.blocked_reason,
+  };
+
+  if (field === "title") input.title = value;
+  if (field === "status") input.status = value;
+  if (field === "priority") input.priority = value;
+  if (field === "dueDate") input.dueDate = value;
+  if (field === "estimateMinutes") input.estimateMinutes = value;
+  if (field === "blockedReason") input.blockedReason = value;
+
+  return { errorMessage: null, input };
+}
+
+/**
+ * Apply one whitelisted field change to a task the caller owns.
+ *
+ * The current row is read server-side and merged into the validated input, so a
+ * single-field patch can never write back a stale value the browser happened to
+ * hold. Unknown ids, another owner's ids and a missing session all return the
+ * same message.
+ */
+export async function updateTaskFieldForOwner(
+  input: { taskId: string; field: string; value: string },
+  options?: {
+    supabase?: SupabaseServerClient;
+    accountTimezone?: string;
+    fallbackAnchorDate?: string;
+  },
+): Promise<{ errorMessage: string | null }> {
+  const taskId = input.taskId.trim();
+  if (!taskId) return { errorMessage: "Task update request is invalid." };
+  if (!isTaskFieldPatchField(input.field)) {
+    return { errorMessage: "Unsupported task field update." };
+  }
+
+  const supabase = await resolveSupabaseClient(options?.supabase);
+  const userId = await getAuthenticatedUserId(supabase);
+  if (!userId) return { errorMessage: "Task was not found or is no longer available." };
+
+  const { data: current, error: loadError } = await supabase
+    .from("tasks")
+    .select("title, status, priority, due_date, estimate_minutes, blocked_reason")
+    .eq("id", taskId)
+    .eq("owner_user_id", userId)
+    .maybeSingle();
+
+  if (loadError) return { errorMessage: "Unable to load task right now." };
+  if (!current) {
+    return { errorMessage: "Task was not found or is no longer available." };
+  }
+
+  const built = buildTaskFieldPatchInput(
+    taskId,
+    current as TaskFieldPatchCurrent,
+    input.field,
+    input.value,
+  );
+  if (!("input" in built)) return { errorMessage: built.errorMessage };
+
+  const validation = validateTaskInlineUpdateInput({
+    ...built.input,
+    accountTimezone: options?.accountTimezone,
+  });
+  if (validation.errorMessage || !validation.data) {
+    return { errorMessage: validation.errorMessage ?? "Task update request is invalid." };
+  }
+
+  return updateTaskInline(validation.data, {
+    supabase,
+    fallbackAnchorDate: options?.fallbackAnchorDate,
+  });
+}
