@@ -10,6 +10,7 @@ import {
 
 const CURRENT = {
   title: "Draft review",
+  description: "Existing body",
   status: "in_progress",
   priority: "high",
   due_date: "2026-05-01",
@@ -20,6 +21,7 @@ const CURRENT = {
 test("accepts exactly the whitelisted fields", () => {
   assert.deepEqual([...TASK_FIELD_PATCH_FIELDS], [
     "title",
+    "description",
     "status",
     "priority",
     "dueDate",
@@ -46,6 +48,18 @@ test("changes only the requested field and carries the rest forward", () => {
   // field it receives.
   assert.equal(result.input.title, undefined);
   assert.equal(result.input.blockedReason, null);
+  // An unrelated patch must not rewrite the description either.
+  assert.equal(result.input.description, undefined);
+});
+
+test("a description patch changes only the description", () => {
+  const result = buildTaskFieldPatchInput("task-1", CURRENT, "description", "New body");
+  assert.ok("input" in result);
+  assert.equal(result.input.description, "New body");
+  assert.equal(result.input.title, undefined);
+  assert.equal(result.input.status, "in_progress");
+  assert.equal(result.input.priority, "high");
+  assert.equal(result.input.dueDate, "2026-05-01");
 });
 
 test("a title patch changes the title and keeps the rest", () => {
@@ -88,15 +102,33 @@ test("rejects a non-whitelisted field without building an input", () => {
 
 type MaybeRow = Record<string, unknown> | null;
 
-function stubClient(row: MaybeRow, options: { userId?: string | null; error?: unknown } = {}) {
+function stubClient(
+  row: MaybeRow,
+  options: {
+    userId?: string | null;
+    error?: unknown;
+    /** Result of the guarded write; null models a lost concurrency check. */
+    writeRow?: MaybeRow;
+  } = {},
+) {
   const filters: Array<{ column: string; value: unknown }> = [];
+  const writeFilters: Array<{ column: string; value: unknown }> = [];
   const userId = options.userId === undefined ? "owner-1" : options.userId;
   const client = {
     auth: {
       getUser: async () => ({ data: { user: userId ? { id: userId } : null }, error: null }),
     },
     from(table: string) {
-      assert.equal(table, "tasks");
+      if (table !== "tasks") {
+        // Post-write side effects (calendar sync queue) are outside this test.
+        const noop: Record<string, unknown> = {};
+        noop.eq = () => noop;
+        noop.select = () => noop;
+        noop.maybeSingle = async () => ({ data: null, error: null });
+        noop.insert = async () => ({ error: null });
+        noop.delete = () => noop;
+        return noop;
+      }
       return {
         select() {
           const query = {
@@ -110,10 +142,26 @@ function stubClient(row: MaybeRow, options: { userId?: string | null; error?: un
           };
           return query;
         },
+        update() {
+          const query = {
+            eq(column: string, value: unknown) {
+              writeFilters.push({ column, value });
+              return query;
+            },
+            select() {
+              return {
+                async maybeSingle() {
+                  return { data: options.writeRow ?? null, error: null };
+                },
+              };
+            },
+          };
+          return query;
+        },
       };
     },
   };
-  return { client, filters };
+  return { client, filters, writeFilters };
 }
 
 test("rejects a non-whitelisted field before touching the database", async () => {
@@ -180,4 +228,56 @@ test("an invalid value is rejected by the shared validator before any write", as
   );
   assert.ok(result.errorMessage);
   assert.notEqual(result.errorMessage, null);
+});
+
+test("a single-field write is guarded by the updated_at it read", async () => {
+  const { client, writeFilters } = stubClient(
+    {
+      title: "Draft review",
+      description: null,
+      status: "in_progress",
+      priority: "high",
+      due_date: null,
+      estimate_minutes: null,
+      blocked_reason: null,
+      updated_at: "2026-05-01T10:00:00.000Z",
+    },
+    { writeRow: { id: "task-1" } },
+  );
+
+  const result = await updateTaskFieldForOwner(
+    { taskId: "task-1", field: "title", value: "Renamed" },
+    { supabase: client as never },
+  );
+
+  assert.equal(result.errorMessage, null);
+  // The guarded update must carry both the row identity and the revision it
+  // read; later side-effect writes are allowed to add their own predicates.
+  assert.deepEqual(writeFilters.slice(0, 2), [
+    { column: "id", value: "task-1" },
+    { column: "updated_at", value: "2026-05-01T10:00:00.000Z" },
+  ]);
+});
+
+test("a concurrent change is reported instead of silently reverting fields", async () => {
+  const { client } = stubClient(
+    {
+      title: "Draft review",
+      description: null,
+      status: "in_progress",
+      priority: "high",
+      due_date: null,
+      estimate_minutes: null,
+      blocked_reason: null,
+      updated_at: "2026-05-01T10:00:00.000Z",
+    },
+    { writeRow: null },
+  );
+
+  const result = await updateTaskFieldForOwner(
+    { taskId: "task-1", field: "title", value: "Renamed" },
+    { supabase: client as never },
+  );
+
+  assert.equal(result.errorMessage, "This task changed since you opened it. Reload and try again.");
 });
