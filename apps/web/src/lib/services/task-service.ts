@@ -2261,16 +2261,21 @@ export type TaskDrawerDetail = {
  * owner's id (both return null), so the drawer cannot disclose that a task
  * exists elsewhere.
  */
+export type TaskDrawerDetailResult =
+  | { kind: "found"; task: TaskDrawerDetail }
+  | { kind: "unavailable" }
+  | { kind: "error" };
+
 export async function getTaskDrawerDetail(
   taskId: string,
   options?: { supabase?: SupabaseServerClient },
-): Promise<TaskDrawerDetail | null> {
+): Promise<TaskDrawerDetailResult> {
   const normalizedId = taskId.trim();
-  if (!normalizedId) return null;
+  if (!normalizedId) return { kind: "unavailable" };
 
   const supabase = await resolveSupabaseClient(options?.supabase);
   const userId = await getAuthenticatedUserId(supabase);
-  if (!userId) return null;
+  if (!userId) return { kind: "unavailable" };
 
   const { data, error } = await supabase
     .from("tasks")
@@ -2279,7 +2284,11 @@ export async function getTaskDrawerDetail(
     .eq("owner_user_id", userId)
     .maybeSingle();
 
-  if (error || !data) return null;
+  // A missing row (unknown id or another owner's task under RLS) is
+  // indistinguishable; a query error is an operational failure and must not be
+  // reported to the user as "deleted".
+  if (error) return { kind: "error" };
+  if (!data) return { kind: "unavailable" };
 
-  return data as TaskDrawerDetail;
+  return { kind: "found", task: data as TaskDrawerDetail };
 }

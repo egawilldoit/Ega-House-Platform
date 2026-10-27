@@ -90,6 +90,44 @@ describe("TaskDrawer", () => {
     expect(onModeChange).toHaveBeenCalledWith("panel");
   });
 
+  it("restores focus to the opener after closing", async () => {
+    const opener = document.createElement("button");
+    opener.textContent = "Open task";
+    document.body.append(opener);
+    opener.focus();
+
+    const { onClose } = render();
+    // Radix moves focus into the dialog; the opener is remembered from mount.
+    const closeButton = document.body.querySelector('[aria-label="Close task details"]');
+    act(() => {
+      (closeButton as HTMLButtonElement).click();
+    });
+    expect(onClose).toHaveBeenCalledTimes(1);
+
+    act(() =>
+      root.render(
+        <TaskDrawer task={null} mode="panel" onClose={onClose} onModeChange={vi.fn()} />,
+      ),
+    );
+    await vi.waitFor(() => expect(document.activeElement).toBe(opener));
+    opener.remove();
+  });
+
+  it("does not dismiss a non-modal panel on an outside click", () => {
+    const { onClose } = render();
+    const outside = document.createElement("button");
+    document.body.append(outside);
+
+    act(() => {
+      // jsdom has no PointerEvent; Radix only needs an event of that type.
+      outside.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, cancelable: true }));
+      outside.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    });
+
+    expect(onClose).not.toHaveBeenCalled();
+    outside.remove();
+  });
+
   it("renders no dialog when no task is selected", () => {
     render({ task: null });
     expect(document.body.querySelector('[role="dialog"]')).toBeNull();

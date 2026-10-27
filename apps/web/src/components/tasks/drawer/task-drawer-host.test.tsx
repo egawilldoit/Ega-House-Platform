@@ -5,10 +5,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const push = vi.fn();
 const replace = vi.fn();
+const refresh = vi.fn();
 let currentParams = new URLSearchParams();
 
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push, replace }),
+  useRouter: () => ({ push, replace, refresh }),
   usePathname: () => "/tasks",
   useSearchParams: () => currentParams,
 }));
@@ -45,8 +46,8 @@ afterEach(() => {
   document.body.innerHTML = "";
 });
 
-function render(task: typeof TASK | null) {
-  act(() => root.render(<TaskDrawerHost task={task} />));
+function render(task: typeof TASK | null, loadFailed = false) {
+  act(() => root.render(<TaskDrawerHost task={task} loadFailed={loadFailed} />));
 }
 
 describe("TaskDrawerHost", () => {
@@ -75,6 +76,23 @@ describe("TaskDrawerHost", () => {
     expect(dialog).not.toBeNull();
     expect(dialog?.textContent).toContain("Task unavailable");
     expect(dialog?.textContent).toContain("may have been deleted");
+  });
+
+  it("reports an operational failure distinctly from a missing task", () => {
+    currentParams = new URLSearchParams("task=t1");
+    render(null, true);
+
+    const dialog = document.body.querySelector('[role="dialog"]');
+    expect(dialog?.textContent).toContain("Unable to load this task right now.");
+    expect(dialog?.textContent).not.toContain("may have been deleted");
+
+    const retry = Array.from(document.body.querySelectorAll("button")).find(
+      (button) => button.textContent === "Try again",
+    );
+    act(() => {
+      (retry as HTMLButtonElement).click();
+    });
+    expect(refresh).toHaveBeenCalledTimes(1);
   });
 
   it("closes by removing only the drawer parameters", () => {

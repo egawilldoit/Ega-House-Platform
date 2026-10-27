@@ -177,25 +177,32 @@ export async function getTasksPageModel(searchParams: TasksSearchParams) {
   const selectedTaskFromList = selectedTaskId
     ? (tasks.find((task) => task.id === selectedTaskId) ?? null)
     : null;
-  const selectedTask: TaskDrawerDetail | null = selectedTaskFromList
-    ? {
-        id: selectedTaskFromList.id,
-        title: selectedTaskFromList.title,
-        status: selectedTaskFromList.status,
-        priority: selectedTaskFromList.priority,
-        due_date: selectedTaskFromList.due_date,
-        project_id: selectedTaskFromList.project_id,
-        goal_id: selectedTaskFromList.goal_id,
-        archived_at: selectedTaskFromList.archived_at,
-      }
+  const drawerResult = selectedTaskFromList
+    ? ({
+        kind: "found" as const,
+        task: {
+          id: selectedTaskFromList.id,
+          title: selectedTaskFromList.title,
+          status: selectedTaskFromList.status,
+          priority: selectedTaskFromList.priority,
+          due_date: selectedTaskFromList.due_date,
+          project_id: selectedTaskFromList.project_id,
+          goal_id: selectedTaskFromList.goal_id,
+          archived_at: selectedTaskFromList.archived_at,
+        },
+      } satisfies { kind: "found"; task: TaskDrawerDetail })
     : selectedTaskId
       ? await getTaskDrawerDetail(selectedTaskId)
-      : null;
+      : ({ kind: "unavailable" as const } as const);
+  const selectedTask: TaskDrawerDetail | null =
+    drawerResult.kind === "found" ? drawerResult.task : null;
+  const selectedTaskError = drawerResult.kind === "error";
 
   return {
     selectedTaskId,
     selectedTaskMode,
     selectedTask,
+    selectedTaskError,
     parsed,
     projects,
     goals,
