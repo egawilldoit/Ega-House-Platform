@@ -46,8 +46,18 @@ afterEach(() => {
   document.body.innerHTML = "";
 });
 
+const updateFieldAction = vi.fn();
+
 function render(task: typeof TASK | null, loadFailed = false) {
-  act(() => root.render(<TaskDrawerHost task={task} loadFailed={loadFailed} />));
+  act(() =>
+    root.render(
+      <TaskDrawerHost
+        task={task}
+        loadFailed={loadFailed}
+        updateFieldAction={updateFieldAction}
+      />,
+    ),
+  );
 }
 
 describe("TaskDrawerHost", () => {
@@ -63,9 +73,12 @@ describe("TaskDrawerHost", () => {
     const dialog = document.body.querySelector('[role="dialog"]');
     expect(dialog).not.toBeNull();
     expect(dialog?.textContent).toContain("Draft weekly execution review");
-    expect(dialog?.textContent).toContain("in progress");
-    expect(dialog?.textContent).toContain("high");
-    expect(dialog?.textContent).toContain("2026-05-01");
+
+    const selects = Array.from(document.body.querySelectorAll<HTMLSelectElement>("select"));
+    // Status and priority are inline editors now; assert the bound values.
+    expect(selects.map((select) => select.value)).toEqual(["in_progress", "high"]);
+    const dueDate = document.body.querySelector<HTMLInputElement>('input[type="date"]');
+    expect(dueDate?.value).toBe("2026-05-01");
   });
 
   it("shows an indistinguishable unavailable state for a missing task", () => {
@@ -93,6 +106,21 @@ describe("TaskDrawerHost", () => {
       (retry as HTMLButtonElement).click();
     });
     expect(refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("submits a single-field patch for the inline property editors", () => {
+    currentParams = new URLSearchParams("task=t1&layout=board");
+    render(TASK);
+
+    const statusSelect = document.body.querySelector<HTMLSelectElement>('select[name="value"]');
+    expect(statusSelect).not.toBeNull();
+    const form = statusSelect?.form as HTMLFormElement;
+    expect(form).not.toBeNull();
+    expect(form.querySelector<HTMLInputElement>('input[name="field"]')?.value).toBe("status");
+    expect(form.querySelector<HTMLInputElement>('input[name="taskId"]')?.value).toBe("t1");
+    expect(form.querySelector<HTMLInputElement>('input[name="returnTo"]')?.value).toContain(
+      "task=t1",
+    );
   });
 
   it("closes by removing only the drawer parameters", () => {

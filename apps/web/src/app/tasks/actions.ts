@@ -36,6 +36,7 @@ import {
   pinTaskInFocusQueue,
   unpinTaskInFocusQueue,
 } from "@/lib/services/focus-queue-service";
+import { updateTaskFieldForOwner } from "@/lib/services/task-service";
 import { getWebTimeContext } from "@/lib/services/time-context-service";
 import {
   redirectWithWorkspaceFeedback,
@@ -644,6 +645,39 @@ export async function updateTaskInlineAction(formData: FormData) {
   revalidateWorkspaceFor("task", { returnTo: returnPath });
   redirectWithWorkspaceFeedback(returnPath, {
     anchor: `task-${validatedInput.taskId}`,
+  });
+}
+
+/**
+ * One-field patch for the task drawer.
+ *
+ * The current row is read server-side and merged into the validated input, so a
+ * single-field change never writes back unrelated values the browser held. The
+ * field whitelist lives in the service, next to `updateTaskInline`.
+ */
+export async function updateTaskFieldAction(formData: FormData) {
+  const returnPath = getTasksReturnPath(formData.get("returnTo"));
+  const taskId = String(formData.get("taskId") ?? "").trim();
+  const field = String(formData.get("field") ?? "");
+  const value = String(formData.get("value") ?? "");
+
+  const accountTimezoneResult = await resolveAccountTimezone();
+  const { errorMessage } = await updateTaskFieldForOwner(
+    { taskId, field, value },
+    {
+      accountTimezone: accountTimezoneResult.timezone ?? undefined,
+      fallbackAnchorDate: accountTimezoneResult.localDate ?? undefined,
+    },
+  );
+
+  if (errorMessage) {
+    redirectWithTasksError(returnPath, errorMessage, taskId || undefined);
+  }
+
+  revalidateWorkspaceFor("task", { returnTo: returnPath });
+  redirectWithWorkspaceFeedback(returnPath, {
+    anchor: taskId ? `task-${taskId}` : undefined,
+    ...(returnPath.includes("task=") ? { taskId } : {}),
   });
 }
 
