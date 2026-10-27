@@ -130,6 +130,8 @@
   --ega-shadow-sidebar: none;
   --ega-shadow-panel: none;
   --ega-shadow-footer: 0 -8px 18px rgba(22, 31, 44, 0.04);
+  /* Dragged card/row lifted above the board surface. */
+  --ega-shadow-drag: 0 18px 36px rgba(23, 23, 23, 0.18), 0 6px 12px rgba(23, 23, 23, 0.10);
 
   /* ── Radius ──────────────────────────────────────────── */
   --radius-xs: 6px;
@@ -318,6 +320,7 @@ html[data-theme="dark"]:has([data-workspace-theme="workspace"]) {
   --ega-shadow-md: 0 6px 16px rgba(0, 0, 0, 0.45), 0 1px 3px rgba(0, 0, 0, 0.35);
   --ega-shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.55), 0 4px 10px rgba(0, 0, 0, 0.35);
   --ega-shadow-footer: 0 -8px 18px rgba(0, 0, 0, 0.35);
+  --ega-shadow-drag: 0 18px 36px rgba(0, 0, 0, 0.65), 0 6px 12px rgba(0, 0, 0, 0.45);
 }
 
 @media (min-width: 1536px) {
