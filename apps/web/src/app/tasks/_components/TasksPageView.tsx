@@ -11,6 +11,9 @@ import {
   updateTaskInlineAction,
   updateTaskEditorAction,
   updateTaskFieldDraftAction,
+  bulkTaskFieldAction,
+  bulkTaskArchiveAction,
+  undoTaskOperationAction,
   updateTaskReminderAction,
 } from "@/app/tasks/actions";
 import { startTimerAction } from "@/app/timer/actions";
@@ -116,6 +119,9 @@ export function TasksPageView({
     createReminderAction: createTaskReminderAction,
     updateReminderAction: updateTaskReminderAction,
     cancelReminderAction: cancelTaskReminderAction,
+    bulkFieldAction: bulkTaskFieldAction,
+    bulkArchiveAction: bulkTaskArchiveAction,
+    undoAction: undoTaskOperationAction,
   };
 
   const bulkArchiveControl = showBulkArchive ? (
