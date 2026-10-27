@@ -133,7 +133,10 @@ describe("TaskDrawerHost", () => {
       document.body.querySelectorAll<HTMLInputElement>('input[name="field"]'),
     )
       .map((input) => input.form)
-      .find((form) => form?.querySelector('input[name="field"]')?.value === "blockedReason");
+      .find(
+        (form) =>
+          form?.querySelector<HTMLInputElement>('input[name="field"]')?.value === "blockedReason",
+      );
     expect(reasonForm).toBeTruthy();
     expect(reasonForm?.querySelector<HTMLInputElement>('input[name="value"]')?.value).toBe(
       "Waiting on review",
@@ -187,7 +190,9 @@ describe("TaskDrawerHost", () => {
     });
     expect(confirmSpy).toHaveBeenCalledTimes(1);
     expect(replace).not.toHaveBeenCalled();
-    expect(document.body.querySelector("textarea")?.value).toBe("Half-written plan");
+    expect(document.body.querySelector<HTMLTextAreaElement>("textarea")?.value).toBe(
+      "Half-written plan",
+    );
 
     confirmSpy.mockReturnValue(true);
     act(() => {
@@ -203,7 +208,7 @@ describe("TaskDrawerHost", () => {
       errorMessage: "Title is too long.",
       successMessage: null,
       savedValue: null,
-    });
+    } as never);
     render(TASK);
 
     const title = document.body.querySelector<HTMLInputElement>('input[maxlength="256"]');
