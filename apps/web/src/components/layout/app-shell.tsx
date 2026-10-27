@@ -8,6 +8,7 @@ import type { SidebarGoal, SidebarProject } from "./sidebar";
 import { WorkspaceShell } from "./workspace-shell";
 import { WorkspaceKeyboardShortcuts } from "./workspace-keyboard-shortcuts";
 import { GlobalQuickActionControllers } from "./global-quick-action-controllers";
+import { ToastProvider } from "@/components/ui/toast-provider";
 
 type AppShellProps = {
   children: ReactNode;
@@ -102,7 +103,7 @@ export async function AppShell({
   ]);
 
   return (
-    <>
+    <ToastProvider>
       <WorkspaceKeyboardShortcuts ownerId={identity.id} />
       <GlobalQuickActionControllers projects={projects} goals={goals} />
 
@@ -119,6 +120,6 @@ export async function AppShell({
       >
         {children}
       </WorkspaceShell>
-    </>
+    </ToastProvider>
   );
 }

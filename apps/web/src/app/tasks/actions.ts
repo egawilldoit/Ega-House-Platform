@@ -1019,3 +1019,71 @@ export async function deleteTaskAction(formData: FormData) {
   revalidateWorkspaceFor("task", { returnTo: returnPath });
   redirectWithWorkspaceFeedback(returnPath);
 }
+
+// ---------------------------------------------------------------------------
+// Bulk task operations (EGA-786)
+//
+// The client calls these with explicit visible ids and shows a toast from the
+// returned operation id. They return state instead of redirecting so a partial
+// result can be reported per item and Undo can report the server's real
+// outcome; no client-supplied row snapshot is trusted.
+// ---------------------------------------------------------------------------
+
+export async function bulkTaskFieldAction(input: {
+  taskIds: string[];
+  field: string;
+  value: string;
+  returnTo?: string;
+}): Promise<import("@/lib/services/task-bulk-service").BulkTaskResult> {
+  const { bulkPatchTasksForOwner } = await import("@/lib/services/task-bulk-service");
+  const result = await bulkPatchTasksForOwner({
+    taskIds: Array.isArray(input.taskIds) ? input.taskIds : [],
+    field: input.field,
+    value: input.value,
+  });
+
+  if (result.applied > 0) {
+    revalidateWorkspaceFor("task", {
+      returnTo: getTasksReturnPath(input.returnTo),
+    });
+  }
+
+  return result;
+}
+
+export async function bulkTaskArchiveAction(input: {
+  taskIds: string[];
+  archived: boolean;
+  returnTo?: string;
+}): Promise<import("@/lib/services/task-bulk-service").BulkTaskResult> {
+  const { bulkArchiveTasksForOwner } = await import("@/lib/services/task-bulk-service");
+  const result = await bulkArchiveTasksForOwner({
+    taskIds: Array.isArray(input.taskIds) ? input.taskIds : [],
+    archived: Boolean(input.archived),
+  });
+
+  if (result.applied > 0) {
+    revalidateWorkspaceFor("task", {
+      returnTo: getTasksReturnPath(input.returnTo),
+    });
+  }
+
+  return result;
+}
+
+export async function undoTaskOperationAction(
+  operationId: string,
+): Promise<"success" | "conflict" | "failure"> {
+  const { undoTaskOperationForOwner } = await import("@/lib/services/task-bulk-service");
+  const { results, errorMessage } = await undoTaskOperationForOwner(String(operationId ?? ""));
+
+  if (errorMessage && results.length === 0) return "failure";
+
+  const restored = results.filter((result) => result.outcome === "restored").length;
+  if (restored > 0) {
+    revalidateWorkspaceFor("task", { returnTo: "/tasks" });
+    return results.some((result) => result.outcome !== "restored") ? "conflict" : "success";
+  }
+
+  return results.some((result) => result.outcome === "conflict") ? "conflict" : "failure";
+}

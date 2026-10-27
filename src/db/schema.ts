@@ -557,6 +557,44 @@ export const taskStatusEvents = pgTable(
   ],
 );
 
+/**
+ * Server-owned undo receipts for bounded bulk operations (EGA-786).
+ *
+ * Each receipt records the fields one operation changed and the values before
+ * and after. Undo re-reads the task, refuses if the after-values no longer hold,
+ * restores only the recorded fields and marks the receipt consumed. Receipts
+ * expire and are never deleted by the client; they are the audit trail.
+ */
+export const taskOperationReceipts = pgTable(
+  "task_operation_receipts",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    ownerUserId: uuid("owner_user_id").default(sql`auth.uid()`).notNull(),
+    operationId: uuid("operation_id").notNull(),
+    taskId: uuid("task_id")
+      .notNull()
+      .references(() => tasks.id, { onDelete: "cascade" }),
+    action: varchar("action", { length: 32 }).notNull(),
+    beforeValues: jsonb("before_values").notNull(),
+    afterValues: jsonb("after_values").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    undoneAt: timestamp("undone_at", { withTimezone: true }),
+  },
+  (table) => [
+    index("task_operation_receipts_owner_operation_idx").on(table.ownerUserId, table.operationId),
+    index("task_operation_receipts_owner_task_idx").on(table.ownerUserId, table.taskId),
+    uniqueIndex("task_operation_receipts_operation_task_unique").on(
+      table.operationId,
+      table.taskId,
+    ),
+    check(
+      "task_operation_receipts_action_check",
+      sql`${table.action} in ('archive', 'restore', 'patch')`,
+    ),
+  ],
+);
+
 export const taskSavedViews = pgTable(
   "task_saved_views",
   {

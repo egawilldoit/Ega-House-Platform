@@ -311,7 +311,7 @@ type CreateTaskScopeSuccessResult = {
   scope: TaskScopeSnapshot;
 };
 
-async function resolveSupabaseClient(supabase?: SupabaseServerClient) {
+export async function resolveSupabaseClient(supabase?: SupabaseServerClient) {
   if (supabase) {
     return supabase;
   }
@@ -319,7 +319,7 @@ async function resolveSupabaseClient(supabase?: SupabaseServerClient) {
   return createClient();
 }
 
-async function getAuthenticatedUserId(supabase: SupabaseServerClient) {
+export async function getAuthenticatedUserId(supabase: SupabaseServerClient) {
   if (!("auth" in supabase) || typeof supabase.auth?.getUser !== "function") {
     return null;
   }
