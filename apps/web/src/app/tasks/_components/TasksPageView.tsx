@@ -33,6 +33,7 @@ import type { TasksPageModel } from "../_lib/tasks-page-model";
 import { TasksListTable, type TaskListActions } from "./tasks-list-table";
 import { TaskDrawerHost } from "@/components/tasks/drawer/task-drawer-host";
 import { updateTaskFieldAction } from "@/app/tasks/actions";
+import { TASK_SUBTASK_ACTIONS } from "@/lib/task-subtask-actions";
 
 function getTaskSignalTone(status: string, priority: string) {
   if (status === "blocked" || priority === "urgent") return "bg-[var(--status-overdue)]";
@@ -88,6 +89,8 @@ export function TasksPageView({
     selectedTask,
     selectedTaskId,
     selectedTaskError,
+    selectedTaskSubtasks,
+    subtaskCounts,
   } = model;
   const { activeStatus, activeView, activeLayout, activeDueFilter, savedViewDefinitionFilters } = parsed;
   const completedTaskIdsInScope = getArchivableCompletedTaskIds(tasks);  // Restore clears archived state only; it must never resurrect a completed
@@ -297,6 +300,7 @@ export function TasksPageView({
                                   }))}
                                   returnTo={returnPath}
                                   trackedSeconds={taskTotalDurations[task.id]}
+                                  subtaskCount={subtaskCounts[task.id] ?? null}
                                   error={inlineError}
                                 />
                               );
@@ -315,6 +319,7 @@ export function TasksPageView({
             <TasksListTable
               tasks={tasks}
               taskTotalDurations={taskTotalDurations}
+              subtaskCounts={subtaskCounts}
               returnTo={returnPath}
               taskUpdateTaskId={taskUpdateTaskId}
               taskUpdateError={taskUpdateError}
@@ -340,6 +345,8 @@ export function TasksPageView({
           updateFieldAction={updateTaskFieldAction}
           updateDraftAction={updateTaskFieldDraftAction}
           ownerId={ownerId}
+          subtasks={selectedTaskSubtasks}
+          subtaskActions={TASK_SUBTASK_ACTIONS}
           updateError={taskUpdateTaskId === selectedTaskId ? taskUpdateError : null}
           updateSuccess={taskUpdateTaskId === selectedTaskId ? taskUpdateSuccess : null}
         />

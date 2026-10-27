@@ -458,6 +458,50 @@ export type Database = {
           },
         ]
       }
+      task_subtasks: {
+        Row: {
+          id: string
+          owner_user_id: string
+          task_id: string
+          title: string
+          done: boolean
+          position: number
+          completed_at: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          owner_user_id?: string
+          task_id: string
+          title: string
+          done?: boolean
+          position: number
+          completed_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          owner_user_id?: string
+          task_id?: string
+          title?: string
+          done?: boolean
+          position?: number
+          completed_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "task_subtasks_task_id_tasks_id_fk"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       task_saved_views: {
         Row: {
           created_at: string
@@ -673,7 +717,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      promote_task_subtask: {
+        Args: { p_subtask_id: string; p_new_task_id: string }
+        Returns: boolean
+      }
     }
     Enums: {
       [_ in never]: never
