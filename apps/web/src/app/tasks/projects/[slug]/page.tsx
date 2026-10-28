@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { cache } from "react";
+import { CalendarDays } from "lucide-react";
 
 import {
   buildProjectProgress,
@@ -38,6 +39,7 @@ import {
   DEFAULT_TASK_DUE_FILTER,
   DEFAULT_TASK_SORT,
   applyTaskListQuery,
+  buildTaskListUrl,
   isTaskDueFilter,
   isTaskSortValue,
   type TaskDueFilter,
@@ -265,6 +267,19 @@ export default async function ProjectDetailPage({
   const baseProjectsHref =
     activeView === "active" ? "/tasks/projects" : `/tasks/projects?view=${activeView}`;
   const projectPath = `/tasks/projects/${project.slug}`;
+  // The project calendar is the canonical Tasks calendar with the project
+  // filter applied, so there is exactly one calendar range read and one drag
+  // reschedule owner rather than a second project-only implementation.
+  const projectCalendarHref = buildTaskListUrl("/tasks", {
+    project: project.id,
+    status: activeStatus,
+    priority: activePriority,
+    due: activeDueFilter,
+    sort: activeSort,
+    view: activeView,
+    layout: "calendar",
+    cal: "month",
+  });
   const deleteHref =
     activeView === "active" ? `${projectPath}/delete` : `${projectPath}/delete?view=${activeView}`;
 
@@ -370,6 +385,13 @@ export default async function ProjectDetailPage({
               {projectIsFavourite ? "★ Favourited" : "☆ Favourite"}
             </button>
           </form>
+          <Link
+            href={projectCalendarHref}
+            className="btn-instrument btn-instrument-muted flex h-8 items-center gap-2 px-4"
+          >
+            <CalendarDays className="h-4 w-4" aria-hidden="true" />
+            Calendar
+          </Link>
           <Link
             href={baseProjectsHref}
             className="btn-instrument btn-instrument-muted flex h-8 items-center px-4"
