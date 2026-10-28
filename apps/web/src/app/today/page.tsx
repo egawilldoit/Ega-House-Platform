@@ -30,6 +30,7 @@ import { getOperatorSnapshotData } from "@/lib/services/operator-service";
 import { getActiveTimerSession } from "@/lib/services/timer-service";
 import { getTaskDrawerDetail } from "@/lib/services/task-service";
 import { listTaskSubtasks } from "@/lib/services/subtask-service";
+import { getTaskActivity } from "@/lib/services/task-activity-service";
 import { TASK_SUBTASK_ACTIONS } from "@/lib/task-subtask-actions";
 import { buildTaskDrawerLink } from "@/lib/task-drawer-url";
 import { getHealthSnapshotData } from "@/lib/services/health-snapshot-service";
@@ -200,6 +201,9 @@ export default async function TodayPage({
   const selectedTaskSubtasks = selectedTaskId
     ? (await listTaskSubtasks(selectedTaskId)).data ?? []
     : [];
+  const selectedTaskActivity = selectedTaskId
+    ? (await getTaskActivity(selectedTaskId, { limit: 8 })).items
+    : [];
   const activeTimerSessionId = todayData.activeTimer?.sessionId ?? null;
   const flexibleTodayActionable = todayData.flexibleTasks.filter(
     (task) => task.status !== "blocked" && !isTaskCompletedStatus(task.status),
@@ -264,6 +268,7 @@ export default async function TodayPage({
           updateDraftAction={updateTaskFieldDraftAction}
           ownerId={user?.id ?? null}
           subtasks={selectedTaskSubtasks}
+          activity={selectedTaskActivity}
           subtaskActions={TASK_SUBTASK_ACTIONS}
           updateError={taskUpdateTaskId === selectedTaskId ? taskUpdateError : null}
           updateSuccess={taskUpdateTaskId === selectedTaskId ? taskUpdateSuccess : null}
