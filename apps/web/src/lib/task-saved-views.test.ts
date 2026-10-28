@@ -7,8 +7,6 @@ import {
   DEEP_WORK_SAVED_VIEW_DEFINITION,
   DUE_THIS_WEEK_SAVED_VIEW_DEFINITION,
   QUICK_WINS_SAVED_VIEW_DEFINITION,
-  buildTaskSavedViewDefinition,
-  getTaskSavedViewColumnsFromDefinition,
   getTaskSavedViewNameError,
   getTaskSavedViewDefinitionFromFilters,
   getTaskSavedViewFiltersFromDefinition,
@@ -17,7 +15,6 @@ import {
   validateTaskSavedViewScope,
   type TaskSavedViewFilters,
 } from "./task-saved-views";
-import { parseTaskTableColumns } from "./task-table-columns";
 
 const BASE_FILTERS: TaskSavedViewFilters = {
   status: null,
@@ -82,9 +79,16 @@ test("normalizes all system saved-view definitions", () => {
       },
       DEEP_WORK_SAVED_VIEW_DEFINITION,
       {
+        status: null,
+        projectId: null,
+        goalId: null,
+        dueFilter: "all",
+        sortValue: "updated_desc",
         activeTasks: true,
         priorityValues: ["urgent", "high"],
         estimateMinMinutes: 30,
+        estimateMaxMinutes: null,
+        dueWithinDays: null,
       },
     ],
     [
@@ -97,8 +101,16 @@ test("normalizes all system saved-view definitions", () => {
       },
       QUICK_WINS_SAVED_VIEW_DEFINITION,
       {
+        status: null,
+        projectId: null,
+        goalId: null,
+        dueFilter: "all",
+        sortValue: "updated_desc",
         activeTasks: true,
+        priorityValues: [],
+        estimateMinMinutes: null,
         estimateMaxMinutes: 15,
+        dueWithinDays: null,
       },
     ],
     [
@@ -111,8 +123,16 @@ test("normalizes all system saved-view definitions", () => {
       },
       BLOCKED_SAVED_VIEW_DEFINITION,
       {
-        activeTasks: true,
         status: "blocked",
+        projectId: null,
+        goalId: null,
+        dueFilter: "all",
+        sortValue: "updated_desc",
+        activeTasks: true,
+        priorityValues: [],
+        estimateMinMinutes: null,
+        estimateMaxMinutes: null,
+        dueWithinDays: null,
       },
     ],
     [
@@ -125,7 +145,15 @@ test("normalizes all system saved-view definitions", () => {
       },
       DUE_THIS_WEEK_SAVED_VIEW_DEFINITION,
       {
+        status: null,
+        projectId: null,
+        goalId: null,
+        dueFilter: "all",
+        sortValue: "updated_desc",
         activeTasks: true,
+        priorityValues: [],
+        estimateMinMinutes: null,
+        estimateMaxMinutes: null,
         dueWithinDays: 7,
       },
     ],
@@ -141,43 +169,6 @@ test("normalizes all system saved-view definitions", () => {
 
 test("rejects unsupported saved-view definition filters", () => {
   const unsupportedDefinitions = [
-    {
-      version: 1,
-      filters: {
-        activeTasks: true,
-        priority: ["medium"],
-        estimateMinMinutes: 30,
-      },
-    },
-    {
-      version: 1,
-      filters: {
-        activeTasks: true,
-        priority: ["urgent", "high"],
-        estimateMinMinutes: 25,
-      },
-    },
-    {
-      version: 1,
-      filters: {
-        activeTasks: true,
-        estimateMaxMinutes: 20,
-      },
-    },
-    {
-      version: 1,
-      filters: {
-        activeTasks: true,
-        dueWithinDays: 5,
-      },
-    },
-    {
-      version: 1,
-      filters: {
-        activeTasks: true,
-        status: "todo",
-      },
-    },
     {
       version: 1,
       filters: {
@@ -254,14 +245,15 @@ test("builds definitions for all system presets", () => {
     ),
     DUE_THIS_WEEK_SAVED_VIEW_DEFINITION,
   );
-  assert.equal(
-    getTaskSavedViewDefinitionFromFilters({
-      ...BASE_FILTERS,
-      activeTasks: true,
-      estimateMaxMinutes: 20,
-    }),
-    null,
-  );
+  const nonPreset = getTaskSavedViewDefinitionFromFilters({
+    ...BASE_FILTERS,
+    activeTasks: true,
+    estimateMaxMinutes: 20,
+  });
+  assert.equal(nonPreset.version, 2);
+  assert.deepEqual(nonPreset.filters, [
+    { field: "estimate", operator: "between", values: ["", "20"] },
+  ]);
 });
 
 test("compares filter equality across all filter fields", () => {
@@ -324,23 +316,32 @@ test("validates saved-view names", () => {
   assert.equal(getTaskSavedViewNameError("Today"), null);
 });
 
-test("EGA-792: v2 definitions round-trip the per-view column layout", () => {
-  const columns = parseTaskTableColumns({
-    cols: "task,project,priority,due,status",
-    widths: "task:420",
+test("EGA-792: v2 saved-view definitions round-trip the per-view column layout", () => {
+  const columns = [
+    { id: "task", width: 420, visible: true },
+    { id: "project", width: 240, visible: true },
+    { id: "priority", width: 112, visible: true },
+    { id: "due", width: 152, visible: false },
+    { id: "status", width: 144, visible: true },
+    { id: "estimate", width: 112, visible: false },
+  ];
+  const normalized = normalizeTaskSavedViewDefinition({
+    version: 2,
+    filters: [
+      { field: "status", operator: "is", values: ["in_progress"] },
+      { field: "priority", operator: "is_any_of", values: ["high", "urgent"] },
+      { field: "estimate", operator: "between", values: ["30", ""] },
+      { field: "due_within_days", operator: "is", values: ["7"] },
+    ],
+    groupBy: "none",
+    sort: { key: "updated", direction: "desc" },
+    search: "",
+    activeOnly: true,
+    columns,
   });
-  const filters = normalizeTaskSavedViewFilters({
-    activeTasks: true,
-    status: "in_progress",
-    priority: "high,urgent",
-    estimateMin: 30,
-    dueWithin: 7,
-  });
-  const definition = buildTaskSavedViewDefinition(filters, columns);
-  const normalized = normalizeTaskSavedViewDefinition(definition);
 
   assert.equal(normalized?.version, 2);
-  assert.deepEqual(getTaskSavedViewColumnsFromDefinition(normalized), columns);
+  assert.deepEqual(normalized?.columns, columns);
   assert.deepEqual(getTaskSavedViewFiltersFromDefinition(normalized), {
     activeTasks: true,
     status: "in_progress",
@@ -348,34 +349,29 @@ test("EGA-792: v2 definitions round-trip the per-view column layout", () => {
     estimateMinMinutes: 30,
     dueWithinDays: 7,
   });
-  assert.equal("projectId" in definition, false);
-  assert.equal("dueFilter" in definition, false);
-  assert.equal("sortValue" in definition, false);
 });
 
-test("EGA-792: v1 views read with the default table columns", () => {
-  const columns = getTaskSavedViewColumnsFromDefinition(BLOCKED_SAVED_VIEW_DEFINITION);
-  assert.deepEqual(
-    columns.filter((column) => column.visible).map((column) => column.id),
-    ["task", "priority", "due", "status"],
-  );
-  assert.deepEqual(
-    columns.map((column) => column.id),
-    ["task", "priority", "due", "status", "project", "estimate"],
-  );
+test("EGA-792: v1 views read without an explicit column layout", () => {
+  const definition = normalizeTaskSavedViewDefinition(BLOCKED_SAVED_VIEW_DEFINITION);
+  assert.ok(definition);
+  assert.equal(definition!.columns, undefined);
 });
 
 test("EGA-792: malformed v2 columns fall back to validated defaults", () => {
   const definition = normalizeTaskSavedViewDefinition({
     version: 2,
-    filters: {},
+    filters: [],
+    groupBy: "none",
+    sort: { key: "updated", direction: "desc" },
+    search: "",
+    activeOnly: false,
     columns: [
       { id: "task", width: 10_000, visible: false },
       { id: "not-a-column", width: 100, visible: true },
     ],
   });
 
-  const columns = getTaskSavedViewColumnsFromDefinition(definition);
+  const columns = definition?.columns ?? [];
   assert.equal(columns[0]?.id, "task");
   assert.equal(columns[0]?.visible, true);
   assert.equal(columns[0]?.width, 480);

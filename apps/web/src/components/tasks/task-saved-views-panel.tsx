@@ -15,16 +15,15 @@ import { formatDisplayDate } from "@/lib/presentation-format";
 import type { Tables } from "@/lib/supabase/database.types";
 import {
   areTaskSavedViewFiltersEqual,
-  getTaskSavedViewColumnsFromDefinition,
+  getTaskSavedViewDefinitionFromFilters,
   getTaskSavedViewFiltersFromDefinition,
-  normalizeTaskSavedViewDefinition,
+  getTaskViewFromSavedView,
   normalizeTaskSavedViewFilters,
   type TaskSavedViewFilters,
 } from "@/lib/task-saved-views";
-import { serializeTaskTableColumns } from "@/lib/task-table-columns";
-import type { TaskTableColumnConfig } from "@ega/contracts/common/task-list";
 import { formatTaskToken } from "@/lib/task-domain";
-import type { TaskLayoutMode } from "@/lib/task-list";
+import { buildTaskListUrl, type TaskLayoutMode } from "@/lib/task-list";
+import type { TaskViewDefinition } from "@ega/contracts/common/task-list";
 
 type TaskSavedViewRow = Pick<
   Tables<"task_saved_views">,
@@ -41,10 +40,9 @@ type TaskSavedViewRow = Pick<
 
 type TaskSavedViewsPanelProps = {
   currentFilters: TaskSavedViewFilters;
+  currentView?: TaskViewDefinition;
   savedViews: TaskSavedViewRow[];
   activeLayout?: TaskLayoutMode;
-  /** Current table column state; included when writing this view. */
-  currentColumns?: TaskTableColumnConfig[];
   projectOptions: Array<{ id: string; name: string }>;
   goalOptions: Array<{ id: string; title: string }>;
   feedback?: { error?: string | null; success?: string | null };
@@ -53,9 +51,21 @@ type TaskSavedViewsPanelProps = {
 export function buildTaskSavedViewCurrentReturnPath(
   filters: TaskSavedViewFilters,
   activeLayout?: TaskLayoutMode,
-  columns?: readonly TaskTableColumnConfig[],
+  currentView?: TaskViewDefinition,
 ) {
-  const serialized = serializeTaskTableColumns(columns ?? []);
+  if (currentView) {
+    return buildTaskListUrl("/tasks", {
+      filters: currentView.filters,
+      group: currentView.groupBy,
+      q: currentView.search,
+      sortKey: currentView.sort.key,
+      sortDirection: currentView.sort.direction,
+      activeTasks: currentView.activeOnly,
+      layout: activeLayout,
+      columns: currentView.columns,
+    });
+  }
+
   return buildTaskFilterReturnPath("/tasks", {
     status: filters.status,
     project: filters.projectId,
@@ -68,19 +78,27 @@ export function buildTaskSavedViewCurrentReturnPath(
     dueWithin: filters.dueWithinDays,
     activeTasks: filters.activeTasks,
     layout: activeLayout,
-    cols: serialized.cols,
-    widths: serialized.widths,
+  });
+}
+
+function getSavedViewDefinition(view: TaskSavedViewRow): TaskViewDefinition {
+  return getTaskViewFromSavedView({
+    definitionJson: view.definition_json,
+    status: view.status,
+    projectId: view.project_id,
+    goalId: view.goal_id,
+    dueFilter: view.due_filter,
+    sortValue: view.sort_value,
   });
 }
 
 function getSavedViewFilters(view: TaskSavedViewRow): TaskSavedViewFilters {
-  const definition = normalizeTaskSavedViewDefinition(view.definition_json);
-  const definitionFilters = getTaskSavedViewFiltersFromDefinition(definition);
+  const definitionFilters = getTaskSavedViewFiltersFromDefinition(getSavedViewDefinition(view));
 
   return normalizeTaskSavedViewFilters({
     status: definitionFilters.status ?? view.status,
-    projectId: view.project_id,
-    goalId: view.goal_id,
+    projectId: definitionFilters.projectId ?? view.project_id,
+    goalId: definitionFilters.goalId ?? view.goal_id,
     dueFilter: view.due_filter,
     sortValue: view.sort_value,
     activeTasks: definitionFilters.activeTasks,
@@ -92,26 +110,17 @@ function getSavedViewFilters(view: TaskSavedViewRow): TaskSavedViewFilters {
 }
 
 export function getTaskSavedViewHref(view: TaskSavedViewRow, activeLayout?: TaskLayoutMode) {
-  const filters = getSavedViewFilters(view);
-  const definition = normalizeTaskSavedViewDefinition(view.definition_json);
-  const serializedColumns = serializeTaskTableColumns(
-    getTaskSavedViewColumnsFromDefinition(definition),
-  );
+  const definition = getSavedViewDefinition(view);
 
-  return buildTaskFilterReturnPath("/tasks", {
-    status: filters.status,
-    project: filters.projectId,
-    goal: filters.goalId,
-    due: filters.dueFilter,
-    sort: filters.sortValue,
-    priority: filters.priorityValues.join(","),
-    estimateMin: filters.estimateMinMinutes,
-    estimateMax: filters.estimateMaxMinutes,
-    dueWithin: filters.dueWithinDays,
-    activeTasks: filters.activeTasks,
+  return buildTaskListUrl("/tasks", {
+    filters: definition.filters,
+    group: definition.groupBy,
+    q: definition.search,
+    sortKey: definition.sort.key,
+    sortDirection: definition.sort.direction,
+    activeTasks: definition.activeOnly,
     layout: activeLayout,
-    cols: serializedColumns.cols,
-    widths: serializedColumns.widths,
+    columns: definition.columns,
   });
 }
 
@@ -180,9 +189,9 @@ function describeSavedView(
 
 export function TaskSavedViewsPanel({
   currentFilters,
+  currentView,
   savedViews,
   activeLayout,
-  currentColumns,
   projectOptions,
   goalOptions,
   feedback,
@@ -190,9 +199,11 @@ export function TaskSavedViewsPanel({
   const currentReturnPath = buildTaskSavedViewCurrentReturnPath(
     currentFilters,
     activeLayout,
-    currentColumns,
+    currentView,
   );
-  const currentSerializedColumns = serializeTaskTableColumns(currentColumns ?? []);
+  const currentDefinition =
+    currentView ?? getTaskSavedViewDefinitionFromFilters(currentFilters);
+  const currentDefinitionJson = JSON.stringify(currentDefinition);
   const allTasksHref = getTaskSavedViewsAllTasksHref(activeLayout);
   const { defaultViews, customViews } = getTaskSavedViewGroups(savedViews);
   const orderedSavedViews = [...defaultViews, ...customViews];
@@ -249,8 +260,7 @@ export function TaskSavedViewsPanel({
                 <input type="hidden" name="estimateMax" value={currentFilters.estimateMaxMinutes ?? ""} />
                 <input type="hidden" name="dueWithin" value={currentFilters.dueWithinDays ?? ""} />
                 <input type="hidden" name="tasks" value={currentFilters.activeTasks ? "active" : ""} />
-                <input type="hidden" name="cols" value={currentSerializedColumns.cols ?? ""} />
-                <input type="hidden" name="widths" value={currentSerializedColumns.widths ?? ""} />
+                <input type="hidden" name="definition" value={JSON.stringify(getSavedViewDefinition(view))} />
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
                   <div className="flex-1 space-y-1">
                     <label htmlFor={`view-name-${view.id}`} className="form-label">
@@ -319,8 +329,7 @@ export function TaskSavedViewsPanel({
           <input type="hidden" name="estimateMax" value={currentFilters.estimateMaxMinutes ?? ""} />
           <input type="hidden" name="dueWithin" value={currentFilters.dueWithinDays ?? ""} />
           <input type="hidden" name="tasks" value={currentFilters.activeTasks ? "active" : ""} />
-          <input type="hidden" name="cols" value={currentSerializedColumns.cols ?? ""} />
-          <input type="hidden" name="widths" value={currentSerializedColumns.widths ?? ""} />
+          <input type="hidden" name="definition" value={currentDefinitionJson} />
 
           <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
             <div className="flex-1">

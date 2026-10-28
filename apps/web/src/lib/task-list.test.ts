@@ -5,43 +5,35 @@ import {
   applyTaskListQuery,
   buildTaskKanbanBoard,
   buildTaskListUrl,
+  normalizeTaskBoardOrder,
   normalizeTaskLayout,
+  parseTaskListView,
+  parseTaskTableColumns,
   sortTasksByValue,
+  sortTasksForBoard,
 } from "./task-list";
 
 const sampleTasks = [
   {
     id: "task-1",
-    title: "Alpha",
-    priority: "high",
-    estimate_minutes: 30,
     due_date: "2026-04-20",
     status: "todo",
     updated_at: "2026-04-18T10:00:00.000Z",
   },
   {
     id: "task-2",
-    title: "Beta",
-    priority: "urgent",
-    estimate_minutes: null,
     due_date: null,
     status: "todo",
     updated_at: "2026-04-18T12:00:00.000Z",
   },
   {
     id: "task-3",
-    title: "Gamma",
-    priority: "low",
-    estimate_minutes: 15,
     due_date: "2026-04-18",
     status: "in_progress",
     updated_at: "2026-04-18T08:00:00.000Z",
   },
   {
     id: "task-4",
-    title: "Delta",
-    priority: "medium",
-    estimate_minutes: 60,
     due_date: "2026-04-15",
     status: "todo",
     updated_at: "2026-04-18T09:00:00.000Z",
@@ -120,7 +112,7 @@ test("builds list task URLs without layout=list", () => {
       view: "archived",
       layout: "list",
     }),
-    "/tasks?status=todo&project=project-1&goal=goal-1&due=due_today&sort=due_date_asc&archive=archived",
+    "/tasks?status=todo&project=project-1&goal=goal-1&due=today&sort=due&archive=archived",
   );
 });
 
@@ -135,7 +127,7 @@ test("builds kanban task URLs and preserves existing filters", () => {
       view: "all",
       layout: "kanban",
     }),
-    "/tasks?status=in_progress&project=project-2&goal=goal-2&due=overdue&sort=due_date_desc&archive=all&layout=kanban",
+    "/tasks?status=in_progress&project=project-2&goal=goal-2&due=overdue&sort=due&dir=desc&archive=all&layout=kanban",
   );
 });
 
@@ -147,7 +139,7 @@ test("builds task URLs with saved-view definition filters", () => {
       activeTasks: true,
       layout: "kanban",
     }),
-    "/tasks?tasks=active&estimateMax=15&dueWithin=7&layout=kanban",
+    "/tasks?dueWithin=7&estimateMax=15&tasks=active&layout=kanban",
   );
 });
 
@@ -203,56 +195,82 @@ test("kanban board preserves incoming task order inside each column", () => {
   ]);
 });
 
-test("sorts title ascending with a deterministic task-id tie-breaker", () => {
-  const sorted = sortTasksByValue([...sampleTasks], "title_asc");
-  assert.deepEqual(sorted.map((task) => task.id), ["task-1", "task-2", "task-4", "task-3"]);
-});
-
-test("sorts priority high to low and keeps null estimates last", () => {
-  assert.deepEqual(
-    sortTasksByValue([...sampleTasks], "priority_desc").map((task) => task.id),
-    ["task-2", "task-1", "task-4", "task-3"],
-  );
-  assert.deepEqual(
-    sortTasksByValue([...sampleTasks], "estimate_asc").map((task) => task.id),
-    ["task-3", "task-1", "task-4", "task-2"],
-  );
-  assert.deepEqual(
-    sortTasksByValue([...sampleTasks], "estimate_desc").map((task) => task.id),
-    ["task-4", "task-1", "task-3", "task-2"],
-  );
-});
-
-test("sorts status by the shared workflow rank", () => {
-  assert.deepEqual(
-    sortTasksByValue([...sampleTasks], "status_asc").map((task) => task.id),
-    ["task-1", "task-2", "task-4", "task-3"],
-  );
-  assert.deepEqual(
-    sortTasksByValue([...sampleTasks], "status_desc").map((task) => task.id),
-    ["task-3", "task-1", "task-2", "task-4"],
-  );
-});
-
-test("keeps the task-id tie-breaker for equal sort keys", () => {
-  const sameUpdated = [
-    { ...sampleTasks[0], id: "task-b" },
-    { ...sampleTasks[0], id: "task-a" },
+test("board manual order follows (board_rank, id) and is independent of list sort", () => {
+  const tasks = [
+    {
+      id: "task-b",
+      priority: "high",
+      updated_at: "2026-10-01T00:00:00.000Z",
+      board_rank: "B",
+    },
+    {
+      id: "task-a",
+      priority: "urgent",
+      updated_at: "2026-10-02T00:00:00.000Z",
+      board_rank: "A",
+    },
+    {
+      id: "task-c",
+      priority: "low",
+      updated_at: "2026-10-03T00:00:00.000Z",
+      board_rank: null,
+    },
+    {
+      id: "task-d",
+      priority: "medium",
+      updated_at: "2026-10-04T00:00:00.000Z",
+      board_rank: null,
+    },
   ];
+
   assert.deepEqual(
-    sortTasksByValue(sameUpdated, "updated_desc").map((task) => task.id),
-    ["task-a", "task-b"],
+    sortTasksForBoard(tasks, "manual").map((task) => task.id),
+    ["task-a", "task-b", "task-c", "task-d"],
+  );
+  assert.deepEqual(
+    sortTasksForBoard(tasks, "priority").map((task) => task.id),
+    ["task-a", "task-b", "task-d", "task-c"],
+  );
+  // No board order means the incoming (list-sorted) order is untouched.
+  assert.deepEqual(
+    sortTasksForBoard(tasks, null).map((task) => task.id),
+    ["task-b", "task-a", "task-c", "task-d"],
   );
 });
 
-test("encodes table column state in list URLs without disturbing other filters", () => {
+test("board order values are validated and preserved in URLs", () => {
+  assert.equal(normalizeTaskBoardOrder("manual"), "manual");
+  assert.equal(normalizeTaskBoardOrder("priority"), "priority");
+  assert.equal(normalizeTaskBoardOrder("manual;drop"), null);
+  assert.equal(normalizeTaskBoardOrder(null), null);
+
   assert.equal(
-    buildTaskListUrl("/tasks", {
-      status: "todo",
-      sort: "priority_desc",
-      cols: "task,project,status",
-      widths: "task:420,project:240",
-    }),
-    "/tasks?status=todo&sort=priority_desc&cols=task%2Cproject%2Cstatus&widths=task%3A420%2Cproject%3A240",
+    buildTaskListUrl("/tasks", { layout: "kanban", boardOrder: "manual" }),
+    "/tasks?layout=kanban&boardOrder=manual",
+  );
+  assert.equal(
+    buildTaskListUrl("/tasks", { layout: "kanban", boardOrder: null }),
+    "/tasks?layout=kanban",
+  );
+});
+
+test("EGA-792: table column layout round-trips through the shared view URL", () => {
+  const columns = parseTaskTableColumns({
+    cols: "task,project,status",
+    widths: "task:420,project:240",
+  });
+  const url = buildTaskListUrl("/tasks", {
+    status: "todo",
+    columns,
+  });
+  const params = new URL(url, "http://ega.local").searchParams;
+
+  assert.equal(params.get("status"), "todo");
+  assert.equal(params.get("cols"), "task,project,status");
+  assert.equal(params.get("widths"), "task:420,project:240");
+  assert.equal(params.get("sort"), null);
+  assert.deepEqual(
+    parseTaskListView(Object.fromEntries(params)).columns,
+    columns,
   );
 });

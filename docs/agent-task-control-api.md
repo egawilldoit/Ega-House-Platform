@@ -93,6 +93,7 @@ retrieved again. Store it securely.
 | `tasks.bulk` | Permit bulk operations (optional, for visibility) |
 | `tasks.bulkLimit` | Per-request bulk cap (integer 1–50, default 50) |
 | `tasks.idempotency` | Must be `"source+sourceId"` to enable idempotent creates |
+| `tasks.comment` | Post, edit and delete the token's own comments, and toggle its own reactions (listing still needs `tasks.read`) |
 | `projects.read` | List projects |
 | `goals.read` | List goals |
 
@@ -159,7 +160,8 @@ curl -X GET "$EGA_AGENT_BASE_URL/capabilities" \
       "archive": false,
       "bulk": true,
       "bulkLimit": 25,
-      "idempotency": "source+sourceId"
+      "idempotency": "source+sourceId",
+      "comment": false
     },
     "projects": { "read": true },
     "goals": { "read": true }
@@ -617,6 +619,89 @@ curl -X POST "$EGA_AGENT_BASE_URL/tasks/archive" \
   "errors": []
 }
 ```
+
+---
+
+### 3.8 Task comments
+
+Owner-scoped task comment read/write for agent hand-offs. `tasks:read` is
+required to list comments; `tasks:comment` is required to post, edit, delete or
+react. Author identity is always the verified token, never a body field.
+`authorRef` is the stable `agent:<name>` handle, so rotating a token with the
+same name keeps historical attribution.
+
+#### Endpoints
+
+| Method | Path | Scope |
+|---|---|---|
+| `GET` | `/api/agent/tasks/:taskId/comments` | `tasks.read` |
+| `POST` | `/api/agent/tasks/:taskId/comments` | `tasks.comment` |
+| `PATCH` | `/api/agent/tasks/:taskId/comments/:commentId` | `tasks.comment` |
+| `DELETE` | `/api/agent/tasks/:taskId/comments/:commentId` | `tasks.comment` |
+| `POST` | `/api/agent/tasks/:taskId/comments/:commentId/reactions` | `tasks.comment` |
+
+#### Request (post)
+
+```bash
+curl -X POST "$EGA_AGENT_BASE_URL/tasks/task_ghi789/comments" \
+  -H "Authorization: Bearer $EGA_AGENT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "body": "Implementation ready for review @owner",
+    "clientRequestId": "linear-EGA-783-comment-1"
+  }'
+```
+
+`clientRequestId` (or a `source` + `sourceId` pair) is required. Retrying the
+same identity returns the original comment and never duplicates the comment,
+mention, notification or activity entry. Body fields such as `authorRef`,
+`authorTokenId` or `ownerUserId` are rejected.
+
+Mentions are resolved against real, non-revoked tokens that hold
+`tasks.comment`; an unknown `@name` stays plain text. A mention creates one
+owner-scoped in-app notification. It never launches an agent, queues work or
+sends an external message.
+
+#### Response (201 Created)
+
+```json
+{
+  "ok": true,
+  "comment": {
+    "id": "comment_1",
+    "taskId": "task_ghi789",
+    "body": "Implementation ready for review @owner",
+    "author": { "kind": "agent", "ref": "agent:codex", "label": "Codex" },
+    "mentions": [
+      { "kind": "owner", "ref": "owner", "label": "Owner" }
+    ],
+    "reactions": [],
+    "createdAt": "2026-12-08T10:00:00.000Z",
+    "updatedAt": "2026-12-08T10:00:00.000Z",
+    "editedAt": null,
+    "viewerCanEdit": true,
+    "viewerCanDelete": true
+  }
+}
+```
+
+#### Reaction toggle
+
+`POST .../reactions` with `{ "emoji": "👍" }` toggles the calling actor's
+reaction atomically and returns the full per-emoji summary, including other
+actors' counts. Allowed emoji: `👍`, `👀`, `✅`, `🎉`, `🙏`, `🔥`.
+
+```json
+{
+  "ok": true,
+  "reactions": [{ "emoji": "👍", "count": 2, "reactedByViewer": true }]
+}
+```
+
+Errors use `FORBIDDEN` (missing scope or invalid author context), `NOT_FOUND`
+(wrong owner, another author's comment, or missing task/comment), `CONFLICT`
+(reused idempotency identity with different content) or `VALIDATION_ERROR`
+(invalid body/emoji).
 
 ---
 

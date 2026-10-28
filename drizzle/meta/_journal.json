@@ -477,6 +477,27 @@
       "when": 1787880000017,
       "tag": "0067_favorites",
       "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "7",
+      "when": 1787880000018,
+      "tag": "0068_task_activity_attribution",
+      "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "7",
+      "when": 1787880000019,
+      "tag": "0069_task_board_rank",
+      "breakpoints": true
+    },
+    {
+      "idx": 70,
+      "version": "7",
+      "when": 1787880000020,
+      "tag": "0070_task_comments",
+      "breakpoints": true
     }
   ]
 }

@@ -1,10 +1,8 @@
 import {
-  DEFAULT_TASK_SORT,
-  TASK_SORT_DEFINITIONS,
-  type TaskSortDirection,
-  type TaskSortField,
-  type TaskSortValue,
+  getDefaultTaskViewSortDirection,
   type TaskTableColumnId,
+  type TaskViewSortDirection,
+  type TaskViewSortKey,
 } from "@ega/contracts/common/task-list";
 
 export const TASK_TABLE_COLUMN_LABELS: Record<TaskTableColumnId, string> = {
@@ -17,7 +15,7 @@ export const TASK_TABLE_COLUMN_LABELS: Record<TaskTableColumnId, string> = {
 };
 
 /** Columns that can drive the shared header sort; project has no sort key. */
-export const TASK_TABLE_COLUMN_SORT_FIELD: Partial<Record<TaskTableColumnId, TaskSortField>> = {
+export const TASK_TABLE_COLUMN_SORT_FIELD: Partial<Record<TaskTableColumnId, TaskViewSortKey>> = {
   task: "title",
   priority: "priority",
   due: "due",
@@ -25,50 +23,22 @@ export const TASK_TABLE_COLUMN_SORT_FIELD: Partial<Record<TaskTableColumnId, Tas
   estimate: "estimate",
 };
 
-const DEFAULT_SORT_DIRECTION_BY_FIELD: Record<TaskSortField, TaskSortDirection> = {
-  title: "asc",
-  due: "asc",
-  priority: "desc",
-  status: "asc",
-  estimate: "asc",
-  updated: "desc",
+export type TaskViewSort = {
+  key: TaskViewSortKey;
+  direction: TaskViewSortDirection;
 };
 
-export function taskSortValueFor(
-  field: TaskSortField,
-  direction: TaskSortDirection,
-): TaskSortValue {
-  for (const [value, definition] of Object.entries(TASK_SORT_DEFINITIONS)) {
-    if (definition.field === field && definition.direction === direction) {
-      return value as TaskSortValue;
-    }
-  }
-  return DEFAULT_TASK_SORT;
-}
-
-export function taskSortDirectionFor(
-  sort: TaskSortValue,
-  field: TaskSortField,
-): TaskSortDirection | null {
-  const definition = TASK_SORT_DEFINITIONS[sort];
-  return definition.field === field ? definition.direction : null;
-}
-
 /**
- * The next header-click sort. Clicking the active field flips direction;
- * clicking a new field uses its natural direction (priority high→low first,
- * dates/titles/estimates ascending first).
+ * The next header-click sort, using the canonical view sort semantics.
+ * Clicking the active field flips direction; a new field uses the same default
+ * direction the toolbar's sort control uses.
  */
-export function nextTaskSortValue(
-  current: TaskSortValue,
-  field: TaskSortField,
-): TaskSortValue {
-  const currentDefinition = TASK_SORT_DEFINITIONS[current];
-  if (currentDefinition.field === field) {
-    return taskSortValueFor(
-      field,
-      currentDefinition.direction === "asc" ? "desc" : "asc",
-    );
+export function nextTaskViewSort(
+  current: TaskViewSort,
+  field: TaskViewSortKey,
+): TaskViewSort {
+  if (current.key === field) {
+    return { key: field, direction: current.direction === "asc" ? "desc" : "asc" };
   }
-  return taskSortValueFor(field, DEFAULT_SORT_DIRECTION_BY_FIELD[field]);
+  return { key: field, direction: getDefaultTaskViewSortDirection(field) };
 }

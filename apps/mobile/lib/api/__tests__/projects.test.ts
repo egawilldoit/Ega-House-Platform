@@ -53,7 +53,7 @@ const PROJECT_IDENTITY: ProjectIdentityReadModel = {
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-02T00:00:00.000Z',
   },
-  goals: [{ id: 'g-1', title: 'Ship v1', projectId: 'p-1' }],
+  goals: [{ id: 'g-1', title: 'Ship v1', projectId: 'p-1', health: null, nextStep: null }],
 };
 
 const PROJECT_FORM_VALUES: ProjectFormValues = {
@@ -80,7 +80,7 @@ function makeWave2Apis() {
   return {
     tasks: {
       list: jest.fn(), get: jest.fn(), create: jest.fn(), update: jest.fn(), archive: jest.fn(), unarchive: jest.fn(),
-      createReminder: jest.fn(), cancelReminder: jest.fn(), setRecurrence: jest.fn(), clearRecurrence: jest.fn(), pin: jest.fn(), unpin: jest.fn(),
+      createReminder: jest.fn(), cancelReminder: jest.fn(), setRecurrence: jest.fn(), clearRecurrence: jest.fn(), pin: jest.fn(), unpin: jest.fn(), listComments: jest.fn(), createComment: jest.fn(), updateComment: jest.fn(), deleteComment: jest.fn(), toggleCommentReaction: jest.fn(),
     },
     inbox: {
       list: jest.fn(), get: jest.fn(), create: jest.fn(), update: jest.fn(), archive: jest.fn(), restore: jest.fn(), convert: jest.fn(),

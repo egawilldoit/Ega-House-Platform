@@ -11,6 +11,7 @@ test("status, archive and field changes get honest human summaries", () => {
   assert.equal(describeTaskActivity({ kind: "created" }), "Task created");
   assert.equal(describeTaskActivity({ kind: "archived" }), "Task archived");
   assert.equal(describeTaskActivity({ kind: "restored" }), "Task restored");
+  assert.equal(describeTaskActivity({ kind: "comment" }), "Comment added");
   assert.equal(
     describeTaskActivity({
       kind: "field_change",
@@ -93,11 +94,48 @@ test("unions ledgers and sessions in deterministic newest-first order", async ()
     page.items.map((item) => item.kind),
     ["field_change", "status", "session"],
   );
-  assert.equal(page.items[0]?.actorKind, "system");
+  assert.equal(page.items[0]?.actor.kind, "system");
 });
 
-test("ties on the same instant are ordered by stable id", async () => {
-  const at = "2026-10-27T10:00:00.000Z";
+test("agent attribution and reminder rows come from the stored actor columns", async () => {
+  const client = stubClient({
+    status: [
+      {
+        id: "s1",
+        from_status: "todo",
+        to_status: "in_progress",
+        occurred_at: "2026-10-27T10:00:00.000Z",
+        actor_kind: "agent",
+        actor_agent_id: "mcp-client-a",
+        actor_label: "Hermes",
+      },
+    ],
+    fields: [
+      {
+        id: "f1",
+        actor_kind: "agent",
+        actor_agent_id: "mcp-client-a",
+        actor_label: "Hermes",
+        event_kind: "reminder_scheduled",
+        delta: { remind_at: { to: "2026-11-10T09:00:00.000Z" } },
+        occurred_at: "2026-10-27T09:00:00.000Z",
+      },
+    ],
+    sessions: [],
+  });
+
+  const page = await getTaskActivity("t1", { supabase: client as never, limit: 10 });
+  assert.equal(page.errorMessage, null);
+  assert.deepEqual(
+    page.items.map((item) => item.actor.kind),
+    ["agent", "agent"],
+  );
+  assert.equal(page.items[0]?.actor.agentId, "mcp-client-a");
+  assert.equal(page.items[0]?.actor.label, "Hermes");
+  assert.equal(page.items[1]?.summary, "Reminder set for Nov 10, 2026");
+});
+
+test("ties on the same instant are ordered by stable id", async () => {  const at = "2026-10-27T10:00:00.000Z";
   const client = stubClient({
     status: [{ id: "b", from_status: null, to_status: "done", occurred_at: at }],
     fields: [

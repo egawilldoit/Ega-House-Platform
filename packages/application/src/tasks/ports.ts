@@ -1,5 +1,9 @@
 import type { TaskPriority, TaskRecurrenceRule, TaskStatus } from "@ega/domain";
-import type { TaskDueFilter, TaskSortValue } from "@ega/contracts/common/task-list";
+import type {
+  TaskDueFilter,
+  TaskSortValue,
+  TaskViewDefinition,
+} from "@ega/contracts/common/task-list";
 
 import type { AuthenticatedActor } from "../auth/actor";
 import type { RepositoryResult } from "../shared/result";
@@ -42,6 +46,7 @@ export type TaskRecord = Readonly<{
   goalId: string | null;
   plannedForDate: string | null;
   focusRank: number | null;
+  boardRank?: string | null;
   archivedAt: string | null;
   updatedAt: string;
   reminders: TaskReminderRecord[];
@@ -81,10 +86,23 @@ export type TaskQuery = Readonly<{
   projectId?: string | null;
   goalId?: string | null;
   plannedForDate?: string | null;
+  /** Owner canonical local date for due-bucket pushdown. */
+  today?: string | null;
   due?: TaskDueFilter | null;
   sort?: TaskSortValue | null;
   includeArchived?: boolean;
   limit?: number | null;
+  /**
+   * Canonical view definition. When present it supersedes the legacy scalar
+   * filters above; adapters may use it to push allow-listed predicates into the
+   * database before the application read model applies the same semantics.
+   */
+  view?: TaskViewDefinition | null;
+  /**
+   * Exact owner-scoped count of tasks matching the query, when the adapter can
+   * supply it. Lets the read model distinguish loaded rows from total matches.
+   */
+  totalCount?: number | null;
 }>;
 
 export type CreateTaskRecordInput = Readonly<{
@@ -138,6 +156,12 @@ export type UpdateTaskRecordInput = Readonly<{
 export interface TasksRepository {
   getScope(actor: AuthenticatedActor): Promise<RepositoryResult<TaskScopeRecord>>;
   listTasks(actor: AuthenticatedActor, query?: TaskQuery): Promise<RepositoryResult<TaskRecord[]>>;
+  /**
+   * Exact owner-scoped count for the same query `listTasks` would run. Optional
+   * so existing adapters/test doubles keep compiling; when absent the read
+   * model reports the loaded filtered count and marks truncation from the page.
+   */
+  countTasks?(actor: AuthenticatedActor, query?: TaskQuery): Promise<RepositoryResult<number>>;
   listProjectOptions(actor: AuthenticatedActor): Promise<RepositoryResult<TaskProjectOptionRecord[]>>;
   listGoalOptions(actor: AuthenticatedActor): Promise<RepositoryResult<TaskGoalOptionRecord[]>>;
   getTask(actor: AuthenticatedActor, taskId: string): Promise<RepositoryResult<TaskRecord | null>>;
