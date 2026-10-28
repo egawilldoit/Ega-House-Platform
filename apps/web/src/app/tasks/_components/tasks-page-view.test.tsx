@@ -3,6 +3,10 @@ import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }),
+}));
+
 vi.mock("next/link", () => ({
   default: ({ href, children, ...rest }: { href: string; children: ReactNode }) => (
     <a href={typeof href === "string" ? href : "#"} {...rest}>
@@ -21,6 +25,7 @@ vi.mock("@/app/tasks/actions", () => ({
   deleteSubtaskAction: vi.fn(),
   moveSubtaskAction: vi.fn(),
   promoteSubtaskAction: vi.fn(),
+  moveTaskOnBoardAction: vi.fn(),
   bulkTaskFieldAction: vi.fn(),
   bulkTaskArchiveAction: vi.fn(),
   undoTaskOperationAction: vi.fn(),
@@ -55,6 +60,7 @@ import type { TaskRecord } from "@/lib/services/task-service";
 // component actually submits.
 import { archiveManyCompletedTasksAction } from "@/app/tasks/actions";
 
+import { ToastProvider } from "@/components/ui/toast-provider";
 import { TasksPageView } from "./TasksPageView";
 
 type TasksPageViewModel = Parameters<typeof TasksPageView>[0]["model"];
@@ -179,7 +185,11 @@ afterEach(async () => {
 
 async function render(model: TasksPageViewModel = buildModel()) {
   await act(async () => {
-    root.render(<TasksPageView model={model} />);
+    root.render(
+      <ToastProvider>
+        <TasksPageView model={model} />
+      </ToastProvider>,
+    );
   });
 }
 
