@@ -139,11 +139,11 @@ test("saved view current filters stay filter-only and omit layout persistence", 
 test("saved view return paths preserve current kanban layout without storing it", () => {
   assert.equal(
     buildTaskSavedViewCurrentReturnPath(currentFilters, "kanban"),
-    "/tasks?status=todo&project=project-1&goal=goal-1&due=due_today&sort=due_date_asc&layout=kanban",
+    "/tasks?status=todo&project=project-1&goal=goal-1&due=today&sort=due&layout=kanban",
   );
   assert.equal(
     getTaskSavedViewHref(savedViews[0], "kanban"),
-    "/tasks?status=blocked&project=project-1&goal=goal-1&due=overdue&sort=due_date_desc&layout=kanban",
+    "/tasks?status=blocked&project=project-1&goal=goal-1&due=overdue&sort=due&dir=desc&layout=kanban",
   );
   assert.equal(getTaskSavedViewsAllTasksHref("kanban"), "/tasks?layout=kanban");
 });
@@ -151,29 +151,29 @@ test("saved view return paths preserve current kanban layout without storing it"
 test("Deep Work saved view link applies definition filters", () => {
   assert.equal(
     getTaskSavedViewHref(savedViews[1], "list"),
-    "/tasks?tasks=active&priority=urgent%2Chigh&estimateMin=30",
+    "/tasks?priority=urgent%2Chigh&estimateMin=30&tasks=active",
   );
 });
 
 test("new default saved view links apply definition filters and preserve layout", () => {
   assert.equal(
     getTaskSavedViewHref(savedViews[2], "kanban"),
-    "/tasks?tasks=active&estimateMax=15&layout=kanban",
+    "/tasks?estimateMax=15&tasks=active&layout=kanban",
   );
   assert.equal(
     getTaskSavedViewHref(savedViews[3], "kanban"),
-    "/tasks?tasks=active&status=blocked&layout=kanban",
+    "/tasks?status=blocked&tasks=active&layout=kanban",
   );
   assert.equal(
     getTaskSavedViewHref(savedViews[4], "kanban"),
-    "/tasks?tasks=active&dueWithin=7&layout=kanban",
+    "/tasks?dueWithin=7&tasks=active&layout=kanban",
   );
 });
 
 test("saved view links do not force layout in list mode", () => {
   assert.equal(
     getTaskSavedViewHref(savedViews[0], "list"),
-    "/tasks?status=blocked&project=project-1&goal=goal-1&due=overdue&sort=due_date_desc",
+    "/tasks?status=blocked&project=project-1&goal=goal-1&due=overdue&sort=due&dir=desc",
   );
   assert.equal(getTaskSavedViewHref(savedViews[0], "list").includes("layout=list"), false);
   assert.equal(getTaskSavedViewsAllTasksHref("list"), "/tasks");
@@ -213,7 +213,7 @@ test("default saved view rows keep open links and omit update/delete controls", 
   const markup = renderPanel();
   const defaultSection = markup.slice(markup.indexOf("Default views"), markup.indexOf("Custom views"));
 
-  assert.ok(defaultSection.includes("/tasks?tasks=active&amp;priority=urgent%2Chigh&amp;estimateMin=30&amp;layout=kanban"));
+  assert.ok(defaultSection.includes("/tasks?priority=urgent%2Chigh&amp;estimateMin=30&amp;tasks=active&amp;layout=kanban"));
   assert.ok(defaultSection.includes("Open"));
   assert.equal(defaultSection.includes("Update to current filters"), false);
   assert.equal(defaultSection.includes("Delete"), false);
@@ -226,7 +226,7 @@ test("custom saved view rows keep descriptions, counts, links, update, and delet
   assert.ok(customSection.includes("1 saved"));
   assert.ok(customSection.includes("Blocked Content"));
   assert.ok(customSection.includes("Blocked · Content · Goal A · Overdue · Due latest"));
-  assert.ok(customSection.includes("/tasks?status=blocked&amp;project=project-1&amp;goal=goal-1&amp;due=overdue&amp;sort=due_date_desc&amp;layout=kanban"));
+  assert.ok(customSection.includes("/tasks?status=blocked&amp;project=project-1&amp;goal=goal-1&amp;due=overdue&amp;sort=due&amp;dir=desc&amp;layout=kanban"));
   assert.ok(customSection.includes("Update to current filters"));
   assert.ok(customSection.includes("Delete"));
 });

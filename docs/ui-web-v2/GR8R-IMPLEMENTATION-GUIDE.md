@@ -42,6 +42,9 @@ projection, analytics, calendar sync and owner isolation.
 
 - Persisted product data belongs to services and the DB.
 - Task selection, filters, sort and layout belong to the existing URL contracts.
+  The shared view definition, filter/operator matrix, saved-view migration and
+  loaded/total count semantics are documented in
+  [`TASK-VIEW-TOOLBAR.md`](TASK-VIEW-TOOLBAR.md).
 - Draft, selection, popover and drag state stays local to the nearest owner.
 - Browser-storage preferences/drafts are account-scoped and cleared or isolated
   on account switch. No task database or auth material in `localStorage`.

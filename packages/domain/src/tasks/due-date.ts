@@ -48,3 +48,53 @@ export function isTaskDueSoon(
   const rangeEnd = shiftIsoDate(today, daysAhead);
   return dueDate >= today && dueDate <= rangeEnd;
 }
+
+/**
+ * Date-only due window used by saved-view `dueWithinDays` filters. Unlike
+ * `isTaskDueSoon`, completion does not remove a task from an explicit window;
+ * the window describes the calendar range the owner asked for.
+ */
+export function isTaskDueWithinDays(
+  dueDate: string | null | undefined,
+  today: string,
+  days: number,
+) {
+  if (!dueDate || !Number.isSafeInteger(days) || days <= 0) {
+    return false;
+  }
+
+  return dueDate >= today && dueDate <= shiftIsoDate(today, days);
+}
+
+export const TASK_DUE_BUCKET_VALUES = [
+  "overdue",
+  "today",
+  "next_7_days",
+  "later",
+  "none",
+] as const;
+
+export type TaskDueBucket = (typeof TASK_DUE_BUCKET_VALUES)[number];
+
+export function isTaskDueBucket(value: string): value is TaskDueBucket {
+  return TASK_DUE_BUCKET_VALUES.includes(value as TaskDueBucket);
+}
+
+/**
+ * Canonical due bucket for grouping and filtering.
+ *
+ * The three actionable buckets keep the existing product semantics: completed
+ * work never counts as overdue/due-today/due-soon. Everything else that has a
+ * due date lands in `later`, so the five buckets partition every task.
+ */
+export function getTaskDueBucket(
+  dueDate: string | null | undefined,
+  status: string | null | undefined,
+  today: string,
+): TaskDueBucket {
+  if (!dueDate) return "none";
+  if (isTaskOverdue(dueDate, status, today)) return "overdue";
+  if (isTaskDueToday(dueDate, status, today)) return "today";
+  if (isTaskDueSoon(dueDate, status, today, 7)) return "next_7_days";
+  return "later";
+}
