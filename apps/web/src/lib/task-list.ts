@@ -183,6 +183,8 @@ export type TaskListUrlFilters = {
   sortKey?: TaskViewDefinition["sort"]["key"];
   sortDirection?: TaskViewDefinition["sort"]["direction"];
   boardOrder?: TaskBoardOrder | null;
+  /** Project detail section, when the list is embedded in a tabbed route. */
+  tab?: string | null;
 };
 
 function viewFromUrlFilters(filters: TaskListUrlFilters): TaskViewDefinition {
@@ -231,6 +233,7 @@ export function buildTaskListUrl(
   if (filters.layout === "kanban") searchParams.set("layout", "kanban");
   if (filters.density === "compact") searchParams.set("density", "compact");
   if (filters.boardOrder) searchParams.set("boardOrder", filters.boardOrder);
+  if (filters.tab && filters.tab !== "overview") searchParams.set("tab", filters.tab);
 
   const query = searchParams.toString();
   return query ? `${basePath}?${query}` : basePath;
