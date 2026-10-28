@@ -205,9 +205,10 @@ export default async function TodayPage({
   const selectedTaskSubtasks = selectedTaskId
     ? (await listTaskSubtasks(selectedTaskId)).data ?? []
     : [];
-  const selectedTaskActivity = selectedTaskId
-    ? (await getTaskActivity(selectedTaskId, { limit: 8 })).items
-    : [];
+  const selectedTaskActivityPage = selectedTaskId
+    ? await getTaskActivity(selectedTaskId, { limit: 8 })
+    : { items: [], hasMore: false };
+  const selectedTaskActivity = selectedTaskActivityPage.items;
   const selectedTaskComments = selectedTaskId
     ? await getTaskCommentThread(selectedTaskId)
     : { comments: [], mentionCandidates: [], errorMessage: null };
@@ -279,6 +280,7 @@ export default async function TodayPage({
           ownerId={user?.id ?? null}
           subtasks={selectedTaskSubtasks}
           activity={selectedTaskActivity}
+          activityHasMore={selectedTaskActivityPage.hasMore}
           comments={selectedTaskComments.comments}
           commentMentions={selectedTaskComments.mentionCandidates}
           commentsError={selectedTaskComments.errorMessage}

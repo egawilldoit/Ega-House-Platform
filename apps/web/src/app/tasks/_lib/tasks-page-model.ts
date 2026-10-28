@@ -208,9 +208,11 @@ export async function getTasksPageModel(searchParams: TasksSearchParams) {
     ? (await listTaskSubtasks(selectedTaskId)).data ?? []
     : [];
   const subtaskCounts = await getSubtaskCountsForTasks(tasks.map((task) => task.id));
-  const selectedTaskActivity = selectedTaskId
-    ? (await getTaskActivity(selectedTaskId, { limit: 8 })).items
-    : [];
+  const selectedTaskActivityPage = selectedTaskId
+    ? await getTaskActivity(selectedTaskId, { limit: 8 })
+    : { items: [], hasMore: false };
+  const selectedTaskActivity = selectedTaskActivityPage.items;
+  const selectedTaskActivityHasMore = selectedTaskActivityPage.hasMore;
   const selectedTaskComments = selectedTaskId
     ? await getTaskCommentThread(selectedTaskId)
     : {
@@ -230,6 +232,7 @@ export async function getTasksPageModel(searchParams: TasksSearchParams) {
     selectedTaskSubtasks,
     subtaskCounts,
     selectedTaskActivity,
+    selectedTaskActivityHasMore,
     selectedTaskComments,
     selectedTaskCommentMentions: selectedTaskComments.mentionCandidates,
     selectedTaskCommentError: selectedTaskComments.errorMessage,

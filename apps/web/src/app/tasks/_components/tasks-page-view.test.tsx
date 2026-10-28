@@ -125,6 +125,7 @@ function buildModel(overrides: Partial<TasksPageViewModel> = {}): TasksPageViewM
     selectedTaskError: false,
     selectedTaskSubtasks: [],
     selectedTaskActivity: [],
+    selectedTaskActivityHasMore: false,
     selectedTaskComments: {
       comments: [],
       mentionCandidates: [],

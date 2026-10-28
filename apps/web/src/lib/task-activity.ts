@@ -1,22 +1,20 @@
-/** Shared activity row shape for the drawer and project read model. */
-export type TaskActivityKind =
-  | "status"
-  | "created"
-  | "field_change"
-  | "archived"
-  | "restored"
-  | "commented"
-  | "session";
+/**
+ * Compatibility re-export for existing web imports. The contract now lives in
+ * `@ega/domain` so web, application and future mobile/comment producers share
+ * one actor and event-kind shape.
+ */
+export type {
+  TaskActivityActor,
+  TaskActivityActorKind,
+  TaskActivityEventKind,
+  TaskActivityItem,
+  TaskActivityKind,
+} from "@ega/domain";
 
-export type TaskActivityActorKind = "owner" | "agent" | "system" | "unknown";
-
-export type TaskActivityItem = {
-  id: string;
-  /** Present on project-wide rows so the UI can name the task. */
-  taskId?: string | null;
-  kind: TaskActivityKind;
-  occurredAt: string;
-  actorKind: TaskActivityActorKind;
-  actorLabel: string | null;
-  summary: string;
-};
+export {
+  TASK_ACTIVITY_EVENT_KINDS,
+  TASK_ACTIVITY_READ_KINDS,
+  isTaskActivityActorKind,
+  isTaskActivityEventKind,
+  taskActivityActorLabel,
+} from "@ega/domain";

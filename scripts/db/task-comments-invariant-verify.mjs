@@ -315,7 +315,7 @@ async function main() {
       "retry produced exactly one comment row",
     );
     check(
-      (await count(sql, "task_activity_events", "task_id = $1::uuid AND event_kind = 'commented'", [TASK_A])) === 1,
+      (await count(sql, "task_activity_events", "task_id = $1::uuid AND event_kind = 'comment'", [TASK_A])) === 1,
       "retry produced exactly one EGA-784 activity entry",
     );
     check(
@@ -336,10 +336,11 @@ async function main() {
 
     const [activity] = await sql`
       SELECT * FROM task_activity_events
-      WHERE task_id = ${TASK_A}::uuid AND event_kind = 'commented'
+      WHERE task_id = ${TASK_A}::uuid AND event_kind = 'comment'
     `;
     check(activity?.actor_kind === "owner" && activity?.actor_label === "Owner", "activity attributes the owner honestly");
     check(activity?.delta?.comment_id === first.id, "activity delta references the comment");
+    check(activity?.source_event_id === first.id, "activity source id makes a producer replay impossible");
 
     // Self-mention makes no inbox noise.
     const selfMention = await asUser(sql, OWNER_A, async (tx) => {
@@ -467,6 +468,7 @@ async function main() {
       WHERE task_id = ${TASK_A}::uuid AND delta->>'comment_id' = ${agentComment.id}
     `;
     check(agentActivity?.actor_kind === "agent", "agent comment activity is attributed to the agent");
+    check(agentActivity?.actor_agent_id === TOKEN_A_CODEX, "agent comment activity records the stable credential id");
 
     await expectFailure(
       "token without tasks.comment cannot post",
