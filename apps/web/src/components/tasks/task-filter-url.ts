@@ -43,6 +43,7 @@ export type TaskFilterState = {
   q?: string | null;
   sortKey?: TaskViewDefinition["sort"]["key"];
   sortDirection?: TaskViewDefinition["sort"]["direction"];
+  tab?: string | null;
 };
 
 export const DEFAULT_TASK_FILTER_STATE = {

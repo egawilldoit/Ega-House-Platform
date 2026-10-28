@@ -597,6 +597,22 @@ test("listTasksForProjects scopes the task query by owner", async () => {
   const steps = stepsFor(fake);
   assert.ok(steps.some((step) => step.method === "in" && step.args[0] === "project_id" && Array.isArray(step.args[1]) && step.args[1][0] === "project-1"));
   assert.ok(steps.some((step) => step.method === "eq" && step.args[0] === "owner_user_id"));
+  assert.ok(steps.some((step) => step.method === "is" && step.args[0] === "archived_at" && step.args[1] === null));
+});
+
+test("listTasksForProjects can include archived tasks for the delete precondition", async () => {
+  const fake = fakeSupabase();
+  fake.pushResult("tasks", { data: [], error: null });
+
+  const result = await projectsRepository(fake).listTasksForProjects(
+    ACTOR,
+    ["project-1"],
+    { includeArchived: true },
+  );
+
+  assert.equal(result.ok, true);
+  const steps = stepsFor(fake);
+  assert.ok(!steps.some((step) => step.method === "is" && step.args[0] === "archived_at"));
 });
 
 test("listGoals maps rows, applies the view filter, and scopes by owner", async () => {
