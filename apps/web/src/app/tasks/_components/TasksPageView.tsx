@@ -162,6 +162,9 @@ export function TasksPageView({
   const kanbanHref = (boardOrder: "manual" | "priority" | null) =>
     buildTaskListUrl("/tasks", {
       ...taskUrlFilters,
+      // Keep the active view (Current / Archived / All): the order links must
+      // not silently switch scopes.
+      view: activeView,
       layout: "kanban",
       boardOrder,
     });
