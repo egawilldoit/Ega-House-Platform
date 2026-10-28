@@ -58,7 +58,12 @@ export function TableViewMenu({
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <button type="button" className="filter-pill" data-testid="table-views-trigger">
+        <button
+          type="button"
+          className="filter-pill"
+          data-testid="table-views-trigger"
+          aria-haspopup="dialog"
+        >
           Views
         </button>
       </PopoverTrigger>

@@ -207,9 +207,9 @@ export function TaskTable({
     const focusTarget = pendingFocusRef.current;
     if (!focusTarget) return;
     pendingFocusRef.current = null;
-    const element = tableRef.current?.querySelector<HTMLElement>(
-      `[data-column-focus="${focusTarget}"]`,
-    );
+    const element =
+      tableRef.current?.querySelector<HTMLElement>(`[data-column-focus="${focusTarget}"]`) ??
+      document.querySelector<HTMLElement>(`[data-column-focus="${focusTarget}"]`);
     element?.focus();
   }, [columns]);
 
@@ -312,6 +312,9 @@ export function TaskTable({
       (total, column) => total + effectiveWidth(column, resizePreview),
       0,
     ) + ACTIONS_COLUMN_WIDTH;
+  const tableStyle = {
+    "--table-min-width": `${totalWidth}px`,
+  } as unknown as CSSProperties;
 
   return (
     <div
@@ -358,7 +361,7 @@ export function TaskTable({
 
       <table
         className="data-table table-fixed max-[761px]:block min-[761px]:w-full min-[761px]:min-w-[var(--table-min-width)] [&_td]:px-2 [&_th]:px-2"
-        style={{ "--table-min-width": `${totalWidth}px` } as CSSProperties}
+        style={tableStyle}
       >
         <thead className="max-[761px]:hidden">
           <tr>
@@ -517,7 +520,12 @@ function ColumnSettings({
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <button type="button" className="filter-pill" data-testid="table-columns-trigger">
+        <button
+          type="button"
+          className="filter-pill"
+          data-testid="table-columns-trigger"
+          aria-haspopup="dialog"
+        >
           <Columns3 aria-hidden="true" className="h-3.5 w-3.5" />
           <span>Columns</span>
         </button>
@@ -600,7 +608,7 @@ function ColumnSettings({
                   type="button"
                   onClick={() => onMove(column.id, -1)}
                   disabled={
-                    !column.visible || column.id === "task" || visibleIndex <= 0
+                    !column.visible || column.id === "task" || visibleIndex <= 1
                   }
                   data-column-focus={`up:${column.id}`}
                   aria-label={`Move ${label} column up`}
