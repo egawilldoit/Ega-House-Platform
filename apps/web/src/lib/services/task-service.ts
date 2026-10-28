@@ -1219,10 +1219,11 @@ export async function getTasksWorkspaceData(
     }>;
     const sessionTaskIds = Array.from(new Set(sessionRows.map((session) => session.task_id)));
     let sessionTaskTitles = new Map<string, string>();
+    const visibleSessionTaskIds = new Set<string>();
     if (sessionTaskIds.length > 0) {
       let sessionTasksQuery = supabase
         .from("tasks")
-        .select("id, title")
+        .select("id, title, project_id, goal_id, status, archived_at")
         .in("id", sessionTaskIds);
       if (userId) sessionTasksQuery = sessionTasksQuery.eq("owner_user_id", userId);
       const sessionTasksResult = await sessionTasksQuery;
@@ -1231,19 +1232,49 @@ export async function getTasksWorkspaceData(
           `Failed to load calendar session tasks: ${sessionTasksResult.error.message}`,
         );
       }
-      sessionTaskTitles = new Map(
-        (sessionTasksResult.data ?? []).map((task) => [task.id, task.title]),
-      );
+      for (const task of sessionTasksResult.data ?? []) {
+        sessionTaskTitles.set(task.id, task.title);
+        const matchesProject = !activeProjectId || task.project_id === activeProjectId;
+        const matchesGoal = !activeGoalId || task.goal_id === activeGoalId;
+        const matchesStatus = !filters.activeStatus || task.status === filters.activeStatus;
+        const matchesActiveOnly = !filters.activeTasksOnly || task.status !== "done";
+        const matchesArchive =
+          filters.activeView === "active"
+            ? task.archived_at === null
+            : filters.activeView === "archived"
+              ? task.archived_at !== null
+              : true;
+        if (
+          matchesProject &&
+          matchesGoal &&
+          matchesStatus &&
+          matchesActiveOnly &&
+          matchesArchive
+        ) {
+          visibleSessionTaskIds.add(task.id);
+        }
+      }
     }
 
     const scheduledTasks = (scheduledResult.data ?? []) as unknown as CalendarProjectableTask[];
-    const sessions: CalendarProjectableSession[] = sessionRows.map((session) => ({
-      id: session.id,
-      taskId: session.task_id,
-      title: sessionTaskTitles.get(session.task_id) ?? "Deleted task",
-      startIso: session.started_at,
-      endIso: session.ended_at,
-    }));
+    const sessions: CalendarProjectableSession[] = sessionRows
+      .filter(
+        (session) =>
+          visibleSessionTaskIds.has(session.task_id) ||
+          // A deleted task with no verifiable scope is only shown when no
+          // narrowing filter is active; its owner-scoped title is gone.
+          (!sessionTaskTitles.has(session.task_id) &&
+            !activeProjectId &&
+            !activeGoalId &&
+            !filters.activeStatus),
+      )
+      .map((session) => ({
+        id: session.id,
+        taskId: session.task_id,
+        title: sessionTaskTitles.get(session.task_id) ?? "Deleted task",
+        startIso: session.started_at,
+        endIso: session.ended_at,
+      }));
 
     calendar = buildTaskCalendarProjection({
       range: calendarRange,
@@ -1256,7 +1287,7 @@ export async function getTasksWorkspaceData(
       truncated:
         tasks.length >= CALENDAR_ROW_CAP ||
         scheduledTasks.length >= CALENDAR_ROW_CAP ||
-        sessions.length >= CALENDAR_ROW_CAP,
+        sessionRows.length >= CALENDAR_ROW_CAP,
     });
   }
 
