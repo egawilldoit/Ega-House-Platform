@@ -16,8 +16,11 @@ import {
   type GoalsReadModel,
   TASK_DUE_FILTER_VALUES,
   TASK_SORT_VALUES,
+  TASK_TABLE_COLUMN_MAX_WIDTH,
+  TASK_TABLE_COLUMN_MIN_WIDTH,
   isTaskDueFilter,
   isTaskSortValue,
+  normalizeTaskTableColumns,
   type MobileTaskCounters,
   type MobileTaskListItem,
   type MobileTaskListResponse,
@@ -31,12 +34,49 @@ test("mobile task list query wire values remain stable", () => {
     "due_soon",
     "no_due_date",
   ]);
-  assert.deepEqual(TASK_SORT_VALUES, ["updated_desc", "due_date_asc", "due_date_desc"]);
+  assert.deepEqual(TASK_SORT_VALUES, [
+    "updated_desc",
+    "due_date_asc",
+    "due_date_desc",
+    "title_asc",
+    "title_desc",
+    "priority_asc",
+    "priority_desc",
+    "status_asc",
+    "status_desc",
+    "estimate_asc",
+    "estimate_desc",
+    "updated_asc",
+  ]);
   assert.equal(DEFAULT_TASK_DUE_FILTER, "all");
   assert.equal(DEFAULT_TASK_SORT, "updated_desc");
   assert.equal(isTaskDueFilter("due_today"), true);
   assert.equal(isTaskDueFilter("today"), false);
   assert.equal(isTaskSortValue("updated_desc"), true);
+  assert.equal(isTaskSortValue("priority_desc"), true);
+  assert.equal(isTaskSortValue("unknown"), false);
+});
+
+test("table column defaults preserve the old inventory and validate untrusted config", () => {
+  const defaults = normalizeTaskTableColumns(null);
+  assert.deepEqual(
+    defaults.filter((column) => column.visible).map((column) => column.id),
+    ["task", "priority", "due", "status"],
+  );
+  assert.equal(defaults[0]?.id, "task");
+  assert.equal(defaults[0]?.visible, true);
+
+  const normalized = normalizeTaskTableColumns([
+    { id: "task", width: 9999, visible: false },
+    { id: "project", width: 1, visible: true },
+    { id: "unknown", width: 200, visible: true },
+    { id: "project", width: 300, visible: false },
+  ]);
+  assert.equal(normalized[0]?.id, "task");
+  assert.equal(normalized[0]?.width, TASK_TABLE_COLUMN_MAX_WIDTH);
+  assert.equal(normalized[0]?.visible, true);
+  assert.equal(normalized.find((column) => column.id === "project")?.width, TASK_TABLE_COLUMN_MIN_WIDTH);
+  assert.equal(normalized.find((column) => column.id === "project")?.visible, true);
 });
 
 test("enriched mobile task list item exposes canonical project and goal projections", () => {

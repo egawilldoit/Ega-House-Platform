@@ -12,26 +12,38 @@ import {
 const sampleTasks = [
   {
     id: "task-1",
+    title: "Alpha",
+    priority: "high",
+    estimate_minutes: 30,
     due_date: "2026-04-20",
     status: "todo",
     updated_at: "2026-04-18T10:00:00.000Z",
   },
   {
     id: "task-2",
+    title: "Beta",
+    priority: "urgent",
+    estimate_minutes: null,
     due_date: null,
     status: "todo",
     updated_at: "2026-04-18T12:00:00.000Z",
   },
   {
     id: "task-3",
+    title: "Gamma",
+    priority: "low",
+    estimate_minutes: 15,
     due_date: "2026-04-18",
     status: "in_progress",
     updated_at: "2026-04-18T08:00:00.000Z",
   },
   {
     id: "task-4",
+    title: "Delta",
+    priority: "medium",
+    estimate_minutes: 60,
     due_date: "2026-04-15",
-    status: "todo",
+    status: "done",
     updated_at: "2026-04-18T09:00:00.000Z",
   },
 ] as const;
@@ -189,4 +201,58 @@ test("kanban board preserves incoming task order inside each column", () => {
     "task-3",
     "task-5",
   ]);
+});
+
+test("sorts title ascending with a deterministic task-id tie-breaker", () => {
+  const sorted = sortTasksByValue([...sampleTasks], "title_asc");
+  assert.deepEqual(sorted.map((task) => task.id), ["task-1", "task-2", "task-4", "task-3"]);
+});
+
+test("sorts priority high to low and keeps null estimates last", () => {
+  assert.deepEqual(
+    sortTasksByValue([...sampleTasks], "priority_desc").map((task) => task.id),
+    ["task-2", "task-1", "task-4", "task-3"],
+  );
+  assert.deepEqual(
+    sortTasksByValue([...sampleTasks], "estimate_asc").map((task) => task.id),
+    ["task-3", "task-1", "task-4", "task-2"],
+  );
+  assert.deepEqual(
+    sortTasksByValue([...sampleTasks], "estimate_desc").map((task) => task.id),
+    ["task-4", "task-1", "task-3", "task-2"],
+  );
+});
+
+test("sorts status by the shared workflow rank", () => {
+  assert.deepEqual(
+    sortTasksByValue([...sampleTasks], "status_asc").map((task) => task.id),
+    ["task-1", "task-2", "task-3", "task-4"],
+  );
+  assert.deepEqual(
+    sortTasksByValue([...sampleTasks], "status_desc").map((task) => task.id),
+    ["task-4", "task-3", "task-1", "task-2"],
+  );
+});
+
+test("keeps the task-id tie-breaker for equal sort keys", () => {
+  const sameUpdated = [
+    { ...sampleTasks[0], id: "task-b" },
+    { ...sampleTasks[0], id: "task-a" },
+  ];
+  assert.deepEqual(
+    sortTasksByValue(sameUpdated, "updated_desc").map((task) => task.id),
+    ["task-a", "task-b"],
+  );
+});
+
+test("encodes table column state in list URLs without disturbing other filters", () => {
+  assert.equal(
+    buildTaskListUrl("/tasks", {
+      status: "todo",
+      sort: "priority_desc",
+      cols: "task,project,status",
+      widths: "task:420,project:240",
+    }),
+    "/tasks?status=todo&sort=priority_desc&cols=task%2Cproject%2Cstatus&widths=task%3A420%2Cproject%3A240",
+  );
 });

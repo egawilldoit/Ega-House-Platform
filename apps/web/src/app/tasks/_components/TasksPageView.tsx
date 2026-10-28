@@ -10,17 +10,20 @@ import {
   unpinTaskAction,
   updateTaskInlineAction,
   updateTaskEditorAction,
+  updateTaskTableCellAction,
   updateTaskFieldDraftAction,
   bulkTaskFieldAction,
   bulkTaskArchiveAction,
   undoTaskOperationAction,
   updateTaskReminderAction,
 } from "@/app/tasks/actions";
+import { createTaskSavedViewAction } from "@/app/tasks/saved-views-actions";
 import { startTimerAction } from "@/app/timer/actions";
 import { BulkArchiveCompletedTasksForm } from "@/components/tasks/bulk-archive-completed-tasks-form";
 import { TaskFilterControls } from "@/components/tasks/task-filter-controls";
 import { TaskKanbanCard } from "@/components/tasks/task-kanban-card";
 import { TasksNewTaskButton } from "@/components/tasks/tasks-new-task-button";
+import { getTaskSavedViewHref } from "@/components/tasks/task-saved-views-panel";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -30,7 +33,7 @@ import { isTaskCompletedStatus } from "@/lib/task-domain";
 import { formatDisplayCount } from "@/lib/presentation-format";
 import { ListChecks } from "lucide-react";
 import type { TasksPageModel } from "../_lib/tasks-page-model";
-import { TasksListTable, type TaskListActions } from "./tasks-list-table";
+import { TaskTable, type TaskTableActions } from "./table/task-table";
 import { TaskDrawerHost } from "@/components/tasks/drawer/task-drawer-host";
 import { updateTaskFieldAction } from "@/app/tasks/actions";
 import { TASK_SUBTASK_ACTIONS } from "@/lib/task-subtask-actions";
@@ -94,8 +97,16 @@ export function TasksPageView({
     selectedTaskSubtasks,
     subtaskCounts,
     selectedTaskActivity,
+    savedViews,
   } = model;
-  const { activeStatus, activeView, activeLayout, activeDueFilter, savedViewDefinitionFilters } = parsed;
+  const {
+    activeStatus,
+    activeView,
+    activeLayout,
+    activeDueFilter,
+    savedViewDefinitionFilters,
+    savedViewFeedback,
+  } = parsed;
   const completedTaskIdsInScope = getArchivableCompletedTaskIds(tasks);  // Restore clears archived state only; it must never resurrect a completed
   // task as unfinished work.
   const showBulkArchive = activeView === "active" && completedTaskIdsInScope.length > 0;
@@ -113,7 +124,7 @@ export function TasksPageView({
   if (blockedCount > 0) summaryParts.push(`${formatDisplayCount(blockedCount)} blocked`);
   if (dueSoonCount > 0) summaryParts.push(`${formatDisplayCount(dueSoonCount)} due soon`);
 
-  const taskListActions: TaskListActions = {
+  const taskListActions: TaskTableActions = {
     updateAction: updateTaskInlineAction,
     updateEditorAction: updateTaskEditorAction,
     deleteAction: deleteTaskAction,
@@ -128,6 +139,27 @@ export function TasksPageView({
     bulkFieldAction: bulkTaskFieldAction,
     bulkArchiveAction: bulkTaskArchiveAction,
     undoAction: undoTaskOperationAction,
+    updateCellAction: updateTaskTableCellAction,
+  };
+
+  const savedViewLinks = savedViews.map((view) => ({
+    id: view.id,
+    name: view.name,
+    href: getTaskSavedViewHref(view, activeLayout),
+    isDefault: view.is_default,
+  }));
+
+  const viewFilters = {
+    status: activeStatus,
+    project: activeProjectId,
+    goal: activeGoalId,
+    due: activeDueFilter,
+    sort: parsed.activeSort,
+    priority: savedViewDefinitionFilters.priorityValues.join(","),
+    estimateMin: savedViewDefinitionFilters.estimateMinMinutes,
+    estimateMax: savedViewDefinitionFilters.estimateMaxMinutes,
+    dueWithin: savedViewDefinitionFilters.dueWithinDays,
+    activeTasks: savedViewDefinitionFilters.activeTasks,
   };
 
   const bulkArchiveControl = showBulkArchive ? (
@@ -240,6 +272,8 @@ export function TasksPageView({
                 activeEstimateMax={savedViewDefinitionFilters.estimateMaxMinutes}
                 activeDueWithin={savedViewDefinitionFilters.dueWithinDays}
                 activeTasksOnly={savedViewDefinitionFilters.activeTasks}
+                columns={parsed.columnsParam}
+                widths={parsed.widthsParam}
                 projectOptions={projects}
                 goalOptions={goals.map((g) => ({ id: g.id, title: g.title }))}
               />
@@ -253,6 +287,18 @@ export function TasksPageView({
 
           {taskUpdateSuccess ? (
             <p className="feedback-block m-[18px]">{taskUpdateSuccess}</p>
+          ) : null}
+
+          {savedViewFeedback.error ? (
+            <p role="alert" className="feedback-block feedback-block-error m-[18px]">
+              {savedViewFeedback.error}
+            </p>
+          ) : null}
+
+          {savedViewFeedback.success ? (
+            <p role="status" className="feedback-block m-[18px]">
+              {savedViewFeedback.success}
+            </p>
           ) : null}
 
           {activeLayout === "kanban" ? (
@@ -319,11 +365,13 @@ export function TasksPageView({
           ) : tasks.length === 0 ? (
             emptyState
           ) : (
-            <TasksListTable
+            <TaskTable
               tasks={tasks}
               taskTotalDurations={taskTotalDurations}
               subtaskCounts={subtaskCounts}
               returnTo={returnPath}
+              columns={parsed.tableColumns}
+              sort={parsed.activeSort}
               taskUpdateTaskId={taskUpdateTaskId}
               taskUpdateError={taskUpdateError}
               projectOptions={projects}
@@ -334,6 +382,9 @@ export function TasksPageView({
               }))}
               density={parsed.activeDensity}
               actions={taskListActions}
+              savedViews={savedViewLinks}
+              createViewAction={createTaskSavedViewAction}
+              viewFilters={viewFilters}
             />
           )}
         </Card>

@@ -12,6 +12,11 @@ import {
   type TaskLayoutMode,
   type TaskSortValue,
 } from "@/lib/task-list";
+import {
+  parseTaskTableColumns,
+  serializeTaskTableColumns,
+} from "@/lib/task-table-columns";
+import { normalizeTaskTableColumns, type TaskTableColumnConfig } from "@ega/contracts/common/task-list";
 import { isTaskStatus, type TaskStatus } from "@/lib/task-domain";
 import { normalizeTaskViewFilter, type TaskViewFilter } from "@/lib/task-archive";
 import { normalizeTaskSavedViewFilters } from "@/lib/task-saved-views";
@@ -37,6 +42,10 @@ export type TasksSearchParams = {
   archive?: string;
   layout?: string;
   density?: string;
+  /** Ordered visible table column ids. */
+  cols?: string;
+  /** Non-default table column widths. */
+  widths?: string;
   view?: string;
   taskUpdateError?: string;
   taskUpdateSuccess?: string;
@@ -57,6 +66,9 @@ export type ParsedTasksFilters = {
   activeLayout: TaskLayoutMode;
   activeDensity: TaskDensity;
   activeView: TaskViewFilter;
+  tableColumns: TaskTableColumnConfig[];
+  columnsParam: string | null;
+  widthsParam: string | null;
   projectParam: string | null;
   goalParam: string | null;
   savedViewDefinitionFilters: ReturnType<typeof normalizeTaskSavedViewFilters>;
@@ -85,6 +97,10 @@ export function parseTasksSearchParams(searchParams: TasksSearchParams): ParsedT
   const activeLayout: TaskLayoutMode = normalizeTaskLayout(searchParams.layout);
   const activeDensity: TaskDensity = normalizeTaskDensity(searchParams.density);
   const activeView: TaskViewFilter = normalizeTaskViewFilter(searchParams.archive ?? searchParams.view);
+  const tableColumns = searchParams.cols || searchParams.widths
+    ? parseTaskTableColumns({ cols: searchParams.cols, widths: searchParams.widths })
+    : normalizeTaskTableColumns(null);
+  const serializedColumns = serializeTaskTableColumns(tableColumns);
   const taskUpdateError =
     searchParams.taskUpdateError?.slice(0, 180) ?? searchParams.statusUpdateError?.slice(0, 180) ?? null;
   const taskUpdateSuccess = searchParams.taskUpdateSuccess?.slice(0, 180) ?? null;
@@ -100,6 +116,9 @@ export function parseTasksSearchParams(searchParams: TasksSearchParams): ParsedT
     activeLayout,
     activeDensity,
     activeView,
+    tableColumns,
+    columnsParam: serializedColumns.cols,
+    widthsParam: serializedColumns.widths,
     projectParam,
     goalParam,
     savedViewDefinitionFilters,
@@ -147,6 +166,8 @@ export async function getTasksPageModel(searchParams: TasksSearchParams) {
     view: parsed.activeView,
     layout: parsed.activeLayout,
     density: parsed.activeDensity,
+    cols: parsed.columnsParam,
+    widths: parsed.widthsParam,
   });
 
   const taskUrlFilters = {
@@ -161,6 +182,8 @@ export async function getTasksPageModel(searchParams: TasksSearchParams) {
     due: parsed.activeDueFilter,
     sort: parsed.activeSort,
     density: parsed.activeDensity === "compact" ? "compact" : null,
+    cols: parsed.columnsParam,
+    widths: parsed.widthsParam,
   };
   const kanbanBoard = buildTaskKanbanBoard(tasks, parsed.activeStatus);
   const inProgressCount = tasks.filter((t) => t.status === "in_progress").length;

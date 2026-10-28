@@ -2,12 +2,14 @@ import {
   DEFAULT_TASK_DUE_FILTER,
   DEFAULT_TASK_SORT,
   TASK_DUE_FILTER_VALUES,
+  TASK_SORT_DEFINITIONS,
   TASK_SORT_VALUES,
   isTaskDueFilter,
   isTaskSortValue,
   type TaskDueFilter,
   type TaskSortValue,
 } from "@ega/contracts/common/task-list";
+import { compareTaskField, compareTaskIds } from "@ega/domain";
 
 import { isTaskDueToday, isTaskDueSoon, isTaskOverdue } from "@/lib/task-due-date";
 import { isTaskStatus, type TaskStatus } from "@/lib/task-domain";
@@ -44,8 +46,12 @@ export const TASK_KANBAN_COLUMNS = [
 export type TaskLayoutMode = (typeof TASK_LAYOUT_VALUES)[number];
 
 type TaskListLike = {
+  id: string;
+  title: string;
+  priority: string;
   due_date: string | null;
   status: string;
+  estimate_minutes: number | null;
   updated_at: string;
 };
 
@@ -96,6 +102,10 @@ export function buildTaskListUrl(
     view?: string | null;
     layout?: TaskLayoutMode;
     density?: TaskDensity | string | null;
+    /** Ordered visible table column ids, e.g. `task,priority,due,status`. */
+    cols?: string | null;
+    /** Non-default column widths, e.g. `task:420,priority:96`. */
+    widths?: string | null;
   },
 ) {
   const searchParams = new URLSearchParams();
@@ -113,6 +123,8 @@ export function buildTaskListUrl(
   if (filters.view && filters.view !== "active") searchParams.set("archive", filters.view);
   if (filters.layout === "kanban") searchParams.set("layout", "kanban");
   if (filters.density === "compact") searchParams.set("density", "compact");
+  if (filters.cols) searchParams.set("cols", filters.cols);
+  if (filters.widths) searchParams.set("widths", filters.widths);
 
   const query = searchParams.toString();
   return query ? `${basePath}?${query}` : basePath;
@@ -137,32 +149,42 @@ export function filterTasksByDueFilter<T extends TaskListLike>(
   }
 }
 
-function compareDueDates(
-  leftDueDate: string | null,
-  rightDueDate: string | null,
-  direction: "asc" | "desc",
-) {
-  if (!leftDueDate && !rightDueDate) return 0;
-  if (!leftDueDate) return 1;
-  if (!rightDueDate) return -1;
-  return direction === "asc"
-    ? leftDueDate.localeCompare(rightDueDate)
-    : rightDueDate.localeCompare(leftDueDate);
+function sortFieldValue(
+  task: TaskListLike,
+  field: "title" | "due" | "priority" | "status" | "estimate" | "updated",
+): string | number | null {
+  switch (field) {
+    case "due":
+      return task.due_date;
+    case "priority":
+      return task.priority;
+    case "status":
+      return task.status;
+    case "estimate":
+      return task.estimate_minutes;
+    case "updated":
+      return task.updated_at;
+    case "title":
+    default:
+      return task.title;
+  }
 }
 
-export function sortTasksByValue<T extends TaskListLike>(tasks: T[], sortValue: TaskSortValue) {
+export function sortTasksByValue<T extends TaskListLike>(
+  tasks: T[],
+  sortValue: TaskSortValue,
+) {
+  const definition = TASK_SORT_DEFINITIONS[sortValue] ?? TASK_SORT_DEFINITIONS[DEFAULT_TASK_SORT];
+
   return [...tasks].sort((left, right) => {
-    if (sortValue === "due_date_asc") {
-      const dueDateResult = compareDueDates(left.due_date, right.due_date, "asc");
-      return dueDateResult !== 0 ? dueDateResult : right.updated_at.localeCompare(left.updated_at);
-    }
-
-    if (sortValue === "due_date_desc") {
-      const dueDateResult = compareDueDates(left.due_date, right.due_date, "desc");
-      return dueDateResult !== 0 ? dueDateResult : right.updated_at.localeCompare(left.updated_at);
-    }
-
-    return right.updated_at.localeCompare(left.updated_at);
+    const primary = compareTaskField(
+      definition.field,
+      definition.direction,
+      sortFieldValue(left, definition.field),
+      sortFieldValue(right, definition.field),
+    );
+    // Stable, deterministic final tie-breaker shared with the toolbar sort.
+    return primary !== 0 ? primary : compareTaskIds(left.id, right.id);
   });
 }
 

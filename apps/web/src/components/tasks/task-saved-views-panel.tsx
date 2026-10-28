@@ -15,11 +15,14 @@ import { formatDisplayDate } from "@/lib/presentation-format";
 import type { Tables } from "@/lib/supabase/database.types";
 import {
   areTaskSavedViewFiltersEqual,
+  getTaskSavedViewColumnsFromDefinition,
   getTaskSavedViewFiltersFromDefinition,
   normalizeTaskSavedViewDefinition,
   normalizeTaskSavedViewFilters,
   type TaskSavedViewFilters,
 } from "@/lib/task-saved-views";
+import { serializeTaskTableColumns } from "@/lib/task-table-columns";
+import type { TaskTableColumnConfig } from "@ega/contracts/common/task-list";
 import { formatTaskToken } from "@/lib/task-domain";
 import type { TaskLayoutMode } from "@/lib/task-list";
 
@@ -40,6 +43,8 @@ type TaskSavedViewsPanelProps = {
   currentFilters: TaskSavedViewFilters;
   savedViews: TaskSavedViewRow[];
   activeLayout?: TaskLayoutMode;
+  /** Current table column state; included when writing this view. */
+  currentColumns?: TaskTableColumnConfig[];
   projectOptions: Array<{ id: string; name: string }>;
   goalOptions: Array<{ id: string; title: string }>;
   feedback?: { error?: string | null; success?: string | null };
@@ -48,7 +53,9 @@ type TaskSavedViewsPanelProps = {
 export function buildTaskSavedViewCurrentReturnPath(
   filters: TaskSavedViewFilters,
   activeLayout?: TaskLayoutMode,
+  columns?: readonly TaskTableColumnConfig[],
 ) {
+  const serialized = serializeTaskTableColumns(columns ?? []);
   return buildTaskFilterReturnPath("/tasks", {
     status: filters.status,
     project: filters.projectId,
@@ -61,6 +68,8 @@ export function buildTaskSavedViewCurrentReturnPath(
     dueWithin: filters.dueWithinDays,
     activeTasks: filters.activeTasks,
     layout: activeLayout,
+    cols: serialized.cols,
+    widths: serialized.widths,
   });
 }
 
@@ -84,6 +93,10 @@ function getSavedViewFilters(view: TaskSavedViewRow): TaskSavedViewFilters {
 
 export function getTaskSavedViewHref(view: TaskSavedViewRow, activeLayout?: TaskLayoutMode) {
   const filters = getSavedViewFilters(view);
+  const definition = normalizeTaskSavedViewDefinition(view.definition_json);
+  const serializedColumns = serializeTaskTableColumns(
+    getTaskSavedViewColumnsFromDefinition(definition),
+  );
 
   return buildTaskFilterReturnPath("/tasks", {
     status: filters.status,
@@ -97,6 +110,8 @@ export function getTaskSavedViewHref(view: TaskSavedViewRow, activeLayout?: Task
     dueWithin: filters.dueWithinDays,
     activeTasks: filters.activeTasks,
     layout: activeLayout,
+    cols: serializedColumns.cols,
+    widths: serializedColumns.widths,
   });
 }
 
@@ -167,11 +182,17 @@ export function TaskSavedViewsPanel({
   currentFilters,
   savedViews,
   activeLayout,
+  currentColumns,
   projectOptions,
   goalOptions,
   feedback,
 }: TaskSavedViewsPanelProps) {
-  const currentReturnPath = buildTaskSavedViewCurrentReturnPath(currentFilters, activeLayout);
+  const currentReturnPath = buildTaskSavedViewCurrentReturnPath(
+    currentFilters,
+    activeLayout,
+    currentColumns,
+  );
+  const currentSerializedColumns = serializeTaskTableColumns(currentColumns ?? []);
   const allTasksHref = getTaskSavedViewsAllTasksHref(activeLayout);
   const { defaultViews, customViews } = getTaskSavedViewGroups(savedViews);
   const orderedSavedViews = [...defaultViews, ...customViews];
@@ -228,6 +249,8 @@ export function TaskSavedViewsPanel({
                 <input type="hidden" name="estimateMax" value={currentFilters.estimateMaxMinutes ?? ""} />
                 <input type="hidden" name="dueWithin" value={currentFilters.dueWithinDays ?? ""} />
                 <input type="hidden" name="tasks" value={currentFilters.activeTasks ? "active" : ""} />
+                <input type="hidden" name="cols" value={currentSerializedColumns.cols ?? ""} />
+                <input type="hidden" name="widths" value={currentSerializedColumns.widths ?? ""} />
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
                   <div className="flex-1 space-y-1">
                     <label htmlFor={`view-name-${view.id}`} className="form-label">
@@ -296,6 +319,8 @@ export function TaskSavedViewsPanel({
           <input type="hidden" name="estimateMax" value={currentFilters.estimateMaxMinutes ?? ""} />
           <input type="hidden" name="dueWithin" value={currentFilters.dueWithinDays ?? ""} />
           <input type="hidden" name="tasks" value={currentFilters.activeTasks ? "active" : ""} />
+          <input type="hidden" name="cols" value={currentSerializedColumns.cols ?? ""} />
+          <input type="hidden" name="widths" value={currentSerializedColumns.widths ?? ""} />
 
           <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
             <div className="flex-1">
