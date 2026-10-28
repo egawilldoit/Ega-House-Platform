@@ -94,6 +94,52 @@ describe("TaskDrawerHost", () => {
     expect(document.body.querySelector('[role="dialog"]')).toBeNull();
   });
 
+  it("mounts the comments tab with a count, safe body and reaction controls", () => {
+    currentParams = new URLSearchParams("task=t1");
+    const action = vi.fn(async () => ({ ok: true, errorMessage: null }));
+    act(() =>
+      root.render(
+        <TaskDrawerHost
+          task={TASK}
+          updateFieldAction={updateFieldAction}
+          updateDraftAction={updateDraftAction}
+          ownerId="owner-1"
+          activity={[]}
+          comments={[
+            {
+              id: "c1",
+              taskId: "t1",
+              body: "Hello **@codex**",
+              author: { kind: "agent", ref: "agent:codex", label: "Codex" },
+              mentions: [{ kind: "agent", ref: "agent:codex", label: "Codex" }],
+              reactions: [{ emoji: "👍", count: 1, reactedByViewer: false }],
+              createdAt: "2026-10-28T10:00:00.000Z",
+              updatedAt: "2026-10-28T10:00:00.000Z",
+              editedAt: null,
+              viewerCanEdit: false,
+              viewerCanDelete: false,
+            },
+          ]}
+          commentMentions={[
+            { kind: "owner", ref: "owner", handle: "owner", label: "You (owner)" },
+          ]}
+          commentActions={{
+            createAction: action,
+            updateAction: action,
+            deleteAction: action,
+            toggleReactionAction: action,
+          }}
+        />,
+      ),
+    );
+
+    const dialog = document.body.querySelector('[role="dialog"]');
+    expect(dialog?.textContent).toContain("Comments 1");
+    expect(dialog?.textContent).toContain("Codex");
+    expect(dialog?.textContent).toContain("@codex");
+    expect(dialog?.querySelector('button[aria-pressed][aria-label*="reaction"]')).not.toBeNull();
+  });
+
   it("shows the selected task with its status, priority and due date", () => {
     currentParams = new URLSearchParams("task=t1&layout=board");
     render(TASK);
@@ -476,16 +522,14 @@ describe("TaskDrawer activity", () => {
               id: "a1",
               kind: "status",
               occurredAt: "2026-10-27T10:00:00.000Z",
-              actorKind: "owner",
-              actorLabel: "Owner",
+              actor: { kind: "owner" },
               summary: "Status changed from todo to in progress",
             },
             {
               id: "a2",
               kind: "field_change",
               occurredAt: "2026-10-27T09:00:00.000Z",
-              actorKind: "unknown",
-              actorLabel: null,
+              actor: { kind: "unknown" },
               summary: "Priority: medium → high",
             },
           ]}

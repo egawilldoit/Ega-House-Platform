@@ -116,6 +116,11 @@ function makeFakeClient(): EgaApiClient {
       clearRecurrence: jest.fn(),
       pin: jest.fn(),
       unpin: jest.fn(),
+      listComments: jest.fn(),
+      createComment: jest.fn(),
+      updateComment: jest.fn(),
+      deleteComment: jest.fn(),
+      toggleCommentReaction: jest.fn(),
     },
     inbox: {
       list: jest.fn(),

@@ -4,9 +4,12 @@ import test from "node:test";
 import {
   buildActiveTaskFilterChips,
   buildClearTaskFiltersUrl,
+  buildTaskViewFilterChips,
   mergeTaskFilterUrl,
   type TaskFilterState,
 } from "./task-filter-url";
+import { buildTaskListUrl, parseTaskListView } from "@/lib/task-list";
+import type { TaskViewDefinition } from "@ega/contracts/common/task-list";
 
 const fullState: TaskFilterState = {
   status: "in_progress",
@@ -40,7 +43,7 @@ test("EGA-650: changing one filter preserves every unrelated advanced filter", (
   assert.equal(search.get("project"), "project-1");
   assert.equal(search.get("goal"), "goal-1");
   assert.equal(search.get("due"), "overdue");
-  assert.equal(search.get("sort"), "due_date_asc");
+  assert.equal(search.get("sort"), "due");
   assert.equal(search.get("archive"), "archived");
   assert.equal(search.get("layout"), "kanban");
 });
@@ -117,23 +120,110 @@ test("EGA-650: no chips when no filters are active", () => {
   assert.equal(chips.length, 0);
 });
 
-test("EGA-792: table column state survives filter and sort changes", () => {
-  const withColumns: TaskFilterState = {
-    ...fullState,
-    cols: "task,project,status",
-    widths: "status:400",
+
+function searchParamsRecord(url: string) {
+  const params = new URL(url, "https://egawilldoit.online").searchParams;
+  const record: Record<string, string | string[]> = {};
+  for (const key of new Set(params.keys())) {
+    const values = params.getAll(key);
+    record[key] = values.length === 1 ? values[0] : values;
+  }
+  return record;
+}
+
+test("EGA-791: a complex view round-trips through the URL with group, sort and search", () => {
+  const view: TaskViewDefinition = {
+    version: 2,
+    filters: [
+      { field: "status", operator: "is_not", values: ["done"] },
+      { field: "priority", operator: "is_any_of", values: ["urgent", "high"] },
+      { field: "goal", operator: "is_none_of", values: ["goal-1"] },
+      { field: "due_bucket", operator: "is", values: ["next_7_days"] },
+      { field: "estimate", operator: "between", values: ["30", "120"] },
+    ],
+    groupBy: "priority",
+    sort: { key: "title", direction: "desc" },
+    search: "launch",
+    activeOnly: true,
   };
+
+  const url = buildTaskListUrl("/tasks", {
+    filters: view.filters,
+    group: view.groupBy,
+    q: view.search,
+    sortKey: view.sort.key,
+    sortDirection: view.sort.direction,
+    activeTasks: view.activeOnly,
+    layout: "kanban",
+  });
+
+  assert.deepEqual(parseTaskListView(searchParamsRecord(url)), view);
+  assert.equal(params(url).get("layout"), "kanban");
+});
+
+test("EGA-791: chips describe stackable filters and remove only their own filter", () => {
+  const view: TaskViewDefinition = {
+    version: 2,
+    filters: [
+      { field: "status", operator: "is", values: ["in_progress"] },
+      { field: "priority", operator: "is", values: ["urgent"] },
+      { field: "project", operator: "is", values: ["project-1"] },
+    ],
+    groupBy: "status",
+    sort: { key: "manual", direction: "asc" },
+    search: "launch",
+    activeOnly: false,
+  };
+  const state: TaskFilterState = {
+    filters: view.filters,
+    group: view.groupBy,
+    q: view.search,
+    sortKey: view.sort.key,
+    sortDirection: view.sort.direction,
+    layout: "list",
+  };
+
+  const chips = buildTaskViewFilterChips("/tasks", view, state, {
+    projectOptions: [{ id: "project-1", name: "EGA House" }],
+  });
+
+  assert.deepEqual(
+    chips.map((chip) => chip.label),
+    ["Search: launch", "Status is In Progress", "Priority is Urgent", "Project is EGA House"],
+  );
+
+  const statusChip = chips.find((chip) => chip.filterIndex === 0)!;
+  const statusRemoval = parseTaskListView(searchParamsRecord(statusChip.removeHref));
+  assert.deepEqual(statusRemoval.filters, [
+    { field: "priority", operator: "is", values: ["urgent"] },
+    { field: "project", operator: "is", values: ["project-1"] },
+  ]);
+  assert.equal(statusRemoval.groupBy, "status");
+  assert.deepEqual(statusRemoval.sort, { key: "manual", direction: "asc" });
+
+  const searchChip = chips.find((chip) => chip.key === "search")!;
+  assert.equal(parseTaskListView(searchParamsRecord(searchChip.removeHref)).search, "");
+});
+
+test("EGA-792: table column layout survives filter and sort changes", () => {
+  const columns = parseTaskListView({
+    cols: "task,project,status",
+    widths: "task:420",
+  }).columns;
+  const withColumns: TaskFilterState = { ...fullState, columns };
 
   const filtered = params(mergeTaskFilterUrl("/tasks", withColumns, { status: "todo" }));
   assert.equal(filtered.get("cols"), "task,project,status");
-  assert.equal(filtered.get("widths"), "status:400");
+  assert.equal(filtered.get("widths"), "task:420");
 
-  const sorted = params(mergeTaskFilterUrl("/tasks", withColumns, { sort: "priority_desc" }));
+  const sorted = params(
+    mergeTaskFilterUrl("/tasks", withColumns, { sortKey: "priority", sortDirection: "desc" }),
+  );
   assert.equal(sorted.get("cols"), "task,project,status");
-  assert.equal(sorted.get("widths"), "status:400");
-  assert.equal(sorted.get("sort"), "priority_desc");
+  assert.equal(sorted.get("sort"), "priority");
+  assert.equal(sorted.get("dir"), "desc");
 
   const cleared = params(buildClearTaskFiltersUrl("/tasks", withColumns));
   assert.equal(cleared.get("cols"), "task,project,status");
-  assert.equal(cleared.get("widths"), "status:400");
+  assert.equal(cleared.get("widths"), "task:420");
 });

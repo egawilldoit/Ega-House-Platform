@@ -10,25 +10,25 @@ import {
   unpinTaskAction,
   updateTaskInlineAction,
   updateTaskEditorAction,
-  updateTaskTableCellAction,
   updateTaskFieldDraftAction,
+  updateTaskTableCellAction,
   bulkTaskFieldAction,
   bulkTaskArchiveAction,
   undoTaskOperationAction,
   updateTaskReminderAction,
+  moveTaskOnBoardAction,
 } from "@/app/tasks/actions";
-import { createTaskSavedViewAction } from "@/app/tasks/saved-views-actions";
 import { startTimerAction } from "@/app/timer/actions";
 import { BulkArchiveCompletedTasksForm } from "@/components/tasks/bulk-archive-completed-tasks-form";
-import { TaskFilterControls } from "@/components/tasks/task-filter-controls";
-import { TaskKanbanCard } from "@/components/tasks/task-kanban-card";
+import { TaskViewToolbar } from "@/components/tasks/view-toolbar/task-view-toolbar";
 import { TasksNewTaskButton } from "@/components/tasks/tasks-new-task-button";
-import { getTaskSavedViewHref } from "@/components/tasks/task-saved-views-panel";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FilterPill } from "@/components/ui/filter-pill";
 import { buildTaskListUrl } from "@/lib/task-list";
+import { normalizeTaskTableColumns } from "@ega/contracts/common/task-list";
+import { getTaskViewFromSavedView } from "@/lib/task-saved-views";
 import { isTaskCompletedStatus } from "@/lib/task-domain";
 import { formatDisplayCount } from "@/lib/presentation-format";
 import { ListChecks } from "lucide-react";
@@ -37,13 +37,8 @@ import { TaskTable, type TaskTableActions } from "./table/task-table";
 import { TaskDrawerHost } from "@/components/tasks/drawer/task-drawer-host";
 import { updateTaskFieldAction } from "@/app/tasks/actions";
 import { TASK_SUBTASK_ACTIONS } from "@/lib/task-subtask-actions";
-
-function getTaskSignalTone(status: string, priority: string) {
-  if (status === "blocked" || priority === "urgent") return "bg-[var(--status-overdue)]";
-  if (priority === "high") return "bg-[var(--status-risk)]";
-  if (status === "in_progress") return "bg-[var(--status-info)]";
-  return "bg-[var(--ega-text-tertiary)]";
-}
+import { TASK_COMMENT_ACTIONS } from "@/lib/task-comment-actions";
+import { KanbanBoard, type KanbanBulkActions, type KanbanCardActions } from "./kanban/kanban-board";
 
 /**
  * Bulk cleanup targets only completed tasks that are not yet archived, inside
@@ -82,8 +77,7 @@ export function TasksPageView({
     tasks,
     taskTotalDurations,
     summary,
-    activeProjectId,
-    activeGoalId,
+    savedViews,
     returnPath,
     taskUrlFilters,
     kanbanBoard,
@@ -97,16 +91,17 @@ export function TasksPageView({
     selectedTaskSubtasks,
     subtaskCounts,
     selectedTaskActivity,
-    savedViews,
+    selectedTaskActivityHasMore,
+    groups,
+    filteredTotal,
+    loadedCount,
+    truncated,
+    selectedTaskComments,
+    selectedTaskCommentMentions,
+    selectedTaskCommentError,
   } = model;
-  const {
-    activeStatus,
-    activeView,
-    activeLayout,
-    activeDueFilter,
-    savedViewDefinitionFilters,
-    savedViewFeedback,
-  } = parsed;
+  const { activeView, activeLayout } = parsed;
+  const tableColumns = parsed.view.columns ?? normalizeTaskTableColumns(null);
   const completedTaskIdsInScope = getArchivableCompletedTaskIds(tasks);  // Restore clears archived state only; it must never resurrect a completed
   // task as unfinished work.
   const showBulkArchive = activeView === "active" && completedTaskIdsInScope.length > 0;
@@ -116,9 +111,11 @@ export function TasksPageView({
 
   const hasAnyTasks = summary.total > 0;
   const summaryParts = [
-    `${formatDisplayCount(tasks.length)} shown`,
+    `${formatDisplayCount(loadedCount)} shown`,
+    `${formatDisplayCount(filteredTotal)} matching`,
     `${formatDisplayCount(summary.total)} total`,
   ];
+  if (truncated) summaryParts.push("row limit reached");
   if (overdueCount > 0) summaryParts.push(`${formatDisplayCount(overdueCount)} overdue`);
   if (inProgressCount > 0) summaryParts.push(`${formatDisplayCount(inProgressCount)} in progress`);
   if (blockedCount > 0) summaryParts.push(`${formatDisplayCount(blockedCount)} blocked`);
@@ -142,26 +139,6 @@ export function TasksPageView({
     updateCellAction: updateTaskTableCellAction,
   };
 
-  const savedViewLinks = savedViews.map((view) => ({
-    id: view.id,
-    name: view.name,
-    href: getTaskSavedViewHref(view, activeLayout),
-    isDefault: view.is_default,
-  }));
-
-  const viewFilters = {
-    status: activeStatus,
-    project: activeProjectId,
-    goal: activeGoalId,
-    due: activeDueFilter,
-    sort: parsed.activeSort,
-    priority: savedViewDefinitionFilters.priorityValues.join(","),
-    estimateMin: savedViewDefinitionFilters.estimateMinMinutes,
-    estimateMax: savedViewDefinitionFilters.estimateMaxMinutes,
-    dueWithin: savedViewDefinitionFilters.dueWithinDays,
-    activeTasks: savedViewDefinitionFilters.activeTasks,
-  };
-
   const bulkArchiveControl = showBulkArchive ? (
     <BulkArchiveCompletedTasksForm
       action={archiveManyCompletedTasksAction}
@@ -169,6 +146,43 @@ export function TasksPageView({
       returnTo={returnPath}
     />
   ) : null;
+
+  const kanbanCardActions: KanbanCardActions = {
+    updateAction: updateTaskInlineAction,
+    updateEditorAction: updateTaskEditorAction,
+    startTimerAction,
+    pinAction: pinTaskAction,
+    unpinAction: unpinTaskAction,
+    archiveAction: archiveTaskAction,
+    unarchiveAction: unarchiveTaskAction,
+    deleteAction: deleteTaskAction,
+    createReminderAction: createTaskReminderAction,
+    updateReminderAction: updateTaskReminderAction,
+    cancelReminderAction: cancelTaskReminderAction,
+    projectOptions: projects,
+    goalOptions: goals.map((goal) => ({
+      id: goal.id,
+      title: goal.title,
+      projectId: goal.project_id,
+    })),
+    returnTo: returnPath,
+  };
+
+  const kanbanBulkActions: KanbanBulkActions = {
+    bulkFieldAction: bulkTaskFieldAction,
+    bulkArchiveAction: bulkTaskArchiveAction,
+    undoAction: undoTaskOperationAction,
+  };
+
+  const kanbanHref = (boardOrder: "manual" | "priority" | null) =>
+    buildTaskListUrl("/tasks", {
+      ...taskUrlFilters,
+      // Keep the active view (Current / Archived / All): the order links must
+      // not silently switch scopes.
+      view: activeView,
+      layout: "kanban",
+      boardOrder,
+    });
 
   const emptyState = (
     <EmptyState
@@ -257,25 +271,43 @@ export function TasksPageView({
 
             {/* Row 2 — data controls on the left, mutation actions on the right. */}
             <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-              <TaskFilterControls
+              <TaskViewToolbar
                 basePath="/tasks"
-                activeStatus={activeStatus}
-                activePriority={savedViewDefinitionFilters.priorityValues.join(",")}
-                activeProjectId={activeProjectId}
-                activeGoalId={activeGoalId}
-                activeDueFilter={activeDueFilter}
-                activeSort={parsed.activeSort}
-                activeView={activeView}
+                view={parsed.view}
                 activeLayout={activeLayout}
                 activeDensity={parsed.activeDensity}
-                activeEstimateMin={savedViewDefinitionFilters.estimateMinMinutes}
-                activeEstimateMax={savedViewDefinitionFilters.estimateMaxMinutes}
-                activeDueWithin={savedViewDefinitionFilters.dueWithinDays}
-                activeTasksOnly={savedViewDefinitionFilters.activeTasks}
-                columns={parsed.columnsParam}
-                widths={parsed.widthsParam}
+                activeView={activeView}
+                activeBoardOrder={parsed.activeBoardOrder}
                 projectOptions={projects}
-                goalOptions={goals.map((g) => ({ id: g.id, title: g.title }))}
+                goalOptions={goals.map((goal) => ({ id: goal.id, title: goal.title }))}
+                savedViews={savedViews.map((view) => {
+                  const savedView = getTaskViewFromSavedView({
+                    definitionJson: view.definition_json,
+                    status: view.status,
+                    projectId: view.project_id,
+                    goalId: view.goal_id,
+                    dueFilter: view.due_filter,
+                    sortValue: view.sort_value,
+                  });
+                  return {
+                    id: view.id,
+                    name: view.name,
+                    isBuiltIn: view.is_default,
+                    href: buildTaskListUrl("/tasks", {
+                      filters: savedView.filters,
+                      group: savedView.groupBy,
+                      q: savedView.search,
+                      sortKey: savedView.sort.key,
+                      sortDirection: savedView.sort.direction,
+                      activeTasks: savedView.activeOnly,
+                      view: activeView,
+                      layout: activeLayout,
+                      density: parsed.activeDensity,
+                      columns: savedView.columns,
+                    }),
+                  };
+                })}
+                feedback={parsed.savedViewFeedback}
               />
 
               <div className="ml-auto flex items-center gap-2">
@@ -289,89 +321,40 @@ export function TasksPageView({
             <p className="feedback-block m-[18px]">{taskUpdateSuccess}</p>
           ) : null}
 
-          {savedViewFeedback.error ? (
-            <p role="alert" className="feedback-block feedback-block-error m-[18px]">
-              {savedViewFeedback.error}
-            </p>
-          ) : null}
-
-          {savedViewFeedback.success ? (
-            <p role="status" className="feedback-block m-[18px]">
-              {savedViewFeedback.success}
-            </p>
-          ) : null}
-
           {activeLayout === "kanban" ? (
             tasks.length === 0 ? (
               emptyState
             ) : (
-              <div className="tasks-board-container p-[18px]">
-                <div className="tasks-kanban-board">
-                  {kanbanBoard.columns.map((column) => {
-                    const columnTasks = kanbanBoard.tasksByStatus[column.status];
-                    return (
-                      <section key={column.status} className="tasks-kanban-column">
-                        <div className="tasks-kanban-column-header">
-                          <h2>{column.label}</h2>
-                          <Badge tone="muted">
-                            {columnTasks.length} task{columnTasks.length === 1 ? "" : "s"}
-                          </Badge>
-                        </div>
-                        {columnTasks.length === 0 ? (
-                          <p className="rounded-[var(--radius-sm)] border border-dashed border-[var(--ega-border-strong)] bg-[var(--ega-surface)] px-3 py-6 text-center text-[length:var(--text-meta-lg)] text-[color:var(--ega-text-tertiary)]">
-                            No {column.label.toLowerCase()} tasks
-                          </p>
-                        ) : (
-                          <div className="flex flex-col gap-2">
-                            {columnTasks.map((task) => {
-                              const inlineError = taskUpdateTaskId === task.id ? taskUpdateError : null;
-                              return (
-                                <TaskKanbanCard
-                                  key={task.id}
-                                  task={task}
-                                  signalTone={getTaskSignalTone(task.status, task.priority)}
-                                  updateAction={updateTaskInlineAction}
-                                  updateEditorAction={updateTaskEditorAction}
-                                  startTimerAction={startTimerAction}
-                                  pinAction={pinTaskAction}
-                                  unpinAction={unpinTaskAction}
-                                  archiveAction={archiveTaskAction}
-                                  unarchiveAction={unarchiveTaskAction}
-                                  deleteAction={deleteTaskAction}
-                                  createReminderAction={createTaskReminderAction}
-                                  updateReminderAction={updateTaskReminderAction}
-                                  cancelReminderAction={cancelTaskReminderAction}
-                                  projectOptions={projects}
-                                  goalOptions={goals.map((goal) => ({
-                                    id: goal.id,
-                                    title: goal.title,
-                                    projectId: goal.project_id,
-                                  }))}
-                                  returnTo={returnPath}
-                                  trackedSeconds={taskTotalDurations[task.id]}
-                                  subtaskCount={subtaskCounts[task.id] ?? null}
-                                  error={inlineError}
-                                />
-                              );
-                            })}
-                          </div>
-                        )}
-                      </section>
-                    );
-                  })}
-                </div>
-              </div>
+              <KanbanBoard
+                columns={kanbanBoard.columns}
+                tasksByStatus={kanbanBoard.tasksByStatus}
+                boardOrder={parsed.activeBoardOrder}
+                activeView={activeView}
+                ownerId={ownerId}
+                returnTo={returnPath}
+                manualHref={kanbanHref("manual")}
+                priorityHref={kanbanHref("priority")}
+                defaultOrderHref={kanbanHref(null)}
+                moveAction={moveTaskOnBoardAction}
+                bulkActions={kanbanBulkActions}
+                cardProps={kanbanCardActions}
+                taskTotalDurations={taskTotalDurations}
+                subtaskCounts={subtaskCounts}
+                taskUpdateTaskId={taskUpdateTaskId}
+                taskUpdateError={taskUpdateError}
+              />
             )
           ) : tasks.length === 0 ? (
             emptyState
-          ) : (
+          ) : parsed.view.groupBy === "none" ? (
             <TaskTable
               tasks={tasks}
               taskTotalDurations={taskTotalDurations}
               subtaskCounts={subtaskCounts}
               returnTo={returnPath}
-              columns={parsed.tableColumns}
-              sort={parsed.activeSort}
+              columns={tableColumns}
+              sortKey={parsed.view.sort.key}
+              sortDirection={parsed.view.sort.direction}
               taskUpdateTaskId={taskUpdateTaskId}
               taskUpdateError={taskUpdateError}
               projectOptions={projects}
@@ -382,10 +365,56 @@ export function TasksPageView({
               }))}
               density={parsed.activeDensity}
               actions={taskListActions}
-              savedViews={savedViewLinks}
-              createViewAction={createTaskSavedViewAction}
-              viewFilters={viewFilters}
             />
+          ) : (
+            <div className="flex flex-col gap-2 p-[18px]">
+              {groups.map((group) => (
+                <section
+                  key={group.key}
+                  aria-labelledby={`task-group-${parsed.view.groupBy}-${group.key}`}
+                  className="rounded-[var(--radius-md)] border border-[var(--ega-border)] bg-[var(--ega-surface)]"
+                >
+                  <details open>
+                    <summary className="flex cursor-pointer list-none flex-wrap items-center gap-2 px-3 py-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ega-focus-outline)]">
+                      <h2
+                        id={`task-group-${parsed.view.groupBy}-${group.key}`}
+                        className="text-[length:var(--text-meta-lg)] font-semibold text-[color:var(--ega-text)]"
+                      >
+                        {group.label}
+                      </h2>
+                      <Badge tone="muted">
+                        {group.count} task{group.count === 1 ? "" : "s"}
+                      </Badge>
+                    </summary>
+                    {group.tasks.length > 0 ? (
+                      <TaskTable
+                        tasks={group.tasks}
+                        taskTotalDurations={taskTotalDurations}
+                        subtaskCounts={subtaskCounts}
+                        returnTo={returnPath}
+                        columns={tableColumns}
+                        sortKey={parsed.view.sort.key}
+                        sortDirection={parsed.view.sort.direction}
+                        taskUpdateTaskId={taskUpdateTaskId}
+                        taskUpdateError={taskUpdateError}
+                        projectOptions={projects}
+                        goalOptions={goals.map((goal) => ({
+                          id: goal.id,
+                          title: goal.title,
+                          projectId: goal.project_id,
+                        }))}
+                        density={parsed.activeDensity}
+                        actions={taskListActions}
+                      />
+                    ) : (
+                      <p className="border-t border-[var(--ega-divider)] px-3 py-4 text-[length:var(--text-meta-lg)] text-[color:var(--ega-text-tertiary)]">
+                        No tasks in this group yet.
+                      </p>
+                    )}
+                  </details>
+                </section>
+              ))}
+            </div>
           )}
         </Card>
       </div>
@@ -401,6 +430,11 @@ export function TasksPageView({
           ownerId={ownerId}
           subtasks={selectedTaskSubtasks}
           activity={selectedTaskActivity}
+          activityHasMore={selectedTaskActivityHasMore}
+          comments={selectedTaskComments.comments}
+          commentMentions={selectedTaskCommentMentions}
+          commentsError={selectedTaskCommentError}
+          commentActions={TASK_COMMENT_ACTIONS}
           isFavourite={Boolean(model.selectedTaskIsFavourite)}
           favouriteAction={favouriteAction}
           subtaskActions={TASK_SUBTASK_ACTIONS}

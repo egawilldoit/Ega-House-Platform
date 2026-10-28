@@ -1,21 +1,20 @@
 import {
   DEFAULT_TASK_DUE_FILTER,
   DEFAULT_TASK_SORT,
-  TASK_SORT_DEFINITIONS,
+  taskViewFromLegacyInput,
   type TaskDueFilter,
   type TaskSortValue,
+  type TaskViewDefinition,
 } from "@ega/contracts/common/task-list";
 import type {
   MobileTaskCounters,
   MobileTaskGoal,
+  MobileTaskGroup,
   MobileTaskListItem,
   MobileTaskListFilters,
   MobileTaskProject,
 } from "@ega/contracts/mobile";
 import {
-  compareTaskField,
-  compareTaskIds,
-  isTaskDueSoon,
   isTaskDueToday,
   isTaskOverdue,
   type TaskPriority,
@@ -23,9 +22,20 @@ import {
 } from "@ega/domain";
 
 import type { TaskGoalOptionRecord, TaskProjectOptionRecord, TaskQuery, TaskRecord } from "./ports";
+import {
+  applyTaskView,
+  filterTaskViewRecords,
+  type TaskViewRecord,
+} from "./view";
 
-/** Hard ceiling on rows fetched for one list request; keeps payloads bounded. */
-export const TASK_LIST_ROW_CAP = 500;
+/**
+ * Hard ceiling on rows fetched for one list request; keeps payloads bounded.
+ *
+ * The adapter may load several pages up to this ceiling, so a filtered view is
+ * not silently limited to the historical 500-row first page. The read model
+ * still reports `loaded` vs `total` so a larger dataset is called out.
+ */
+export const TASK_LIST_ROW_CAP = 5000;
 export const TASK_LIST_MAX_LIMIT = 200;
 
 function trackedSeconds(record: TaskRecord) {
@@ -84,68 +94,10 @@ export function toMobileTaskListItem(record: TaskRecord): MobileTaskListItem {
   };
 }
 
-type DueSortable = Pick<
-  TaskRecord,
-  "id" | "title" | "dueDate" | "status" | "priority" | "estimateMinutes" | "updatedAt"
->;
-
-function filterByDueFilter<T extends DueSortable>(
-  tasks: T[],
-  dueFilter: TaskDueFilter,
-  today: string,
-): T[] {
-  switch (dueFilter) {
-    case "overdue":
-      return tasks.filter((task) => isTaskOverdue(task.dueDate, task.status, today));
-    case "due_today":
-      return tasks.filter((task) => isTaskDueToday(task.dueDate, task.status, today));
-    case "due_soon":
-      return tasks.filter((task) => isTaskDueSoon(task.dueDate, task.status, today));
-    case "no_due_date":
-      return tasks.filter((task) => !task.dueDate);
-    default:
-      return tasks;
-  }
-}
-
-function sortFieldValue(
-  task: DueSortable,
-  field: "title" | "due" | "priority" | "status" | "estimate" | "updated",
-): string | number | null {
-  switch (field) {
-    case "due":
-      return task.dueDate;
-    case "priority":
-      return task.priority;
-    case "status":
-      return task.status;
-    case "estimate":
-      return task.estimateMinutes;
-    case "updated":
-      return task.updatedAt;
-    case "title":
-    default:
-      return task.title;
-  }
-}
-
-function sortByValue<T extends DueSortable>(tasks: T[], sortValue: TaskSortValue): T[] {
-  const definition = TASK_SORT_DEFINITIONS[sortValue] ?? TASK_SORT_DEFINITIONS[DEFAULT_TASK_SORT];
-
-  return [...tasks].sort((left, right) => {
-    const primary = compareTaskField(
-      definition.field,
-      definition.direction,
-      sortFieldValue(left, definition.field),
-      sortFieldValue(right, definition.field),
-    );
-    return primary !== 0 ? primary : compareTaskIds(left.id, right.id);
-  });
-}
-
 export function computeMobileTaskCounters(
   items: MobileTaskListItem[],
   today: string,
+  scope?: Readonly<{ loaded?: number; truncated?: boolean }>,
 ): MobileTaskCounters {
   const counters: MobileTaskCounters = {
     total: 0,
@@ -154,6 +106,8 @@ export function computeMobileTaskCounters(
     pinned: 0,
     overdue: 0,
     dueToday: 0,
+    loaded: scope?.loaded ?? items.length,
+    truncated: scope?.truncated ?? false,
   };
 
   for (const item of items) {
@@ -193,6 +147,61 @@ function resolveScopeFilters(
   return { activeProjectId, activeGoalId, visibleGoals };
 }
 
+function toViewRecord(record: TaskRecord): TaskViewRecord {
+  return {
+    id: record.id,
+    title: record.title,
+    description: record.description,
+    status: record.status,
+    priority: record.priority,
+    projectId: record.projectId,
+    projectName: record.projectName,
+    goalId: record.goalId,
+    goalTitle: record.goalTitle,
+    dueDate: record.dueDate,
+    plannedForDate: record.plannedForDate,
+    estimateMinutes: record.estimateMinutes,
+    boardRank: record.boardRank,
+    focusRank: record.focusRank,
+    createdAt: record.createdAt ?? null,
+    updatedAt: record.updatedAt,
+  };
+}
+
+function legacyDueFromView(view: TaskViewDefinition): TaskDueFilter {
+  const filter = view.filters.find(
+    (entry) => entry.field === "due_bucket" && entry.operator === "is",
+  );
+  switch (filter?.values[0]) {
+    case "overdue":
+      return "overdue";
+    case "today":
+      return "due_today";
+    case "next_7_days":
+      return "due_soon";
+    case "none":
+      return "no_due_date";
+    default:
+      return DEFAULT_TASK_DUE_FILTER;
+  }
+}
+
+function legacySortFromView(view: TaskViewDefinition): TaskSortValue {
+  if (view.sort.key === "updated" && view.sort.direction === "desc") {
+    return DEFAULT_TASK_SORT;
+  }
+  if (view.sort.key === "due" && view.sort.direction === "asc") return "due_date_asc";
+  if (view.sort.key === "due" && view.sort.direction === "desc") return "due_date_desc";
+  return DEFAULT_TASK_SORT;
+}
+
+function singleScalarValue(view: TaskViewDefinition, field: "status" | "priority") {
+  const filter = view.filters.find(
+    (entry) => entry.field === field && (entry.operator === "is" || entry.operator === "is_any_of"),
+  );
+  return filter?.values[0] ?? null;
+}
+
 export type MobileTaskListViewInput = Readonly<{
   records: TaskRecord[];
   projects: TaskProjectOptionRecord[];
@@ -210,6 +219,7 @@ export type MobileTaskListView = Readonly<{
   items: MobileTaskListItem[];
   counters: MobileTaskCounters;
   filters: MobileTaskListFilters;
+  groups: MobileTaskGroup[];
   projects: MobileTaskProject[];
   goals: MobileTaskGoal[];
 }>;
@@ -217,12 +227,14 @@ export type MobileTaskListView = Readonly<{
 /**
  * Build the canonical enriched task-list payload.
  *
- * Counters describe the full filtered scope BEFORE the limit slice so clients
- * can render totals and truncation state without extra requests.
+ * Filtering, sorting, grouping and counting run through the shared
+ * `applyTaskView` engine, the same engine the web surface uses. Counters and
+ * group counts describe the full filtered scope BEFORE the limit slice so
+ * clients can render totals and truncation state without extra requests.
  *
  * `input.today` is the owner's canonical local date resolved from Time
- * Context by the caller; due-today/overdue semantics are evaluated against
- * it, never against the process timezone.
+ * Context by the caller; due semantics are evaluated against it, never against
+ * the process timezone.
  */
 export function buildMobileTaskListView(input: MobileTaskListViewInput): MobileTaskListView {
   const today = input.today;
@@ -241,33 +253,66 @@ export function buildMobileTaskListView(input: MobileTaskListViewInput): MobileT
       )
     : input.records;
 
-  const orderedRecords = sortByValue(
-    filterByDueFilter(scopedRecords, query.due ?? DEFAULT_TASK_DUE_FILTER, today),
-    query.sort ?? DEFAULT_TASK_SORT,
-  );
+  const view =
+    query.view ??
+    taskViewFromLegacyInput({
+      status: query.status,
+      priority: query.priority,
+      projectId: activeProjectId,
+      goalId: activeGoalId,
+      due: query.due,
+      sort: query.sort,
+    });
 
-  // Counters cover the filtered scope before pagination, on the same
-  // server-local "today" as the due filter.
-  const allItems = orderedRecords.map(toMobileTaskListItem);
-  const counters = computeMobileTaskCounters(allItems, today);
+  const viewRecords = scopedRecords.map(toViewRecord);
+  const result = applyTaskView(viewRecords, view, {
+    today,
+    limit: query.limit,
+    totalCount: query.totalCount,
+  });
+  const filteredAll = filterTaskViewRecords(viewRecords, view, { today });
+  const recordById = new Map(scopedRecords.map((record) => [record.id, record]));
+  const items = result.items
+    .map((record) => recordById.get(record.id))
+    .filter((record): record is TaskRecord => Boolean(record))
+    .map(toMobileTaskListItem);
 
-  const limit = query.limit && query.limit > 0 ? Math.floor(query.limit) : null;
-  const items = limit ? allItems.slice(0, limit) : allItems;
+  // Counters describe the full filtered set, not the paginated page.
+  const allItems = filteredAll
+    .map((record) => recordById.get(record.id))
+    .filter((record): record is TaskRecord => Boolean(record))
+    .map(toMobileTaskListItem);
+  const counters = computeMobileTaskCounters(allItems, today, {
+    loaded: items.length,
+    truncated: result.truncated,
+  });
+  // `total` is the exact owner-scoped filtered count when the transport supplied
+  // one; `loaded` remains the number of rows in this payload.
+  counters.total = result.totalCount;
 
   return {
     items,
     counters,
     filters: {
-      status: query.status ?? null,
+      status: singleScalarValue(view, "status") as TaskStatus | null,
       projectId: activeProjectId,
       goalId: activeGoalId,
-      priority: query.priority ?? null,
-      due: query.due ?? DEFAULT_TASK_DUE_FILTER,
-      sort: query.sort ?? DEFAULT_TASK_SORT,
+      priority: singleScalarValue(view, "priority") as TaskPriority | null,
+      due: legacyDueFromView(view),
+      sort: legacySortFromView(view),
       plannedForDate: query.plannedForDate ?? null,
       includeArchived: query.includeArchived ?? false,
-      limit,
+      limit: query.limit && query.limit > 0 ? Math.floor(query.limit) : null,
+      search: view.search,
+      groupBy: view.groupBy,
+      sortKey: view.sort.key,
+      sortDirection: view.sort.direction,
     },
+    groups: result.groups.map((group) => ({
+      key: group.key,
+      label: group.label,
+      count: group.count,
+    })),
     projects: input.projects.map((project) => ({
       id: project.id,
       name: project.name,

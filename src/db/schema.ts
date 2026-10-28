@@ -82,6 +82,7 @@ export const tasks = pgTable(
     priority: varchar("priority", { length: 32 }).notNull().default("medium"),
     estimateMinutes: integer("estimate_minutes"),
     focusRank: integer("focus_rank"),
+    boardRank: text("board_rank"),
     dueDate: date("due_date"),
     plannedForDate: date("planned_for_date"),
     scheduledStartAt: timestamp("scheduled_start_at", { withTimezone: true }),
@@ -104,6 +105,11 @@ export const tasks = pgTable(
   (table) => [
     index("tasks_owner_user_id_idx").on(table.ownerUserId),
     index("tasks_owner_user_id_focus_rank_idx").on(table.ownerUserId, table.focusRank),
+    index("tasks_owner_status_board_rank_idx").on(
+      table.ownerUserId,
+      table.status,
+      table.boardRank,
+    ),
     index("tasks_owner_user_id_planned_for_date_idx").on(table.ownerUserId, table.plannedForDate),
     index("tasks_owner_user_id_scheduled_start_at_idx").on(table.ownerUserId, table.scheduledStartAt),
     index("tasks_owner_active_updated_idx")
@@ -123,6 +129,10 @@ export const tasks = pgTable(
     check(
       "tasks_calendar_sync_status_check",
       sql`${table.calendarSyncStatus} is null or ${table.calendarSyncStatus} in ('pending', 'synced', 'failed', 'skipped')`,
+    ),
+    check(
+      "tasks_board_rank_format_check",
+      sql`${table.boardRank} is null or (length(${table.boardRank}) between 1 and 512 and ${table.boardRank} ~ '^[0-9A-Z]+$')`,
     ),
   ],
 );
@@ -316,6 +326,10 @@ export const taskSessions = pgTable(
     startedAt: timestamp("started_at", { withTimezone: true }).notNull(),
     endedAt: timestamp("ended_at", { withTimezone: true }),
     durationSeconds: integer("duration_seconds"),
+    actorKind: varchar("actor_kind", { length: 16 }).notNull().default("unknown"),
+    actorUserId: uuid("actor_user_id"),
+    actorAgentId: text("actor_agent_id"),
+    actorLabel: text("actor_label"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
@@ -328,6 +342,10 @@ export const taskSessions = pgTable(
     uniqueIndex("task_sessions_owner_open_unique")
       .on(table.ownerUserId)
       .where(sql`${table.endedAt} is null`),
+    check(
+      "task_sessions_actor_kind_check",
+      sql`${table.actorKind} in ('owner', 'agent', 'system', 'unknown')`,
+    ),
   ],
 );
 
@@ -397,7 +415,10 @@ export const notifications = pgTable(
     index("notifications_owner_unread_idx")
       .on(table.ownerUserId, table.createdAt.desc())
       .where(sql`${table.readAt} is null`),
-    check("notifications_type_check", sql`${table.type} in ('task_reminder')`),
+    check(
+      "notifications_type_check",
+      sql`${table.type} in ('task_reminder', 'task_comment_mention')`,
+    ),
     check(
       "notifications_target_type_check",
       sql`${table.targetType} is null or ${table.targetType} in ('task')`,
@@ -542,6 +563,10 @@ export const taskStatusEvents = pgTable(
     fromStatus: varchar("from_status", { length: 64 }),
     toStatus: varchar("to_status", { length: 64 }).notNull(),
     occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull(),
+    actorKind: varchar("actor_kind", { length: 16 }).notNull().default("unknown"),
+    actorUserId: uuid("actor_user_id"),
+    actorAgentId: text("actor_agent_id"),
+    actorLabel: text("actor_label"),
     operationMetadata: jsonb("operation_metadata"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
@@ -553,6 +578,10 @@ export const taskStatusEvents = pgTable(
       table.ownerUserId,
       table.taskId,
       table.occurredAt,
+    ),
+    check(
+      "task_status_events_actor_kind_check",
+      sql`${table.actorKind} in ('owner', 'agent', 'system', 'unknown')`,
     ),
   ],
 );
@@ -639,9 +668,11 @@ export const taskActivityEvents = pgTable(
     taskId: uuid("task_id").references(() => tasks.id, { onDelete: "set null" }),
     actorKind: varchar("actor_kind", { length: 16 }).notNull(),
     actorUserId: uuid("actor_user_id"),
+    actorAgentId: text("actor_agent_id"),
     actorLabel: text("actor_label"),
     eventKind: varchar("event_kind", { length: 32 }).notNull(),
     delta: jsonb("delta").notNull(),
+    sourceEventId: varchar("source_event_id", { length: 128 }),
     occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
@@ -651,13 +682,16 @@ export const taskActivityEvents = pgTable(
       table.taskId,
       table.occurredAt,
     ),
+    uniqueIndex("task_activity_events_source_unique")
+      .on(table.ownerUserId, table.eventKind, table.sourceEventId)
+      .where(sql`${table.sourceEventId} is not null`),
     check(
       "task_activity_events_actor_kind_check",
       sql`${table.actorKind} in ('owner', 'agent', 'system', 'unknown')`,
     ),
     check(
       "task_activity_events_event_kind_check",
-      sql`${table.eventKind} in ('created', 'field_change', 'archived', 'restored')`,
+      sql`${table.eventKind} in ('created', 'field_change', 'archived', 'restored', 'reminder_scheduled', 'reminder_updated', 'reminder_cancelled', 'comment')`,
     ),
   ],
 );
@@ -782,6 +816,140 @@ export const agentIntegrationTokens = pgTable(
   (table) => [
     uniqueIndex("agent_token_prefix_unique").on(table.tokenPrefix),
     index("agent_tokens_owner_idx").on(table.ownerUserId),
+  ],
+);
+
+/**
+ * Owner-scoped task comment thread (EGA-783).
+ *
+ * Author identity is stable: `authorRef` is `owner` or `agent:<slug(name)>`,
+ * while `authorTokenId` only records which credential wrote the row. Token
+ * rotation/revocation therefore keeps historical attribution. Writes go through
+ * the security-definer RPCs in migration 0070; product clients are read-only.
+ */
+export const taskComments = pgTable(
+  "task_comments",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    ownerUserId: uuid("owner_user_id").default(sql`auth.uid()`).notNull(),
+    taskId: uuid("task_id")
+      .notNull()
+      .references(() => tasks.id, { onDelete: "cascade" }),
+    authorKind: varchar("author_kind", { length: 16 }).notNull(),
+    authorUserId: uuid("author_user_id"),
+    authorTokenId: uuid("author_token_id").references(
+      () => agentIntegrationTokens.id,
+      { onDelete: "set null" },
+    ),
+    authorRef: text("author_ref").notNull(),
+    authorLabel: text("author_label").notNull(),
+    body: text("body").notNull(),
+    clientRequestId: text("client_request_id").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+    editedAt: timestamp("edited_at", { withTimezone: true }),
+  },
+  (table) => [
+    uniqueIndex("task_comments_owner_request_unique").on(
+      table.ownerUserId,
+      table.clientRequestId,
+    ),
+    index("task_comments_owner_task_time_idx").on(
+      table.ownerUserId,
+      table.taskId,
+      table.createdAt,
+    ),
+    index("task_comments_author_ref_idx").on(table.ownerUserId, table.authorRef),
+    check(
+      "task_comments_author_kind_check",
+      sql`${table.authorKind} in ('owner', 'agent')`,
+    ),
+    check(
+      "task_comments_author_ref_check",
+      sql`((${table.authorKind} = 'owner' and ${table.authorRef} = 'owner') or (${table.authorKind} = 'agent' and ${table.authorRef} ~ '^agent:[a-z0-9][a-z0-9-]{0,62}$'))`,
+    ),
+    check(
+      "task_comments_body_length_check",
+      sql`char_length(${table.body}) between 1 and 4000`,
+    ),
+    check(
+      "task_comments_request_id_check",
+      sql`char_length(${table.clientRequestId}) between 1 and 128`,
+    ),
+  ],
+);
+
+export const taskCommentMentions = pgTable(
+  "task_comment_mentions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    ownerUserId: uuid("owner_user_id").default(sql`auth.uid()`).notNull(),
+    commentId: uuid("comment_id")
+      .notNull()
+      .references(() => taskComments.id, { onDelete: "cascade" }),
+    mentionKind: varchar("mention_kind", { length: 16 }).notNull(),
+    mentionRef: text("mention_ref").notNull(),
+    mentionLabel: text("mention_label").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("task_comment_mentions_comment_ref_unique").on(
+      table.commentId,
+      table.mentionRef,
+    ),
+    index("task_comment_mentions_owner_idx").on(table.ownerUserId),
+    check(
+      "task_comment_mentions_kind_check",
+      sql`${table.mentionKind} in ('owner', 'agent')`,
+    ),
+    check(
+      "task_comment_mentions_ref_check",
+      sql`((${table.mentionKind} = 'owner' and ${table.mentionRef} = 'owner') or (${table.mentionKind} = 'agent' and ${table.mentionRef} ~ '^agent:[a-z0-9][a-z0-9-]{0,62}$'))`,
+    ),
+  ],
+);
+
+export const taskCommentReactions = pgTable(
+  "task_comment_reactions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    ownerUserId: uuid("owner_user_id").default(sql`auth.uid()`).notNull(),
+    commentId: uuid("comment_id")
+      .notNull()
+      .references(() => taskComments.id, { onDelete: "cascade" }),
+    actorKind: varchar("actor_kind", { length: 16 }).notNull(),
+    actorUserId: uuid("actor_user_id"),
+    actorTokenId: uuid("actor_token_id").references(
+      () => agentIntegrationTokens.id,
+      { onDelete: "set null" },
+    ),
+    actorRef: text("actor_ref").notNull(),
+    actorLabel: text("actor_label").notNull(),
+    emoji: varchar("emoji", { length: 32 }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("task_comment_reactions_comment_actor_emoji_unique").on(
+      table.commentId,
+      table.actorRef,
+      table.emoji,
+    ),
+    index("task_comment_reactions_owner_comment_idx").on(
+      table.ownerUserId,
+      table.commentId,
+    ),
+    check(
+      "task_comment_reactions_actor_kind_check",
+      sql`${table.actorKind} in ('owner', 'agent')`,
+    ),
+    check(
+      "task_comment_reactions_actor_ref_check",
+      sql`((${table.actorKind} = 'owner' and ${table.actorRef} = 'owner') or (${table.actorKind} = 'agent' and ${table.actorRef} ~ '^agent:[a-z0-9][a-z0-9-]{0,62}$'))`,
+    ),
+    check(
+      "task_comment_reactions_emoji_check",
+      sql`${table.emoji} in ('👍', '👀', '✅', '🎉', '🙏', '🔥')`,
+    ),
   ],
 );
 

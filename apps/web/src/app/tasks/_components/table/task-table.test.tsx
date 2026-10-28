@@ -43,6 +43,7 @@ function buildTask(overrides: Partial<TaskRecord> = {}): TaskRecord {
     project_id: "project-1",
     goal_id: "goal-1",
     focus_rank: null,
+    board_rank: null,
     archived_at: null,
     archived_by: null,
     projects: { name: "EGA House" },
@@ -86,26 +87,14 @@ function buildActions(): TaskTableActions {
   };
 }
 
-const VIEW_FILTERS = {
-  status: null,
-  project: null,
-  goal: null,
-  due: "all",
-  sort: "updated_desc",
-  priority: "",
-  estimateMin: null,
-  estimateMax: null,
-  dueWithin: null,
-  activeTasks: false,
-};
-
 function tableProps(overrides: Partial<Parameters<typeof TaskTable>[0]> = {}) {
   return {
     tasks: [buildTask()],
     taskTotalDurations: { "task-1": 3661 },
     returnTo: "/tasks?status=todo&layout=kanban",
     columns: normalizeTaskTableColumns(null),
-    sort: "updated_desc" as const,
+    sortKey: "updated" as const,
+    sortDirection: "desc" as const,
     taskUpdateTaskId: null,
     taskUpdateError: null,
     projectOptions: [{ id: "project-1", name: "EGA House" }],
@@ -113,9 +102,6 @@ function tableProps(overrides: Partial<Parameters<typeof TaskTable>[0]> = {}) {
       { id: "goal-1", title: "Tighten weekly review", projectId: "project-1" },
     ],
     actions: buildActions(),
-    savedViews: [],
-    createViewAction: vi.fn(),
-    viewFilters: VIEW_FILTERS,
     ...overrides,
   };
 }
@@ -645,16 +631,24 @@ function setInputValue(input: HTMLInputElement, value: string) {
 
 describe("EGA-792 table view behavior", () => {
   it("keeps header sort and the toolbar sort on the same URL contract", async () => {
-    await renderTable([buildTask()], buildActions(), { sort: "updated_desc" });
+    await renderTable([buildTask()], buildActions(), {
+      sortKey: "updated",
+      sortDirection: "desc",
+    });
 
     const priorityLink = container.querySelector<HTMLAnchorElement>(
       '[data-testid="sort-header-priority"]',
     );
     expect(priorityLink).not.toBeNull();
-    expect(priorityLink?.getAttribute("href")).toContain("sort=priority_desc");
+    // The toolbar's default priority direction is ascending.
+    expect(priorityLink?.getAttribute("href")).toContain("sort=priority");
+    expect(priorityLink?.getAttribute("href")).not.toContain("dir=");
     expect(priorityLink?.getAttribute("aria-label")).toContain("currently not sorted");
 
-    await renderTable([buildTask()], buildActions(), { sort: "priority_desc" });
+    await renderTable([buildTask()], buildActions(), {
+      sortKey: "priority",
+      sortDirection: "desc",
+    });
 
     const activeHeader = container.querySelector<HTMLTableCellElement>(
       'th[aria-sort="descending"]',
@@ -663,7 +657,8 @@ describe("EGA-792 table view behavior", () => {
     const toggledLink = container.querySelector<HTMLAnchorElement>(
       '[data-testid="sort-header-priority"]',
     );
-    expect(toggledLink?.getAttribute("href")).toContain("sort=priority_asc");
+    expect(toggledLink?.getAttribute("href")).toContain("sort=priority");
+    expect(toggledLink?.getAttribute("href")).toContain("dir=asc");
   });
 
   it("persists column visibility in the URL and keeps focus on the toggled control", async () => {
@@ -856,31 +851,6 @@ describe("EGA-792 table view behavior", () => {
       }),
     );
     expect(container.querySelector("#task-task-1")?.textContent).toContain("Second project");
-  });
-
-  it("passes the current column state into a new saved view", async () => {
-    const createViewAction = vi.fn();
-    await renderTable([buildTask()], buildActions(), {
-      returnTo: "/tasks?cols=task%2Cproject%2Cpriority%2Cdue%2Cstatus&widths=task%3A420",
-      columns: parseTaskTableColumns({
-        cols: "task,project,priority,due,status",
-        widths: "task:420",
-      }),
-      savedViews: [
-        { id: "deep-work", name: "Deep Work", href: "/tasks?priority=high", isDefault: true },
-      ],
-      createViewAction,
-    });
-
-    await pointerClick(container.querySelector('[data-testid="table-views-trigger"]'));
-    expect(document.body.querySelector('a[href="/tasks?priority=high"]')?.textContent).toContain(
-      "Deep Work",
-    );
-    const cols = document.body.querySelector<HTMLInputElement>('input[name="cols"]');
-    const widths = document.body.querySelector<HTMLInputElement>('input[name="widths"]');
-    expect(cols?.value).toBe("task,project,priority,due,status");
-    expect(widths?.value).toBe("task:420");
-    expect(createViewAction).not.toHaveBeenCalled();
   });
 
   it("returns focus to the cell trigger after Escape", async () => {

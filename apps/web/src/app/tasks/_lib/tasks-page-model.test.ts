@@ -47,6 +47,14 @@ vi.mock("@/lib/services/task-activity-service", () => ({
   getTaskActivity: vi.fn(async () => ({ items: [], hasMore: false, errorMessage: null })),
 }));
 
+vi.mock("@/lib/services/task-comment-service", () => ({
+  getTaskCommentThread: vi.fn(async () => ({
+    comments: [],
+    mentionCandidates: [],
+    errorMessage: null,
+  })),
+}));
+
 vi.mock("@/lib/services/subtask-service", () => ({
   listTaskSubtasks: vi.fn(async () => ({ data: [], errorMessage: null })),
   getSubtaskCountsForTasks: vi.fn(async () => ({})),
@@ -127,16 +135,19 @@ describe("getTasksPageModel dead /tasks work removal", () => {
     });
 
     expect(
-      model.parsed.tableColumns.filter((column) => column.visible).map((column) => column.id),
+      model.parsed.view.columns
+        ?.filter((column) => column.visible)
+        .map((column) => column.id),
     ).toEqual(["task", "project", "status"]);
-    expect(model.parsed.columnsParam).toBe("task,project,status");
-    expect(model.parsed.widthsParam).toBe("status:400");
     expect(model.returnPath).toContain("cols=task%2Cproject%2Cstatus");
     expect(model.returnPath).toContain("widths=status%3A400");
 
     const defaultModel = await getTasksPageModel({});
-    expect(defaultModel.parsed.columnsParam).toBeNull();
-    expect(defaultModel.parsed.widthsParam).toBeNull();
+    expect(
+      defaultModel.parsed.view.columns
+        ?.filter((column) => column.visible)
+        .map((column) => column.id),
+    ).toEqual(["task", "priority", "due", "status"]);
   });
 
   it("ega-661: overdue and due-soon counts use the account local date, not the runtime-local date", async () => {

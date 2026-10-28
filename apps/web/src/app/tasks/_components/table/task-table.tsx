@@ -58,30 +58,27 @@ import type {
   TaskTableCellUpdateResult,
 } from "@/app/tasks/actions";
 import {
-  DEFAULT_TASK_SORT,
   TASK_TABLE_COLUMN_MAX_WIDTH,
   TASK_TABLE_COLUMN_MIN_WIDTH,
   TASK_TABLE_DEFAULT_COLUMNS,
   clampTaskTableColumnWidth,
+  getDefaultTaskViewSortDirection,
   getTaskTableDefaultColumnWidth,
-  type TaskSortDirection,
-  type TaskSortValue,
   type TaskTableColumnConfig,
   type TaskTableColumnId,
+  type TaskViewSortDirection,
+  type TaskViewSortKey,
 } from "@ega/contracts/common/task-list";
 import {
   buildTaskTableColumnsUrl,
-  serializeTaskTableColumns,
   setTaskTableUrlParam,
 } from "@/lib/task-table-columns";
 import { TaskBulkBar, type TaskBulkActions } from "../task-bulk-bar";
 import {
   TASK_TABLE_COLUMN_LABELS,
   TASK_TABLE_COLUMN_SORT_FIELD,
-  nextTaskSortValue,
-  taskSortDirectionFor,
+  nextTaskViewSort,
 } from "./column-config";
-import { TableViewMenu, type TableViewFilterValues, type TableViewLink } from "./table-view-menu";
 import { useColumnResize } from "./use-column-resize";
 
 export type TaskTableActions = {
@@ -108,16 +105,14 @@ type TaskTableProps = {
   subtaskCounts?: Record<string, { done: number; total: number }>;
   returnTo: string;
   columns: TaskTableColumnConfig[];
-  sort: TaskSortValue;
+  sortKey: TaskViewSortKey;
+  sortDirection: TaskViewSortDirection;
   taskUpdateTaskId: string | null;
   taskUpdateError: string | null;
   projectOptions?: Array<{ id: string; name: string }>;
   goalOptions?: Array<{ id: string; title: string; projectId: string }>;
   density?: "comfortable" | "compact";
   actions: TaskTableActions;
-  savedViews?: TableViewLink[];
-  createViewAction: (formData: FormData) => void | Promise<void>;
-  viewFilters: TableViewFilterValues;
 };
 
 const ACTIONS_COLUMN_WIDTH = 132;
@@ -138,7 +133,7 @@ function effectiveWidth(
  * Spreadsheet-style task table.
  *
  * Column visibility/order/width is URL-authoritative (`cols`/`widths`) and can
- * be saved per view. Header sort writes the same `sort` value the toolbar
+ * be saved per view. Header sort writes the same `sort`/`dir` pair the toolbar
  * consumes. Inline editors reuse the canonical single-field patch, carry the
  * rendered row revision as a concurrency precondition and keep their draft on
  * failure. Phone widths keep the existing stacked task-row presentation, so
@@ -150,16 +145,14 @@ export function TaskTable({
   subtaskCounts = {},
   returnTo,
   columns: initialColumns,
-  sort,
+  sortKey,
+  sortDirection,
   taskUpdateTaskId,
   taskUpdateError,
   projectOptions = [],
   goalOptions = [],
   density = "comfortable",
   actions,
-  savedViews = [],
-  createViewAction,
-  viewFilters,
 }: TaskTableProps) {
   const router = useRouter();
   const [columns, setColumns] = useState<TaskTableColumnConfig[]>(initialColumns);
@@ -169,7 +162,6 @@ export function TaskTable({
   const pendingFocusRef = useRef<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const visibleColumns = columns.filter((column) => column.visible);
-  const serializedColumns = serializeTaskTableColumns(columns);
 
   const commitColumns = (next: TaskTableColumnConfig[], focusTarget?: string) => {
     columnsRef.current = next;
@@ -255,16 +247,21 @@ export function TaskTable({
     );
   };
 
-  const buildViewUrl = (overrides: { sort?: TaskSortValue } = {}) => {
-    let next = buildTaskTableColumnsUrl(returnTo, columnsRef.current);
-    if (overrides.sort) {
-      next = setTaskTableUrlParam(
-        next,
-        "sort",
-        overrides.sort === DEFAULT_TASK_SORT ? null : overrides.sort,
-      );
-    }
-    return next;
+  const buildSortHref = (field: TaskViewSortKey) => {
+    const next = nextTaskViewSort(
+      { key: sortKey, direction: sortDirection },
+      field,
+    );
+    const isDefaultSort = next.key === "updated" && next.direction === "desc";
+    const omitDirection = next.direction === getDefaultTaskViewSortDirection(next.key);
+    let nextUrl = buildTaskTableColumnsUrl(returnTo, columnsRef.current);
+    nextUrl = setTaskTableUrlParam(nextUrl, "sort", isDefaultSort ? null : next.key);
+    nextUrl = setTaskTableUrlParam(
+      nextUrl,
+      "dir",
+      isDefaultSort || omitDirection ? null : next.direction,
+    );
+    return nextUrl;
   };
 
   const visibleIds = tasks.map((task) => task.id);
@@ -341,14 +338,6 @@ export function TaskTable({
           {visibleColumns.length} of {columns.length} columns
         </p>
         <div className="flex flex-wrap items-center gap-1.5">
-          <TableViewMenu
-            savedViews={savedViews}
-            createAction={createViewAction}
-            returnTo={returnTo}
-            filters={viewFilters}
-            columnsParam={serializedColumns.cols}
-            widthsParam={serializedColumns.widths}
-          />
           <ColumnSettings
             columns={columns}
             onToggle={toggleColumn}
@@ -368,7 +357,8 @@ export function TaskTable({
             {visibleColumns.map((column) => {
               const label = TASK_TABLE_COLUMN_LABELS[column.id];
               const sortField = TASK_TABLE_COLUMN_SORT_FIELD[column.id];
-              const direction = sortField ? taskSortDirectionFor(sort, sortField) : null;
+              const direction =
+                sortField && sortKey === sortField ? sortDirection : null;
               const width = effectiveWidth(column, resizePreview);
               return (
                 <th
@@ -404,7 +394,7 @@ export function TaskTable({
                       <SortHeaderLink
                         label={label}
                         direction={direction}
-                        href={buildViewUrl({ sort: nextTaskSortValue(sort, sortField) })}
+                        href={buildSortHref(sortField)}
                       />
                     ) : (
                       <span className="min-w-0 truncate">{label}</span>
@@ -476,7 +466,7 @@ function SortHeaderLink({
   href,
 }: {
   label: string;
-  direction: TaskSortDirection | null;
+  direction: TaskViewSortDirection | null;
   href: string;
 }) {
   const stateLabel =

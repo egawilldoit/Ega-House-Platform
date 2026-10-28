@@ -6,12 +6,18 @@ import { redirect } from "next/navigation";
 import { GOAL_ARCHIVE_STATUS } from "@/lib/goal-archive";
 import { createClient } from "@/lib/supabase/server";
 import {
+  getTaskSavedViewLegacyColumns,
+  getTaskSavedViewDefinitionFromFilters,
   getTaskSavedViewNameError,
-  buildTaskSavedViewDefinition,
   normalizeTaskSavedViewFilters,
   validateTaskSavedViewScope,
+  validateTaskViewScope,
 } from "@/lib/task-saved-views";
-import { parseTaskTableColumns } from "@/lib/task-table-columns";
+import {
+  parseTaskViewDefinitionJson,
+  serializeTaskViewDefinition,
+  TASK_VIEW_DEFINITION_MAX_CHARS,
+} from "@ega/contracts/common/task-list";
 import { isMissingSupabaseTable } from "@/lib/supabase-error";
 
 const SAVED_VIEWS_UNAVAILABLE_MESSAGE =
@@ -85,13 +91,6 @@ function getSavedViewFilters(formData: FormData) {
   });
 }
 
-function getSavedViewColumns(formData: FormData) {
-  return parseTaskTableColumns({
-    cols: String(formData.get("cols") ?? ""),
-    widths: String(formData.get("widths") ?? ""),
-  });
-}
-
 async function validateSavedViewWrite(
   supabase: Awaited<ReturnType<typeof createClient>>,
   name: string,
@@ -100,27 +99,61 @@ async function validateSavedViewWrite(
   const nameError = getTaskSavedViewNameError(name);
 
   if (nameError) {
-    return { errorMessage: nameError, filters: null, columns: null };
+    return { errorMessage: nameError, view: null };
   }
 
-  const filters = getSavedViewFilters(formData);
-  const columns = getSavedViewColumns(formData);
+  const rawDefinition = String(formData.get("definition") ?? "").trim();
+  let view = null;
+
+  if (rawDefinition) {
+    if (rawDefinition.length > TASK_VIEW_DEFINITION_MAX_CHARS) {
+      return { errorMessage: "Saved view definition is too large.", view: null };
+    }
+    view = parseTaskViewDefinitionJson(rawDefinition);
+    if (!view) {
+      return { errorMessage: "Saved view definition is invalid.", view: null };
+    }
+  } else {
+    // Compatibility path for forms posted by the pre-EGA-791 panel.
+    const filters = getSavedViewFilters(formData);
+    view = getTaskSavedViewDefinitionFromFilters(filters);
+  }
+
   const scope = await getVisibleTaskScope(supabase);
 
   if (scope.errorMessage) {
-    return { errorMessage: scope.errorMessage, filters: null, columns: null };
+    return { errorMessage: scope.errorMessage, view: null };
   }
 
-  const scopeError = validateTaskSavedViewScope(filters, {
+  const scopeError = validateTaskViewScope(view, {
     projectIds: scope.projectIds,
     goalsById: scope.goalsById,
   });
 
   if (scopeError) {
-    return { errorMessage: scopeError, filters: null, columns: null };
+    return { errorMessage: scopeError, view: null };
   }
 
-  return { errorMessage: null, filters, columns };
+  // Kept for callers/tests that still validate the legacy filter projection.
+  const legacyScopeError = validateTaskSavedViewScope(
+    normalizeTaskSavedViewFilters({
+      status: getTaskSavedViewLegacyColumns(view).status,
+      projectId: getTaskSavedViewLegacyColumns(view).projectId,
+      goalId: getTaskSavedViewLegacyColumns(view).goalId,
+      dueFilter: getTaskSavedViewLegacyColumns(view).dueFilter,
+      sortValue: getTaskSavedViewLegacyColumns(view).sortValue,
+    }),
+    { projectIds: scope.projectIds, goalsById: scope.goalsById },
+  );
+  if (legacyScopeError) {
+    return { errorMessage: legacyScopeError, view: null };
+  }
+
+  if (!serializeTaskViewDefinition(view) || serializeTaskViewDefinition(view).length > TASK_VIEW_DEFINITION_MAX_CHARS) {
+    return { errorMessage: "Saved view definition is too large.", view: null };
+  }
+
+  return { errorMessage: null, view };
 }
 
 export async function createTaskSavedViewAction(formData: FormData) {
@@ -129,20 +162,21 @@ export async function createTaskSavedViewAction(formData: FormData) {
   const supabase = await createClient();
   const validation = await validateSavedViewWrite(supabase, name, formData);
 
-  if (validation.errorMessage || !validation.filters || !validation.columns) {
+  if (validation.errorMessage || !validation.view) {
     redirectWithSavedViewFeedback(returnPath, {
       error: validation.errorMessage ?? "Unable to save the current filters right now.",
     });
   }
 
+  const columns = getTaskSavedViewLegacyColumns(validation.view);
   const { error } = await supabase.from("task_saved_views").insert({
     name,
-    status: validation.filters.status,
-    project_id: validation.filters.projectId,
-    goal_id: validation.filters.goalId,
-    due_filter: validation.filters.dueFilter,
-    sort_value: validation.filters.sortValue,
-    definition_json: buildTaskSavedViewDefinition(validation.filters, validation.columns),
+    status: columns.status,
+    project_id: columns.projectId,
+    goal_id: columns.goalId,
+    due_filter: columns.dueFilter,
+    sort_value: columns.sortValue,
+    definition_json: validation.view,
   });
 
   if (error) {
@@ -171,22 +205,23 @@ export async function updateTaskSavedViewAction(formData: FormData) {
   const supabase = await createClient();
   const validation = await validateSavedViewWrite(supabase, name, formData);
 
-  if (validation.errorMessage || !validation.filters || !validation.columns) {
+  if (validation.errorMessage || !validation.view) {
     redirectWithSavedViewFeedback(returnPath, {
       error: validation.errorMessage ?? "Unable to update the saved view right now.",
     });
   }
 
+  const columns = getTaskSavedViewLegacyColumns(validation.view);
   const { error } = await supabase
     .from("task_saved_views")
     .update({
       name,
-      status: validation.filters.status,
-      project_id: validation.filters.projectId,
-      goal_id: validation.filters.goalId,
-      due_filter: validation.filters.dueFilter,
-      sort_value: validation.filters.sortValue,
-      definition_json: buildTaskSavedViewDefinition(validation.filters, validation.columns),
+      status: columns.status,
+      project_id: columns.projectId,
+      goal_id: columns.goalId,
+      due_filter: columns.dueFilter,
+      sort_value: columns.sortValue,
+      definition_json: validation.view,
       updated_at: new Date().toISOString(),
     })
     .eq("id", viewId);

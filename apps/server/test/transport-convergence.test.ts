@@ -34,6 +34,11 @@ class FakeSupabase {
       or(...args: unknown[]) { steps.push({ method: "or", args }); return builder; },
       order(...args: unknown[]) { steps.push({ method: "order", args }); return builder; },
       limit(...args: unknown[]) { steps.push({ method: "limit", args }); return builder; },
+      range(...args: unknown[]) { steps.push({ method: "range", args }); return builder; },
+      lt(...args: unknown[]) { steps.push({ method: "lt", args }); return builder; },
+      ilike(...args: unknown[]) { steps.push({ method: "ilike", args }); return builder; },
+      gte(...args: unknown[]) { steps.push({ method: "gte", args }); return builder; },
+      lte(...args: unknown[]) { steps.push({ method: "lte", args }); return builder; },
       insert() { steps.push({ method: "insert", args: [] }); return builder; },
       update() { steps.push({ method: "update", args: [] }); return builder; },
       maybeSingle() {

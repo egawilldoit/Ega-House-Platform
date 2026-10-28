@@ -5,24 +5,30 @@ import {
   buildTaskListUrl,
   isTaskDueFilter,
   isTaskSortValue,
+  normalizeTaskBoardOrder,
   normalizeTaskDensity,
   normalizeTaskLayout,
+  parseTaskListView,
+  sortTasksForBoard,
+  type TaskBoardOrder,
   type TaskDensity,
   type TaskDueFilter,
   type TaskLayoutMode,
   type TaskSortValue,
+  type TaskViewDefinition,
 } from "@/lib/task-list";
-import {
-  parseTaskTableColumns,
-  serializeTaskTableColumns,
-} from "@/lib/task-table-columns";
-import { normalizeTaskTableColumns, type TaskTableColumnConfig } from "@ega/contracts/common/task-list";
 import { isTaskStatus, type TaskStatus } from "@/lib/task-domain";
-import { normalizeTaskViewFilter, type TaskViewFilter } from "@/lib/task-archive";
-import { normalizeTaskSavedViewFilters } from "@/lib/task-saved-views";
+import { normalizeTaskViewFilter, type TaskViewFilter as TaskArchiveViewFilter } from "@/lib/task-archive";
+import {
+  getTaskSavedViewFiltersFromDefinition,
+  normalizeTaskSavedViewFilters,
+} from "@/lib/task-saved-views";
+import { groupTaskViewRecords } from "@ega/application/tasks/view";
+import { getTodayLocalIsoDate } from "@/lib/task-due-date";
 import { getTaskDrawerDetail, type TaskDrawerDetail } from "@/lib/services/task-service";
 import { getSubtaskCountsForTasks, listTaskSubtasks } from "@/lib/services/subtask-service";
 import { getTaskActivity } from "@/lib/services/task-activity-service";
+import { getTaskCommentThread } from "@/lib/services/task-comment-service";
 import { isFavorite } from "@/lib/services/favorite-service";
 import { getTasksWorkspaceData } from "@/lib/services/task-service";
 import { getWebTimeContext } from "@/lib/services/time-context-service";
@@ -42,11 +48,16 @@ export type TasksSearchParams = {
   archive?: string;
   layout?: string;
   density?: string;
-  /** Ordered visible table column ids. */
-  cols?: string;
-  /** Non-default table column widths. */
-  widths?: string;
+  boardOrder?: string;
   view?: string;
+  /** Table column layout (EGA-792). */
+  cols?: string;
+  widths?: string;
+  /** Canonical toolbar parameters (EGA-791). */
+  q?: string;
+  group?: string;
+  dir?: string;
+  filter?: string | string[];
   taskUpdateError?: string;
   taskUpdateSuccess?: string;
   taskUpdateTaskId?: string;
@@ -65,13 +76,13 @@ export type ParsedTasksFilters = {
   activeSort: TaskSortValue;
   activeLayout: TaskLayoutMode;
   activeDensity: TaskDensity;
-  activeView: TaskViewFilter;
-  tableColumns: TaskTableColumnConfig[];
-  columnsParam: string | null;
-  widthsParam: string | null;
+  activeBoardOrder: TaskBoardOrder | null;
+  activeView: TaskArchiveViewFilter;
   projectParam: string | null;
   goalParam: string | null;
   savedViewDefinitionFilters: ReturnType<typeof normalizeTaskSavedViewFilters>;
+  /** Canonical filter/group/sort/search definition shared with saved views. */
+  view: TaskViewDefinition;
   taskUpdateError: string | null;
   taskUpdateSuccess: string | null;
   taskUpdateTaskId: string | null;
@@ -79,28 +90,38 @@ export type ParsedTasksFilters = {
 };
 
 export function parseTasksSearchParams(searchParams: TasksSearchParams): ParsedTasksFilters {
-  const statusParam = searchParams.status;
   const projectParam = searchParams.project?.trim() || null;
   const goalParam = searchParams.goal?.trim() || null;
-  const dueParam = searchParams.due?.trim() || DEFAULT_TASK_DUE_FILTER;
-  const sortParam = searchParams.sort?.trim() || DEFAULT_TASK_SORT;
-  const activeStatus: TaskStatus | null = statusParam && isTaskStatus(statusParam) ? statusParam : null;
-  const activeDueFilter: TaskDueFilter = isTaskDueFilter(dueParam) ? dueParam : DEFAULT_TASK_DUE_FILTER;
-  const activeSort: TaskSortValue = isTaskSortValue(sortParam) ? sortParam : DEFAULT_TASK_SORT;
+  const view = parseTaskListView(searchParams);
+  const projected = getTaskSavedViewFiltersFromDefinition(view);
   const savedViewDefinitionFilters = normalizeTaskSavedViewFilters({
-    activeTasks: searchParams.tasks === "active",
-    priority: searchParams.priority,
-    estimateMinMinutes: searchParams.estimateMin,
-    estimateMaxMinutes: searchParams.estimateMax,
-    dueWithinDays: searchParams.dueWithin,
+    activeTasks: view.activeOnly,
+    priority: projected.priorityValues,
+    estimateMinMinutes: projected.estimateMinMinutes,
+    estimateMaxMinutes: projected.estimateMaxMinutes,
+    dueWithinDays: projected.dueWithinDays,
+    status: projected.status,
+    projectId: projected.projectId,
+    goalId: projected.goalId,
+    dueFilter: projected.dueFilter,
+    sortValue: projected.sortValue,
   });
+  const statusFilter = view.filters.find(
+    (filter) =>
+      filter.field === "status" &&
+      (filter.operator === "is" || filter.operator === "is_any_of") &&
+      filter.values.length === 1,
+  );
+  const activeStatus: TaskStatus | null =
+    statusFilter && isTaskStatus(statusFilter.values[0]) ? (statusFilter.values[0] as TaskStatus) : null;
+  const activeDueFilter: TaskDueFilter =
+    isTaskDueFilter(projected.dueFilter ?? "") ? (projected.dueFilter as TaskDueFilter) : DEFAULT_TASK_DUE_FILTER;
+  const activeSort: TaskSortValue =
+    isTaskSortValue(projected.sortValue ?? "") ? (projected.sortValue as TaskSortValue) : DEFAULT_TASK_SORT;
   const activeLayout: TaskLayoutMode = normalizeTaskLayout(searchParams.layout);
   const activeDensity: TaskDensity = normalizeTaskDensity(searchParams.density);
-  const activeView: TaskViewFilter = normalizeTaskViewFilter(searchParams.archive ?? searchParams.view);
-  const tableColumns = searchParams.cols || searchParams.widths
-    ? parseTaskTableColumns({ cols: searchParams.cols, widths: searchParams.widths })
-    : normalizeTaskTableColumns(null);
-  const serializedColumns = serializeTaskTableColumns(tableColumns);
+  const activeBoardOrder = normalizeTaskBoardOrder(searchParams.boardOrder);
+  const activeView: TaskArchiveViewFilter = normalizeTaskViewFilter(searchParams.archive ?? searchParams.view);
   const taskUpdateError =
     searchParams.taskUpdateError?.slice(0, 180) ?? searchParams.statusUpdateError?.slice(0, 180) ?? null;
   const taskUpdateSuccess = searchParams.taskUpdateSuccess?.slice(0, 180) ?? null;
@@ -116,12 +137,11 @@ export function parseTasksSearchParams(searchParams: TasksSearchParams): ParsedT
     activeLayout,
     activeDensity,
     activeView,
-    tableColumns,
-    columnsParam: serializedColumns.cols,
-    widthsParam: serializedColumns.widths,
+    activeBoardOrder,
     projectParam,
     goalParam,
     savedViewDefinitionFilters,
+    view,
     taskUpdateError,
     taskUpdateSuccess,
     taskUpdateTaskId,
@@ -147,45 +167,90 @@ export async function getTasksPageModel(searchParams: TasksSearchParams) {
       activeEstimateMinMinutes: parsed.savedViewDefinitionFilters.estimateMinMinutes,
       activeEstimateMaxMinutes: parsed.savedViewDefinitionFilters.estimateMaxMinutes,
       activeDueWithinDays: parsed.savedViewDefinitionFilters.dueWithinDays,
+      view: parsed.view,
     },
     { todayIsoDate: accountLocalDate ?? undefined },
   );
-  const { projects, goals, tasks, taskTotalDurations, summary, savedViews, activeProjectId, activeGoalId } =
-    workspaceData;
+  const {
+    projects,
+    goals,
+    tasks,
+    taskTotalDurations,
+    summary,
+    savedViews,
+    activeProjectId,
+    activeGoalId,
+    view: workspaceView,
+    filteredTotal: workspaceFilteredTotal,
+    loadedCount: workspaceLoadedCount,
+    truncated: workspaceTruncated,
+  } = workspaceData;
+  // Older/partial workspace fixtures and adapters may not echo the canonical
+  // view; the parsed URL definition is the safe fallback.
+  const view = workspaceView ?? parsed.view;
+  const filteredTotal = workspaceFilteredTotal ?? tasks.length;
+  const loadedCount = workspaceLoadedCount ?? tasks.length;
+  const truncated = workspaceTruncated ?? false;
   const returnPath = buildTaskListUrl("/tasks", {
-    status: parsed.activeStatus,
-    priority: parsed.savedViewDefinitionFilters.priorityValues.join(","),
-    estimateMin: parsed.savedViewDefinitionFilters.estimateMinMinutes,
-    estimateMax: parsed.savedViewDefinitionFilters.estimateMaxMinutes,
-    dueWithin: parsed.savedViewDefinitionFilters.dueWithinDays,
-    activeTasks: parsed.savedViewDefinitionFilters.activeTasks,
-    project: activeProjectId,
-    goal: activeGoalId,
-    due: parsed.activeDueFilter,
-    sort: parsed.activeSort,
+    filters: view.filters,
+    group: view.groupBy,
+    q: view.search,
+    sortKey: view.sort.key,
+    sortDirection: view.sort.direction,
+    activeTasks: view.activeOnly,
     view: parsed.activeView,
     layout: parsed.activeLayout,
     density: parsed.activeDensity,
-    cols: parsed.columnsParam,
-    widths: parsed.widthsParam,
+    boardOrder: parsed.activeBoardOrder,
+    columns: view.columns,
   });
 
   const taskUrlFilters = {
-    status: parsed.activeStatus,
-    priority: parsed.savedViewDefinitionFilters.priorityValues.join(","),
-    estimateMin: parsed.savedViewDefinitionFilters.estimateMinMinutes,
-    estimateMax: parsed.savedViewDefinitionFilters.estimateMaxMinutes,
-    dueWithin: parsed.savedViewDefinitionFilters.dueWithinDays,
-    activeTasks: parsed.savedViewDefinitionFilters.activeTasks,
-    project: activeProjectId,
-    goal: activeGoalId,
-    due: parsed.activeDueFilter,
-    sort: parsed.activeSort,
+    filters: view.filters,
+    group: view.groupBy,
+    q: view.search,
+    sortKey: view.sort.key,
+    sortDirection: view.sort.direction,
+    activeTasks: view.activeOnly,
     density: parsed.activeDensity === "compact" ? "compact" : null,
-    cols: parsed.columnsParam,
-    widths: parsed.widthsParam,
+    boardOrder: parsed.activeBoardOrder,
+    columns: view.columns,
   };
-  const kanbanBoard = buildTaskKanbanBoard(tasks, parsed.activeStatus);
+  const today = accountLocalDate ?? getTodayLocalIsoDate();
+  const tasksById = new Map(tasks.map((task) => [task.id, task]));
+  const groups = groupTaskViewRecords(
+    tasks.map((task) => ({
+      id: task.id,
+      title: task.title,
+      description: task.description,
+      status: task.status,
+      priority: task.priority,
+      projectId: task.project_id,
+      projectName: task.projects?.name ?? null,
+      goalId: task.goal_id,
+      goalTitle: task.goals?.title ?? null,
+      dueDate: task.due_date,
+      plannedForDate: task.planned_for_date,
+      estimateMinutes: task.estimate_minutes,
+      boardRank: task.board_rank,
+      focusRank: task.focus_rank,
+      createdAt: task.created_at ?? null,
+      updatedAt: task.updated_at,
+    })),
+    view.groupBy,
+    { today },
+  ).map((group) => ({
+    key: group.key,
+    label: group.label,
+    count: group.count,
+    tasks: group.items
+      .map((record) => tasksById.get(record.id))
+      .filter((task): task is (typeof tasks)[number] => Boolean(task)),
+  }));
+  const kanbanBoard = buildTaskKanbanBoard(
+    sortTasksForBoard(tasks, parsed.activeBoardOrder),
+    parsed.activeStatus,
+  );
   const inProgressCount = tasks.filter((t) => t.status === "in_progress").length;
   const blockedCount = tasks.filter((t) => t.status === "blocked").length;
   const overdueCount = tasks.filter((t) =>
@@ -230,9 +295,18 @@ export async function getTasksPageModel(searchParams: TasksSearchParams) {
     ? (await listTaskSubtasks(selectedTaskId)).data ?? []
     : [];
   const subtaskCounts = await getSubtaskCountsForTasks(tasks.map((task) => task.id));
-  const selectedTaskActivity = selectedTaskId
-    ? (await getTaskActivity(selectedTaskId, { limit: 8 })).items
-    : [];
+  const selectedTaskActivityPage = selectedTaskId
+    ? await getTaskActivity(selectedTaskId, { limit: 8 })
+    : { items: [], hasMore: false };
+  const selectedTaskActivity = selectedTaskActivityPage.items;
+  const selectedTaskActivityHasMore = selectedTaskActivityPage.hasMore;
+  const selectedTaskComments = selectedTaskId
+    ? await getTaskCommentThread(selectedTaskId)
+    : {
+        comments: [],
+        mentionCandidates: [],
+        errorMessage: null,
+      };
   const selectedTaskIsFavourite = selectedTaskId
     ? await isFavorite("task", selectedTaskId)
     : false;
@@ -245,6 +319,10 @@ export async function getTasksPageModel(searchParams: TasksSearchParams) {
     selectedTaskSubtasks,
     subtaskCounts,
     selectedTaskActivity,
+    selectedTaskActivityHasMore,
+    selectedTaskComments,
+    selectedTaskCommentMentions: selectedTaskComments.mentionCandidates,
+    selectedTaskCommentError: selectedTaskComments.errorMessage,
     selectedTaskIsFavourite,
     parsed,
     projects,
@@ -262,6 +340,10 @@ export async function getTasksPageModel(searchParams: TasksSearchParams) {
     blockedCount,
     overdueCount,
     dueSoonCount,
+    groups,
+    filteredTotal,
+    loadedCount,
+    truncated,
   };
 }
 

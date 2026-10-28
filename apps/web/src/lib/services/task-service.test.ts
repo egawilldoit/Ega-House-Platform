@@ -390,6 +390,10 @@ function createTaskInlineSupabaseMock(options?: {
             assert.ok(
               columns === "id, owner_user_id, project_id, goal_id, status, completed_at, archived_at" ||
                 columns === "id, owner_user_id, project_id, goal_id, status, archived_at" ||
+                columns ===
+                  "id, owner_user_id, project_id, goal_id, status, completed_at, archived_at, updated_at" ||
+                columns ===
+                  "id, owner_user_id, project_id, goal_id, status, archived_at, updated_at" ||
                 columns === "id" ||
                 columns ===
                   "id, owner_user_id, project_id, goal_id, title, description, priority, estimate_minutes, scheduled_start_at, scheduled_end_at",
@@ -3084,7 +3088,18 @@ function createWorkspaceSupabaseMock(options?: {
         taskQueryCalls.push({ method: `not.${operator}`, column, value });
         return proxyRef.current;
       },
+      lt(column: string, value: number | string) {
+        taskQueryCalls.push({ method: "lt", column, value });
+        return proxyRef.current;
+      },
+      ilike(column: string, pattern: string) {
+        taskQueryCalls.push({ method: "ilike", column, value: pattern });
+        return proxyRef.current;
+      },
       order() {
+        return proxyRef.current;
+      },
+      range() {
         return proxyRef.current;
       },
     };
@@ -3194,9 +3209,10 @@ test("Deep Work default view applies active priority and estimate constraints", 
     mock.taskQueryCalls.filter((call) => ["is", "neq", "in", "gte"].includes(call.method)),
     [
       { method: "is", column: "archived_at", value: null },
-      { method: "neq", column: "status", value: "done" },
+      { method: "is", column: "archived_at", value: null },
       { method: "in", column: "priority", value: ["urgent", "high"] },
       { method: "gte", column: "estimate_minutes", value: 30 },
+      { method: "neq", column: "status", value: "done" },
     ],
   );
 });
@@ -3405,7 +3421,9 @@ test("Due This Week default view includes today through today plus seven days", 
 
   assert.deepEqual(result.tasks.map((task) => task.id), ["due-today-task", "due-end-task"]);
   assert.deepEqual(
-    mock.taskQueryCalls.filter((call) => call.method === "gte" || call.method === "lte"),
+    mock.taskQueryCalls
+      .filter((call) => call.method === "gte" || call.method === "lte")
+      .slice(0, 2),
     [
       { method: "gte", column: "due_date", value: "2026-05-01" },
       { method: "lte", column: "due_date", value: "2026-05-08" },

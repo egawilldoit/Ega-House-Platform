@@ -31,9 +31,11 @@ import { getActiveTimerSession } from "@/lib/services/timer-service";
 import { getTaskDrawerDetail } from "@/lib/services/task-service";
 import { listTaskSubtasks } from "@/lib/services/subtask-service";
 import { getTaskActivity } from "@/lib/services/task-activity-service";
+import { getTaskCommentThread } from "@/lib/services/task-comment-service";
 import { isFavorite } from "@/lib/services/favorite-service";
 import { toggleFavoriteAction } from "@/app/favorites/actions";
 import { TASK_SUBTASK_ACTIONS } from "@/lib/task-subtask-actions";
+import { TASK_COMMENT_ACTIONS } from "@/lib/task-comment-actions";
 import { buildTaskDrawerLink } from "@/lib/task-drawer-url";
 import { getHealthSnapshotData } from "@/lib/services/health-snapshot-service";
 import { getFrictionRadar } from "@/lib/services/friction-service";
@@ -203,9 +205,13 @@ export default async function TodayPage({
   const selectedTaskSubtasks = selectedTaskId
     ? (await listTaskSubtasks(selectedTaskId)).data ?? []
     : [];
-  const selectedTaskActivity = selectedTaskId
-    ? (await getTaskActivity(selectedTaskId, { limit: 8 })).items
-    : [];
+  const selectedTaskActivityPage = selectedTaskId
+    ? await getTaskActivity(selectedTaskId, { limit: 8 })
+    : { items: [], hasMore: false };
+  const selectedTaskActivity = selectedTaskActivityPage.items;
+  const selectedTaskComments = selectedTaskId
+    ? await getTaskCommentThread(selectedTaskId)
+    : { comments: [], mentionCandidates: [], errorMessage: null };
   const selectedTaskIsFavourite = selectedTaskId
     ? await isFavorite("task", selectedTaskId)
     : false;
@@ -274,6 +280,11 @@ export default async function TodayPage({
           ownerId={user?.id ?? null}
           subtasks={selectedTaskSubtasks}
           activity={selectedTaskActivity}
+          activityHasMore={selectedTaskActivityPage.hasMore}
+          comments={selectedTaskComments.comments}
+          commentMentions={selectedTaskComments.mentionCandidates}
+          commentsError={selectedTaskComments.errorMessage}
+          commentActions={TASK_COMMENT_ACTIONS}
           isFavourite={selectedTaskIsFavourite}
           favouriteAction={toggleFavoriteAction}
           subtaskActions={TASK_SUBTASK_ACTIONS}

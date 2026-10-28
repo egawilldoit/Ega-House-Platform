@@ -59,6 +59,10 @@ class FakeBuilder {
   is(...args: unknown[]) { return this.step("is", args); }
   or(...args: unknown[]) { return this.step("or", args); }
   order(...args: unknown[]) { return this.step("order", args); }
+  range(...args: unknown[]) { return this.step("range", args); }
+  ilike(...args: unknown[]) { return this.step("ilike", args); }
+  lte(...args: unknown[]) { return this.step("lte", args); }
+  not(...args: unknown[]) { return this.step("not", args); }
   limit(...args: unknown[]) { return this.step("limit", args); }
 
   maybeSingle(...args: unknown[]) { return this.step("maybeSingle", args); }
