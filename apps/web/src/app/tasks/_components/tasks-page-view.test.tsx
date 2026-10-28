@@ -5,6 +5,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }),
+  usePathname: () => "/tasks",
+  useSearchParams: () => new URLSearchParams(),
+  redirect: vi.fn(),
 }));
 
 vi.mock("next/link", () => ({
