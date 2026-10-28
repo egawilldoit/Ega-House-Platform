@@ -95,6 +95,7 @@ export function TasksPageView({
     selectedTaskSubtasks,
     subtaskCounts,
     selectedTaskActivity,
+    selectedTaskActivityHasMore,
     selectedTaskComments,
     selectedTaskCommentMentions,
     selectedTaskCommentError,
@@ -354,6 +355,7 @@ export function TasksPageView({
           ownerId={ownerId}
           subtasks={selectedTaskSubtasks}
           activity={selectedTaskActivity}
+          activityHasMore={selectedTaskActivityHasMore}
           comments={selectedTaskComments.comments}
           commentMentions={selectedTaskCommentMentions}
           commentsError={selectedTaskCommentError}

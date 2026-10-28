@@ -245,6 +245,10 @@ export type Database = {
           started_at: string
           task_id: string
           updated_at: string
+          actor_kind: string
+          actor_user_id: string | null
+          actor_agent_id: string | null
+          actor_label: string | null
         }
         Insert: {
           created_at?: string
@@ -255,6 +259,10 @@ export type Database = {
           started_at: string
           task_id: string
           updated_at?: string
+          actor_kind?: string
+          actor_user_id?: string | null
+          actor_agent_id?: string | null
+          actor_label?: string | null
         }
         Update: {
           created_at?: string
@@ -265,6 +273,10 @@ export type Database = {
           started_at?: string
           task_id?: string
           updated_at?: string
+          actor_kind?: string
+          actor_user_id?: string | null
+          actor_agent_id?: string | null
+          actor_label?: string | null
         }
         Relationships: [
           {
@@ -380,6 +392,10 @@ export type Database = {
           occurred_at: string
           operation_metadata: Json | null
           created_at: string
+          actor_kind: string
+          actor_user_id: string | null
+          actor_agent_id: string | null
+          actor_label: string | null
         }
         Insert: {
           id?: string
@@ -390,6 +406,10 @@ export type Database = {
           occurred_at: string
           operation_metadata?: Json | null
           created_at?: string
+          actor_kind?: string
+          actor_user_id?: string | null
+          actor_agent_id?: string | null
+          actor_label?: string | null
         }
         Update: {
           id?: string
@@ -400,6 +420,10 @@ export type Database = {
           occurred_at?: string
           operation_metadata?: Json | null
           created_at?: string
+          actor_kind?: string
+          actor_user_id?: string | null
+          actor_agent_id?: string | null
+          actor_label?: string | null
         }
         Relationships: [
           {
@@ -495,9 +519,11 @@ export type Database = {
           task_id: string | null
           actor_kind: string
           actor_user_id: string | null
+          actor_agent_id: string | null
           actor_label: string | null
           event_kind: string
           delta: Json
+          source_event_id: string | null
           occurred_at: string
           created_at: string
         }
@@ -507,9 +533,11 @@ export type Database = {
           task_id?: string | null
           actor_kind: string
           actor_user_id?: string | null
+          actor_agent_id?: string | null
           actor_label?: string | null
           event_kind: string
           delta: Json
+          source_event_id?: string | null
           occurred_at: string
           created_at?: string
         }
@@ -519,9 +547,11 @@ export type Database = {
           task_id?: string | null
           actor_kind?: string
           actor_user_id?: string | null
+          actor_agent_id?: string | null
           actor_label?: string | null
           event_kind?: string
           delta?: Json
+          source_event_id?: string | null
           occurred_at?: string
           created_at?: string
         }

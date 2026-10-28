@@ -9,6 +9,7 @@ export * from "./goals/service";
 export * from "./tasks/ports";
 export * from "./tasks/mutations-ports";
 export * from "./tasks/read-model";
+export * from "./tasks/activity-read-model";
 export * from "./tasks/list-view";
 export * from "./tasks/focus-queue";
 export * from "./tasks/service";

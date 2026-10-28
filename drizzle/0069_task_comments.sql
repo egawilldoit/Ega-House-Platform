@@ -911,17 +911,9 @@ GRANT EXECUTE ON FUNCTION public.delete_task_comment(uuid, text, uuid, uuid) TO 
 GRANT EXECUTE ON FUNCTION public.toggle_task_comment_reaction(uuid, text, text, uuid, uuid) TO service_role;
 --> statement-breakpoint
 
--- EGA-784 ledger: comments are a first-class event. The trigger is the single
--- producer, so retries that resolve to the existing comment do not add a second
--- row and the activity read model never synthesizes a duplicate entry.
-ALTER TABLE "public"."task_activity_events"
-  DROP CONSTRAINT IF EXISTS "task_activity_events_event_kind_check";
---> statement-breakpoint
-ALTER TABLE "public"."task_activity_events"
-  ADD CONSTRAINT "task_activity_events_event_kind_check"
-  CHECK ("event_kind" in ('created', 'field_change', 'archived', 'restored', 'commented'));
---> statement-breakpoint
-
+-- EGA-784 ledger: comments are a first-class `comment` event. The trigger is
+-- the single producer, and `source_event_id` makes a producer replay impossible
+-- to turn into a second row. 0068 owns the event-kind contract.
 CREATE OR REPLACE FUNCTION public.record_task_comment_activity()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -930,19 +922,21 @@ SET search_path = ''
 AS $$
 BEGIN
   INSERT INTO public.task_activity_events (
-    owner_user_id, task_id, actor_kind, actor_user_id, actor_label,
-    event_kind, delta, occurred_at
+    owner_user_id, task_id, actor_kind, actor_user_id, actor_agent_id,
+    actor_label, event_kind, delta, source_event_id, occurred_at
   ) VALUES (
     NEW.owner_user_id,
     NEW.task_id,
     NEW.author_kind,
     NEW.author_user_id,
+    CASE WHEN NEW.author_kind = 'agent' THEN NEW.author_token_id::text ELSE NULL END,
     NEW.author_label,
-    'commented',
+    'comment',
     jsonb_build_object(
       'comment_id', NEW.id,
       'excerpt', left(NEW.body, 160)
     ),
+    NEW.id::text,
     NEW.created_at
   );
   RETURN NULL;
