@@ -2,6 +2,7 @@ import { isTaskDueBucket, isTaskPriority, isTaskStatus } from "@ega/domain";
 import {
   isTaskDueFilter,
   isTaskSortValue,
+  canExactlyCountTaskViewFilters,
   isTaskViewIdentifier,
   normalizeTaskViewDefinition,
   parseTaskViewSearchParams,
@@ -271,7 +272,7 @@ export async function getTasksReadModel(
   });
   if (!result.ok) return applicationFailure("Unable to load tasks right now.");
 
-  const countResult = repository.countTasks
+  const countResult = repository.countTasks && scopedView && canExactlyCountTaskViewFilters(scopedView.filters)
     ? await repository.countTasks(actor, {
         ...requested,
         projectId: activeProjectId,
