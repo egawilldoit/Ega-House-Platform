@@ -13,10 +13,10 @@ import { Badge } from "@/components/ui/badge";
 import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { formatTaskEstimate } from "@/lib/task-estimate";
+import { getTaskStatusTransitions } from "@ega/domain";
 import {
   formatTaskToken,
   isTaskCompletedStatus,
-  isTaskStatus,
   type TaskStatus,
 } from "@/lib/task-domain";
 import { formatTaskDueDate } from "@/lib/task-due-date";
@@ -48,17 +48,11 @@ type TaskKanbanCardProps = {
 };
 
 // Review is an explicit hand-off, never an implicit next step: work enters it
-// from in progress and leaves it back to in progress or straight to done.
-const NEXT_STATUS_BY_STATUS = {
-  todo: ["in_progress", "blocked", "done"],
-  in_progress: ["todo", "review", "blocked", "done"],
-  review: ["in_progress", "blocked", "done"],
-  blocked: ["todo", "in_progress", "done"],
-  done: ["todo"],
-} as const satisfies Record<TaskStatus, readonly TaskStatus[]>;
-
+// from in progress and leaves it back to in progress or straight to done. The
+// matrix lives in @ega/domain so board drag, card buttons and tap alternatives
+// cannot drift apart.
 export function getTaskKanbanNextStatuses(status: string): TaskStatus[] {
-  return isTaskStatus(status) ? [...NEXT_STATUS_BY_STATUS[status]] : [];
+  return getTaskStatusTransitions(status);
 }
 
 export function getTaskKanbanStatusActionLabel(status: TaskStatus) {

@@ -4,6 +4,7 @@ import {
   buildTaskListUrl,
   type TaskDensity,
   type TaskLayoutMode,
+  type TaskBoardOrder,
   type TaskDueFilter,
   type TaskSortValue,
 } from "@/lib/task-list";
@@ -23,6 +24,7 @@ export type TaskFilterState = {
   view?: string | null;
   layout?: TaskLayoutMode;
   density?: TaskDensity | null;
+  boardOrder?: TaskBoardOrder | null;
 };
 
 export const DEFAULT_TASK_FILTER_STATE = {

@@ -75,6 +75,8 @@ export type QuickTaskSheetPanelProps = {
   onCommandChange?: (command: string) => void;
   selectedProjectId?: string;
   onProjectIdChange?: (projectId: string) => void;
+  /** Column the "Add task here" action was opened from, if any. */
+  selectedStatus?: string;
 };
 
 const DEFAULT_RETURN_TO = "/tasks";
@@ -213,6 +215,7 @@ export function QuickTaskSheetPanel({
   onCommandChange,
   selectedProjectId,
   onProjectIdChange,
+  selectedStatus,
 }: QuickTaskSheetPanelProps) {
   const defaultProjectId = selectedProjectId || projects[0]?.id || "";
   const [singleCommand, setSingleCommand] = useState(initialCommand ?? "");
@@ -229,7 +232,9 @@ export function QuickTaskSheetPanel({
     onProjectIdChange?.(val);
   };
   const [singleGoalId, setSingleGoalId] = useState("");
-  const [singleStatus, setSingleStatus] = useState("todo");
+  const [singleStatus, setSingleStatus] = useState<string>(
+    selectedStatus && isTaskStatus(selectedStatus) ? selectedStatus : "todo",
+  );
   const [singleDueDate, setSingleDueDate] = useState("");
   const [singlePriority, setSinglePriority] = useState("medium");
   const [singleEstimateMinutes, setSingleEstimateMinutes] = useState("");

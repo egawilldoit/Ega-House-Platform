@@ -812,6 +812,7 @@ export type Database = {
           archived_at: string | null
           archived_by: string | null
           blocked_reason: string | null
+          board_rank: string | null
           completed_at: string | null
           created_at: string
           due_date: string | null
@@ -839,6 +840,7 @@ export type Database = {
           archived_at?: string | null
           archived_by?: string | null
           blocked_reason?: string | null
+          board_rank?: string | null
           completed_at?: string | null
           created_at?: string
           due_date?: string | null
@@ -866,6 +868,7 @@ export type Database = {
           archived_at?: string | null
           archived_by?: string | null
           blocked_reason?: string | null
+          board_rank?: string | null
           completed_at?: string | null
           created_at?: string
           due_date?: string | null

@@ -26,6 +26,7 @@ function buildTask(overrides: Partial<TaskRecord> = {}): TaskRecord {
     project_id: "project-1",
     goal_id: null,
     focus_rank: null,
+    board_rank: null,
     archived_at: null,
     archived_by: null,
     projects: null,

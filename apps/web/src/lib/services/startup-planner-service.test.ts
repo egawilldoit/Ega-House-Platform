@@ -71,6 +71,7 @@ function createTaskRow(overrides: Partial<NormalizedTaskRow> = {}): NormalizedTa
     project_id: "project-1",
     goal_id: null,
     focus_rank: null,
+    board_rank: null,
     planned_for_date: null,
     archived_at: null,
     archived_by: null,

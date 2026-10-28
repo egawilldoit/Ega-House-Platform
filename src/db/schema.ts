@@ -82,6 +82,7 @@ export const tasks = pgTable(
     priority: varchar("priority", { length: 32 }).notNull().default("medium"),
     estimateMinutes: integer("estimate_minutes"),
     focusRank: integer("focus_rank"),
+    boardRank: text("board_rank"),
     dueDate: date("due_date"),
     plannedForDate: date("planned_for_date"),
     scheduledStartAt: timestamp("scheduled_start_at", { withTimezone: true }),
@@ -104,6 +105,11 @@ export const tasks = pgTable(
   (table) => [
     index("tasks_owner_user_id_idx").on(table.ownerUserId),
     index("tasks_owner_user_id_focus_rank_idx").on(table.ownerUserId, table.focusRank),
+    index("tasks_owner_status_board_rank_idx").on(
+      table.ownerUserId,
+      table.status,
+      table.boardRank,
+    ),
     index("tasks_owner_user_id_planned_for_date_idx").on(table.ownerUserId, table.plannedForDate),
     index("tasks_owner_user_id_scheduled_start_at_idx").on(table.ownerUserId, table.scheduledStartAt),
     index("tasks_owner_active_updated_idx")
@@ -123,6 +129,10 @@ export const tasks = pgTable(
     check(
       "tasks_calendar_sync_status_check",
       sql`${table.calendarSyncStatus} is null or ${table.calendarSyncStatus} in ('pending', 'synced', 'failed', 'skipped')`,
+    ),
+    check(
+      "tasks_board_rank_format_check",
+      sql`${table.boardRank} is null or (length(${table.boardRank}) between 1 and 512 and ${table.boardRank} ~ '^[0-9A-Z]+$')`,
     ),
   ],
 );
