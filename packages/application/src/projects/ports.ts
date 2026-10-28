@@ -93,6 +93,7 @@ export interface ProjectsRepository {
   listTasksForProjects(
     actor: AuthenticatedActor,
     projectIds: string[],
+    options?: { includeArchived?: boolean },
   ): Promise<RepositoryResult<ProjectTaskContextRecord[]>>;
   getProjectBySlug(
     actor: AuthenticatedActor,

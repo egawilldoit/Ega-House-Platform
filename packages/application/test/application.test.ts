@@ -83,8 +83,12 @@ class FakeProjectsRepository implements ProjectsRepository {
     this.record("listProjectStatuses", actor.userId, {});
     return this.statusesResult;
   }
-  async listTasksForProjects(actor: AuthenticatedActor, projectIds: string[]) {
-    this.record("listTasksForProjects", actor.userId, { projectIds });
+  async listTasksForProjects(
+    actor: AuthenticatedActor,
+    projectIds: string[],
+    options?: { includeArchived?: boolean },
+  ) {
+    this.record("listTasksForProjects", actor.userId, { projectIds, options });
     return this.tasksResult;
   }
   async getProjectBySlug(actor: AuthenticatedActor, slug: string) {
@@ -430,6 +434,10 @@ test("deleteArchivedProject deletes an archived project without dependencies", a
   for (const call of repository.calls) {
     assert.equal(call.actorUserId, "user-123");
   }
+  assert.deepEqual(repository.calls[1].args, {
+    projectIds: [DELETE_PROJECT_ID],
+    options: { includeArchived: true },
+  });
   assert.deepEqual(repository.calls[3].args, { projectId: DELETE_PROJECT_ID });
 });
 
