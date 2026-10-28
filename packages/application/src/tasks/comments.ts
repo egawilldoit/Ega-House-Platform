@@ -89,7 +89,7 @@ function failureMessage(code: RepositoryFailure["code"]): string {
     case "notFound":
       return "Comment was not found or is no longer available.";
     case "forbidden":
-      return "You can only change your own comments.";
+      return "You do not have permission to change this comment.";
     default:
       return "Unable to update the comment right now.";
   }
