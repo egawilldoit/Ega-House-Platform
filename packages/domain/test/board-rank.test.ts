@@ -115,3 +115,29 @@ test("status transitions are the same for drag, buttons and tap alternatives", (
   assert.equal(isTaskStatusTransitionAllowed("todo", "review"), false);
   assert.equal(isTaskStatusTransitionAllowed("nope", "done"), false);
 });
+
+test("repeated insertion at the same visual position never exhausts the gap", () => {
+  // Backfilled columns start at 0000000001, 0000000002, ...; dropping a card
+  // just below the first card repeatedly used to hit an empty gap after a few
+  // moves because the generator returned the smallest endpoint.
+  const lower = "0000000001";
+  let upper = "0000000002";
+  let previous = upper;
+  for (let index = 0; index < 200; index += 1) {
+    const key = generateBoardRankBetween(lower, upper);
+    assert.ok(lower < key, `${key} must sort after ${lower}`);
+    assert.ok(key < upper, `${key} must sort before ${upper}`);
+    upper = key;
+  }
+  assert.ok(previous > upper);
+});
+
+test("repeated insertion above a prefix-shaped neighbour stays inside the gap", () => {
+  let upper = "I";
+  for (let index = 0; index < 200; index += 1) {
+    const key = generateBoardRankBetween("A", upper);
+    assert.ok("A" < key, `${key} must sort after A`);
+    assert.ok(key < upper, `${key} must sort before ${upper}`);
+    upper = key;
+  }
+});

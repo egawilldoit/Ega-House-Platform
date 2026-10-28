@@ -108,6 +108,13 @@ export function planBoardMove(input: {
   afterTaskId: string | null;
   expectedBeforeRank: string | null;
   expectedAfterRank: string | null;
+  /**
+   * A cross-column move must change `board_rank` even when the target gap
+   * happens to produce the card's existing rank (backfill gives columns
+   * identical keys). The database trigger treats an unchanged rank as "not
+   * supplied" and would append the card to the column end instead.
+   */
+  mustDifferFrom?: string | null;
 }): { ok: true; boardRank: string | null } | { ok: false; message: string } {
   const { column, beforeTaskId, afterTaskId } = input;
   const beforeIndex = beforeTaskId
@@ -161,7 +168,27 @@ export function planBoardMove(input: {
   }
 
   try {
-    return { ok: true, boardRank: generateBoardRankBetween(lower, upper) };
+    let boardRank = generateBoardRankBetween(lower, upper);
+    const mustDifferFrom = input.mustDifferFrom ?? null;
+    if (mustDifferFrom !== null && boardRank === mustDifferFrom) {
+      // `mustDifferFrom` is strictly inside (lower, upper); pick the sub-gap
+      // that still holds it so the requested visible position is preserved.
+      const alternatives: string[] = [];
+      if (lower !== null) {
+        alternatives.push(generateBoardRankBetween(lower, mustDifferFrom));
+      }
+      if (upper !== null) {
+        alternatives.push(generateBoardRankBetween(mustDifferFrom, upper));
+      }
+      const alternative = alternatives.find(
+        (candidate) => candidate !== mustDifferFrom,
+      );
+      if (!alternative) {
+        return { ok: false, message: MOVE_CONFLICT_MESSAGE };
+      }
+      boardRank = alternative;
+    }
+    return { ok: true, boardRank };
   } catch (error) {
     if (error instanceof BoardRankError) {
       return { ok: false, message: MOVE_CONFLICT_MESSAGE };
@@ -280,6 +307,8 @@ export async function moveTaskOnBoardForOwner(
     afterTaskId,
     expectedBeforeRank,
     expectedAfterRank,
+    mustDifferFrom:
+      currentTask.status !== toStatus ? currentTask.board_rank : null,
   });
 
   if (!plan.ok) {

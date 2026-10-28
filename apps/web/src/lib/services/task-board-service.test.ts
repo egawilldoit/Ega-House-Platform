@@ -368,3 +368,54 @@ test("an empty target column leaves the append rank to the database trigger", as
   assert.equal(result.ok, true);
   assert.equal(updates[0]?.board_rank, null);
 });
+
+test("a cross-column move whose target rank equals the old rank still changes the key", () => {
+  // Backfill gives every column identical keys, so the target gap can compute
+  // exactly the card's existing rank. Sending it unchanged would make the
+  // trigger treat the move as "no explicit rank" and append the card instead.
+  const plan = planBoardMove({
+    column: [
+      { id: "a", board_rank: "A" },
+      { id: "b", board_rank: "B" },
+    ],
+    beforeTaskId: "a",
+    afterTaskId: "b",
+    expectedBeforeRank: "A",
+    expectedAfterRank: "B",
+    mustDifferFrom: "AI",
+  });
+  assert.equal(plan.ok, true);
+  if (!plan.ok) return;
+  assert.notEqual(plan.boardRank, "AI");
+  assert.ok(plan.boardRank && plan.boardRank > "A" && plan.boardRank < "B");
+});
+
+test("the service sends an explicit rank that differs from the card's previous column rank", async () => {
+  const { client, updates } = stubSupabase({
+    task: buildTask({ status: "todo", board_rank: "AI" }),
+    column: [
+      { id: "a", board_rank: "A" },
+      { id: "b", board_rank: "B" },
+    ],
+  });
+  const result = await moveTaskOnBoardForOwner(
+    {
+      taskId: "task-1",
+      toStatus: "in_progress",
+      beforeTaskId: "a",
+      afterTaskId: "b",
+      expectedBeforeRank: "A",
+      expectedAfterRank: "B",
+      expectedUpdatedAt: "2026-10-28T10:00:00.000Z",
+    },
+    { supabase: client as never },
+  );
+
+  assert.equal(result.ok, true, result.ok ? "" : result.message);
+  const payload = updates[0] ?? {};
+  assert.equal(payload.status, "in_progress");
+  assert.notEqual(payload.board_rank, "AI");
+  assert.ok(
+    (payload.board_rank as string) > "A" && (payload.board_rank as string) < "B",
+  );
+});

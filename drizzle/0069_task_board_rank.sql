@@ -12,7 +12,8 @@
 -- New/other-surface writes: a Task inserted without a rank, or changed to
 -- another status without an explicit rank, is appended to the end of its
 -- column by a trigger using a timestamp-shaped key. Board moves always supply
--- an explicit rank, so the trigger leaves them untouched.
+-- an explicit rank that differs from the card's previous rank (the move
+-- service guarantees this), so the trigger leaves them untouched.
 --
 -- RLS: `tasks` already has owner-scoped policies from 0038; the new column is
 -- covered by the same table-level policies.
@@ -68,7 +69,8 @@ AS $$
 BEGIN
   -- Append when the caller supplied no rank, or when a status change came from
   -- another surface (drawer, Today, mobile, agent) without an explicit rank.
-  -- A board move sets both status and board_rank, so it keeps its own key.
+  -- A board move sets both status and a rank that differs from the old one, so
+  -- it keeps its own key.
   IF NEW.board_rank IS NULL
      OR (
        TG_OP = 'UPDATE'

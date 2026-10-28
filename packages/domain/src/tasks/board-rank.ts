@@ -141,14 +141,23 @@ export function generateBoardRankBetween(
   if (index === prev.length) {
     // `prev` is a prefix of `next` (for example "A" before "AB").
     const nextDigit = digitIndex(next[index]);
-    if (nextDigit > 0) {
+    if (nextDigit > 1) {
       return `${prev}${BOARD_RANK_ALPHABET[Math.floor(nextDigit / 2)]}`;
     }
-    // `next` continues with the lowest digit; extend `prev` by that digit.
-    if (next.length > index + 1) {
-      return `${prev}${BOARD_RANK_ALPHABET[0]}`;
+    // `next` starts the suffix with 0 or 1. Returning `prev + "0"` here would
+    // be the smallest representable key above `prev` and would exhaust the gap
+    // below it, so descend one level into the suffix instead. The result is
+    // always strictly greater than `prev` and strictly less than `next`, and
+    // the gap below it always has room for another insert.
+    const tail = next.slice(index + 1);
+    if (nextDigit === 0 && tail.length === 0) {
+      // `next` is exactly `prev + "0"`: no key can sit between them. This is
+      // not produced by this generator or the migration backfill.
+      throw new BoardRankError("There is no room between the two board ranks.");
     }
-    throw new BoardRankError("There is no room between the two board ranks.");
+    return `${prev}${BOARD_RANK_ALPHABET[0]}${
+      tail ? generateBoardRankBefore(tail) : MID_RANK_DIGIT
+    }`;
   }
 
   const prevDigit = digitIndex(prev[index]);
