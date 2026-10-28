@@ -52,7 +52,7 @@ function makeFakeClient(overrides: Partial<EgaApiClient['timer']> = {}): EgaApiC
     },
     tasks: {
       list: jest.fn(), get: jest.fn(), create: jest.fn(), update: jest.fn(), archive: jest.fn(), unarchive: jest.fn(),
-      createReminder: jest.fn(), cancelReminder: jest.fn(), setRecurrence: jest.fn(), clearRecurrence: jest.fn(), pin: jest.fn(), unpin: jest.fn(),
+      createReminder: jest.fn(), cancelReminder: jest.fn(), setRecurrence: jest.fn(), clearRecurrence: jest.fn(), pin: jest.fn(), unpin: jest.fn(), listComments: jest.fn(), createComment: jest.fn(), updateComment: jest.fn(), deleteComment: jest.fn(), toggleCommentReaction: jest.fn(),
     },
     inbox: {
       list: jest.fn(), get: jest.fn(), create: jest.fn(), update: jest.fn(), archive: jest.fn(), restore: jest.fn(), convert: jest.fn(),

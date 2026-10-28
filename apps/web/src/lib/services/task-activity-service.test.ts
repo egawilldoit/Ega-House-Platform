@@ -11,6 +11,7 @@ test("status, archive and field changes get honest human summaries", () => {
   assert.equal(describeTaskActivity({ kind: "created" }), "Task created");
   assert.equal(describeTaskActivity({ kind: "archived" }), "Task archived");
   assert.equal(describeTaskActivity({ kind: "restored" }), "Task restored");
+  assert.equal(describeTaskActivity({ kind: "comment" }), "Comment added");
   assert.equal(
     describeTaskActivity({
       kind: "field_change",

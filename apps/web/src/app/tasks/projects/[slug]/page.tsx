@@ -47,9 +47,11 @@ import { getTaskSessionSummaryMap } from "@/lib/task-session";
 import { buildTaskDrawerLink } from "@/lib/task-drawer-url";
 import { listTaskSubtasks } from "@/lib/services/subtask-service";
 import { getProjectTaskActivity, getTaskActivity } from "@/lib/services/task-activity-service";
+import { getTaskCommentThread } from "@/lib/services/task-comment-service";
 import { isFavorite } from "@/lib/services/favorite-service";
 import { toggleFavoriteAction } from "@/app/favorites/actions";
 import { TASK_SUBTASK_ACTIONS } from "@/lib/task-subtask-actions";
+import { TASK_COMMENT_ACTIONS } from "@/lib/task-comment-actions";
 import {
   getTaskDrawerDetail,
   getTaskRecurrencesForTasks,
@@ -302,6 +304,9 @@ export default async function ProjectDetailPage({
     ? await getTaskActivity(selectedTaskId, { limit: 8 })
     : { items: [], hasMore: false };
   const selectedTaskActivity = selectedTaskActivityPage.items;
+  const selectedTaskComments = selectedTaskId
+    ? await getTaskCommentThread(selectedTaskId)
+    : { comments: [], mentionCandidates: [], errorMessage: null };
   const projectIsFavourite = await isFavorite("project", project.id);
   const selectedTaskIsFavourite = selectedTaskId
     ? await isFavorite("task", selectedTaskId)
@@ -482,6 +487,10 @@ export default async function ProjectDetailPage({
           subtasks={selectedTaskSubtasks}
           activity={selectedTaskActivity}
           activityHasMore={selectedTaskActivityPage.hasMore}
+          comments={selectedTaskComments.comments}
+          commentMentions={selectedTaskComments.mentionCandidates}
+          commentsError={selectedTaskComments.errorMessage}
+          commentActions={TASK_COMMENT_ACTIONS}
           isFavourite={selectedTaskIsFavourite}
           favouriteAction={toggleFavoriteAction}
           subtaskActions={TASK_SUBTASK_ACTIONS}

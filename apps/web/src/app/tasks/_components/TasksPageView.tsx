@@ -35,6 +35,7 @@ import { TasksListTable, type TaskListActions } from "./tasks-list-table";
 import { TaskDrawerHost } from "@/components/tasks/drawer/task-drawer-host";
 import { updateTaskFieldAction } from "@/app/tasks/actions";
 import { TASK_SUBTASK_ACTIONS } from "@/lib/task-subtask-actions";
+import { TASK_COMMENT_ACTIONS } from "@/lib/task-comment-actions";
 import { KanbanBoard, type KanbanBulkActions, type KanbanCardActions } from "./kanban/kanban-board";
 
 /**
@@ -93,6 +94,9 @@ export function TasksPageView({
     filteredTotal,
     loadedCount,
     truncated,
+    selectedTaskComments,
+    selectedTaskCommentMentions,
+    selectedTaskCommentError,
   } = model;
   const { activeView, activeLayout } = parsed;
   const completedTaskIdsInScope = getArchivableCompletedTaskIds(tasks);  // Restore clears archived state only; it must never resurrect a completed
@@ -416,6 +420,10 @@ export function TasksPageView({
           subtasks={selectedTaskSubtasks}
           activity={selectedTaskActivity}
           activityHasMore={selectedTaskActivityHasMore}
+          comments={selectedTaskComments.comments}
+          commentMentions={selectedTaskCommentMentions}
+          commentsError={selectedTaskCommentError}
+          commentActions={TASK_COMMENT_ACTIONS}
           isFavourite={Boolean(model.selectedTaskIsFavourite)}
           favouriteAction={favouriteAction}
           subtaskActions={TASK_SUBTASK_ACTIONS}

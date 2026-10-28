@@ -61,6 +61,7 @@ test("resolveAgentAuth: valid token returns context", async () => {
   assert.ok(result.ok);
   if (result.ok) {
     assert.equal(result.context.tokenId, "test-id");
+    assert.equal(result.context.tokenName, "test");
     assert.equal(
       result.context.ownerUserId,
       "00000000-0000-0000-0000-000000000001",
@@ -410,13 +411,14 @@ test("getCapabilities returns all false for empty scopes", () => {
   assert.equal(caps.tasks.updateAny, false);
   assert.equal(caps.tasks.archive, false);
   assert.equal(caps.tasks.bulk, false);
+  assert.equal(caps.tasks.comment, false);
   assert.equal(caps.projects.read, false);
   assert.equal(caps.goals.read, false);
 });
 
 test("getCapabilities returns true for enabled scopes", () => {
   const scopes: AgentTokenScopes = {
-    tasks: { read: true, create: true, updateAny: true, archive: true, bulk: true },
+    tasks: { read: true, create: true, updateAny: true, archive: true, bulk: true, comment: true },
     projects: { read: true },
     goals: { read: true },
   };
@@ -426,6 +428,7 @@ test("getCapabilities returns true for enabled scopes", () => {
   assert.equal(caps.tasks.updateAny, true);
   assert.equal(caps.tasks.archive, true);
   assert.equal(caps.tasks.bulk, true);
+  assert.equal(caps.tasks.comment, true);
   assert.equal(caps.projects.read, true);
   assert.equal(caps.goals.read, true);
 });

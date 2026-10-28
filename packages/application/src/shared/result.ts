@@ -1,12 +1,17 @@
 export type RepositoryFailure = Readonly<{
-  code: "conflict" | "unknown";
+  code: "conflict" | "unknown" | "notFound" | "forbidden";
 }>;
 
 export type RepositoryResult<T> =
   | Readonly<{ ok: true; value: T }>
   | Readonly<{ ok: false; error: RepositoryFailure }>;
 
-export type ApplicationErrorCode = "conflict" | "validation" | "notFound" | "unknown";
+export type ApplicationErrorCode =
+  | "conflict"
+  | "validation"
+  | "notFound"
+  | "forbidden"
+  | "unknown";
 
 export type ApplicationResult<T> =
   | Readonly<{ ok: true; data: T }>
