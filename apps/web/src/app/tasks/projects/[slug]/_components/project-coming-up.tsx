@@ -4,6 +4,7 @@ import { CalendarClock } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { buildTaskDrawerLink } from "@/lib/task-drawer-url";
+import { formatDisplayDateTime } from "@/lib/presentation-format";
 import { formatTaskDueDate } from "@/lib/task-due-date";
 import { formatTaskToken, getTaskStatusTone } from "@/lib/task-domain";
 import type { ProjectComingUpItem, ProjectComingUpTask } from "@/lib/project-overview";
@@ -23,14 +24,9 @@ const SOURCE_LABELS = {
 
 function dateLabel<T extends ProjectComingUpTask>(item: ProjectComingUpItem<T>, timezone: string) {
   if (item.source === "scheduled" && item.task.scheduled_start_at) {
-    const scheduled = new Intl.DateTimeFormat("en-US", {
-      month: "short",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-      timeZone: timezone,
-    }).format(new Date(item.task.scheduled_start_at));
-    return `${SOURCE_LABELS.scheduled} ${scheduled}`;
+    return `${SOURCE_LABELS.scheduled} ${formatDisplayDateTime(item.task.scheduled_start_at, {
+      timezone,
+    })}`;
   }
 
   return `${SOURCE_LABELS[item.source]} ${formatTaskDueDate(item.date)}`;
