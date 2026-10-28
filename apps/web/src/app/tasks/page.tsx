@@ -4,6 +4,7 @@ import { FolderKanban } from "lucide-react";
 
 import { TasksWorkspaceShell } from "@/components/tasks/tasks-workspace-shell";
 import { getCurrentUser } from "@/lib/services/auth-service";
+import { getWebUserPreferences } from "@/lib/services/user-preferences-service";
 import { toggleFavoriteAction } from "@/app/favorites/actions";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -46,10 +47,13 @@ type TasksPageProps = {
 
 export default async function TasksPage({ searchParams }: TasksPageProps) {
   const resolvedSearchParams = await searchParams;
-  const [model, user] = await Promise.all([
-    getTasksPageModel(resolvedSearchParams),
+  const [user, preferences] = await Promise.all([
     getCurrentUser(),
+    getWebUserPreferences(),
   ]);
+  const model = await getTasksPageModel(resolvedSearchParams, {
+    defaultLayout: preferences.taskLayout,
+  });
 
   return (
     <TasksWorkspaceShell

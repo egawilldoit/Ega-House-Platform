@@ -89,3 +89,23 @@
     scroll-behavior: auto !important;
   }
 }
+
+/* Explicit "Reduce motion" preference.
+   The provider swaps MotionConfig to `reducedMotion="always"`; these rules keep
+   plain CSS transitions/keyframes coherent with that choice. A user preference
+   or the OS request is enough — neither can override the other into motion. */
+html[data-reduce-motion="true"] *,
+html[data-reduce-motion="true"] *::before,
+html[data-reduce-motion="true"] *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
+}
+
+html[data-reduce-motion="true"] .motion-check,
+html[data-reduce-motion="true"] .motion-strike,
+html[data-reduce-motion="true"] .motion-land,
+html[data-reduce-motion="true"] .motion-add-wash {
+  animation: none;
+}

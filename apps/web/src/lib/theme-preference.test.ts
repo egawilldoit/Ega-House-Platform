@@ -3,9 +3,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  WORKSPACE_THEME_ATTRIBUTE,
   WORKSPACE_THEME_INIT_SCRIPT,
   WORKSPACE_THEME_PREFERENCES,
-  WORKSPACE_THEME_STORAGE_KEY,
   parseWorkspaceThemePreference,
   resolveWorkspaceTheme,
 } from "./theme-preference";
@@ -32,49 +32,77 @@ test("explicit choices override the OS while system follows it", () => {
   assert.equal(resolveWorkspaceTheme("system", false), "light");
 });
 
-test("the pre-paint script applies every preference and OS combination", () => {
+function installMatchMedia(initialDark: boolean) {
   const originalMatchMedia = window.matchMedia;
-  const originalTheme = document.documentElement.getAttribute("data-theme");
-  const originalPreference = document.documentElement.getAttribute("data-theme-preference");
-
-  try {
-    for (const storedValue of [...WORKSPACE_THEME_PREFERENCES, "sepia"]) {
-      for (const prefersDark of [false, true]) {
-        localStorage.setItem(WORKSPACE_THEME_STORAGE_KEY, storedValue);
-        Object.defineProperty(window, "matchMedia", {
-          configurable: true,
-          writable: true,
-          value: () => ({ matches: prefersDark }) as MediaQueryList,
-        });
-
-        document.documentElement.removeAttribute("data-theme");
-        document.documentElement.removeAttribute("data-theme-preference");
-        new Function(WORKSPACE_THEME_INIT_SCRIPT)();
-
-        const expectedPreference = parseWorkspaceThemePreference(storedValue);
-        assert.equal(
-          document.documentElement.getAttribute("data-theme-preference"),
-          expectedPreference,
-        );
-        assert.equal(
-          document.documentElement.getAttribute("data-theme"),
-          resolveWorkspaceTheme(expectedPreference, prefersDark),
-        );
-      }
-    }
-  } finally {
-    localStorage.removeItem(WORKSPACE_THEME_STORAGE_KEY);
+  Object.defineProperty(window, "matchMedia", {
+    configurable: true,
+    writable: true,
+    value: () => ({ matches: initialDark }) as MediaQueryList,
+  });
+  return () => {
     Object.defineProperty(window, "matchMedia", {
       configurable: true,
       writable: true,
       value: originalMatchMedia,
     });
-    if (originalTheme === null) document.documentElement.removeAttribute("data-theme");
-    else document.documentElement.setAttribute("data-theme", originalTheme);
-    if (originalPreference === null) {
-      document.documentElement.removeAttribute("data-theme-preference");
-    } else {
-      document.documentElement.setAttribute("data-theme-preference", originalPreference);
+  };
+}
+
+test("the pre-paint script resolves the server preference before paint", () => {
+  const root = document.documentElement;
+  const originalTheme = root.getAttribute("data-theme");
+  const originalPreference = root.getAttribute(WORKSPACE_THEME_ATTRIBUTE);
+
+  try {
+    for (const serverPreference of [
+      ...WORKSPACE_THEME_PREFERENCES,
+      "sepia",
+      null,
+    ] as const) {
+      for (const prefersDark of [false, true]) {
+        if (serverPreference === null) root.removeAttribute(WORKSPACE_THEME_ATTRIBUTE);
+        else root.setAttribute(WORKSPACE_THEME_ATTRIBUTE, serverPreference);
+
+        const restoreMatchMedia = installMatchMedia(prefersDark);
+        root.removeAttribute("data-theme");
+        new Function(WORKSPACE_THEME_INIT_SCRIPT)();
+        restoreMatchMedia();
+
+        const expectedPreference = parseWorkspaceThemePreference(serverPreference);
+        assert.equal(
+          root.getAttribute("data-theme"),
+          resolveWorkspaceTheme(expectedPreference, prefersDark),
+          `server=${String(serverPreference)} osDark=${prefersDark}`,
+        );
+      }
     }
+  } finally {
+    if (originalTheme === null) root.removeAttribute("data-theme");
+    else root.setAttribute("data-theme", originalTheme);
+    if (originalPreference === null) root.removeAttribute(WORKSPACE_THEME_ATTRIBUTE);
+    else root.setAttribute(WORKSPACE_THEME_ATTRIBUTE, originalPreference);
+  }
+});
+
+test("the pre-paint script never reads or writes browser storage", () => {
+  const getItem = Storage.prototype.getItem;
+  const setItem = Storage.prototype.setItem;
+  let storageCalls = 0;
+
+  Storage.prototype.getItem = () => {
+    storageCalls += 1;
+    throw new Error("storage must not be read for the theme");
+  };
+  Storage.prototype.setItem = () => {
+    storageCalls += 1;
+    throw new Error("storage must not be written for the theme");
+  };
+
+  try {
+    new Function(WORKSPACE_THEME_INIT_SCRIPT)();
+    assert.equal(storageCalls, 0);
+  } finally {
+    Storage.prototype.getItem = getItem;
+    Storage.prototype.setItem = setItem;
   }
 });
