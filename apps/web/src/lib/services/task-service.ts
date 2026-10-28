@@ -33,14 +33,28 @@ import {
 import { enqueueCalendarSyncJob } from "@/lib/services/calendar-sync-service";
 import type { GoogleCalendarClient } from "@/lib/services/google-calendar-service";
 import {
-  applyTaskListQuery,
+  taskViewFromLegacyInput,
   type TaskDueFilter,
   type TaskSortValue,
+  type TaskViewDefinition,
 } from "@/lib/task-list";
-import type { TaskViewFilter } from "@/lib/task-archive";
+import {
+  applyTaskView,
+  type TaskViewRecord,
+} from "@ega/application/tasks/view";
+import {
+  canExactlyCountTaskViewFilters,
+  normalizeTaskViewDefinition,
+} from "@ega/contracts/common/task-list";
+import type { TaskViewFilter as TaskArchiveViewFilter } from "@/lib/task-archive";
 import { getTaskTotalDurationMap } from "@/lib/task-session";
 import { stopActiveTimerSessionsForTask } from "@/lib/services/timer-service";
-import { getActiveTasksForOwner } from "@/lib/services/task-read-service";
+import {
+  getActiveTasksForOwner,
+  getTaskCountForOwner,
+  TASK_READ_PAGE_SIZE,
+  type TaskReadQuery,
+} from "@/lib/services/task-read-service";
 import {
   isMissingTasksArchivedAtColumn,
   isMissingSupabaseColumn,
@@ -59,8 +73,8 @@ import {
   QUICK_WINS_SAVED_VIEW_ID,
   getTaskSavedViewDefinitionFromFilters,
   getTaskSavedViewFiltersFromDefinition,
+  getTaskViewFromSavedView,
   normalizeTaskSavedViewFilters,
-  normalizeTaskSavedViewDefinition,
 } from "@/lib/task-saved-views";
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
@@ -141,12 +155,14 @@ export type TasksWorkspaceFilters = {
   requestedGoalId: string | null;
   activeDueFilter: TaskDueFilter;
   activeSort: TaskSortValue;
-  activeView: TaskViewFilter;
+  activeView: TaskArchiveViewFilter;
   activeTasksOnly?: boolean;
   activePriorityValues?: ReadonlyArray<TaskPriority>;
   activeEstimateMinMinutes?: number | null;
   activeEstimateMaxMinutes?: number | null;
   activeDueWithinDays?: number | null;
+  /** Canonical toolbar definition; supersedes the legacy fields above. */
+  view?: TaskViewDefinition;
 };
 
 export type TasksWorkspaceData = {
@@ -172,6 +188,7 @@ export type TasksWorkspaceData = {
     goal_id: string | null;
     focus_rank: number | null;
     board_rank: string | null;
+    created_at?: string | null;
     archived_at: string | null;
     archived_by: string | null;
     projects: { name: string; slug?: string | null } | null;
@@ -200,6 +217,13 @@ export type TasksWorkspaceData = {
   savedViewsUnavailable: boolean;
   activeProjectId: string | null;
   activeGoalId: string | null;
+  /** Canonical view after owner-scope sanitization. */
+  view: TaskViewDefinition;
+  /** Exact owner-scoped matches before the row ceiling, when countable. */
+  filteredTotal: number;
+  /** Rows actually loaded into `tasks`. */
+  loadedCount: number;
+  truncated: boolean;
 };
 
 export type TaskRecord = TasksWorkspaceData["tasks"][number];
@@ -612,6 +636,17 @@ function isTaskRecurrencesUnavailable(error: unknown) {
   );
 }
 
+/** Keep `.in()` URLs bounded when a filtered view loads thousands of rows. */
+const TASK_ID_QUERY_CHUNK = 200;
+
+function chunkTaskIds(taskIds: string[]) {
+  const chunks: string[][] = [];
+  for (let index = 0; index < taskIds.length; index += TASK_ID_QUERY_CHUNK) {
+    chunks.push(taskIds.slice(index, index + TASK_ID_QUERY_CHUNK));
+  }
+  return chunks;
+}
+
 export async function getTaskRemindersForTasks(
   supabase: SupabaseServerClient,
   taskIds: string[],
@@ -623,22 +658,24 @@ export async function getTaskRemindersForTasks(
     return remindersByTaskId;
   }
 
-  const { data, error } = await supabase
-    .from("task_reminders")
-    .select(
-      "id, task_id, remind_at, channel, status, sent_at, failure_reason, created_at, updated_at",
-    )
-    .in("task_id", uniqueTaskIds)
-    .order("remind_at", { ascending: false });
+  for (const chunk of chunkTaskIds(uniqueTaskIds)) {
+    const { data, error } = await supabase
+      .from("task_reminders")
+      .select(
+        "id, task_id, remind_at, channel, status, sent_at, failure_reason, created_at, updated_at",
+      )
+      .in("task_id", chunk)
+      .order("remind_at", { ascending: false });
 
-  if (error) {
-    throw new Error(`Failed to load task reminders: ${error.message}`);
-  }
+    if (error) {
+      throw new Error(`Failed to load task reminders: ${error.message}`);
+    }
 
-  for (const reminder of data ?? []) {
-    const normalizedReminder = normalizeTaskReminderRow(reminder);
-    remindersByTaskId[normalizedReminder.task_id] ??= [];
-    remindersByTaskId[normalizedReminder.task_id]?.push(normalizedReminder);
+    for (const reminder of data ?? []) {
+      const normalizedReminder = normalizeTaskReminderRow(reminder);
+      remindersByTaskId[normalizedReminder.task_id] ??= [];
+      remindersByTaskId[normalizedReminder.task_id]?.push(normalizedReminder);
+    }
   }
 
   return remindersByTaskId;
@@ -655,33 +692,35 @@ export async function getTaskRecurrencesForTasks(
     return recurrencesByTaskId;
   }
 
-  const { data, error } = await supabase
-    .from("task_recurrences")
-    .select(
-      "id, task_id, rule, anchor_date, timezone, next_occurrence_date, last_generated_at, created_at, updated_at",
-    )
-    .in("task_id", uniqueTaskIds);
+  for (const chunk of chunkTaskIds(uniqueTaskIds)) {
+    const { data, error } = await supabase
+      .from("task_recurrences")
+      .select(
+        "id, task_id, rule, anchor_date, timezone, next_occurrence_date, last_generated_at, created_at, updated_at",
+      )
+      .in("task_id", chunk);
 
-  if (error) {
-    if (isTaskRecurrencesUnavailable(error)) {
-      console.warn("task_recurrences unavailable during task recurrence load", {
-        taskCount: uniqueTaskIds.length,
-        code: error.code,
-        message: error.message,
-      });
-      return recurrencesByTaskId;
+    if (error) {
+      if (isTaskRecurrencesUnavailable(error)) {
+        console.warn("task_recurrences unavailable during task recurrence load", {
+          taskCount: uniqueTaskIds.length,
+          code: error.code,
+          message: error.message,
+        });
+        return recurrencesByTaskId;
+      }
+
+      throw new Error(`Failed to load task recurrences: ${error.message}`);
     }
 
-    throw new Error(`Failed to load task recurrences: ${error.message}`);
-  }
-
-  for (const recurrence of data ?? []) {
-    const normalizedRecurrence = normalizeTaskRecurrenceRow(recurrence);
-    if (!normalizedRecurrence) {
-      continue;
+    for (const recurrence of data ?? []) {
+      const normalizedRecurrence = normalizeTaskRecurrenceRow(recurrence);
+      if (!normalizedRecurrence) {
+        continue;
+      }
+      recurrencesByTaskId[normalizedRecurrence.task_id] ??= [];
+      recurrencesByTaskId[normalizedRecurrence.task_id]?.push(normalizedRecurrence);
     }
-    recurrencesByTaskId[normalizedRecurrence.task_id] ??= [];
-    recurrencesByTaskId[normalizedRecurrence.task_id]?.push(normalizedRecurrence);
   }
 
   return recurrencesByTaskId;
@@ -851,9 +890,6 @@ export async function getTasksWorkspaceData(
 ): Promise<TasksWorkspaceData> {
   const supabase = await resolveSupabaseClient(options?.supabase);
   const todayIsoDate = options?.todayIsoDate ?? getTodayLocalIsoDate();
-  const dueWithinEndIsoDate = filters.activeDueWithinDays
-    ? shiftDateOnlyValue(todayIsoDate, filters.activeDueWithinDays)
-    : null;
   const savedViewSelectWithDefinition =
     "id, name, status, project_id, goal_id, due_filter, sort_value, definition_json, updated_at";
   const savedViewSelectLegacy =
@@ -912,57 +948,147 @@ export async function getTasksWorkspaceData(
       ? filters.requestedGoalId
       : null;
 
-  const tasksResult = await getActiveTasksForOwner({
-    supabase,
-    archiveFilter: filters.activeView === "all" ? "all" : filters.activeView,
-    applyQuery(query) {
-      if (filters.activeTasksOnly) {
-        query = query.neq("status", "done");
-      }
+  const baseView =
+    filters.view ??
+    taskViewFromLegacyInput({
+      status: filters.activeStatus,
+      priority: filters.activePriorityValues,
+      projectId: activeProjectId,
+      goalId: activeGoalId,
+      due: filters.activeDueFilter,
+      dueWithinDays: filters.activeDueWithinDays,
+      estimateMinMinutes: filters.activeEstimateMinMinutes,
+      estimateMaxMinutes: filters.activeEstimateMaxMinutes,
+      sort: filters.activeSort,
+      activeOnly: filters.activeTasksOnly,
+    });
+  const projectIds = new Set(projectsResult.data.map((project) => project.id));
+  const visibleGoalIds = new Set(visibleGoals.map((goal) => goal.id));
+  const scopedView =
+    normalizeTaskViewDefinition({
+      ...baseView,
+      filters: baseView.filters.flatMap((filter) => {
+        if (filter.field === "project") {
+          const values = filter.values.filter((value) => projectIds.has(value));
+          return values.length > 0 ? [{ ...filter, values }] : [];
+        }
+        if (filter.field === "goal") {
+          const values = filter.values.filter((value) => visibleGoalIds.has(value));
+          return values.length > 0 ? [{ ...filter, values }] : [];
+        }
+        return [filter];
+      }),
+    }) ?? baseView;
 
-      if (filters.activePriorityValues?.length) {
-        query = query.in("priority", [...filters.activePriorityValues]);
-      }
+  const applyQuery = (query: TaskReadQuery): TaskReadQuery => {
+    if (activeProjectId) query = query.eq("project_id", activeProjectId);
+    if (activeGoalId) query = query.eq("goal_id", activeGoalId);
 
-      if (filters.activeEstimateMinMinutes) {
-        query = query.gte("estimate_minutes", filters.activeEstimateMinMinutes);
-      }
+    let dueWindowApplied = false;
 
-      if (filters.activeEstimateMaxMinutes) {
-        query = query.lte("estimate_minutes", filters.activeEstimateMaxMinutes);
+    for (const filter of scopedView.filters) {
+      if (filter.field === "status") {
+        query =
+          filter.operator === "is"
+            ? query.eq("status", filter.values[0])
+            : filter.operator === "is_not"
+              ? query.neq("status", filter.values[0])
+              : filter.operator === "is_any_of"
+                ? query.in("status", filter.values)
+                : query.not("status", "in", `(${filter.values.join(",")})`);
+      } else if (filter.field === "priority") {
+        query =
+          filter.operator === "is"
+            ? query.eq("priority", filter.values[0])
+            : filter.operator === "is_not"
+              ? query.neq("priority", filter.values[0])
+              : filter.operator === "is_any_of"
+                ? query.in("priority", filter.values)
+                : query.not("priority", "in", `(${filter.values.join(",")})`);
+      } else if (filter.field === "project" || filter.field === "goal") {
+        const column = filter.field === "project" ? "project_id" : "goal_id";
+        if (filter.operator === "is") query = query.eq(column, filter.values[0]);
+        if (filter.operator === "is_any_of") query = query.in(column, filter.values);
+      } else if (filter.field === "estimate") {
+        if (filter.values[0] !== "") query = query.gte("estimate_minutes", Number(filter.values[0]));
+        if (filter.values[1] !== "") query = query.lte("estimate_minutes", Number(filter.values[1]));
+      } else if (filter.field === "due_within_days") {
+        if (!dueWindowApplied) {
+          dueWindowApplied = true;
+          query = query
+            .gte("due_date", todayIsoDate)
+            .lte("due_date", shiftDateOnlyValue(todayIsoDate, Number(filter.values[0])));
+        }
+      } else if (filter.field === "due_bucket" && filter.operator === "is") {
+        const bucket = filter.values[0];
+        if (bucket === "none") query = query.is("due_date", null);
+        if (!dueWindowApplied && bucket === "overdue") {
+          dueWindowApplied = true;
+          query = query.lt("due_date", todayIsoDate).neq("status", "done");
+        }
+        if (!dueWindowApplied && bucket === "today") {
+          dueWindowApplied = true;
+          query = query.eq("due_date", todayIsoDate).neq("status", "done");
+        }
+        if (!dueWindowApplied && bucket === "next_7_days") {
+          dueWindowApplied = true;
+          query = query
+            .gte("due_date", todayIsoDate)
+            .lte("due_date", shiftDateOnlyValue(todayIsoDate, 7))
+            .neq("status", "done");
+        }
       }
+    }
 
-      if (dueWithinEndIsoDate) {
-        query = query.gte("due_date", todayIsoDate).lte("due_date", dueWithinEndIsoDate);
-      }
+    if (scopedView.activeOnly) query = query.neq("status", "done");
+    if (scopedView.search) {
+      query = query.ilike("title", `%${scopedView.search.replace(/[\\%_]/g, "\\$&")}%`);
+    }
 
-      if (filters.activeStatus) {
-        query = query.eq("status", filters.activeStatus);
-      }
+    return query;
+  };
 
-      if (activeProjectId) {
-        query = query.eq("project_id", activeProjectId);
-      }
-
-      if (activeGoalId) {
-        query = query.eq("goal_id", activeGoalId);
-      }
-
-      return query;
-    },
-  });
+  const archiveFilter = filters.activeView === "all" ? "all" : filters.activeView;
+  const tasksResult = await getActiveTasksForOwner({ supabase, archiveFilter, applyQuery });
 
   if (tasksResult.errorMessage) {
     throw new Error(`Failed to load tasks: ${tasksResult.errorMessage}`);
   }
 
   const rawTasks = tasksResult.data;
-
-  const tasks = applyTaskListQuery(rawTasks, {
-    dueFilter: filters.activeDueFilter,
-    sortValue: filters.activeSort,
+  // Only pay for an exact count when the page could be truncated; a short page
+  // is already the complete filtered set.
+  const countResult =
+    rawTasks.length >= TASK_READ_PAGE_SIZE &&
+    canExactlyCountTaskViewFilters(scopedView.filters)
+      ? await getTaskCountForOwner({ supabase, archiveFilter, applyQuery })
+      : { count: null, errorMessage: null };
+  const viewRecords: TaskViewRecord[] = rawTasks.map((task) => ({
+    id: task.id,
+    title: task.title,
+    description: task.description,
+    status: task.status,
+    priority: task.priority,
+    projectId: task.project_id,
+    projectName: task.projects?.name ?? null,
+    goalId: task.goal_id,
+    goalTitle: task.goals?.title ?? null,
+    dueDate: task.due_date,
+    plannedForDate: task.planned_for_date,
+    estimateMinutes: task.estimate_minutes,
+    boardRank: task.board_rank,
+    focusRank: task.focus_rank,
+    createdAt: task.created_at,
+    updatedAt: task.updated_at,
+  }));
+  const viewResult = applyTaskView(viewRecords, scopedView, {
     today: todayIsoDate,
+    totalCount: countResult.errorMessage ? null : countResult.count,
   });
+  const recordsById = new Map(rawTasks.map((task) => [task.id, task]));
+  const tasks = viewResult.items
+    .map((record) => recordsById.get(record.id))
+    .filter((task): task is (typeof rawTasks)[number] => Boolean(task));
 
   const taskIds = tasks.map((task) => task.id);
   const [taskTotalDurations, taskRemindersByTaskId, taskRecurrencesByTaskId] = await Promise.all([
@@ -1004,14 +1130,19 @@ export async function getTasksWorkspaceData(
             is_default: true,
           })),
           ...(savedViewsResult.data ?? []).map((view) => {
-            const definition = normalizeTaskSavedViewDefinition(
-              "definition_json" in view ? view.definition_json : null,
-            );
+            const definition = getTaskViewFromSavedView({
+              definitionJson: "definition_json" in view ? view.definition_json : null,
+              status: view.status,
+              projectId: view.project_id,
+              goalId: view.goal_id,
+              dueFilter: view.due_filter,
+              sortValue: view.sort_value,
+            });
             const definitionFilters = getTaskSavedViewFiltersFromDefinition(definition);
             const legacyFilters = normalizeTaskSavedViewFilters({
               status: definitionFilters.status ?? view.status,
-              projectId: view.project_id,
-              goalId: view.goal_id,
+              projectId: definitionFilters.projectId ?? view.project_id,
+              goalId: definitionFilters.goalId ?? view.goal_id,
               dueFilter: view.due_filter ?? "all",
               sortValue: view.sort_value ?? "updated_desc",
               activeTasks: definitionFilters.activeTasks,
@@ -1038,6 +1169,10 @@ export async function getTasksWorkspaceData(
     savedViewsUnavailable,
     activeProjectId,
     activeGoalId,
+    view: scopedView,
+    filteredTotal: viewResult.totalCount,
+    loadedCount: viewResult.loadedCount,
+    truncated: viewResult.truncated,
   };
 }
 

@@ -5,8 +5,15 @@ import {
   TASK_SORT_VALUES,
   isTaskDueFilter,
   isTaskSortValue,
+  parseTaskViewSearchParams,
+  taskViewFromLegacyInput,
+  toTaskViewSearchPairs,
+  getDefaultTaskViewSortDirection,
   type TaskDueFilter,
   type TaskSortValue,
+  type TaskViewDefinition,
+  type TaskViewFilter,
+  type TaskViewSearchParams,
 } from "@ega/contracts/common/task-list";
 import { compareBoardRankedItems } from "@ega/domain";
 
@@ -20,8 +27,18 @@ export {
   TASK_SORT_VALUES,
   isTaskDueFilter,
   isTaskSortValue,
+  parseTaskViewSearchParams,
+  taskViewFromLegacyInput,
+  toTaskViewSearchPairs,
+  getDefaultTaskViewSortDirection,
 };
-export type { TaskDueFilter, TaskSortValue };
+export type {
+  TaskDueFilter,
+  TaskSortValue,
+  TaskViewDefinition,
+  TaskViewFilter,
+  TaskViewSearchParams,
+};
 
 export const TASK_LAYOUT_VALUES = ["list", "kanban"] as const;
 export const DEFAULT_TASK_LAYOUT = "list" as const;
@@ -145,37 +162,71 @@ export function buildTaskKanbanBoard<T extends TaskKanbanLike>(
   return { columns, tasksByStatus };
 }
 
+export type TaskListUrlFilters = {
+  status?: string | null;
+  priority?: string | null;
+  estimateMin?: number | string | null;
+  estimateMax?: number | string | null;
+  dueWithin?: number | string | null;
+  activeTasks?: boolean | null;
+  project?: string | null;
+  goal?: string | null;
+  due?: TaskDueFilter;
+  sort?: TaskSortValue;
+  view?: string | null;
+  layout?: TaskLayoutMode;
+  density?: TaskDensity | string | null;
+  /** Canonical toolbar state; supersedes the legacy scalar filters above. */
+  filters?: readonly TaskViewFilter[];
+  group?: TaskViewDefinition["groupBy"];
+  q?: string | null;
+  sortKey?: TaskViewDefinition["sort"]["key"];
+  sortDirection?: TaskViewDefinition["sort"]["direction"];
+  boardOrder?: TaskBoardOrder | null;
+};
+
+function viewFromUrlFilters(filters: TaskListUrlFilters): TaskViewDefinition {
+  const legacy = taskViewFromLegacyInput({
+    status: filters.status,
+    priority: filters.priority,
+    projectId: filters.project,
+    goalId: filters.goal,
+    due: filters.due,
+    dueWithinDays: filters.dueWithin,
+    estimateMinMinutes: filters.estimateMin,
+    estimateMaxMinutes: filters.estimateMax,
+    sort: filters.sort,
+    activeOnly: filters.activeTasks,
+    search: filters.q,
+  });
+
+  // Canonical fields let callers replace one legacy-derived filter (for example
+  // removing a status chip) without losing unrelated legacy fields.
+  return {
+    ...legacy,
+    filters: filters.filters ? [...filters.filters] : legacy.filters,
+    groupBy: filters.group ?? legacy.groupBy,
+    sort:
+      filters.sortKey
+        ? {
+            key: filters.sortKey,
+            direction: filters.sortDirection ?? getDefaultTaskViewSortDirection(filters.sortKey),
+          }
+        : legacy.sort,
+    search: filters.q !== undefined && filters.q !== null ? String(filters.q).trim() : legacy.search,
+  };
+}
+
 export function buildTaskListUrl(
   basePath: string,
-  filters: {
-    status?: string | null;
-    priority?: string | null;
-    estimateMin?: number | string | null;
-    estimateMax?: number | string | null;
-    dueWithin?: number | string | null;
-    activeTasks?: boolean | null;
-    project?: string | null;
-    goal?: string | null;
-    due?: TaskDueFilter;
-    sort?: TaskSortValue;
-    view?: string | null;
-    layout?: TaskLayoutMode;
-    density?: TaskDensity | string | null;
-    boardOrder?: TaskBoardOrder | null;
-  },
+  filters: TaskListUrlFilters,
 ) {
   const searchParams = new URLSearchParams();
 
-  if (filters.activeTasks) searchParams.set("tasks", "active");
-  if (filters.status) searchParams.set("status", filters.status);
-  if (filters.priority) searchParams.set("priority", filters.priority);
-  if (filters.estimateMin) searchParams.set("estimateMin", String(filters.estimateMin));
-  if (filters.estimateMax) searchParams.set("estimateMax", String(filters.estimateMax));
-  if (filters.dueWithin) searchParams.set("dueWithin", String(filters.dueWithin));
-  if (filters.project) searchParams.set("project", filters.project);
-  if (filters.goal) searchParams.set("goal", filters.goal);
-  if (filters.due && filters.due !== DEFAULT_TASK_DUE_FILTER) searchParams.set("due", filters.due);
-  if (filters.sort && filters.sort !== DEFAULT_TASK_SORT) searchParams.set("sort", filters.sort);
+  for (const [key, value] of toTaskViewSearchPairs(viewFromUrlFilters(filters))) {
+    searchParams.append(key, value);
+  }
+
   if (filters.view && filters.view !== "active") searchParams.set("archive", filters.view);
   if (filters.layout === "kanban") searchParams.set("layout", "kanban");
   if (filters.density === "compact") searchParams.set("density", "compact");
@@ -183,6 +234,13 @@ export function buildTaskListUrl(
 
   const query = searchParams.toString();
   return query ? `${basePath}?${query}` : basePath;
+}
+
+/** Parse the canonical view from a Next searchParams record. */
+export function parseTaskListView(
+  searchParams: TaskViewSearchParams,
+): TaskViewDefinition {
+  return parseTaskViewSearchParams(searchParams);
 }
 
 export function filterTasksByDueFilter<T extends TaskListLike>(

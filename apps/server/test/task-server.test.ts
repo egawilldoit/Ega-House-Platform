@@ -43,9 +43,14 @@ class FakeBuilder {
   is(...args: unknown[]) { this.steps.push({ method: "is", args }); return this; }
   in(...args: unknown[]) { this.steps.push({ method: "in", args }); return this; }
   neq(...args: unknown[]) { this.steps.push({ method: "neq", args }); return this; }
-  not(...args: unknown[]) { this.steps.push({ method: "not", args }); return this; }
   or(...args: unknown[]) { this.steps.push({ method: "or", args }); return this; }
   order(...args: unknown[]) { this.steps.push({ method: "order", args }); return this; }
+  range(...args: unknown[]) { this.steps.push({ method: "range", args }); return this; }
+  lt(...args: unknown[]) { this.steps.push({ method: "lt", args }); return this; }
+  ilike(...args: unknown[]) { this.steps.push({ method: "ilike", args }); return this; }
+  gte(...args: unknown[]) { this.steps.push({ method: "gte", args }); return this; }
+  lte(...args: unknown[]) { this.steps.push({ method: "lte", args }); return this; }
+  not(...args: unknown[]) { this.steps.push({ method: "not", args }); return this; }
   limit(...args: unknown[]) { this.steps.push({ method: "limit", args }); return this; }
   insert(...args: unknown[]) { this.steps.push({ method: "insert", args }); return this; }
   update(...args: unknown[]) { this.steps.push({ method: "update", args }); return this; }

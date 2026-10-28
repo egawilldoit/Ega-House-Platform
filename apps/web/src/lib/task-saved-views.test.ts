@@ -79,9 +79,16 @@ test("normalizes all system saved-view definitions", () => {
       },
       DEEP_WORK_SAVED_VIEW_DEFINITION,
       {
+        status: null,
+        projectId: null,
+        goalId: null,
+        dueFilter: "all",
+        sortValue: "updated_desc",
         activeTasks: true,
         priorityValues: ["urgent", "high"],
         estimateMinMinutes: 30,
+        estimateMaxMinutes: null,
+        dueWithinDays: null,
       },
     ],
     [
@@ -94,8 +101,16 @@ test("normalizes all system saved-view definitions", () => {
       },
       QUICK_WINS_SAVED_VIEW_DEFINITION,
       {
+        status: null,
+        projectId: null,
+        goalId: null,
+        dueFilter: "all",
+        sortValue: "updated_desc",
         activeTasks: true,
+        priorityValues: [],
+        estimateMinMinutes: null,
         estimateMaxMinutes: 15,
+        dueWithinDays: null,
       },
     ],
     [
@@ -108,8 +123,16 @@ test("normalizes all system saved-view definitions", () => {
       },
       BLOCKED_SAVED_VIEW_DEFINITION,
       {
-        activeTasks: true,
         status: "blocked",
+        projectId: null,
+        goalId: null,
+        dueFilter: "all",
+        sortValue: "updated_desc",
+        activeTasks: true,
+        priorityValues: [],
+        estimateMinMinutes: null,
+        estimateMaxMinutes: null,
+        dueWithinDays: null,
       },
     ],
     [
@@ -122,7 +145,15 @@ test("normalizes all system saved-view definitions", () => {
       },
       DUE_THIS_WEEK_SAVED_VIEW_DEFINITION,
       {
+        status: null,
+        projectId: null,
+        goalId: null,
+        dueFilter: "all",
+        sortValue: "updated_desc",
         activeTasks: true,
+        priorityValues: [],
+        estimateMinMinutes: null,
+        estimateMaxMinutes: null,
         dueWithinDays: 7,
       },
     ],
@@ -138,43 +169,6 @@ test("normalizes all system saved-view definitions", () => {
 
 test("rejects unsupported saved-view definition filters", () => {
   const unsupportedDefinitions = [
-    {
-      version: 1,
-      filters: {
-        activeTasks: true,
-        priority: ["medium"],
-        estimateMinMinutes: 30,
-      },
-    },
-    {
-      version: 1,
-      filters: {
-        activeTasks: true,
-        priority: ["urgent", "high"],
-        estimateMinMinutes: 25,
-      },
-    },
-    {
-      version: 1,
-      filters: {
-        activeTasks: true,
-        estimateMaxMinutes: 20,
-      },
-    },
-    {
-      version: 1,
-      filters: {
-        activeTasks: true,
-        dueWithinDays: 5,
-      },
-    },
-    {
-      version: 1,
-      filters: {
-        activeTasks: true,
-        status: "todo",
-      },
-    },
     {
       version: 1,
       filters: {
@@ -251,14 +245,15 @@ test("builds definitions for all system presets", () => {
     ),
     DUE_THIS_WEEK_SAVED_VIEW_DEFINITION,
   );
-  assert.equal(
-    getTaskSavedViewDefinitionFromFilters({
-      ...BASE_FILTERS,
-      activeTasks: true,
-      estimateMaxMinutes: 20,
-    }),
-    null,
-  );
+  const nonPreset = getTaskSavedViewDefinitionFromFilters({
+    ...BASE_FILTERS,
+    activeTasks: true,
+    estimateMaxMinutes: 20,
+  });
+  assert.equal(nonPreset.version, 2);
+  assert.deepEqual(nonPreset.filters, [
+    { field: "estimate", operator: "between", values: ["", "20"] },
+  ]);
 });
 
 test("compares filter equality across all filter fields", () => {

@@ -14,6 +14,11 @@ import type {
   TasksRepository,
   UpdateTaskRecordInput,
 } from "@ega/application";
+import {
+  taskViewFromLegacyInput,
+  type TaskViewDefinition,
+  type TaskViewFilter,
+} from "@ega/contracts/common/task-list";
 import type { TaskRecurrenceRule } from "@ega/domain";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -23,8 +28,13 @@ import {
   sanitizeSupabaseError,
 } from "../supabase/errors";
 
-/** Hard ceiling on task rows fetched per list request; keeps payloads bounded. */
-const TASK_LIST_ROW_CAP = 500;
+/**
+ * Hard ceiling on rows fetched for one list request. The adapter pages up to
+ * this bound so a filtered view is not silently limited to the first
+ * PostgREST page; `countTasks` supplies the exact total for truncation labels.
+ */
+const TASK_LIST_ROW_CAP = 5000;
+const TASK_LIST_PAGE_SIZE = 500;
 
 const TASK_SELECT = [
   "id",
@@ -39,6 +49,7 @@ const TASK_SELECT = [
   "goal_id",
   "planned_for_date",
   "focus_rank",
+  "board_rank",
   "scheduled_start_at",
   "scheduled_end_at",
   "calendar_sync_enabled",
@@ -124,6 +135,7 @@ function mapTask(
     goalId: asNullableString(row.goal_id),
     plannedForDate: asNullableString(row.planned_for_date),
     focusRank: asNullableNumber(row.focus_rank),
+    boardRank: asNullableString(row.board_rank),
     archivedAt: asNullableString(row.archived_at),
     updatedAt: String(row.updated_at),
     reminders,
@@ -143,6 +155,138 @@ function mapTask(
 
 function failure<T>(error: { code?: string; message?: string } | null): RepositoryResult<T> {
   return { ok: false, error: sanitizeSupabaseError(error) };
+}
+
+/**
+ * Structural view of the PostgREST filter builder. Only these allow-listed
+ * operations are used; column names are hardcoded switches, never request data.
+ */
+type TaskQueryBuilder = {
+  eq(column: string, value: unknown): TaskQueryBuilder;
+  neq(column: string, value: unknown): TaskQueryBuilder;
+  in(column: string, values: readonly unknown[]): TaskQueryBuilder;
+  not(column: string, operator: string, value: unknown): TaskQueryBuilder;
+  gte(column: string, value: unknown): TaskQueryBuilder;
+  lte(column: string, value: unknown): TaskQueryBuilder;
+  lt(column: string, value: unknown): TaskQueryBuilder;
+  is(column: string, value: null): TaskQueryBuilder;
+  ilike(column: string, pattern: string): TaskQueryBuilder;
+  order(column: string, options?: { ascending?: boolean }): TaskQueryBuilder;
+  range(from: number, to: number): TaskQueryBuilder;
+};
+
+function shiftDateOnly(value: string, days: number) {
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  if (Number.isNaN(parsed.getTime())) return value;
+  parsed.setUTCDate(parsed.getUTCDate() + days);
+  return parsed.toISOString().slice(0, 10);
+}
+
+function escapeLikePattern(value: string) {
+  return value.replace(/[\\%_]/g, "\\$&");
+}
+
+function applyListFilter(
+  builder: TaskQueryBuilder,
+  filter: TaskViewFilter,
+  today: string | null,
+): TaskQueryBuilder {
+  if (filter.field === "status" || filter.field === "priority" || filter.field === "project") {
+    const column =
+      filter.field === "status" ? "status" : filter.field === "priority" ? "priority" : "project_id";
+    if (filter.operator === "is") {
+      return filter.field === "priority"
+        ? builder.in(column, filter.values)
+        : builder.eq(column, filter.values[0]);
+    }
+    if (filter.operator === "is_any_of") return builder.in(column, filter.values);
+    if (filter.operator === "is_not") return builder.neq(column, filter.values[0]);
+    return builder.not(column, "in", `(${filter.values.join(",")})`);
+  }
+
+  if (filter.field === "goal") {
+    // A null goal matches `is_not`/`is_none_of` in the application engine, but
+    // SQL `<>` would drop those rows. Only push down the exact positive forms;
+    // the application applies the rest.
+    if (filter.operator === "is") return builder.eq("goal_id", filter.values[0]);
+    if (filter.operator === "is_any_of") return builder.in("goal_id", filter.values);
+    return builder;
+  }
+
+  if (filter.field === "estimate") {
+    const [rawMin, rawMax] = filter.values;
+    let next = builder;
+    if (rawMin !== "") next = next.gte("estimate_minutes", Number(rawMin));
+    if (rawMax !== "") next = next.lte("estimate_minutes", Number(rawMax));
+    return next;
+  }
+
+  if (filter.field === "due_within_days") {
+    if (!today) return builder;
+    return builder
+      .gte("due_date", today)
+      .lte("due_date", shiftDateOnly(today, Number(filter.values[0])));
+  }
+
+  if (filter.field === "due_bucket") {
+    const bucket = filter.values[0];
+    if (filter.operator === "is" && bucket === "none") {
+      return builder.is("due_date", null);
+    }
+    if (filter.operator !== "is" || !today) return builder;
+    if (bucket === "overdue") {
+      return builder.lt("due_date", today).neq("status", "done");
+    }
+    if (bucket === "today") {
+      return builder.eq("due_date", today).neq("status", "done");
+    }
+    if (bucket === "next_7_days") {
+      return builder
+        .gte("due_date", today)
+        .lte("due_date", shiftDateOnly(today, 7))
+        .neq("status", "done");
+    }
+    // `later` is a complement (includes completed work); the application
+    // engine applies it after the bounded page load.
+    return builder;
+  }
+
+  return builder;
+}
+
+function resolveTaskView(query: TaskQuery): TaskViewDefinition {
+  return (
+    query.view ??
+    taskViewFromLegacyInput({
+      status: query.status,
+      priority: query.priority,
+      projectId: query.projectId,
+      goalId: query.goalId,
+      due: query.due,
+      sort: query.sort,
+    })
+  );
+}
+
+function applyTaskQuery(
+  builder: TaskQueryBuilder,
+  query: TaskQuery,
+): TaskQueryBuilder {
+  let next = builder;
+  if (!query.includeArchived) next = next.is("archived_at", null);
+  if (query.projectId) next = next.eq("project_id", query.projectId);
+  if (query.goalId) next = next.eq("goal_id", query.goalId);
+  if (query.plannedForDate) next = next.eq("planned_for_date", query.plannedForDate);
+
+  const view = resolveTaskView(query);
+  const today = query.today?.trim() || null;
+  for (const filter of view.filters) {
+    next = applyListFilter(next, filter, today);
+  }
+  if (view.activeOnly) next = next.neq("status", "done");
+  if (view.search) next = next.ilike("title", `%${escapeLikePattern(view.search)}%`);
+
+  return next;
 }
 
 export class SupabaseTasksRepository implements TasksRepository {
@@ -174,27 +318,46 @@ export class SupabaseTasksRepository implements TasksRepository {
   }
 
   async listTasks(actor: AuthenticatedActor, query: TaskQuery = {}): Promise<RepositoryResult<TaskRecord[]>> {
+    const rows: Row[] = [];
+
+    for (let from = 0; from < TASK_LIST_ROW_CAP; from += TASK_LIST_PAGE_SIZE) {
+      const to = Math.min(from + TASK_LIST_PAGE_SIZE, TASK_LIST_ROW_CAP) - 1;
+      let request = this.supabase
+        .from("tasks")
+        .select(TASK_SELECT)
+        .eq("owner_user_id", actor.userId) as unknown as TaskQueryBuilder;
+
+      request = applyTaskQuery(request, query);
+      // Stable paging order; the application read model owns display ordering.
+      request = request
+        .order("id", { ascending: true })
+        .range(from, to);
+
+      const result = (await request) as unknown as { data: unknown[] | null; error: { code?: string; message: string } | null };
+      if (result.error) return failure(result.error);
+
+      const page = asRows(result.data);
+      rows.push(...page);
+      if (page.length < TASK_LIST_PAGE_SIZE) break;
+    }
+
+    return this.hydrateTasks(actor, rows);
+  }
+
+  async countTasks(actor: AuthenticatedActor, query: TaskQuery = {}): Promise<RepositoryResult<number>> {
     let request = this.supabase
       .from("tasks")
-      .select(TASK_SELECT)
-      .eq("owner_user_id", actor.userId);
+      .select("id", { count: "exact", head: true })
+      .eq("owner_user_id", actor.userId) as unknown as TaskQueryBuilder;
 
-    if (!query.includeArchived) request = request.is("archived_at", null);
-    if (query.status) request = request.eq("status", query.status);
-    // Priority filtering happens in the database; due-filtering and ordering
-    // happen in the application read model so counters can cover the full
-    // filtered scope before the limit slice.
-    if (query.priority) request = request.in("priority", [query.priority]);
-    if (query.projectId) request = request.eq("project_id", query.projectId);
-    if (query.goalId) request = request.eq("goal_id", query.goalId);
-    if (query.plannedForDate) request = request.eq("planned_for_date", query.plannedForDate);
+    request = applyTaskQuery(request, query);
 
-    request = request.order("updated_at", { ascending: false });
-    request = request.limit(TASK_LIST_ROW_CAP);
-
-    const result = await request;
+    const result = (await request) as unknown as {
+      count: number | null;
+      error: { code?: string; message: string } | null;
+    };
     if (result.error) return failure(result.error);
-    return this.hydrateTasks(actor, asRows(result.data));
+    return { ok: true, value: result.count ?? 0 };
   }
 
   async listProjectOptions(
@@ -607,46 +770,73 @@ export class SupabaseTasksRepository implements TasksRepository {
   private async hydrateTasks(actor: AuthenticatedActor, rows: Row[]): Promise<RepositoryResult<TaskRecord[]>> {
     if (rows.length === 0) return { ok: true, value: [] };
     const taskIds = rows.map((row) => String(row.id));
+    const chunkSize = 200;
+    const chunks: string[][] = [];
+    for (let index = 0; index < taskIds.length; index += chunkSize) {
+      chunks.push(taskIds.slice(index, index + chunkSize));
+    }
 
-    const [reminders, recurrences, sessionTotals] = await Promise.all([
-      this.supabase
-        .from("task_reminders")
-        .select(REMINDER_SELECT)
-        .eq("owner_user_id", actor.userId)
-        .in("task_id", taskIds)
-        .order("remind_at", { ascending: true }),
-      this.supabase
-        .from("task_recurrences")
-        .select(RECURRENCE_SELECT)
-        .eq("owner_user_id", actor.userId)
-        .in("task_id", taskIds),
-      this.supabase
-        .from("task_sessions")
-        .select(SESSION_TOTAL_SELECT)
-        .eq("owner_user_id", actor.userId)
-        .in("task_id", taskIds),
+    const [reminderPages, recurrencePages, sessionPages] = await Promise.all([
+      Promise.all(
+        chunks.map((chunk) =>
+          this.supabase
+            .from("task_reminders")
+            .select(REMINDER_SELECT)
+            .eq("owner_user_id", actor.userId)
+            .in("task_id", chunk)
+            .order("remind_at", { ascending: true }),
+        ),
+      ),
+      Promise.all(
+        chunks.map((chunk) =>
+          this.supabase
+            .from("task_recurrences")
+            .select(RECURRENCE_SELECT)
+            .eq("owner_user_id", actor.userId)
+            .in("task_id", chunk),
+        ),
+      ),
+      Promise.all(
+        chunks.map((chunk) =>
+          this.supabase
+            .from("task_sessions")
+            .select(SESSION_TOTAL_SELECT)
+            .eq("owner_user_id", actor.userId)
+            .in("task_id", chunk),
+        ),
+      ),
     ]);
 
-    if (reminders.error) return failure(reminders.error);
-    if (recurrences.error) return failure(recurrences.error);
+    for (const page of reminderPages) {
+      if (page.error) return failure(page.error);
+    }
+    for (const page of recurrencePages) {
+      if (page.error) return failure(page.error);
+    }
 
     const durationByTaskId = new Map<string, number>();
-    for (const rawRow of asRows(sessionTotals.data)) {
-      const row = rawRow as Record<string, unknown>;
-      const taskId = String(row.task_id);
-      const seconds = typeof row.duration_seconds === "number" ? row.duration_seconds : Number(row.duration_seconds ?? 0);
-      durationByTaskId.set(taskId, (durationByTaskId.get(taskId) ?? 0) + (Number.isFinite(seconds) ? seconds : 0));
+    for (const page of sessionPages) {
+      for (const rawRow of asRows(page.data)) {
+        const row = rawRow as Record<string, unknown>;
+        const taskId = String(row.task_id);
+        const seconds = typeof row.duration_seconds === "number" ? row.duration_seconds : Number(row.duration_seconds ?? 0);
+        durationByTaskId.set(taskId, (durationByTaskId.get(taskId) ?? 0) + (Number.isFinite(seconds) ? seconds : 0));
+      }
     }
 
     const reminderMap = new Map<string, TaskReminderRecord[]>();
-    for (const row of asRows(reminders.data)) {
-      const taskId = String(row.task_id);
-      reminderMap.set(taskId, [...(reminderMap.get(taskId) ?? []), mapReminder(row)]);
+    for (const page of reminderPages) {
+      for (const row of asRows(page.data)) {
+        const taskId = String(row.task_id);
+        reminderMap.set(taskId, [...(reminderMap.get(taskId) ?? []), mapReminder(row)]);
+      }
     }
 
     const recurrenceMap = new Map<string, TaskRecurrenceRecord>();
-    for (const row of asRows(recurrences.data)) {
-      recurrenceMap.set(String(row.task_id), mapRecurrence(row));
+    for (const page of recurrencePages) {
+      for (const row of asRows(page.data)) {
+        recurrenceMap.set(String(row.task_id), mapRecurrence(row));
+      }
     }
 
     return {

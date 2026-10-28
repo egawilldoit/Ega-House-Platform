@@ -52,7 +52,11 @@ test("PARITY LIST: default envelope matches the legacy enriched payload exactly"
   assert.equal(body.tasks[0].trackedDurationSeconds, 120);
   assert.deepEqual(body.tasks[0].reminders[0], expectedTodayItem().reminders[0]);
   assert.deepEqual(body.tasks[3].recurrence, expectedOverdueItem().recurrence);
-  assert.deepEqual(body.counters, expectedFullCounters());
+  assert.deepEqual(body.counters, {
+    ...expectedFullCounters(),
+    loaded: 5,
+    truncated: false,
+  });
   assert.deepEqual(body.filters, {
     status: null,
     projectId: null,
@@ -63,6 +67,10 @@ test("PARITY LIST: default envelope matches the legacy enriched payload exactly"
     plannedForDate: null,
     includeArchived: false,
     limit: null,
+    search: "",
+    groupBy: "none",
+    sortKey: "updated",
+    sortDirection: "desc",
   });
   assert.deepEqual(body.projects, expectedListEnvelope([]).projects);
   assert.deepEqual(body.goals, expectedListEnvelope([]).goals);
@@ -74,7 +82,11 @@ test("PARITY LIST: counters cover the full filtered scope before the limit slice
 
   const body = await (await makeApp(fake).request("/api/tasks?limit=2", { headers: AUTH })).json();
 
-  assert.deepEqual(body.counters, expectedFullCounters());
+  assert.deepEqual(body.counters, {
+    ...expectedFullCounters(),
+    loaded: 2,
+    truncated: true,
+  });
   assert.equal(body.tasks.length, 2);
   assert.equal(body.filters.limit, 2);
 });
