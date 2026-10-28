@@ -110,6 +110,19 @@ export interface ProjectsRepository {
     actor: AuthenticatedActor,
     input: { projectId: string; status: ProjectStatus; updatedAt: string },
   ): Promise<RepositoryResult<null>>;
+  /**
+   * Write the archive marker and its metadata in one statement. `archivedAt`
+   * is null for a restore; the repository derives `status` and `archived_by`
+   * so the pair can never diverge (DB CHECK enforces the same invariant).
+   */
+  updateProjectArchiveState(
+    actor: AuthenticatedActor,
+    input: { projectId: string; archivedAt: string | null; updatedAt: string },
+  ): Promise<RepositoryResult<null>>;
+  hasOpenTaskSessionForProject(
+    actor: AuthenticatedActor,
+    projectId: string,
+  ): Promise<RepositoryResult<boolean>>;
   deleteArchivedProject(
     actor: AuthenticatedActor,
     input: DeleteArchivedProjectInput,

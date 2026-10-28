@@ -2,6 +2,8 @@ export * from "./supabase/errors";
 export * from "./projects/repository";
 export * from "./goals/repository";
 export * from "./tasks/repository";
+export * from "./tasks/archived-ancestry";
+export * from "./archive/repository";
 export * from "./timer/repository";
 export * from "./today/repository";
 export * from "./friction/repository";

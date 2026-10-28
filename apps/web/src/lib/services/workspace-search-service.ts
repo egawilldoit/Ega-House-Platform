@@ -1,3 +1,5 @@
+import { excludeArchivedAncestry, loadArchivedAncestorScope } from "@ega/data-access";
+
 import { createClient } from "@/lib/supabase/server";
 import {
   WORKSPACE_SEARCH_MAX_QUERY_LENGTH,
@@ -60,22 +62,47 @@ export async function searchWorkspace(
   const supabase = options?.supabase ?? (await createClient());
   const pattern = `%${escapePostgrestPattern(query)}%`;
 
+  // Search is an active-workspace surface: archived work is found through the
+  // archive centre, and a task whose project/goal is archived is not active
+  // even when the task itself was never archived.
+  const ancestorScope = await loadArchivedAncestorScope(supabase);
+  if (!ancestorScope.ok) {
+    throw new Error("Failed to load the active search scope.");
+  }
+
+  let goalsQuery = supabase
+    .from("goals")
+    .select("id, title")
+    .is("archived_at", null);
+
+  // A goal inside an archived project is not active work either.
+  if (ancestorScope.value.projectIds.length > 0) {
+    goalsQuery = goalsQuery.not(
+      "project_id",
+      "in",
+      `(${ancestorScope.value.projectIds.join(",")})`,
+    );
+  }
+
   const [tasksResult, projectsResult, goalsResult] = await Promise.all([
-    supabase
-      .from("tasks")
-      .select("id, title, status, projects(name)")
+    excludeArchivedAncestry(
+      supabase
+        .from("tasks")
+        .select("id, title, status, projects(name)")
+        .is("archived_at", null),
+      ancestorScope.value,
+    )
       .ilike("title", pattern)
       .order("updated_at", { ascending: false })
       .limit(TASK_LIMIT),
     supabase
       .from("projects")
       .select("id, name, slug")
+      .is("archived_at", null)
       .ilike("name", pattern)
       .order("updated_at", { ascending: false })
       .limit(PROJECT_LIMIT),
-    supabase
-      .from("goals")
-      .select("id, title")
+    goalsQuery
       .ilike("title", pattern)
       .order("created_at", { ascending: false })
       .limit(GOAL_LIMIT),

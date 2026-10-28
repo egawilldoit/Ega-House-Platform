@@ -23,6 +23,7 @@ import {
   mcpOperationIdentity,
   sanitizeSupabaseError,
 } from "../supabase/errors";
+import { hasOpenTaskSessionForScope } from "../tasks/open-session";
 
 const PROJECT_SELECT = "id, name, slug, description, status, created_at, updated_at";
 
@@ -341,6 +342,40 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
     }
 
     return { ok: true, value: null };
+  }
+
+  /**
+   * Archive/restore in one statement. `projects_archive_state_check` (migration
+   * 0064) ties `archived_at` to `status = 'archived'`, so the pair is written
+   * together and can never half-apply.
+   */
+  async updateProjectArchiveState(
+    actor: AuthenticatedActor,
+    input: { projectId: string; archivedAt: string | null; updatedAt: string },
+  ): Promise<RepositoryResult<null>> {
+    const { error } = await this.supabase
+      .from("projects")
+      .update({
+        status: input.archivedAt ? PROJECT_ARCHIVE_STATUS : "active",
+        archived_at: input.archivedAt,
+        archived_by: input.archivedAt ? actor.userId : null,
+        updated_at: input.updatedAt,
+      })
+      .eq("id", input.projectId)
+      .eq("owner_user_id", actor.userId);
+
+    if (error) {
+      return { ok: false, error: sanitizeSupabaseError(error) };
+    }
+
+    return { ok: true, value: null };
+  }
+
+  hasOpenTaskSessionForProject(
+    actor: AuthenticatedActor,
+    projectId: string,
+  ): Promise<RepositoryResult<boolean>> {
+    return hasOpenTaskSessionForScope(this.supabase, actor.userId, { projectId });
   }
 
   /**
