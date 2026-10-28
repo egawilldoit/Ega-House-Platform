@@ -122,7 +122,7 @@ test("repeated insertion at the same visual position never exhausts the gap", ()
   // moves because the generator returned the smallest endpoint.
   const lower = "0000000001";
   let upper = "0000000002";
-  let previous = upper;
+  const previous = upper;
   for (let index = 0; index < 200; index += 1) {
     const key = generateBoardRankBetween(lower, upper);
     assert.ok(lower < key, `${key} must sort after ${lower}`);
