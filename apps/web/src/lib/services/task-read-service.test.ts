@@ -178,6 +178,15 @@ function createTaskReadSupabaseMock(
               state.orders.push({ column, ascending: options?.ascending ?? true });
               return this;
             },
+            range() {
+              return this;
+            },
+            lt() {
+              return this;
+            },
+            ilike() {
+              return this;
+            },
             limit(count: number) {
               state.limit = count;
               return this;
@@ -287,6 +296,7 @@ test("getTaskForOwner returns a normalized task row when modern task columns exi
     goal_id: "goal-1",
     focus_rank: 2,
     planned_for_date: "2026-04-29",
+    created_at: null,
     archived_at: "2026-04-29T11:00:00.000Z",
     archived_by: "user-1",
     projects: { name: "EGA House", slug: "ega-house" },

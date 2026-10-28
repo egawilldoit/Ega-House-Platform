@@ -3,11 +3,23 @@ import {
   DEFAULT_TASK_SORT,
   buildTaskListUrl,
   type TaskDensity,
-  type TaskLayoutMode,
   type TaskBoardOrder,
+  type TaskLayoutMode,
   type TaskDueFilter,
   type TaskSortValue,
+  type TaskViewDefinition,
+  type TaskViewFilter,
 } from "@/lib/task-list";
+import {
+  TASK_DUE_BUCKET_LABELS,
+  TASK_FILTER_FIELD_LABELS,
+  TASK_FILTER_OPERATOR_LABELS,
+  TASK_PRIORITY_LABELS,
+  TASK_STATUS_LABELS,
+  type TaskViewFilterField,
+  type TaskViewFilterOperator,
+} from "@ega/contracts/common/task-list";
+import type { TaskDueBucket, TaskPriority, TaskStatus } from "@ega/domain";
 import { formatTaskToken } from "@/lib/task-domain";
 
 export type TaskFilterState = {
@@ -25,6 +37,12 @@ export type TaskFilterState = {
   layout?: TaskLayoutMode;
   density?: TaskDensity | null;
   boardOrder?: TaskBoardOrder | null;
+  /** Canonical toolbar filters; when present these replace the legacy fields. */
+  filters?: readonly TaskViewFilter[];
+  group?: TaskViewDefinition["groupBy"];
+  q?: string | null;
+  sortKey?: TaskViewDefinition["sort"]["key"];
+  sortDirection?: TaskViewDefinition["sort"]["direction"];
 };
 
 export const DEFAULT_TASK_FILTER_STATE = {
@@ -80,6 +98,14 @@ export function buildTaskFilterReturnPath(
 }
 
 export function buildClearTaskFiltersUrl(basePath: string, filters: TaskFilterState): string {
+  if (filters.filters) {
+    return mergeTaskFilterUrl(basePath, filters, {
+      filters: [],
+      q: "",
+      activeTasks: null,
+    });
+  }
+
   return mergeTaskFilterUrl(basePath, filters, {
     status: null,
     priority: null,
@@ -98,15 +124,126 @@ export type ActiveTaskFilterChip = {
   key: string;
   label: string;
   removeHref: string;
+  /** Canonical filter position, when the chip came from a view definition. */
+  filterIndex?: number;
+  field?: TaskViewFilterField;
+  operator?: TaskViewFilterOperator;
+  values?: string[];
 };
 
+type FilterChipOptions = {
+  projectName?: string | null;
+  goalTitle?: string | null;
+  projectOptions?: Array<{ id: string; name: string }>;
+  goalOptions?: Array<{ id: string; title: string }>;
+};
+
+function valueLabel(
+  filter: TaskViewFilter,
+  value: string,
+  options: FilterChipOptions,
+): string {
+  switch (filter.field) {
+    case "status":
+      return TASK_STATUS_LABELS[value as TaskStatus] ?? formatTaskToken(value);
+    case "priority":
+      return TASK_PRIORITY_LABELS[value as TaskPriority] ?? formatTaskToken(value);
+    case "due_bucket":
+      return TASK_DUE_BUCKET_LABELS[value as TaskDueBucket] ?? formatTaskToken(value);
+    case "project":
+      return (
+        options.projectOptions?.find((option) => option.id === value)?.name ??
+        options.projectName ??
+        "Project"
+      );
+    case "goal":
+      return (
+        options.goalOptions?.find((option) => option.id === value)?.title ??
+        options.goalTitle ??
+        "Goal"
+      );
+    default:
+      return value;
+  }
+}
+
+export function describeTaskViewFilter(
+  filter: TaskViewFilter,
+  options: FilterChipOptions = {},
+): string {
+  const field = TASK_FILTER_FIELD_LABELS[filter.field];
+
+  if (filter.field === "estimate") {
+    const [min, max] = filter.values;
+    return `${field} ${min || "0"}–${max || "∞"}m`;
+  }
+
+  if (filter.field === "due_within_days") {
+    return `${field} ${filter.values[0]} days`;
+  }
+
+  const values = filter.values.map((value) => valueLabel(filter, value, options));
+  const operator = TASK_FILTER_OPERATOR_LABELS[filter.operator];
+  return `${field} ${operator} ${values.join(", ")}`;
+}
+
+export function buildTaskViewFilterChips(
+  basePath: string,
+  view: TaskViewDefinition,
+  filters: TaskFilterState,
+  options: FilterChipOptions = {},
+): ActiveTaskFilterChip[] {
+  const chips: ActiveTaskFilterChip[] = [];
+
+  if (view.search) {
+    chips.push({
+      key: "search",
+      label: `Search: ${view.search}`,
+      removeHref: mergeTaskFilterUrl(basePath, filters, { q: "" }),
+    });
+  }
+
+  view.filters.forEach((filter, index) => {
+    chips.push({
+      key: `filter-${index}-${filter.field}-${filter.operator}`,
+      label: describeTaskViewFilter(filter, options),
+      removeHref: mergeTaskFilterUrl(basePath, filters, {
+        filters: view.filters.filter((_, filterIndex) => filterIndex !== index),
+      }),
+      filterIndex: index,
+      field: filter.field,
+      operator: filter.operator,
+      values: [...filter.values],
+    });
+  });
+
+  return chips;
+}
+
+export function upsertTaskViewFilter(
+  filters: readonly TaskViewFilter[],
+  filter: TaskViewFilter,
+  index: number | null,
+): TaskViewFilter[] {
+  if (index === null) return [...filters, filter];
+  return filters.map((entry, entryIndex) => (entryIndex === index ? filter : entry));
+}
+
+export function removeTaskViewFilter(
+  filters: readonly TaskViewFilter[],
+  index: number,
+): TaskViewFilter[] {
+  return filters.filter((_, entryIndex) => entryIndex !== index);
+}
+
+/**
+ * Legacy chip builder retained for the project-scoped task surface. The /tasks
+ * toolbar uses `buildTaskViewFilterChips` with the canonical definition.
+ */
 export function buildActiveTaskFilterChips(
   basePath: string,
   filters: TaskFilterState,
-  options: {
-    projectName?: string | null;
-    goalTitle?: string | null;
-  } = {},
+  options: FilterChipOptions = {},
 ): ActiveTaskFilterChip[] {
   const hrefFor = (overrides: TaskFilterState) => mergeTaskFilterUrl(basePath, filters, overrides);
   const chips: ActiveTaskFilterChip[] = [];
