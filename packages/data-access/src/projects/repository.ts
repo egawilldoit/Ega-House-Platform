@@ -193,18 +193,23 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
   async listTasksForProjects(
     actor: AuthenticatedActor,
     projectIds: string[],
+    options?: { includeArchived?: boolean },
   ): Promise<RepositoryResult<ProjectTaskContextRecord[]>> {
     if (projectIds.length === 0) {
       return { ok: true, value: [] };
     }
 
-    const { data, error } = await this.supabase
+    let query = this.supabase
       .from("tasks")
       .select("id, project_id, title, status, priority, updated_at")
       .in("project_id", projectIds)
-      .is("archived_at", null)
-      .eq("owner_user_id", actor.userId)
-      .order("updated_at", { ascending: false });
+      .eq("owner_user_id", actor.userId);
+
+    if (!options?.includeArchived) {
+      query = query.is("archived_at", null);
+    }
+
+    const { data, error } = await query.order("updated_at", { ascending: false });
 
     if (error) {
       return { ok: false, error: sanitizeSupabaseError(error) };
