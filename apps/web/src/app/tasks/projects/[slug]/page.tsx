@@ -66,6 +66,7 @@ import { formatDurationLabel, getTaskTotalDurationMap } from "@/lib/task-session
 import { formatTaskEstimate } from "@/lib/task-estimate";
 import { buildTaskDrawerLink } from "@/lib/task-drawer-url";
 import { listTaskSubtasks } from "@/lib/services/subtask-service";
+import { getProjectTaskActivity, getTaskActivity } from "@/lib/services/task-activity-service";
 import { TASK_SUBTASK_ACTIONS } from "@/lib/task-subtask-actions";
 import { formatTaskRecurrenceRule } from "@/lib/task-recurrence";
 import { formatTimerDateTime } from "@/lib/timer-domain";
@@ -291,6 +292,12 @@ export default async function ProjectDetailPage({
   const selectedTaskSubtasks = selectedTaskId
     ? (await listTaskSubtasks(selectedTaskId)).data ?? []
     : [];
+  const selectedTaskActivity = selectedTaskId
+    ? (await getTaskActivity(selectedTaskId, { limit: 8 })).items
+    : [];
+  const projectActivity = await getProjectTaskActivity(tasks.map((task) => task.id), {
+    limit: 5,
+  });
 
   const filteredTasks = applyTaskListQuery(
     tasks.filter((task) => {
@@ -750,23 +757,31 @@ export default async function ProjectDetailPage({
             </Card>
 
             <Card label="Activity" title="Recent activity">
-              {tasks.length ? (
+              {projectActivity.length ? (
                 <ul className="rows">
-                  {tasks.slice(0, 3).map((task) => (
-                    <li key={task.id} className="row">
-                      <span className="row-main">
-                        <span className="row-title">{task.title}</span>
-                        <span className="row-meta">
-                          Updated {formatTimerDateTime(task.updated_at)}
+                  {projectActivity.map((item) => {
+                    const taskTitle =
+                      tasks.find((task) => task.id === item.taskId)?.title ?? "Task";
+                    return (
+                      <li key={item.id} className="row items-start">
+                        <span className="row-main">
+                          <span className="row-title">{taskTitle}</span>
+                          <span className="row-meta">{item.summary}</span>
+                          <span className="row-meta">
+                            {item.actorKind === "owner"
+                              ? "You"
+                              : item.actorKind === "system"
+                                ? "System"
+                                : item.actorKind === "agent"
+                                  ? (item.actorLabel ?? "Agent")
+                                  : "Unknown actor"}
+                            {" · "}
+                            {formatTimerDateTime(item.occurredAt)}
+                          </span>
                         </span>
-                      </span>
-                      <span className="row-actions">
-                        <Badge tone={getTaskStatusTone(task.status)}>
-                          {formatTaskToken(task.status)}
-                        </Badge>
-                      </span>
-                    </li>
-                  ))}
+                      </li>
+                    );
+                  })}
                 </ul>
               ) : (
                 <CardContent>
@@ -816,6 +831,7 @@ export default async function ProjectDetailPage({
           updateDraftAction={updateTaskFieldDraftAction}
           ownerId={currentUser?.id ?? null}
           subtasks={selectedTaskSubtasks}
+          activity={selectedTaskActivity}
           subtaskActions={TASK_SUBTASK_ACTIONS}
           updateError={taskUpdateTaskId === selectedTaskId ? taskUpdateError : null}
           updateSuccess={taskUpdateTaskId === selectedTaskId ? taskUpdateSuccess : null}

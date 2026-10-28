@@ -91,6 +91,7 @@ export function TasksPageView({
     selectedTaskError,
     selectedTaskSubtasks,
     subtaskCounts,
+    selectedTaskActivity,
   } = model;
   const { activeStatus, activeView, activeLayout, activeDueFilter, savedViewDefinitionFilters } = parsed;
   const completedTaskIdsInScope = getArchivableCompletedTaskIds(tasks);  // Restore clears archived state only; it must never resurrect a completed
@@ -346,6 +347,7 @@ export function TasksPageView({
           updateDraftAction={updateTaskFieldDraftAction}
           ownerId={ownerId}
           subtasks={selectedTaskSubtasks}
+          activity={selectedTaskActivity}
           subtaskActions={TASK_SUBTASK_ACTIONS}
           updateError={taskUpdateTaskId === selectedTaskId ? taskUpdateError : null}
           updateSuccess={taskUpdateTaskId === selectedTaskId ? taskUpdateSuccess : null}
