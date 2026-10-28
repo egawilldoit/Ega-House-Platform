@@ -78,3 +78,15 @@ This log persists material **current-behavior vs normative-authority conflicts**
 - **Resolution / required decision:** `review` is open, non-completed work awaiting owner validation. It appears wherever statuses appear (web board/filters/badges, mobile status control and chip colour, MCP/agent status enums, analytics open-work buckets). It is not promoted into the Today execution queue (never Start Here/focus) and a timer cannot start from review; starting a timer requires returning to `in_progress`. Agents may request it explicitly through the existing scoped status APIs; opening a PR does not change Runner behaviour. No historical backfill.
 - **Status:** `RESOLVED` for this program by the adopted proposal; `OPEN` for owner confirmation if different semantics are wanted.
 - **Follow-up / evidence:** domain/token/mobile tests, web typecheck and targeted tests on the EGA-790 PR; authenticated browser walkthrough of board/filter/status change is pending credentials.
+
+### DEC-2026-10-28-01 — Task activity actor provenance and producer coverage (EGA-784)
+
+- **Date:** 2026-10-28
+- **Scope:** durable task activity ledger, status/timer actor columns, agent identity on service-role writes.
+- **Conflict:** stage 1 attributed every authenticated write to the owner and every service-role write to `system`, so MCP agents and scoped agent tokens had no stable identity; status/timer rows had no actor columns at all.
+- **Current-behavior evidence:** `drizzle/0066_task_activity_events.sql`, `apps/web/src/lib/services/{task-activity-service,agent-task-service}.ts`, `apps/web/src/lib/mcp/write/tasks.ts`, `apps/web/src/lib/http/agent-task-handlers.ts`.
+- **Normative authority:** EGA-784 acceptance criteria: trusted owner/agent/system attribution that survives credential rotation, atomic event writes, no forged client writes, one shared read model.
+- **Classification:** `IMPLEMENTATION_DECISION`.
+- **Resolution / required decision:** one `TaskActivityActor` contract in `@ega/domain`; one `ega_task_actor()` resolver used by all task-related triggers. MCP identity comes from the verified `client_id` claim plus the grant's snapshotted `client_name`. Scoped agent tokens pass stable id/name through server-set `x-ega-actor-*` headers, trusted only for a `service_role` role claim. Labels are snapshotted per row; revoked/rotated credentials never rewrite history. Existing status/timer rows default to `unknown`.
+- **Status:** `OPEN` — becomes resolved when this change is observed on `main`.
+- **Follow-up / evidence:** `scripts/db/task-activity-attribution-invariant-verify.mjs` (journal-applied owner/MCP/agent/spoof/reminder/timer/comment/RLS proofs), application read-model tests, and the producer matrix in [`../architecture/task-activity-producers.md`](../architecture/task-activity-producers.md).

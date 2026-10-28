@@ -203,9 +203,10 @@ export default async function TodayPage({
   const selectedTaskSubtasks = selectedTaskId
     ? (await listTaskSubtasks(selectedTaskId)).data ?? []
     : [];
-  const selectedTaskActivity = selectedTaskId
-    ? (await getTaskActivity(selectedTaskId, { limit: 8 })).items
-    : [];
+  const selectedTaskActivityPage = selectedTaskId
+    ? await getTaskActivity(selectedTaskId, { limit: 8 })
+    : { items: [], hasMore: false };
+  const selectedTaskActivity = selectedTaskActivityPage.items;
   const selectedTaskIsFavourite = selectedTaskId
     ? await isFavorite("task", selectedTaskId)
     : false;
@@ -274,6 +275,7 @@ export default async function TodayPage({
           ownerId={user?.id ?? null}
           subtasks={selectedTaskSubtasks}
           activity={selectedTaskActivity}
+          activityHasMore={selectedTaskActivityPage.hasMore}
           isFavourite={selectedTaskIsFavourite}
           favouriteAction={toggleFavoriteAction}
           subtaskActions={TASK_SUBTASK_ACTIONS}
