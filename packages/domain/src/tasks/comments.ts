@@ -70,7 +70,7 @@ export function normalizeTaskCommentRequestId(value: unknown): NormalizedText {
   if (requestId.length > TASK_COMMENT_REQUEST_ID_MAX) {
     return { ok: false, errorMessage: "Request id is too long." };
   }
-  if (!/^[A-Za-z0-9._:-]+$/.test(requestId)) {
+  if (!/^[A-Za-z0-9._:/-]+$/.test(requestId)) {
     return { ok: false, errorMessage: "Request id contains unsupported characters." };
   }
   return { ok: true, value: requestId };
