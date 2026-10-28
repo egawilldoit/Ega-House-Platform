@@ -87,6 +87,8 @@ export function CommentComposer({
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- restore the account-scoped browser draft after hydration
     setBody(readTaskCommentDraft(window.localStorage, ownerId, taskId));
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- replace the deterministic hydration id with a fresh retry id once mounted
+    setRequestId(newRequestId());
   }, [ownerId, taskId]);
 
   useEffect(() => {
