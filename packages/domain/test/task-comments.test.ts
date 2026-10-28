@@ -33,6 +33,10 @@ test("request ids require a bounded, safe idempotency key", () => {
     ok: true,
     value: "req-1",
   });
+  assert.deepEqual(normalizeTaskCommentRequestId("github-issues:repo/456"), {
+    ok: true,
+    value: "github-issues:repo/456",
+  });
   assert.equal(normalizeTaskCommentRequestId("").ok, false);
   assert.equal(normalizeTaskCommentRequestId("bad id with spaces").ok, false);
   assert.equal(normalizeTaskCommentRequestId("a".repeat(129)).ok, false);
