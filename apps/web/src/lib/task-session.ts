@@ -74,10 +74,23 @@ export type TaskSessionSummary = {
   weekSessionCount: number;
 };
 
+const TASK_ID_QUERY_CHUNK = 200;
+const SESSION_PAGE_SIZE = 1000;
+
+function chunkTaskIds(taskIds: string[]) {
+  const chunks: string[][] = [];
+  for (let index = 0; index < taskIds.length; index += TASK_ID_QUERY_CHUNK) {
+    chunks.push(taskIds.slice(index, index + TASK_ID_QUERY_CHUNK));
+  }
+  return chunks;
+}
+
 /**
- * One bounded session read for a Task scope, summarized for both lifetime
- * tracked time and a supplied week window. Callers pass every Task id whose
- * historical time should be retained (including archived Tasks).
+ * Session rows for a Task scope, summarized for both lifetime tracked time and
+ * a supplied week window. Ids are chunked so PostgREST URLs stay bounded, and
+ * each chunk is paged so the implicit row cap never silently under-reports.
+ * Callers pass every Task id whose historical time should be retained
+ * (including archived Tasks).
  */
 export async function getTaskSessionSummaryMap(
   supabase: SupabaseServerClient,
@@ -94,16 +107,32 @@ export async function getTaskSessionSummaryMap(
     return { sessions: [], byTask: {} };
   }
 
-  const { data, error } = await supabase
-    .from("task_sessions")
-    .select("task_id, started_at, ended_at, duration_seconds")
-    .in("task_id", uniqueTaskIds);
+  const sessions: TaskSessionDurationRow[] = [];
 
-  if (error) {
-    throw new Error(`Failed to load task session totals: ${error.message}`);
+  for (const chunk of chunkTaskIds(uniqueTaskIds)) {
+    let from = 0;
+
+    for (;;) {
+      const { data, error } = await supabase
+        .from("task_sessions")
+        .select("task_id, started_at, ended_at, duration_seconds")
+        .in("task_id", chunk)
+        .order("started_at", { ascending: true })
+        .order("id", { ascending: true })
+        .range(from, from + SESSION_PAGE_SIZE - 1);
+
+      if (error) {
+        throw new Error(`Failed to load task session totals: ${error.message}`);
+      }
+
+      const page = (data ?? []) as TaskSessionDurationRow[];
+      sessions.push(...page);
+
+      if (page.length < SESSION_PAGE_SIZE) break;
+      from += SESSION_PAGE_SIZE;
+    }
   }
 
-  const sessions = (data ?? []) as TaskSessionDurationRow[];
   const summaries: Record<string, TaskSessionSummary> = {};
 
   for (const session of sessions) {

@@ -25,6 +25,7 @@ import { formatTaskRecurrenceRule } from "@/lib/task-recurrence";
 import {
   formatTaskToken,
   getTaskStatusTone,
+  isTaskCompletedStatus,
   type TaskStatus,
 } from "@/lib/task-domain";
 import type { TaskDueFilter, TaskSortValue } from "@/lib/task-list";
@@ -78,7 +79,7 @@ export function ProjectTaskList({
         title="Project tasks"
         action={
           <Badge tone="muted">
-            {tasks.filter((task) => task.status === "done").length}/{tasks.length} done
+            {tasks.filter((task) => isTaskCompletedStatus(task.status)).length}/{tasks.length} done
           </Badge>
         }
       >

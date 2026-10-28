@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { ListChecks } from "lucide-react";
 
 import type { UpdateTaskEditorAction } from "@/components/tasks/edit-task-modal";
@@ -34,6 +35,8 @@ type ProjectBoardProps = {
   errorForTask?: (taskId: string) => string | null;
   updateSuccess?: string | null;
   updateError?: string | null;
+  hasActiveFilters?: boolean;
+  clearFiltersHref: string;
 };
 
 const EMPTY_BOARD_MESSAGE = "No tasks match the current filters.";
@@ -49,6 +52,8 @@ export function ProjectBoard({
   errorForTask,
   updateSuccess,
   updateError,
+  hasActiveFilters = false,
+  clearFiltersHref,
 }: ProjectBoardProps) {
   const board = buildTaskKanbanBoard(tasks, activeStatus);
 
@@ -66,6 +71,17 @@ export function ProjectBoard({
       {updateError ? (
         <p role="alert" className="feedback-block feedback-block-error mx-[var(--panel-pad,18px)] mt-4">
           {updateError}
+        </p>
+      ) : null}
+      {hasActiveFilters ? (
+        <p className="mx-[var(--panel-pad,18px)] mt-4 text-[length:var(--text-meta-lg)] text-[color:var(--ega-text-secondary)]">
+          This board uses the current project filters.{" "}
+          <Link
+            href={clearFiltersHref}
+            className="underline hover:text-[color:var(--ega-text)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ega-focus-outline)]"
+          >
+            Clear filters
+          </Link>
         </p>
       ) : null}
       {tasks.length === 0 ? (

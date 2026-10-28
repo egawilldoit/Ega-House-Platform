@@ -62,6 +62,7 @@ import { getTodayIsoDateForTimezone, getWeekWindowViaTimeContext } from "@/lib/r
 import { ProjectBoard } from "./_components/project-board";
 import { ProjectOverview } from "./_components/project-overview";
 import { ProjectTabNav, normalizeProjectTab } from "./_components/project-tab-nav";
+import { ProjectTaskHashLink } from "./_components/project-task-hash-link";
 import { ProjectTaskList } from "./_components/project-task-list";
 
 type ProjectDetailPageProps = {
@@ -326,6 +327,11 @@ export default async function ProjectDetailPage({
   );
   const focusQueue = sortFocusQueueTasks(filteredTasks);
   const taskTitles = new Map(allTasks.map((task) => [task.id, task.title]));
+  const hasActiveTaskFilters =
+    activeStatus !== null ||
+    activePriority !== null ||
+    activeDueFilter !== DEFAULT_TASK_DUE_FILTER ||
+    activeSort !== DEFAULT_TASK_SORT;
 
   const statusError =
     projectUpdateProjectId === project.id && projectUpdateField === "status"
@@ -367,6 +373,7 @@ export default async function ProjectDetailPage({
       }
     >
       <div className="flex flex-col gap-6">
+        <ProjectTaskHashLink activeTab={activeTab} />
         <ProjectTabNav
           activeTab={activeTab}
           basePath={projectPath}
@@ -391,6 +398,7 @@ export default async function ProjectDetailPage({
               taskTitles={taskTitles}
               archivedTaskCount={archivedTaskCount}
               projectIsArchived={projectIsArchived}
+              timezone={timeContext?.timezone ?? "UTC"}
               returnTo={returnTo}
               deleteHref={deleteHref}
               statusError={statusError}
@@ -428,6 +436,8 @@ export default async function ProjectDetailPage({
               }
               updateSuccess={taskUpdateSuccess}
               updateError={taskUpdateTaskId ? null : taskUpdateError}
+              hasActiveFilters={hasActiveTaskFilters}
+              clearFiltersHref={`${projectPath}?tab=board`}
             />
           </section>
         ) : null}

@@ -6,7 +6,7 @@ import type { ProjectProgressSummary } from "@ega/application";
 import { Card, CardContent } from "@/components/ui/card";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { getProjectStatusBarColor } from "@/lib/project-overview";
-import { formatTaskToken } from "@/lib/task-domain";
+import { formatTaskToken, isTaskStatus } from "@/lib/task-domain";
 
 type ProjectProgressCardProps = {
   projectId: string;
@@ -58,23 +58,41 @@ export function ProjectProgressCard({
         {statusCounts.length ? (
           <div className="flex flex-col gap-3">
             <div className="flex items-stretch gap-1" role="group" aria-label="Tasks by status">
-              {statusCounts.map((entry) => (
-                <Link
-                  key={entry.status}
-                  href={statusFilterHref(projectId, entry.status)}
-                  aria-label={`${entry.count} ${formatTaskToken(entry.status)} ${
-                    entry.count === 1 ? "task" : "tasks"
-                  } — open the filtered task list`}
-                  className="group flex min-h-8 min-w-8 items-center rounded-[var(--radius-sm)] px-0.5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ega-focus-outline)]"
-                  style={{ flexGrow: entry.count, flexBasis: 0 }}
-                >
+              {statusCounts.map((entry) => {
+                const canFilter = isTaskStatus(entry.status);
+                const label = `${entry.count} ${formatTaskToken(entry.status)} ${
+                  entry.count === 1 ? "task" : "tasks"
+                }${canFilter ? " — open the filtered task list" : " — not available as a task filter"}`;
+                const segment = (
                   <span
                     aria-hidden="true"
                     className="h-2 w-full rounded-[var(--radius-pill)] transition-[filter] group-hover:brightness-110 motion-reduce:transition-none"
                     style={{ background: getProjectStatusBarColor(entry.status) }}
                   />
-                </Link>
-              ))}
+                );
+
+                return canFilter ? (
+                  <Link
+                    key={entry.status}
+                    href={statusFilterHref(projectId, entry.status)}
+                    aria-label={label}
+                    className="group flex min-h-8 min-w-8 items-center rounded-[var(--radius-sm)] px-0.5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ega-focus-outline)]"
+                    style={{ flexGrow: entry.count, flexBasis: 0 }}
+                  >
+                    {segment}
+                  </Link>
+                ) : (
+                  <span
+                    key={entry.status}
+                    role="img"
+                    aria-label={label}
+                    className="group flex min-h-8 min-w-8 items-center px-0.5"
+                    style={{ flexGrow: entry.count, flexBasis: 0 }}
+                  >
+                    {segment}
+                  </span>
+                );
+              })}
             </div>
 
             <ul className="flex flex-wrap gap-x-3 gap-y-1.5" aria-label="Status legend">

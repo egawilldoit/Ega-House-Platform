@@ -58,7 +58,7 @@ export function ProjectTabNav({
   function navigate(value: ProjectTab) {
     if (value === activeTab) return;
     startTransition(() => {
-      router.replace(hrefFor(value), { scroll: false });
+      router.push(hrefFor(value), { scroll: false });
     });
   }
 
@@ -110,7 +110,7 @@ export function ProjectTabNav({
                 id={`project-tab-${tab.value}`}
                 role="tab"
                 aria-selected={isActive}
-                aria-controls={`project-panel-${tab.value}`}
+                aria-controls={isActive ? `project-panel-${tab.value}` : undefined}
                 tabIndex={isActive ? 0 : -1}
                 className={cn(
                   "min-h-9 px-4 focus-visible:ring-2 focus-visible:ring-[var(--ega-focus-outline)] focus-visible:ring-offset-1",

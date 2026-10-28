@@ -5,8 +5,12 @@ import type { ProjectGoalRecord } from "@ega/application";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import { getGoalHealthColor } from "@/lib/project-overview";
-import { getGoalHealthLabel, getGoalHealthTone, toGoalHealthOrNull } from "@/lib/goal-health";
+import {
+  getGoalHealthColor,
+  getGoalHealthLabel,
+  getGoalHealthTone,
+  toGoalHealthOrNull,
+} from "@/lib/goal-health";
 import { getGoalNextStepPreview } from "@/lib/goal-next-step";
 
 type ProjectGoalsMilestonesProps = {

@@ -1,4 +1,4 @@
-import type { ProjectStatus, ProjectViewFilter } from "@ega/domain";
+import type { GoalHealth, ProjectStatus, ProjectViewFilter } from "@ega/domain";
 
 import type { AuthenticatedActor } from "../auth/actor";
 import type { RepositoryResult } from "../shared/result";
@@ -26,8 +26,8 @@ export type ProjectGoalRecord = {
   id: string;
   title: string;
   projectId: string;
-  /** Canonical goal health (`on_track` | `at_risk` | `off_track`), or null. */
-  health: string | null;
+  /** Canonical goal health, or null when unset. */
+  health: GoalHealth | null;
   /** Immediate next move for the goal, or null when the owner has not set one. */
   nextStep: string | null;
 };

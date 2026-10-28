@@ -3,7 +3,7 @@ import test from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
-import type { ProjectProgressSummary } from "@ega/application";
+import type { ProjectGoalRecord, ProjectProgressSummary } from "@ega/application";
 
 import { buildProjectProgress } from "@ega/application";
 
@@ -80,7 +80,7 @@ test("coming up renders at most six tasks and an empty state", () => {
 });
 
 test("goal milestones render health and next step and keep long lists bounded", () => {
-  const goals = Array.from({ length: 24 }, (_, index) => ({
+  const goals: ProjectGoalRecord[] = Array.from({ length: 24 }, (_, index) => ({
     id: `goal-${index}`,
     title: `Goal ${index}`,
     projectId: "project-1",
