@@ -8,16 +8,21 @@ import {
   isTaskLayout,
   isTaskSortValue,
   normalizeTaskBoardOrder,
+  normalizeTaskCalendarDateField,
+  normalizeTaskCalendarView,
   normalizeTaskDensity,
   parseTaskListView,
   sortTasksForBoard,
   type TaskBoardOrder,
+  type TaskCalendarDateField,
+  type TaskCalendarView,
   type TaskDensity,
   type TaskDueFilter,
   type TaskLayoutMode,
   type TaskSortValue,
   type TaskViewDefinition,
 } from "@/lib/task-list";
+import { isDateOnlyValue } from "@/lib/task-due-date";
 import { isTaskStatus, type TaskStatus } from "@/lib/task-domain";
 import { normalizeTaskViewFilter, type TaskViewFilter as TaskArchiveViewFilter } from "@/lib/task-archive";
 import {
@@ -64,6 +69,12 @@ export type TasksSearchParams = {
   group?: string;
   dir?: string;
   filter?: string | string[];
+  /** `month` | `week` while `layout=calendar`. */
+  cal?: string;
+  /** Anchor date (YYYY-MM-DD) for the calendar window. */
+  date?: string;
+  /** `due` | `planned` task field used to place tasks on calendar days. */
+  dateField?: string;
   taskUpdateError?: string;
   taskUpdateSuccess?: string;
   taskUpdateTaskId?: string;
@@ -86,6 +97,9 @@ export type ParsedTasksFilters = {
   activeLayout: TaskLayoutMode;
   activeDensity: TaskDensity;
   activeBoardOrder: TaskBoardOrder | null;
+  activeCalendarView: TaskCalendarView;
+  activeCalendarDate: string | null;
+  activeCalendarDateField: TaskCalendarDateField;
   activeView: TaskArchiveViewFilter;
   projectParam: string | null;
   goalParam: string | null;
@@ -141,7 +155,17 @@ export function parseTasksSearchParams(
     : defaultLayout;
   const activeDensity: TaskDensity = normalizeTaskDensity(searchParams.density);
   const activeBoardOrder = normalizeTaskBoardOrder(searchParams.boardOrder);
-  const activeView: TaskArchiveViewFilter = normalizeTaskViewFilter(searchParams.archive ?? searchParams.view);
+  const requestedCalendarDate = searchParams.date?.trim() ?? "";
+  const activeCalendarDate = isDateOnlyValue(requestedCalendarDate)
+    ? requestedCalendarDate
+    : null;
+  const activeCalendarView: TaskCalendarView = normalizeTaskCalendarView(searchParams.cal);
+  const activeCalendarDateField: TaskCalendarDateField = normalizeTaskCalendarDateField(
+    searchParams.dateField,
+  );
+  const activeView: TaskArchiveViewFilter = normalizeTaskViewFilter(
+    searchParams.archive ?? searchParams.view,
+  );
   const taskUpdateError =
     searchParams.taskUpdateError?.slice(0, 180) ?? searchParams.statusUpdateError?.slice(0, 180) ?? null;
   const taskUpdateSuccess = searchParams.taskUpdateSuccess?.slice(0, 180) ?? null;
@@ -156,6 +180,9 @@ export function parseTasksSearchParams(
     activeSort,
     activeLayout,
     activeDensity,
+    activeCalendarView,
+    activeCalendarDate,
+    activeCalendarDateField,
     activeView,
     activeBoardOrder,
     projectParam,
@@ -174,12 +201,18 @@ export async function getTasksPageModel(
   defaults: TaskPageDefaults = {},
 ) {
   const parsed = parseTasksSearchParams(searchParams, defaults);
-  // Due-within-N-days windows use the owner's canonical local date from Time
-  // Context so the Tasks workspace agrees with Today/Timer on the calendar day.
-  const accountLocalDate = (await getWebTimeContext().catch(() => null))?.localDate;
+  // Due-within-N-days windows, the timeline range and the calendar grid use
+  // the owner's canonical local date/timezone from Time Context so Tasks
+  // agrees with Today/Timer on the calendar day. A missing context falls back
+  // to UTC explicitly.
+  const timeContext = await getWebTimeContext().catch(() => null);
+  const accountLocalDate = timeContext?.localDate;
+  const accountTimezone = timeContext?.timezone ?? "UTC";
   const ownerToday = accountLocalDate ?? getTodayLocalIsoDate();
   const timelineZoom = normalizeTimelineZoom(searchParams.tlZoom);
   const timelineRange = resolveTimelineRange(ownerToday, searchParams.tlStart);
+  const calendarAnchorDate =
+    parsed.activeCalendarDate ?? accountLocalDate ?? new Date().toISOString().slice(0, 10);
   const workspaceData = await getTasksWorkspaceData(
     {
       activeStatus: parsed.activeStatus,
@@ -195,7 +228,19 @@ export async function getTasksPageModel(
       activeDueWithinDays: parsed.savedViewDefinitionFilters.dueWithinDays,
       view: parsed.view,
     },
-    { todayIsoDate: accountLocalDate ?? undefined },
+    {
+      todayIsoDate: accountLocalDate ?? undefined,
+      ...(parsed.activeLayout === "calendar"
+        ? {
+            calendar: {
+              view: parsed.activeCalendarView,
+              dateField: parsed.activeCalendarDateField,
+              anchorDate: calendarAnchorDate,
+              timezone: accountTimezone,
+            },
+          }
+        : {}),
+    },
   );
   const {
     projects,
@@ -210,6 +255,7 @@ export async function getTasksPageModel(
     filteredTotal: workspaceFilteredTotal,
     loadedCount: workspaceLoadedCount,
     truncated: workspaceTruncated,
+    calendar,
   } = workspaceData;
   // Older/partial workspace fixtures and adapters may not echo the canonical
   // view; the parsed URL definition is the safe fallback.
@@ -231,6 +277,9 @@ export async function getTasksPageModel(
     timelineStart: parsed.activeLayout === "timeline" ? timelineRange.start : null,
     timelineZoom: parsed.activeLayout === "timeline" ? timelineZoom : null,
     columns: view.columns,
+    cal: parsed.activeCalendarView,
+    date: parsed.activeLayout === "calendar" ? (parsed.activeCalendarDate ?? calendarAnchorDate) : null,
+    dateField: parsed.activeCalendarDateField,
   });
 
   const taskUrlFilters = {
@@ -243,6 +292,9 @@ export async function getTasksPageModel(
     density: parsed.activeDensity === "compact" ? "compact" : null,
     boardOrder: parsed.activeBoardOrder,
     columns: view.columns,
+    cal: parsed.activeCalendarView,
+    date: parsed.activeLayout === "calendar" ? (parsed.activeCalendarDate ?? calendarAnchorDate) : null,
+    dateField: parsed.activeCalendarDateField,
   };
   const today = accountLocalDate ?? getTodayLocalIsoDate();
   const tasksById = new Map(tasks.map((task) => [task.id, task]));
@@ -348,6 +400,7 @@ export async function getTasksPageModel(
     returnPath,
     taskUrlFilters,
     kanbanBoard,
+    calendar,
     inProgressCount,
     blockedCount,
     overdueCount,

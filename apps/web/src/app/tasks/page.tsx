@@ -32,6 +32,9 @@ type TasksPageProps = {
     layout?: string;
     density?: string;
     view?: string;
+    cal?: string;
+    date?: string;
+    dateField?: string;
     taskUpdateError?: string;
     taskUpdateSuccess?: string;
     taskUpdateTaskId?: string;
