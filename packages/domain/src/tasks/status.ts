@@ -21,6 +21,35 @@ export function isTaskStatus(value: string): value is TaskStatus {
   return TASK_STATUS_VALUES.includes(value as TaskStatus);
 }
 
+/**
+ * Canonical status transitions shown by every task surface (board drag, card
+ * buttons, tap alternatives).
+ *
+ * `review` is an explicit hand-off, never an implicit next step: work enters it
+ * from in progress and leaves it back to in progress or straight to done.
+ * `done` only reopens to `todo`, so a completed task cannot silently re-enter
+ * execution and start a timer without an explicit reopen.
+ */
+export const TASK_STATUS_TRANSITIONS = {
+  todo: ["in_progress", "blocked", "done"],
+  in_progress: ["todo", "review", "blocked", "done"],
+  review: ["in_progress", "blocked", "done"],
+  blocked: ["todo", "in_progress", "done"],
+  done: ["todo"],
+} as const satisfies Record<TaskStatus, readonly TaskStatus[]>;
+
+export function getTaskStatusTransitions(status: string): TaskStatus[] {
+  return isTaskStatus(status) ? [...TASK_STATUS_TRANSITIONS[status]] : [];
+}
+
+export function isTaskStatusTransitionAllowed(
+  from: string,
+  to: string,
+): to is TaskStatus {
+  if (!isTaskStatus(from) || !isTaskStatus(to)) return false;
+  return (TASK_STATUS_TRANSITIONS[from] as readonly TaskStatus[]).includes(to);
+}
+
 export function isCanonicalTaskStatus(value: string): value is TaskStatus {
   return isTaskStatus(value);
 }
