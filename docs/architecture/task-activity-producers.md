@@ -80,3 +80,15 @@ the request.
   recorded yet. Changes made from now on appear here."
 - A truncated page shows "Showing the latest N changes" instead of implying the
   list is complete.
+
+## Runtime assumptions not covered by the disposable proof
+
+- Hosted PostgREST forwarding of the server-set `x-ega-actor-kind` /
+  `x-ega-actor-agent-id` headers into `request.headers` is platform behavior.
+  The disposable proof sets the resulting GUC directly, so it proves the
+  resolver contract, not the HTTP hop. A real scoped-agent request against a
+  deployed environment must confirm the header arrives before runtime
+  acceptance of that surface.
+- Protected drawer/project screens need authenticated credentials for a browser
+  walkthrough. The repository visual test accepts a `/login` redirect, so it is
+  not proof that the activity UI rendered.
