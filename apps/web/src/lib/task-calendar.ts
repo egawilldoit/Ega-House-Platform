@@ -216,9 +216,11 @@ export function buildCalendarRange(input: {
     endDate = week.weekEnd;
   } else {
     const { year, month } = parseDateParts(anchorDate);
-    const monthStart = toDateOnly(year, month, 1);
+    // `toDateOnly` takes a zero-based month index; `month` from the date string
+    // is one-based.
+    const monthStart = toDateOnly(year, month - 1, 1);
     const nextMonthStart =
-      month === 12 ? toDateOnly(year + 1, 1, 1) : toDateOnly(year, month + 1, 1);
+      month === 12 ? toDateOnly(year + 1, 0, 1) : toDateOnly(year, month, 1);
     const monthEnd = shiftDateOnlyValue(nextMonthStart, -1);
     const firstWeek = getWeekWindow(timezone, monthStart);
     const lastWeek = getWeekWindow(timezone, monthEnd);
