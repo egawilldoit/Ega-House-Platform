@@ -1,6 +1,7 @@
 export * from "./auth/actor";
 export * from "./shared/result";
 export * from "./projects/ports";
+export * from "./projects/progress";
 export * from "./projects/read-model";
 export * from "./projects/service";
 export * from "./goals/ports";

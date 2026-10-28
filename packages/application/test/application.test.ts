@@ -7,6 +7,7 @@ import type { GoalViewFilter, ProjectViewFilter } from "@ega/domain";
 import {
   archiveGoal,
   archiveProject,
+  buildProjectProgress,
   createAuthenticatedActor,
   createGoal,
   createProject,
@@ -450,7 +451,9 @@ test("deleteArchivedProject blocks an archived project with linked tasks", async
 
 test("deleteArchivedProject blocks an archived project with linked goals", async () => {
   const repository = archivedRepository();
-  repository.goalsResult = okResult([{ id: "goal-1", title: "Finish kitchen", projectId: DELETE_PROJECT_ID }]);
+  repository.goalsResult = okResult([
+    { id: "goal-1", title: "Finish kitchen", projectId: DELETE_PROJECT_ID, health: null, nextStep: null },
+  ]);
 
   const result = failureMessage(await deleteArchivedProject(ACTOR, repository, { projectId: DELETE_PROJECT_ID }));
 
@@ -467,7 +470,9 @@ test("deleteArchivedProject blocks an archived project with linked tasks and goa
   repository.tasksResult = okResult([
     { id: "task-1", projectId: DELETE_PROJECT_ID, title: "Paint", status: "todo", priority: "high", updatedAt: "2026-02-02T00:00:00.000Z" },
   ]);
-  repository.goalsResult = okResult([{ id: "goal-1", title: "Finish kitchen", projectId: DELETE_PROJECT_ID }]);
+  repository.goalsResult = okResult([
+    { id: "goal-1", title: "Finish kitchen", projectId: DELETE_PROJECT_ID, health: null, nextStep: null },
+  ]);
 
   const result = failureMessage(await deleteArchivedProject(ACTOR, repository, { projectId: DELETE_PROJECT_ID }));
 
@@ -841,12 +846,62 @@ test("project read model preserves summary and progress behavior", async () => {
   assert.equal(first.recentTasks.length, 2);
 });
 
+test("project progress counts canonical statuses and never treats review as done", () => {
+  const progress = buildProjectProgress([
+    { status: "todo" },
+    { status: "in_progress" },
+    { status: "review" },
+    { status: "review" },
+    { status: "done" },
+    { status: "blocked" },
+  ]);
+
+  assert.equal(progress.totalTaskCount, 6);
+  assert.equal(progress.completedTaskCount, 1);
+  assert.equal(progress.openTaskCount, 5);
+  assert.equal(progress.progressPercent, 17);
+  assert.deepEqual(progress.statusCounts, [
+    { status: "todo", count: 1 },
+    { status: "in_progress", count: 1 },
+    { status: "review", count: 2 },
+    { status: "done", count: 1 },
+    { status: "blocked", count: 1 },
+  ]);
+});
+
+test("project progress has an honest zero state and keeps unknown statuses", () => {
+  const empty = buildProjectProgress([]);
+
+  assert.deepEqual(empty, {
+    totalTaskCount: 0,
+    completedTaskCount: 0,
+    openTaskCount: 0,
+    progressPercent: 0,
+    statusCounts: [],
+  });
+
+  const withUnknown = buildProjectProgress([
+    { status: "done" },
+    { status: "legacy_blocked" },
+    { status: "complete" },
+  ]);
+
+  assert.equal(withUnknown.totalTaskCount, 3);
+  assert.equal(withUnknown.completedTaskCount, 2);
+  assert.equal(withUnknown.progressPercent, 67);
+  assert.deepEqual(withUnknown.statusCounts, [
+    { status: "done", count: 1 },
+    { status: "complete", count: 1 },
+    { status: "legacy_blocked", count: 1 },
+  ]);
+});
+
 test("project identity read model resolves project and goals by slug", async () => {
   const repository = new FakeProjectsRepository();
   repository.slugResult = okResult(PROJECT_ROW);
   repository.goalsResult = okResult([
-    { id: "goal-1", title: "Finish kitchen", projectId: "project-1" },
-    { id: "goal-2", title: "Finish bathroom", projectId: "project-1" },
+    { id: "goal-1", title: "Finish kitchen", projectId: "project-1", health: "on_track", nextStep: "Order cabinets" },
+    { id: "goal-2", title: "Finish bathroom", projectId: "project-1", health: "at_risk", nextStep: null },
   ]);
 
   const result = await getProjectIdentityReadModel(ACTOR, repository, "home-renovation");
