@@ -1,13 +1,14 @@
 import {
   DEFAULT_TASK_DUE_FILTER,
+  DEFAULT_TASK_LAYOUT,
   DEFAULT_TASK_SORT,
   buildTaskKanbanBoard,
   buildTaskListUrl,
   isTaskDueFilter,
+  isTaskLayout,
   isTaskSortValue,
   normalizeTaskBoardOrder,
   normalizeTaskDensity,
-  normalizeTaskLayout,
   parseTaskListView,
   sortTasksForBoard,
   type TaskBoardOrder,
@@ -86,7 +87,16 @@ export type ParsedTasksFilters = {
   savedViewFeedback: { error: string | null; success: string | null };
 };
 
-export function parseTasksSearchParams(searchParams: TasksSearchParams): ParsedTasksFilters {
+export type TaskPageDefaults = {
+  /** Owner's durable layout for a Tasks view with no explicit `layout` param. */
+  defaultLayout?: TaskLayoutMode;
+};
+
+export function parseTasksSearchParams(
+  searchParams: TasksSearchParams,
+  defaults: TaskPageDefaults = {},
+): ParsedTasksFilters {
+  const defaultLayout = defaults.defaultLayout ?? DEFAULT_TASK_LAYOUT;
   const projectParam = searchParams.project?.trim() || null;
   const goalParam = searchParams.goal?.trim() || null;
   const view = parseTaskListView(searchParams);
@@ -115,7 +125,9 @@ export function parseTasksSearchParams(searchParams: TasksSearchParams): ParsedT
     isTaskDueFilter(projected.dueFilter ?? "") ? (projected.dueFilter as TaskDueFilter) : DEFAULT_TASK_DUE_FILTER;
   const activeSort: TaskSortValue =
     isTaskSortValue(projected.sortValue ?? "") ? (projected.sortValue as TaskSortValue) : DEFAULT_TASK_SORT;
-  const activeLayout: TaskLayoutMode = normalizeTaskLayout(searchParams.layout);
+  const activeLayout: TaskLayoutMode = isTaskLayout(searchParams.layout)
+    ? searchParams.layout
+    : defaultLayout;
   const activeDensity: TaskDensity = normalizeTaskDensity(searchParams.density);
   const activeBoardOrder = normalizeTaskBoardOrder(searchParams.boardOrder);
   const activeView: TaskArchiveViewFilter = normalizeTaskViewFilter(searchParams.archive ?? searchParams.view);
@@ -146,8 +158,11 @@ export function parseTasksSearchParams(searchParams: TasksSearchParams): ParsedT
   };
 }
 
-export async function getTasksPageModel(searchParams: TasksSearchParams) {
-  const parsed = parseTasksSearchParams(searchParams);
+export async function getTasksPageModel(
+  searchParams: TasksSearchParams,
+  defaults: TaskPageDefaults = {},
+) {
+  const parsed = parseTasksSearchParams(searchParams, defaults);
   // Due-within-N-days windows use the owner's canonical local date from Time
   // Context so the Tasks workspace agrees with Today/Timer on the calendar day.
   const accountLocalDate = (await getWebTimeContext().catch(() => null))?.localDate;

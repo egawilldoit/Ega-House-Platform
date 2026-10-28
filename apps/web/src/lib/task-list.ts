@@ -139,6 +139,11 @@ export function normalizeTaskLayout(value: string | null | undefined): TaskLayou
   return value === "kanban" ? "kanban" : DEFAULT_TASK_LAYOUT;
 }
 
+/** True only for a layout the web workspace can render today. */
+export function isTaskLayout(value: unknown): value is TaskLayoutMode {
+  return value === "list" || value === "kanban";
+}
+
 export function buildTaskKanbanBoard<T extends TaskKanbanLike>(
   tasks: T[],
   activeStatus?: TaskStatus | null,

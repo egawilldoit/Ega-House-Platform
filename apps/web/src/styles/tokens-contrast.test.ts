@@ -161,6 +161,42 @@ for (const [paletteName, block] of [
   });
 }
 
+const ACCENTS = ["blue", "green", "violet", "amber"] as const;
+
+for (const accent of ACCENTS) {
+  const lightAccent = blockFor(
+    `html[data-accent="${accent}"]:has([data-workspace-theme="workspace"]) {`,
+  );
+  const darkAccent = blockFor(
+    `html[data-theme="dark"][data-accent="${accent}"]:has([data-workspace-theme="workspace"]) {`,
+  );
+
+  test(`${accent} accent: primary labels meet AA in both themes`, () => {
+    const lightRatio = contrast(
+      token(lightAccent, "--ega-on-ink"),
+      token(lightAccent, "--ega-ink"),
+    );
+    const darkRatio = contrast(
+      token(darkAccent, "--ega-on-ink"),
+      token(darkAccent, "--ega-ink"),
+    );
+
+    assert.ok(lightRatio >= AA_NORMAL, `light on-ink/ink ${lightRatio.toFixed(2)}:1`);
+    assert.ok(darkRatio >= AA_NORMAL, `dark on-ink/ink ${darkRatio.toFixed(2)}:1`);
+    // The accent is also used as a text/border colour on the workspace surface.
+    assert.ok(
+      contrast(token(lightAccent, "--ega-ink"), token(LIGHT, "--ega-surface")) >= AA_NORMAL,
+      "light accent ink on light surface",
+    );
+    assert.ok(
+      contrast(token(darkAccent, "--ega-ink"), token(DARK, "--ega-surface")) >= AA_NORMAL,
+      "dark accent ink on dark surface",
+    );
+    assert.equal(token(lightAccent, "--ega-accent"), token(lightAccent, "--ega-ink"));
+    assert.equal(token(darkAccent, "--ega-accent"), token(darkAccent, "--ega-ink"));
+  });
+}
+
 test("every dark selector is scoped to the authenticated workspace marker", () => {
   const darkSelectorLines = tokensCss
     .split("\n")

@@ -19,9 +19,14 @@ export type TaskDrawerParamState = {
   mode: TaskDrawerMode;
 };
 
-export function readTaskDrawerParam(params: URLSearchParams): TaskDrawerParamState {
+export function readTaskDrawerParam(
+  params: URLSearchParams,
+  defaultMode: TaskDrawerMode = "panel",
+): TaskDrawerParamState {
   const taskId = params.get(TASK_DRAWER_PARAM)?.trim() || null;
-  const mode = params.get(TASK_DRAWER_MODE_PARAM) === "full" ? "full" : "panel";
+  const rawMode = params.get(TASK_DRAWER_MODE_PARAM);
+  const mode: TaskDrawerMode =
+    rawMode === "full" ? "full" : rawMode === "panel" ? "panel" : defaultMode;
   return { taskId, mode };
 }
 
