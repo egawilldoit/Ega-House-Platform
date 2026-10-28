@@ -960,6 +960,54 @@ export const userTimeContext = pgTable("user_time_context", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
+/**
+ * Durable workspace preferences (EGA-798). One row per owner; a missing row
+ * means the documented defaults, so pre-existing accounts keep today's
+ * behaviour. `user_id` defaults to the verified request identity and is never
+ * supplied by the client.
+ */
+export const userPreferences = pgTable(
+  "user_preferences",
+  {
+    userId: uuid("user_id").default(sql`auth.uid()`).primaryKey(),
+    theme: varchar("theme", { length: 16 }).default("system").notNull(),
+    accent: varchar("accent", { length: 16 }).default("neutral").notNull(),
+    density: varchar("density", { length: 16 }).default("comfortable").notNull(),
+    reducedMotion: boolean("reduced_motion").default(false).notNull(),
+    launchPage: varchar("launch_page", { length: 16 }).default("home").notNull(),
+    taskLayout: varchar("task_layout", { length: 16 }).default("list").notNull(),
+    taskOpenMode: varchar("task_open_mode", { length: 16 }).default("panel").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    check(
+      "user_preferences_theme_check",
+      sql`${table.theme} in ('system', 'light', 'dark')`,
+    ),
+    check(
+      "user_preferences_accent_check",
+      sql`${table.accent} in ('neutral', 'blue', 'green', 'violet', 'amber')`,
+    ),
+    check(
+      "user_preferences_density_check",
+      sql`${table.density} in ('comfortable', 'compact')`,
+    ),
+    check(
+      "user_preferences_launch_page_check",
+      sql`${table.launchPage} in ('home', 'today', 'tasks')`,
+    ),
+    check(
+      "user_preferences_task_layout_check",
+      sql`${table.taskLayout} in ('list', 'kanban')`,
+    ),
+    check(
+      "user_preferences_task_open_mode_check",
+      sql`${table.taskOpenMode} in ('panel', 'full')`,
+    ),
+  ],
+);
+
 export const operatorProposals = pgTable(
   "operator_proposals",
   {

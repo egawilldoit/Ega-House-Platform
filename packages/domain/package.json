@@ -11,7 +11,8 @@
     "./friction": "./src/friction/index.ts",
     "./inbox": "./src/inbox/index.ts",
     "./inbox-ai": "./src/inbox-ai/index.ts",
-    "./time-context": "./src/time-context.ts"
+    "./time-context": "./src/time-context.ts",
+    "./preferences": "./src/preferences.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
