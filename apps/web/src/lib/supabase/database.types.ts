@@ -458,6 +458,36 @@ export type Database = {
           },
         ]
       }
+      favorites: {
+        Row: {
+          id: string
+          owner_user_id: string
+          entity_kind: string
+          entity_id: string
+          position: number
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          owner_user_id?: string
+          entity_kind: string
+          entity_id: string
+          position?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          owner_user_id?: string
+          entity_kind?: string
+          entity_id?: string
+          position?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       task_activity_events: {
         Row: {
           id: string

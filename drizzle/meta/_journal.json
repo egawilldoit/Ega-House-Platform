@@ -470,6 +470,13 @@
       "when": 1787880000016,
       "tag": "0066_task_activity_events",
       "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1787880000017,
+      "tag": "0067_favorites",
+      "breakpoints": true
     }
   ]
 }

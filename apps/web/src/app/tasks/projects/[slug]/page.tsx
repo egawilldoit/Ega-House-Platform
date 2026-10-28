@@ -67,6 +67,8 @@ import { formatTaskEstimate } from "@/lib/task-estimate";
 import { buildTaskDrawerLink } from "@/lib/task-drawer-url";
 import { listTaskSubtasks } from "@/lib/services/subtask-service";
 import { getProjectTaskActivity, getTaskActivity } from "@/lib/services/task-activity-service";
+import { isFavorite } from "@/lib/services/favorite-service";
+import { toggleFavoriteAction } from "@/app/favorites/actions";
 import { TASK_SUBTASK_ACTIONS } from "@/lib/task-subtask-actions";
 import { formatTaskRecurrenceRule } from "@/lib/task-recurrence";
 import { formatTimerDateTime } from "@/lib/timer-domain";
@@ -298,6 +300,10 @@ export default async function ProjectDetailPage({
   const projectActivity = await getProjectTaskActivity(tasks.map((task) => task.id), {
     limit: 5,
   });
+  const projectIsFavourite = await isFavorite("project", project.id);
+  const selectedTaskIsFavourite = selectedTaskId
+    ? await isFavorite("task", selectedTaskId)
+    : false;
 
   const filteredTasks = applyTaskListQuery(
     tasks.filter((task) => {
@@ -342,12 +348,26 @@ export default async function ProjectDetailPage({
         "Project workspace for goals, tasks, and execution controls."
       }
       actions={
-        <Link
-          href={baseProjectsHref}
-          className="btn-instrument btn-instrument-muted flex h-8 items-center px-4"
-        >
-          Back to Projects
-        </Link>
+        <div className="flex items-center gap-2">
+          <form action={toggleFavoriteAction}>
+            <input type="hidden" name="kind" value="project" />
+            <input type="hidden" name="entityId" value={project.id} />
+            <input type="hidden" name="returnTo" value={returnTo} />
+            <button
+              type="submit"
+              aria-pressed={projectIsFavourite}
+              className="btn-instrument btn-instrument-muted flex h-8 items-center gap-2 px-4"
+            >
+              {projectIsFavourite ? "★ Favourited" : "☆ Favourite"}
+            </button>
+          </form>
+          <Link
+            href={baseProjectsHref}
+            className="btn-instrument btn-instrument-muted flex h-8 items-center px-4"
+          >
+            Back to Projects
+          </Link>
+        </div>
       }
     >
       <div className="flex flex-col gap-6">
@@ -832,6 +852,8 @@ export default async function ProjectDetailPage({
           ownerId={currentUser?.id ?? null}
           subtasks={selectedTaskSubtasks}
           activity={selectedTaskActivity}
+          isFavourite={selectedTaskIsFavourite}
+          favouriteAction={toggleFavoriteAction}
           subtaskActions={TASK_SUBTASK_ACTIONS}
           updateError={taskUpdateTaskId === selectedTaskId ? taskUpdateError : null}
           updateSuccess={taskUpdateTaskId === selectedTaskId ? taskUpdateSuccess : null}
