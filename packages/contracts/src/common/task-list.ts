@@ -368,6 +368,26 @@ function normalizeFilterValues(
  * Can this filter be expressed with the legacy single-key URL/API aliases?
  * Negative operators stay in the versioned `filter=` form.
  */
+/**
+ * True when every filter can be pushed to the database with exactly the same
+ * semantics the application engine applies. Count queries use this so a broad
+ * pushed predicate can never be reported as a precise total.
+ */
+export function canExactlyCountTaskViewFilters(
+  filters: readonly TaskViewFilter[],
+): boolean {
+  return filters.every((filter) => {
+    if (filter.field === "goal" && filter.operator !== "is" && filter.operator !== "is_any_of") {
+      return false;
+    }
+    if (filter.field === "due_bucket") {
+      if (filter.operator !== "is") return false;
+      return filter.values[0] !== "later";
+    }
+    return true;
+  });
+}
+
 export function canEncodeTaskViewFilterAsLegacy(filter: TaskViewFilter) {
   if (filter.field === "estimate") return filter.operator === "between";
   if (filter.field === "due_within_days") return filter.operator === "is";

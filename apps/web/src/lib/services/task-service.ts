@@ -42,7 +42,10 @@ import {
   applyTaskView,
   type TaskViewRecord,
 } from "@ega/application/tasks/view";
-import { normalizeTaskViewDefinition } from "@ega/contracts/common/task-list";
+import {
+  canExactlyCountTaskViewFilters,
+  normalizeTaskViewDefinition,
+} from "@ega/contracts/common/task-list";
 import type { TaskViewFilter as TaskArchiveViewFilter } from "@/lib/task-archive";
 import { getTaskTotalDurationMap } from "@/lib/task-session";
 import { stopActiveTimerSessionsForTask } from "@/lib/services/timer-service";
@@ -1041,7 +1044,8 @@ export async function getTasksWorkspaceData(
   // Only pay for an exact count when the page could be truncated; a short page
   // is already the complete filtered set.
   const countResult =
-    rawTasks.length >= TASK_READ_PAGE_SIZE
+    rawTasks.length >= TASK_READ_PAGE_SIZE &&
+    canExactlyCountTaskViewFilters(scopedView.filters)
       ? await getTaskCountForOwner({ supabase, archiveFilter, applyQuery })
       : { count: null, errorMessage: null };
   const viewRecords: TaskViewRecord[] = rawTasks.map((task) => ({

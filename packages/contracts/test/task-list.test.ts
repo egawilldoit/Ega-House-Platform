@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   DEFAULT_TASK_VIEW_DEFINITION,
   TASK_VIEW_DEFINITION_MAX_CHARS,
+  canExactlyCountTaskViewFilters,
   normalizeTaskViewDefinition,
   parseTaskViewDefinitionJson,
   parseTaskViewSearchParams,
@@ -186,4 +187,29 @@ test("EGA-791: serializable definitions stay under the contract bound", () => {
   const view = normalizeTaskViewDefinition(DEFAULT_TASK_VIEW_DEFINITION);
   assert.ok(view);
   assert.ok(serializeTaskViewDefinition(view).length <= TASK_VIEW_DEFINITION_MAX_CHARS);
+});
+
+
+test("EGA-791: only exactly pushable filters can drive a precise count", () => {
+  assert.equal(
+    canExactlyCountTaskViewFilters([
+      { field: "status", operator: "is_not", values: ["done"] },
+      { field: "project", operator: "is_any_of", values: ["project-1"] },
+      { field: "due_bucket", operator: "is", values: ["today"] },
+      { field: "estimate", operator: "between", values: ["15", "120"] },
+    ]),
+    true,
+  );
+  assert.equal(
+    canExactlyCountTaskViewFilters([
+      { field: "due_bucket", operator: "is", values: ["later"] },
+    ]),
+    false,
+  );
+  assert.equal(
+    canExactlyCountTaskViewFilters([
+      { field: "goal", operator: "is_not", values: ["goal-1"] },
+    ]),
+    false,
+  );
 });
