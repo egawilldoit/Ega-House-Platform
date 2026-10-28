@@ -166,6 +166,25 @@ describe("CommentComposer", () => {
     expect(action).toHaveBeenCalledTimes(1);
   });
 
+
+  it("uses a fresh retry id per mounted composition, not a reused page-load id", () => {
+    render({ ownerId: "owner-a", taskId: "task-1" });
+    const first = document.querySelector<HTMLInputElement>(
+      'input[name="clientRequestId"]',
+    )?.value;
+    expect(first).toBeTruthy();
+
+    act(() => root.unmount());
+    root = createRoot(container);
+    render({ ownerId: "owner-a", taskId: "task-1" });
+    const second = document.querySelector<HTMLInputElement>(
+      'input[name="clientRequestId"]',
+    )?.value;
+
+    expect(second).toBeTruthy();
+    expect(second).not.toBe(first);
+  });
+
   it("keeps drafts per task and never exposes another owner's draft", () => {
     render({ ownerId: "owner-a", taskId: "task-1" });
     let textarea = document.querySelector("textarea")!;
