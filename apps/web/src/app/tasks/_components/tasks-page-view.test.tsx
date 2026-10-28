@@ -79,6 +79,7 @@ function buildTask(overrides: Partial<TaskRecord> = {}): TaskRecord {
     project_id: "project-1",
     goal_id: "goal-1",
     focus_rank: 1,
+    board_rank: "A",
     archived_at: null,
     archived_by: null,
     projects: { name: "EGA House" },
@@ -100,6 +101,7 @@ function buildModel(overrides: Partial<TasksPageViewModel> = {}): TasksPageViewM
       activeLayout: "list",
       activeDensity: "comfortable",
       activeView: "active",
+      activeBoardOrder: null,
       projectParam: "project-1",
       goalParam: "goal-1",
       savedViewDefinitionFilters: {
@@ -149,6 +151,7 @@ function buildModel(overrides: Partial<TasksPageViewModel> = {}): TasksPageViewM
       due: "overdue",
       sort: "due_date_asc",
       density: null,
+      boardOrder: null,
     },
     kanbanBoard: buildTaskKanbanBoard(tasks, "in_progress"),
     inProgressCount: 1,

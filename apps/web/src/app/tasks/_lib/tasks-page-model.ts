@@ -5,8 +5,11 @@ import {
   buildTaskListUrl,
   isTaskDueFilter,
   isTaskSortValue,
+  normalizeTaskBoardOrder,
   normalizeTaskDensity,
   normalizeTaskLayout,
+  sortTasksForBoard,
+  type TaskBoardOrder,
   type TaskDensity,
   type TaskDueFilter,
   type TaskLayoutMode,
@@ -37,6 +40,7 @@ export type TasksSearchParams = {
   archive?: string;
   layout?: string;
   density?: string;
+  boardOrder?: string;
   view?: string;
   taskUpdateError?: string;
   taskUpdateSuccess?: string;
@@ -56,6 +60,7 @@ export type ParsedTasksFilters = {
   activeSort: TaskSortValue;
   activeLayout: TaskLayoutMode;
   activeDensity: TaskDensity;
+  activeBoardOrder: TaskBoardOrder | null;
   activeView: TaskViewFilter;
   projectParam: string | null;
   goalParam: string | null;
@@ -84,6 +89,7 @@ export function parseTasksSearchParams(searchParams: TasksSearchParams): ParsedT
   });
   const activeLayout: TaskLayoutMode = normalizeTaskLayout(searchParams.layout);
   const activeDensity: TaskDensity = normalizeTaskDensity(searchParams.density);
+  const activeBoardOrder = normalizeTaskBoardOrder(searchParams.boardOrder);
   const activeView: TaskViewFilter = normalizeTaskViewFilter(searchParams.archive ?? searchParams.view);
   const taskUpdateError =
     searchParams.taskUpdateError?.slice(0, 180) ?? searchParams.statusUpdateError?.slice(0, 180) ?? null;
@@ -100,6 +106,7 @@ export function parseTasksSearchParams(searchParams: TasksSearchParams): ParsedT
     activeLayout,
     activeDensity,
     activeView,
+    activeBoardOrder,
     projectParam,
     goalParam,
     savedViewDefinitionFilters,
@@ -147,6 +154,7 @@ export async function getTasksPageModel(searchParams: TasksSearchParams) {
     view: parsed.activeView,
     layout: parsed.activeLayout,
     density: parsed.activeDensity,
+    boardOrder: parsed.activeBoardOrder,
   });
 
   const taskUrlFilters = {
@@ -161,8 +169,12 @@ export async function getTasksPageModel(searchParams: TasksSearchParams) {
     due: parsed.activeDueFilter,
     sort: parsed.activeSort,
     density: parsed.activeDensity === "compact" ? "compact" : null,
+    boardOrder: parsed.activeBoardOrder,
   };
-  const kanbanBoard = buildTaskKanbanBoard(tasks, parsed.activeStatus);
+  const kanbanBoard = buildTaskKanbanBoard(
+    sortTasksForBoard(tasks, parsed.activeBoardOrder),
+    parsed.activeStatus,
+  );
   const inProgressCount = tasks.filter((t) => t.status === "in_progress").length;
   const blockedCount = tasks.filter((t) => t.status === "blocked").length;
   const overdueCount = tasks.filter((t) =>
