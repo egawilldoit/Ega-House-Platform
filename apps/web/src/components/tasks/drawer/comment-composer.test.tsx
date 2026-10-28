@@ -185,6 +185,26 @@ describe("CommentComposer", () => {
     expect(second).not.toBe(first);
   });
 
+
+  it("restores the draft's retry id so a lost response cannot duplicate the post", () => {
+    render({ ownerId: "owner-a", taskId: "task-1" });
+    const textarea = document.querySelector("textarea")!;
+    act(() => setNativeValue(textarea, "keep this retry"));
+    const first = document.querySelector<HTMLInputElement>(
+      'input[name="clientRequestId"]',
+    )!.value;
+
+    act(() => root.unmount());
+    root = createRoot(container);
+    render({ ownerId: "owner-a", taskId: "task-1" });
+
+    expect(document.querySelector("textarea")!.value).toBe("keep this retry");
+    expect(
+      document.querySelector<HTMLInputElement>('input[name="clientRequestId"]')!
+        .value,
+    ).toBe(first);
+  });
+
   it("keeps drafts per task and never exposes another owner's draft", () => {
     render({ ownerId: "owner-a", taskId: "task-1" });
     let textarea = document.querySelector("textarea")!;

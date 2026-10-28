@@ -16,7 +16,7 @@ import { Kbd } from "@/components/ui/kbd";
 import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import {
   clearTaskCommentDraft,
-  readTaskCommentDraft,
+  readTaskCommentDraftState,
   writeTaskCommentDraft,
 } from "@/lib/task-comment-draft";
 import type { TaskCommentActionResult } from "@/app/tasks/comment-actions";
@@ -85,9 +85,10 @@ export function CommentComposer({
   const menuId = `comment-mentions-${taskId}`;
 
   useEffect(() => {
+    const draft = readTaskCommentDraftState(window.localStorage, ownerId, taskId);
     // eslint-disable-next-line react-hooks/set-state-in-effect -- restore the account-scoped browser draft after hydration
-    setBody(readTaskCommentDraft(window.localStorage, ownerId, taskId));
-    setRequestId(newRequestId());
+    setBody(draft.body);
+    setRequestId(draft.requestId ?? newRequestId());
   }, [ownerId, taskId]);
 
   useEffect(() => {
@@ -115,7 +116,7 @@ export function CommentComposer({
 
   const updateBody = (value: string, caret: number) => {
     setBody(value);
-    writeTaskCommentDraft(window.localStorage, ownerId, taskId, value);
+    writeTaskCommentDraft(window.localStorage, ownerId, taskId, value, requestId);
     const context = findMentionContext(value, caret);
     const nextVisible = context
       ? filterMentionCandidates(mentionCandidates, context.query)
@@ -128,7 +129,7 @@ export function CommentComposer({
     if (!mention) return;
     const next = `${body.slice(0, mention.start)}@${candidate.handle} ${body.slice(mention.end)}`;
     setBody(next);
-    writeTaskCommentDraft(window.localStorage, ownerId, taskId, next);
+    writeTaskCommentDraft(window.localStorage, ownerId, taskId, next, requestId);
     setMention(null);
     const caret = mention.start + candidate.handle.length + 2;
     window.setTimeout(() => {

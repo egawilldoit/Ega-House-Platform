@@ -5,6 +5,7 @@ import {
   TASK_COMMENT_DRAFT_PREFIX,
   clearTaskCommentDraft,
   readTaskCommentDraft,
+  readTaskCommentDraftState,
   taskCommentDraftKey,
   writeTaskCommentDraft,
 } from "@/lib/task-comment-draft";
@@ -78,4 +79,20 @@ test("unavailable storage degrades to no draft instead of throwing", () => {
   assert.doesNotThrow(() => writeTaskCommentDraft(null, "owner-a", "task-1", "x"));
   assert.doesNotThrow(() => clearTaskCommentDraft(null, "owner-a", "task-1"));
   assert.equal(readTaskCommentDraft(memoryStorage(), null, "task-1"), "");
+});
+
+test("a saved draft keeps its retry identity", () => {
+  const storage = memoryStorage();
+  writeTaskCommentDraft(storage, "owner-a", "task-1", "note", "req-keep");
+  const state = readTaskCommentDraftState(storage, "owner-a", "task-1");
+  assert.deepEqual(state, { body: "note", requestId: "req-keep" });
+
+  storage.setItem(
+    taskCommentDraftKey("owner-a", "task-1"),
+    JSON.stringify({ ownerId: "owner-a", taskId: "task-1", body: "note", requestId: "bad id" }),
+  );
+  assert.deepEqual(readTaskCommentDraftState(storage, "owner-a", "task-1"), {
+    body: "note",
+    requestId: null,
+  });
 });

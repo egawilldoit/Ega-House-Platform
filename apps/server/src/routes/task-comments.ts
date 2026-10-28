@@ -107,6 +107,7 @@ export function createTaskCommentsRoutes(): Hono<{ Variables: ServerVariables }>
 
       const result = await updateTaskComment(author, repository, {
         commentId: c.req.param("commentId"),
+        taskId: c.req.param("taskId"),
         body: body.body,
       });
       if (!result.ok) return errorResponse(c, result);
@@ -126,6 +127,7 @@ export function createTaskCommentsRoutes(): Hono<{ Variables: ServerVariables }>
         author,
         repository,
         c.req.param("commentId"),
+        c.req.param("taskId"),
       );
       if (!result.ok) return errorResponse(c, result);
 
@@ -145,6 +147,7 @@ export function createTaskCommentsRoutes(): Hono<{ Variables: ServerVariables }>
 
       const result = await toggleTaskCommentReaction(author, repository, {
         commentId: c.req.param("commentId"),
+        taskId: c.req.param("taskId"),
         emoji: body.emoji,
       });
       if (!result.ok) return errorResponse(c, result);

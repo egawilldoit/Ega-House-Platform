@@ -140,18 +140,23 @@ function parseReactionSummary(value: unknown): TaskCommentReaction[] {
 
 function parseMentionCandidates(value: unknown): TaskCommentMentionCandidateDto[] {
   if (!Array.isArray(value)) return [];
-  return value
-    .filter((entry): entry is Row => Boolean(entry) && typeof entry === "object")
-    .map((entry) => ({
-      kind: asString(entry.kind) === "agent" ? ("agent" as const) : ("owner" as const),
-      ref: asString(entry.ref),
-      handle: asString(entry.handle).toLowerCase(),
-      label: asString(entry.label) || "Unknown actor",
-    }))
-    .filter(
-      (entry) =>
-        entry.handle.length > 0 && isTaskCommentMentionRef(entry.ref),
-    );
+  const seen = new Set<string>();
+  const candidates: TaskCommentMentionCandidateDto[] = [];
+  for (const entry of value) {
+    if (!entry || typeof entry !== "object") continue;
+    const row = entry as Row;
+    const ref = asString(row.ref);
+    const handle = asString(row.handle).toLowerCase();
+    if (!handle || !isTaskCommentMentionRef(ref) || seen.has(ref)) continue;
+    seen.add(ref);
+    candidates.push({
+      kind: asString(row.kind) === "agent" ? "agent" : "owner",
+      ref,
+      handle,
+      label: asString(row.label) || "Unknown actor",
+    });
+  }
+  return candidates;
 }
 
 /**
@@ -225,6 +230,7 @@ export class SupabaseTaskCommentsRepository implements TaskCommentsRepository {
         ref: mention.ref,
         label: mention.label,
       })),
+      p_task_id: input.taskId ?? null,
     });
 
     if (error) return mapRpcError(error);
@@ -237,12 +243,14 @@ export class SupabaseTaskCommentsRepository implements TaskCommentsRepository {
   async deleteTaskComment(
     actor: TaskCommentActor,
     commentId: string,
+    taskId?: string | null,
   ): Promise<RepositoryResult<true>> {
     const { data, error } = await this.supabase.rpc("delete_task_comment", {
       p_comment_id: commentId,
       p_author_kind: actor.kind,
       p_owner_user_id: actor.ownerUserId,
       p_author_token_id: actor.tokenId ?? null,
+      p_task_id: taskId ?? null,
     });
 
     if (error) return mapRpcError(error);
@@ -252,7 +260,7 @@ export class SupabaseTaskCommentsRepository implements TaskCommentsRepository {
 
   async toggleTaskCommentReaction(
     actor: TaskCommentActor,
-    input: { commentId: string; emoji: string },
+    input: { commentId: string; taskId?: string | null; emoji: string },
   ): Promise<RepositoryResult<TaskCommentReaction[]>> {
     const { data, error } = await this.supabase.rpc(
       "toggle_task_comment_reaction",
@@ -262,6 +270,7 @@ export class SupabaseTaskCommentsRepository implements TaskCommentsRepository {
         p_actor_kind: actor.kind,
         p_owner_user_id: actor.ownerUserId,
         p_actor_token_id: actor.tokenId ?? null,
+        p_task_id: input.taskId ?? null,
       },
     );
 

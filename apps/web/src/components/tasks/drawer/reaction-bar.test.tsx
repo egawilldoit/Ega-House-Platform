@@ -32,6 +32,7 @@ describe("ReactionBar", () => {
       root.render(
         <ReactionBar
           commentId="comment-1"
+          taskId="task-1"
           returnTo="/tasks"
           reactions={[{ emoji: "👍", count: 1, reactedByViewer: false }]}
           toggleAction={toggleAction as never}
@@ -63,6 +64,7 @@ describe("ReactionBar", () => {
       root.render(
         <ReactionBar
           commentId="comment-1"
+          taskId="task-1"
           returnTo="/tasks"
           reactions={[{ emoji: "👀", count: 1, reactedByViewer: false }]}
           toggleAction={toggleAction as never}

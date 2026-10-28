@@ -992,6 +992,7 @@ export type Database = {
           p_owner_user_id?: string | null
           p_author_token_id?: string | null
           p_mentions?: Json
+          p_task_id?: string | null
         }
         Returns: Database["public"]["Tables"]["task_comments"]["Row"]
       }
@@ -1001,6 +1002,7 @@ export type Database = {
           p_author_kind: string
           p_owner_user_id?: string | null
           p_author_token_id?: string | null
+          p_task_id?: string | null
         }
         Returns: boolean
       }
@@ -1011,6 +1013,7 @@ export type Database = {
           p_actor_kind: string
           p_owner_user_id?: string | null
           p_actor_token_id?: string | null
+          p_task_id?: string | null
         }
         Returns: Json
       }

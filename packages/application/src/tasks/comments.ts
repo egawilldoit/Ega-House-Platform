@@ -50,6 +50,7 @@ export type TaskCommentCreateRecordInput = Readonly<{
 
 export type TaskCommentUpdateRecordInput = Readonly<{
   commentId: string;
+  taskId?: string | null;
   body: string;
   mentions: ResolvedTaskCommentMention[];
 }>;
@@ -70,10 +71,11 @@ export interface TaskCommentsRepository {
   deleteTaskComment(
     actor: TaskCommentActor,
     commentId: string,
+    taskId?: string | null,
   ): Promise<RepositoryResult<true>>;
   toggleTaskCommentReaction(
     actor: TaskCommentActor,
-    input: { commentId: string; emoji: string },
+    input: { commentId: string; taskId?: string | null; emoji: string },
   ): Promise<RepositoryResult<TaskCommentReaction[]>>;
   listTaskCommentMentionCandidates(
     viewer: TaskCommentViewer,
@@ -206,7 +208,7 @@ export async function createTaskComment(
 export async function updateTaskComment(
   actor: TaskCommentActor,
   repository: TaskCommentsRepository,
-  input: { commentId: string; body: unknown },
+  input: { commentId: string; taskId?: string | null; body: unknown },
 ): Promise<ApplicationResult<TaskCommentDto>> {
   const invalidActor = validateActor(actor);
   if (invalidActor) return applicationFailure(invalidActor);
@@ -225,6 +227,7 @@ export async function updateTaskComment(
   return fromRepository(
     await repository.updateTaskComment(actor, {
       commentId: input.commentId,
+      taskId: input.taskId ?? null,
       body: body.value,
       mentions: mentions.mentions,
     }),
@@ -236,12 +239,13 @@ export async function deleteTaskComment(
   actor: TaskCommentActor,
   repository: TaskCommentsRepository,
   commentId: string,
+  taskId?: string | null,
 ): Promise<ApplicationResult<{ deleted: true }>> {
   const invalidActor = validateActor(actor);
   if (invalidActor) return applicationFailure(invalidActor);
   if (!commentId?.trim()) return applicationFailure("Comment was not found.", "notFound");
 
-  const result = await repository.deleteTaskComment(actor, commentId);
+  const result = await repository.deleteTaskComment(actor, commentId, taskId ?? null);
   if (!result.ok) {
     const code = result.error.code;
     return applicationFailure(
@@ -255,7 +259,7 @@ export async function deleteTaskComment(
 export async function toggleTaskCommentReaction(
   actor: TaskCommentActor,
   repository: TaskCommentsRepository,
-  input: { commentId: string; emoji: unknown },
+  input: { commentId: string; taskId?: string | null; emoji: unknown },
 ): Promise<ApplicationResult<TaskCommentReaction[]>> {
   const invalidActor = validateActor(actor);
   if (invalidActor) return applicationFailure(invalidActor);
@@ -267,6 +271,7 @@ export async function toggleTaskCommentReaction(
   return fromRepository(
     await repository.toggleTaskCommentReaction(actor, {
       commentId: input.commentId,
+      taskId: input.taskId ?? null,
       emoji: input.emoji,
     }),
     "Unable to update the reaction right now.",

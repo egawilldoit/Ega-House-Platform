@@ -236,7 +236,6 @@ export function createCommentHandlers(
   };
 
   const PATCH_COMMENT = async (request: Request, taskId: string, commentId: string) => {
-    void taskId;
     try {
       const { response: authResponse, auth } = await authenticate(request);
       if (authResponse) return authResponse;
@@ -256,6 +255,7 @@ export function createCommentHandlers(
       if (rejected) return rejected;
 
       const result = await updateAgentTaskComment(identity(auth!), {
+        taskId,
         commentId,
         body: String(parsed.body.body ?? ""),
       });
@@ -273,7 +273,6 @@ export function createCommentHandlers(
   };
 
   const DELETE_COMMENT = async (request: Request, taskId: string, commentId: string) => {
-    void taskId;
     try {
       const { response: authResponse, auth } = await authenticate(request);
       if (authResponse) return authResponse;
@@ -285,7 +284,10 @@ export function createCommentHandlers(
       if (rateLimitResponse) return rateLimitResponse;
       runTelemetry(auth!.tokenId);
 
-      const result = await deleteAgentTaskComment(identity(auth!), commentId);
+      const result = await deleteAgentTaskComment(identity(auth!), {
+        taskId,
+        commentId,
+      });
       if (!result.ok) return failureResponse(result);
 
       const response: TaskCommentDeleteResponse = { ok: true, deleted: true };
@@ -297,7 +299,6 @@ export function createCommentHandlers(
   };
 
   const POST_REACTION = async (request: Request, taskId: string, commentId: string) => {
-    void taskId;
     try {
       const { response: authResponse, auth } = await authenticate(request);
       if (authResponse) return authResponse;
@@ -317,6 +318,7 @@ export function createCommentHandlers(
       if (rejected) return rejected;
 
       const result = await toggleAgentTaskCommentReaction(identity(auth!), {
+        taskId,
         commentId,
         emoji: String(parsed.body.emoji ?? ""),
       });
