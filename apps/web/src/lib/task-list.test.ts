@@ -110,7 +110,7 @@ test("builds list task URLs without layout=list", () => {
       view: "archived",
       layout: "list",
     }),
-    "/tasks?status=todo&project=project-1&goal=goal-1&due=due_today&sort=due_date_asc&archive=archived",
+    "/tasks?status=todo&project=project-1&goal=goal-1&due=today&sort=due&archive=archived",
   );
 });
 
@@ -125,7 +125,7 @@ test("builds kanban task URLs and preserves existing filters", () => {
       view: "all",
       layout: "kanban",
     }),
-    "/tasks?status=in_progress&project=project-2&goal=goal-2&due=overdue&sort=due_date_desc&archive=all&layout=kanban",
+    "/tasks?status=in_progress&project=project-2&goal=goal-2&due=overdue&sort=due&dir=desc&archive=all&layout=kanban",
   );
 });
 
@@ -137,7 +137,7 @@ test("builds task URLs with saved-view definition filters", () => {
       activeTasks: true,
       layout: "kanban",
     }),
-    "/tasks?tasks=active&estimateMax=15&dueWithin=7&layout=kanban",
+    "/tasks?dueWithin=7&estimateMax=15&tasks=active&layout=kanban",
   );
 });
 
