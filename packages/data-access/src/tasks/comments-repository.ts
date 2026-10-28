@@ -238,7 +238,7 @@ export class SupabaseTaskCommentsRepository implements TaskCommentsRepository {
     actor: TaskCommentActor,
     commentId: string,
   ): Promise<RepositoryResult<true>> {
-    const { error } = await this.supabase.rpc("delete_task_comment", {
+    const { data, error } = await this.supabase.rpc("delete_task_comment", {
       p_comment_id: commentId,
       p_author_kind: actor.kind,
       p_owner_user_id: actor.ownerUserId,
@@ -246,6 +246,7 @@ export class SupabaseTaskCommentsRepository implements TaskCommentsRepository {
     });
 
     if (error) return mapRpcError(error);
+    if (data !== true) return repositoryFailure("notFound");
     return { ok: true, value: true };
   }
 

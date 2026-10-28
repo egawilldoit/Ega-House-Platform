@@ -1,5 +1,7 @@
 /** Shared wire shapes for task comments (EGA-783). */
 
+import type { TaskCommentMentionCandidate } from "@ega/domain";
+
 export const TASK_COMMENT_AUTHOR_KIND_VALUES = ["owner", "agent"] as const;
 export type TaskCommentAuthorKind =
   (typeof TASK_COMMENT_AUTHOR_KIND_VALUES)[number];
@@ -72,9 +74,5 @@ export type TaskCommentReactionResponse = Readonly<{
   reactions: TaskCommentReaction[];
 }>;
 
-export type TaskCommentMentionCandidateDto = Readonly<{
-  kind: TaskCommentAuthorKind;
-  ref: string;
-  handle: string;
-  label: string;
-}>;
+/** The domain policy type is the single candidate shape used by the wire too. */
+export type TaskCommentMentionCandidateDto = TaskCommentMentionCandidate;
