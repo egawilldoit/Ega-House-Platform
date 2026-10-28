@@ -49,6 +49,7 @@ export function describeTaskActivity(item: {
   fromStatus?: string | null;
   toStatus?: string | null;
   delta?: Record<string, { from?: unknown; to?: unknown }> | null;
+  excerpt?: string | null;
 }): string {
   switch (item.kind) {
     case "status":
@@ -61,6 +62,10 @@ export function describeTaskActivity(item: {
       return "Task archived";
     case "restored":
       return "Task restored";
+    case "commented": {
+      const excerpt = item.excerpt?.trim();
+      return excerpt ? `Commented: ${excerpt}` : "Commented";
+    }
     case "session":
       return "Timer session recorded";
     default: {
@@ -145,6 +150,10 @@ export async function getTaskActivity(
       summary: describeTaskActivity({
         kind: row.event_kind as TaskActivityItem["kind"],
         delta: (row.delta ?? {}) as Record<string, { from?: unknown; to?: unknown }>,
+        excerpt:
+          typeof (row.delta as Record<string, unknown> | null)?.excerpt === "string"
+            ? String((row.delta as Record<string, unknown>).excerpt)
+            : null,
       }),
     })),
     ...(sessions.data ?? []).map((row) => ({
@@ -206,6 +215,10 @@ export async function getProjectTaskActivity(
       summary: describeTaskActivity({
         kind: row.event_kind as TaskActivityItem["kind"],
         delta: (row.delta ?? {}) as Record<string, { from?: unknown; to?: unknown }>,
+        excerpt:
+          typeof (row.delta as Record<string, unknown> | null)?.excerpt === "string"
+            ? String((row.delta as Record<string, unknown>).excerpt)
+            : null,
       }),
     })),
     ...(statusEvents.data ?? []).map((row) => ({

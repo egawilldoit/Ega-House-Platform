@@ -125,6 +125,13 @@ function buildModel(overrides: Partial<TasksPageViewModel> = {}): TasksPageViewM
     selectedTaskError: false,
     selectedTaskSubtasks: [],
     selectedTaskActivity: [],
+    selectedTaskComments: {
+      comments: [],
+      mentionCandidates: [],
+      errorMessage: null,
+    },
+    selectedTaskCommentMentions: [],
+    selectedTaskCommentError: null,
     selectedTaskIsFavourite: false,
     subtaskCounts: {},
     projects: [{ id: "project-1", name: "EGA House" }],

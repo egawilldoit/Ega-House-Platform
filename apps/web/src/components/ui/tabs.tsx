@@ -81,6 +81,7 @@ export function TabsTrigger({
         className,
       )}
       onClick={() => onValueChange(value)}
+      aria-pressed={isActive}
       {...props}
     >
       {children}

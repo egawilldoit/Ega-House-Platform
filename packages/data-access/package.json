@@ -8,6 +8,7 @@
     "./projects": "./src/projects/repository.ts",
     "./goals": "./src/goals/repository.ts",
     "./tasks": "./src/tasks/repository.ts",
+    "./tasks/comments": "./src/tasks/comments-repository.ts",
     "./friction": "./src/friction/repository.ts",
     "./inbox": "./src/inbox/repository.ts",
     "./inbox/ai-classification-stub": "./src/inbox/ai-classification-stub.ts",

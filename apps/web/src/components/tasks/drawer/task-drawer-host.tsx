@@ -12,9 +12,15 @@ import { TaskDrawerDetailForm } from "./task-drawer-detail-form";
 import { TaskDrawerShortcuts } from "./task-drawer-shortcuts";
 import { TaskSubtasks } from "./task-subtasks";
 import { TaskActivityList } from "./task-activity-list";
+import { TaskCommentsTab, type TaskCommentActionSet } from "./task-comments-tab";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Star } from "lucide-react";
 import type { TaskActivityItem } from "@/lib/task-activity";
-import type { SubtaskDto } from "@ega/contracts";
+import type {
+  TaskCommentDto,
+  TaskCommentMentionCandidateDto,
+  SubtaskDto,
+} from "@ega/contracts";
 import { useTaskDrawerParam } from "./use-task-drawer-param";
 
 const KNOWN_STATUSES: TaskStatusIconName[] = ["todo", "in_progress", "done", "blocked"];
@@ -126,6 +132,11 @@ type TaskDrawerHostProps = {
   subtasks?: SubtaskDto[];
   /** Durable activity rows for the selected task. */
   activity?: TaskActivityItem[];
+  /** Owner-scoped comment thread and composer. */
+  comments?: TaskCommentDto[];
+  commentMentions?: TaskCommentMentionCandidateDto[];
+  commentsError?: string | null;
+  commentActions?: TaskCommentActionSet;
   /** Whether the selected task is a navigation favourite. */
   isFavourite?: boolean;
   /** Server action that toggles the task favourite. */
@@ -161,6 +172,10 @@ export function TaskDrawerHost({
   ownerId = null,
   subtasks = [],
   activity = [],
+  comments = [],
+  commentMentions = [],
+  commentsError = null,
+  commentActions,
   isFavourite = false,
   favouriteAction,
   subtaskActions,
@@ -172,6 +187,7 @@ export function TaskDrawerHost({
   // unrelated task ask to discard nothing.
   const [dirtyTaskId, setDirtyTaskId] = useState<string | null>(null);
   const [shortcutMessage, setShortcutMessage] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<"comments" | "activity">("comments");
   const dirty = Boolean(taskId) && dirtyTaskId === taskId;
   const handleDirtyChange = useCallback(
     (next: boolean) => setDirtyTaskId(next ? taskId : null),
@@ -439,7 +455,42 @@ export function TaskDrawerHost({
         />
       ) : null}
 
-      <TaskActivityList items={activity} />
+      {commentActions ? (
+        <Tabs
+          value={activeTab}
+          onValueChange={(value) =>
+            setActiveTab(value === "activity" ? "activity" : "comments")
+          }
+          className="mt-5 border-t border-[var(--ega-divider)] pt-4"
+        >
+          <TabsList
+            className="grid grid-cols-2"
+            role="group"
+            aria-label="Task detail views"
+          >
+            <TabsTrigger value="comments">
+              Comments{comments.length > 0 ? ` ${comments.length}` : ""}
+            </TabsTrigger>
+            <TabsTrigger value="activity">Activity</TabsTrigger>
+          </TabsList>
+          <TabsContent value="comments">
+            <TaskCommentsTab
+              taskId={task.id}
+              ownerId={ownerId}
+              returnTo={returnTo}
+              comments={comments}
+              mentionCandidates={commentMentions}
+              errorMessage={commentsError}
+              actions={commentActions}
+            />
+          </TabsContent>
+          <TabsContent value="activity">
+            <TaskActivityList items={activity} />
+          </TabsContent>
+        </Tabs>
+      ) : (
+        <TaskActivityList items={activity} />
+      )}
     </TaskDrawer>
   );
 }

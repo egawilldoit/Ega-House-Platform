@@ -579,6 +579,147 @@ export type Database = {
           },
         ]
       }
+      task_comments: {
+        Row: {
+          id: string
+          owner_user_id: string
+          task_id: string
+          author_kind: string
+          author_user_id: string | null
+          author_token_id: string | null
+          author_ref: string
+          author_label: string
+          body: string
+          client_request_id: string
+          created_at: string
+          updated_at: string
+          edited_at: string | null
+        }
+        Insert: {
+          id?: string
+          owner_user_id?: string
+          task_id: string
+          author_kind: string
+          author_user_id?: string | null
+          author_token_id?: string | null
+          author_ref: string
+          author_label: string
+          body: string
+          client_request_id: string
+          created_at?: string
+          updated_at?: string
+          edited_at?: string | null
+        }
+        Update: {
+          id?: string
+          owner_user_id?: string
+          task_id?: string
+          author_kind?: string
+          author_user_id?: string | null
+          author_token_id?: string | null
+          author_ref?: string
+          author_label?: string
+          body?: string
+          client_request_id?: string
+          created_at?: string
+          updated_at?: string
+          edited_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "task_comments_task_id_tasks_id_fk"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      task_comment_mentions: {
+        Row: {
+          id: string
+          owner_user_id: string
+          comment_id: string
+          mention_kind: string
+          mention_ref: string
+          mention_label: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          owner_user_id?: string
+          comment_id: string
+          mention_kind: string
+          mention_ref: string
+          mention_label: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          owner_user_id?: string
+          comment_id?: string
+          mention_kind?: string
+          mention_ref?: string
+          mention_label?: string
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "task_comment_mentions_comment_id_fk"
+            columns: ["comment_id"]
+            isOneToOne: false
+            referencedRelation: "task_comments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      task_comment_reactions: {
+        Row: {
+          id: string
+          owner_user_id: string
+          comment_id: string
+          actor_kind: string
+          actor_user_id: string | null
+          actor_token_id: string | null
+          actor_ref: string
+          actor_label: string
+          emoji: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          owner_user_id?: string
+          comment_id: string
+          actor_kind: string
+          actor_user_id?: string | null
+          actor_token_id?: string | null
+          actor_ref: string
+          actor_label: string
+          emoji: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          owner_user_id?: string
+          comment_id?: string
+          actor_kind?: string
+          actor_user_id?: string | null
+          actor_token_id?: string | null
+          actor_ref?: string
+          actor_label?: string
+          emoji?: string
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "task_comment_reactions_comment_id_fk"
+            columns: ["comment_id"]
+            isOneToOne: false
+            referencedRelation: "task_comments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       task_saved_views: {
         Row: {
           created_at: string
@@ -797,6 +938,52 @@ export type Database = {
       promote_task_subtask: {
         Args: { p_subtask_id: string; p_new_task_id: string }
         Returns: boolean
+      }
+      create_task_comment: {
+        Args: {
+          p_task_id: string
+          p_body: string
+          p_client_request_id: string
+          p_author_kind: string
+          p_owner_user_id?: string | null
+          p_author_token_id?: string | null
+          p_mentions?: Json
+        }
+        Returns: Database["public"]["Tables"]["task_comments"]["Row"]
+      }
+      update_task_comment: {
+        Args: {
+          p_comment_id: string
+          p_body: string
+          p_author_kind: string
+          p_owner_user_id?: string | null
+          p_author_token_id?: string | null
+          p_mentions?: Json
+        }
+        Returns: Database["public"]["Tables"]["task_comments"]["Row"]
+      }
+      delete_task_comment: {
+        Args: {
+          p_comment_id: string
+          p_author_kind: string
+          p_owner_user_id?: string | null
+          p_author_token_id?: string | null
+        }
+        Returns: boolean
+      }
+      toggle_task_comment_reaction: {
+        Args: {
+          p_comment_id: string
+          p_emoji: string
+          p_actor_kind: string
+          p_owner_user_id?: string | null
+          p_actor_token_id?: string | null
+        }
+        Returns: Json
+      }
+      list_task_comment_mentions: {
+        Args: { p_owner_user_id?: string | null }
+        Returns: Json
       }
     }
     Enums: {

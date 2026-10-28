@@ -12,6 +12,7 @@ export * from "./tasks/read-model";
 export * from "./tasks/list-view";
 export * from "./tasks/focus-queue";
 export * from "./tasks/service";
+export * from "./tasks/comments";
 export * from "./tasks/recurrence";
 export * from "./notifications/ports";
 export * from "./notifications/service";
