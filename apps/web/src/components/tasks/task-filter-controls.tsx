@@ -12,6 +12,7 @@ import {
   DEFAULT_TASK_DENSITY,
   type TaskDensity,
   type TaskLayoutMode,
+  type TaskBoardOrder,
   type TaskDueFilter,
   type TaskSortValue,
 } from "@/lib/task-list";
@@ -38,6 +39,7 @@ type TaskFilterControlsProps = {
   activeView?: string | null;
   activeLayout?: TaskLayoutMode;
   activeDensity?: TaskDensity;
+  activeBoardOrder?: TaskBoardOrder | null;
   activeEstimateMin?: number | string | null;
   activeEstimateMax?: number | string | null;
   activeDueWithin?: number | string | null;
@@ -96,6 +98,7 @@ export function TaskFilterControls({
   activeView = null,
   activeLayout = "list",
   activeDensity,
+  activeBoardOrder = null,
   activeEstimateMin = null,
   activeEstimateMax = null,
   activeDueWithin = null,
@@ -121,6 +124,7 @@ export function TaskFilterControls({
     view: activeView,
     layout: activeLayout,
     density: activeDensity ?? DEFAULT_TASK_DENSITY,
+    boardOrder: activeBoardOrder,
   };
 
   const hrefFor = (overrides: TaskFilterState) => mergeTaskFilterUrl(basePath, filterState, overrides);
