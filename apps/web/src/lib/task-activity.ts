@@ -5,6 +5,7 @@ export type TaskActivityKind =
   | "field_change"
   | "archived"
   | "restored"
+  | "commented"
   | "session";
 
 export type TaskActivityActorKind = "owner" | "agent" | "system" | "unknown";

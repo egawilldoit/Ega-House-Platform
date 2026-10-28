@@ -657,7 +657,7 @@ export const taskActivityEvents = pgTable(
     ),
     check(
       "task_activity_events_event_kind_check",
-      sql`${table.eventKind} in ('created', 'field_change', 'archived', 'restored')`,
+      sql`${table.eventKind} in ('created', 'field_change', 'archived', 'restored', 'commented')`,
     ),
   ],
 );
@@ -782,6 +782,124 @@ export const agentIntegrationTokens = pgTable(
   (table) => [
     uniqueIndex("agent_token_prefix_unique").on(table.tokenPrefix),
     index("agent_tokens_owner_idx").on(table.ownerUserId),
+  ],
+);
+
+/**
+ * Owner-scoped task comment thread (EGA-783).
+ *
+ * Author identity is stable: `authorRef` is `owner` or `agent:<slug(name)>`,
+ * while `authorTokenId` only records which credential wrote the row. Token
+ * rotation/revocation therefore keeps historical attribution. Writes go through
+ * the security-definer RPCs in migration 0068; product clients are read-only.
+ */
+export const taskComments = pgTable(
+  "task_comments",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    ownerUserId: uuid("owner_user_id").default(sql`auth.uid()`).notNull(),
+    taskId: uuid("task_id")
+      .notNull()
+      .references(() => tasks.id, { onDelete: "cascade" }),
+    authorKind: varchar("author_kind", { length: 16 }).notNull(),
+    authorUserId: uuid("author_user_id"),
+    authorTokenId: uuid("author_token_id").references(
+      () => agentIntegrationTokens.id,
+      { onDelete: "set null" },
+    ),
+    authorRef: text("author_ref").notNull(),
+    authorLabel: text("author_label").notNull(),
+    body: text("body").notNull(),
+    clientRequestId: text("client_request_id").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+    editedAt: timestamp("edited_at", { withTimezone: true }),
+  },
+  (table) => [
+    uniqueIndex("task_comments_owner_request_unique").on(
+      table.ownerUserId,
+      table.clientRequestId,
+    ),
+    index("task_comments_owner_task_time_idx").on(
+      table.ownerUserId,
+      table.taskId,
+      table.createdAt,
+    ),
+    index("task_comments_author_ref_idx").on(table.ownerUserId, table.authorRef),
+    check(
+      "task_comments_author_kind_check",
+      sql`${table.authorKind} in ('owner', 'agent')`,
+    ),
+    check(
+      "task_comments_body_length_check",
+      sql`char_length(${table.body}) between 1 and 4000`,
+    ),
+    check(
+      "task_comments_request_id_check",
+      sql`char_length(${table.clientRequestId}) between 1 and 128`,
+    ),
+  ],
+);
+
+export const taskCommentMentions = pgTable(
+  "task_comment_mentions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    ownerUserId: uuid("owner_user_id").default(sql`auth.uid()`).notNull(),
+    commentId: uuid("comment_id")
+      .notNull()
+      .references(() => taskComments.id, { onDelete: "cascade" }),
+    mentionKind: varchar("mention_kind", { length: 16 }).notNull(),
+    mentionRef: text("mention_ref").notNull(),
+    mentionLabel: text("mention_label").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("task_comment_mentions_comment_ref_unique").on(
+      table.commentId,
+      table.mentionRef,
+    ),
+    index("task_comment_mentions_owner_idx").on(table.ownerUserId),
+    check(
+      "task_comment_mentions_kind_check",
+      sql`${table.mentionKind} in ('owner', 'agent')`,
+    ),
+  ],
+);
+
+export const taskCommentReactions = pgTable(
+  "task_comment_reactions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    ownerUserId: uuid("owner_user_id").default(sql`auth.uid()`).notNull(),
+    commentId: uuid("comment_id")
+      .notNull()
+      .references(() => taskComments.id, { onDelete: "cascade" }),
+    actorKind: varchar("actor_kind", { length: 16 }).notNull(),
+    actorUserId: uuid("actor_user_id"),
+    actorTokenId: uuid("actor_token_id").references(
+      () => agentIntegrationTokens.id,
+      { onDelete: "set null" },
+    ),
+    actorRef: text("actor_ref").notNull(),
+    actorLabel: text("actor_label").notNull(),
+    emoji: varchar("emoji", { length: 32 }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("task_comment_reactions_comment_actor_emoji_unique").on(
+      table.commentId,
+      table.actorRef,
+      table.emoji,
+    ),
+    index("task_comment_reactions_owner_comment_idx").on(
+      table.ownerUserId,
+      table.commentId,
+    ),
+    check(
+      "task_comment_reactions_actor_kind_check",
+      sql`${table.actorKind} in ('owner', 'agent')`,
+    ),
   ],
 );
 

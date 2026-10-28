@@ -34,6 +34,7 @@ import { TasksListTable, type TaskListActions } from "./tasks-list-table";
 import { TaskDrawerHost } from "@/components/tasks/drawer/task-drawer-host";
 import { updateTaskFieldAction } from "@/app/tasks/actions";
 import { TASK_SUBTASK_ACTIONS } from "@/lib/task-subtask-actions";
+import { TASK_COMMENT_ACTIONS } from "@/lib/task-comment-actions";
 
 function getTaskSignalTone(status: string, priority: string) {
   if (status === "blocked" || priority === "urgent") return "bg-[var(--status-overdue)]";
@@ -94,6 +95,9 @@ export function TasksPageView({
     selectedTaskSubtasks,
     subtaskCounts,
     selectedTaskActivity,
+    selectedTaskComments,
+    selectedTaskCommentMentions,
+    selectedTaskCommentError,
   } = model;
   const { activeStatus, activeView, activeLayout, activeDueFilter, savedViewDefinitionFilters } = parsed;
   const completedTaskIdsInScope = getArchivableCompletedTaskIds(tasks);  // Restore clears archived state only; it must never resurrect a completed
@@ -350,6 +354,10 @@ export function TasksPageView({
           ownerId={ownerId}
           subtasks={selectedTaskSubtasks}
           activity={selectedTaskActivity}
+          comments={selectedTaskComments.comments}
+          commentMentions={selectedTaskCommentMentions}
+          commentsError={selectedTaskCommentError}
+          commentActions={TASK_COMMENT_ACTIONS}
           isFavourite={Boolean(model.selectedTaskIsFavourite)}
           favouriteAction={favouriteAction}
           subtaskActions={TASK_SUBTASK_ACTIONS}

@@ -1,4 +1,7 @@
-export const NOTIFICATION_TYPE_VALUES = ["task_reminder"] as const;
+export const NOTIFICATION_TYPE_VALUES = [
+  "task_reminder",
+  "task_comment_mention",
+] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPE_VALUES)[number];
 
 export const NOTIFICATION_TARGET_TYPE_VALUES = ["task"] as const;

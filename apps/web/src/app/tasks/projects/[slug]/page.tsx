@@ -67,9 +67,11 @@ import { formatTaskEstimate } from "@/lib/task-estimate";
 import { buildTaskDrawerLink } from "@/lib/task-drawer-url";
 import { listTaskSubtasks } from "@/lib/services/subtask-service";
 import { getProjectTaskActivity, getTaskActivity } from "@/lib/services/task-activity-service";
+import { getTaskCommentThread } from "@/lib/services/task-comment-service";
 import { isFavorite } from "@/lib/services/favorite-service";
 import { toggleFavoriteAction } from "@/app/favorites/actions";
 import { TASK_SUBTASK_ACTIONS } from "@/lib/task-subtask-actions";
+import { TASK_COMMENT_ACTIONS } from "@/lib/task-comment-actions";
 import { formatTaskRecurrenceRule } from "@/lib/task-recurrence";
 import { formatTimerDateTime } from "@/lib/timer-domain";
 import {
@@ -297,6 +299,9 @@ export default async function ProjectDetailPage({
   const selectedTaskActivity = selectedTaskId
     ? (await getTaskActivity(selectedTaskId, { limit: 8 })).items
     : [];
+  const selectedTaskComments = selectedTaskId
+    ? await getTaskCommentThread(selectedTaskId)
+    : { comments: [], mentionCandidates: [], errorMessage: null };
   const projectActivity = await getProjectTaskActivity(tasks.map((task) => task.id), {
     limit: 5,
   });
@@ -852,6 +857,10 @@ export default async function ProjectDetailPage({
           ownerId={currentUser?.id ?? null}
           subtasks={selectedTaskSubtasks}
           activity={selectedTaskActivity}
+          comments={selectedTaskComments.comments}
+          commentMentions={selectedTaskComments.mentionCandidates}
+          commentsError={selectedTaskComments.errorMessage}
+          commentActions={TASK_COMMENT_ACTIONS}
           isFavourite={selectedTaskIsFavourite}
           favouriteAction={toggleFavoriteAction}
           subtaskActions={TASK_SUBTASK_ACTIONS}
