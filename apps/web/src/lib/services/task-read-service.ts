@@ -1,3 +1,5 @@
+import { excludeArchivedAncestry, loadArchivedAncestorScope } from "@ega/data-access";
+
 import { createClient } from "@/lib/supabase/server";
 import {
   isMissingSupabaseColumn,
@@ -249,6 +251,20 @@ export async function getActiveTasksForOwner(options?: {
   let variant = MODERN_TASK_SELECT_VARIANT;
   const archiveFilter = options?.archiveFilter ?? (options?.includeArchived ? "all" : "active");
 
+  // Active lists, Today and pickers must not surface work that belongs to an
+  // archived project or goal. Loaded once per call, not once per select
+  // fallback attempt.
+  const ancestorScope =
+    archiveFilter === "active" ? await loadArchivedAncestorScope(supabase) : null;
+
+  if (ancestorScope && !ancestorScope.ok) {
+    return { data: [], errorMessage: "Unable to load active tasks right now." };
+  }
+
+  const activeAncestry = ancestorScope?.ok
+    ? ancestorScope.value
+    : { projectIds: [], goalIds: [] };
+
   for (;;) {
     if (!variant.archive && archiveFilter === "archived") {
       return { data: [], errorMessage: null };
@@ -258,6 +274,7 @@ export async function getActiveTasksForOwner(options?: {
 
     if (archiveFilter === "active" && variant.archive) {
       query = query.is("archived_at", null);
+      query = excludeArchivedAncestry(query, activeAncestry);
     } else if (archiveFilter === "archived" && variant.archive) {
       query = query.not("archived_at", "is", null);
     }

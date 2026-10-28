@@ -22,6 +22,10 @@ import {
   mcpOperationIdentity,
   sanitizeSupabaseError,
 } from "../supabase/errors";
+import {
+  excludeArchivedAncestry,
+  loadArchivedAncestorScope,
+} from "./archived-ancestry";
 
 /** Hard ceiling on task rows fetched per list request; keeps payloads bounded. */
 const TASK_LIST_ROW_CAP = 500;
@@ -179,7 +183,15 @@ export class SupabaseTasksRepository implements TasksRepository {
       .select(TASK_SELECT)
       .eq("owner_user_id", actor.userId);
 
-    if (!query.includeArchived) request = request.is("archived_at", null);
+    if (!query.includeArchived) {
+      request = request.is("archived_at", null);
+      // Active visibility through parent ancestry: a task under an archived
+      // project or goal is out of the active workspace even though the task
+      // itself was never archived.
+      const ancestorScope = await loadArchivedAncestorScope(this.supabase, actor.userId);
+      if (!ancestorScope.ok) return { ok: false, error: ancestorScope.error };
+      request = excludeArchivedAncestry(request, ancestorScope.value);
+    }
     if (query.status) request = request.eq("status", query.status);
     // Priority filtering happens in the database; due-filtering and ordering
     // happen in the application read model so counters can cover the full
