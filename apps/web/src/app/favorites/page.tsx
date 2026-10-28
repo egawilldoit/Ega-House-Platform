@@ -3,7 +3,6 @@ import Link from "next/link";
 import { Star } from "lucide-react";
 
 import { AppShell } from "@/components/layout/app-shell";
-import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { listFavorites, type FavoriteItem } from "@/lib/services/favorite-service";
