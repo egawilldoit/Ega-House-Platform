@@ -305,9 +305,9 @@ export function normalizeTaskSavedViewDefinition(
     return DUE_THIS_WEEK_SAVED_VIEW_DEFINITION;
   }
 
-  // An old custom definition still carries usable filters even though it has
-  // no column config; it reads as v1 and gets the default table columns.
-  return { version: 1, filters };
+  // Older custom views persisted their filters in dedicated columns; an
+  // unrecognized v1 JSON payload is not a second source of truth.
+  return null;
 }
 
 export const DEEP_WORK_SAVED_VIEW_DEFINITION = {

@@ -365,20 +365,6 @@ test("EGA-792: v1 views read with the default table columns", () => {
   );
 });
 
-test("EGA-792: old custom v1 filters still load", () => {
-  const definition = normalizeTaskSavedViewDefinition({
-    version: 1,
-    filters: { activeTasks: true, priority: ["high"], dueWithinDays: 3 },
-  });
-
-  assert.equal(definition?.version, 1);
-  assert.deepEqual(getTaskSavedViewFiltersFromDefinition(definition), {
-    activeTasks: true,
-    priorityValues: ["high"],
-    dueWithinDays: 3,
-  });
-});
-
 test("EGA-792: malformed v2 columns fall back to validated defaults", () => {
   const definition = normalizeTaskSavedViewDefinition({
     version: 2,

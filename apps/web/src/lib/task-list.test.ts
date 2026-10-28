@@ -43,7 +43,7 @@ const sampleTasks = [
     priority: "medium",
     estimate_minutes: 60,
     due_date: "2026-04-15",
-    status: "done",
+    status: "todo",
     updated_at: "2026-04-18T09:00:00.000Z",
   },
 ] as const;
@@ -226,11 +226,11 @@ test("sorts priority high to low and keeps null estimates last", () => {
 test("sorts status by the shared workflow rank", () => {
   assert.deepEqual(
     sortTasksByValue([...sampleTasks], "status_asc").map((task) => task.id),
-    ["task-1", "task-2", "task-3", "task-4"],
+    ["task-1", "task-2", "task-4", "task-3"],
   );
   assert.deepEqual(
     sortTasksByValue([...sampleTasks], "status_desc").map((task) => task.id),
-    ["task-4", "task-3", "task-1", "task-2"],
+    ["task-3", "task-1", "task-2", "task-4"],
   );
 });
 

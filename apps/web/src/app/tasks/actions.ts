@@ -759,14 +759,18 @@ export async function updateTaskTableCellAction(
   input: TaskTableCellUpdateInput,
 ): Promise<TaskTableCellUpdateResult> {
   const payload = input && typeof input === "object" ? input : null;
-  const taskId = String(payload?.taskId ?? "").trim();
-  const field = String(payload?.field ?? "");
-  const value = typeof payload?.value === "string" ? payload.value : "";
-  const expectedUpdatedAt = String(payload?.expectedUpdatedAt ?? "").trim();
+  const taskId = typeof payload?.taskId === "string" ? payload.taskId.trim() : "";
+  const field = typeof payload?.field === "string" ? payload.field : "";
+  const value = typeof payload?.value === "string" ? payload.value : null;
+  const expectedUpdatedAt =
+    typeof payload?.expectedUpdatedAt === "string"
+      ? payload.expectedUpdatedAt.trim()
+      : "";
 
   if (
     !taskId ||
     !isTaskTableCellEditableField(field) ||
+    value === null ||
     !expectedUpdatedAt ||
     value.length > 2_000
   ) {

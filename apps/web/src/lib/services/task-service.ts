@@ -2456,10 +2456,21 @@ export async function updateTaskFieldForOwner(
 
   const currentUpdatedAt = String((current as { updated_at?: string }).updated_at ?? "");
   const expectedUpdatedAt = String(input.expectedUpdatedAt ?? "").trim();
-  if (expectedUpdatedAt && expectedUpdatedAt !== currentUpdatedAt) {
-    return {
-      errorMessage: "This task changed since you opened it. Reload and try again.",
-    };
+  if (expectedUpdatedAt) {
+    // The rendered value and the server read can use different but equivalent
+    // timestamp spellings; compare instants, then fall back to the exact string
+    // when either side is not a parseable timestamp.
+    const expectedTime = Date.parse(expectedUpdatedAt);
+    const currentTime = Date.parse(currentUpdatedAt);
+    const matches =
+      Number.isFinite(expectedTime) && Number.isFinite(currentTime)
+        ? expectedTime === currentTime
+        : expectedUpdatedAt === currentUpdatedAt;
+    if (!matches) {
+      return {
+        errorMessage: "This task changed since you opened it. Reload and try again.",
+      };
+    }
   }
 
   const built = buildTaskFieldPatchInput(
