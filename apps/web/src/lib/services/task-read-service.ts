@@ -26,6 +26,7 @@ export type NormalizedTaskRow = {
   project_id: string;
   goal_id: string | null;
   focus_rank: number | null;
+  board_rank: string | null;
   planned_for_date: string | null;
   archived_at: string | null;
   archived_by: string | null;
@@ -72,6 +73,7 @@ type TaskReadSelectVariant = {
   completedAt: boolean;
   archive: boolean;
   calendar: boolean;
+  boardRank: boolean;
 };
 
 const MODERN_TASK_SELECT_VARIANT: TaskReadSelectVariant = {
@@ -79,6 +81,7 @@ const MODERN_TASK_SELECT_VARIANT: TaskReadSelectVariant = {
   completedAt: true,
   archive: true,
   calendar: true,
+  boardRank: true,
 };
 
 const TASK_BASE_SELECT_COLUMNS = [
@@ -132,6 +135,7 @@ function getTaskSelect(variant: TaskReadSelectVariant) {
     ...TASK_BASE_SELECT_COLUMNS.slice(11),
     ...(variant.completedAt ? ["completed_at"] : []),
     ...(variant.archive ? ["archived_at", "archived_by"] : []),
+    ...(variant.boardRank ? ["board_rank"] : []),
     "projects(name, slug)",
     "goals(title)",
   ].join(", ");
@@ -160,6 +164,10 @@ function getFallbackSelectVariant(
     return { ...current, calendar: false };
   }
 
+  if (current.boardRank && isMissingSupabaseColumn(error, "public.tasks", "board_rank")) {
+    return { ...current, boardRank: false };
+  }
+
   return null;
 }
 
@@ -170,6 +178,7 @@ function withVariantFallbacks(row: RawTaskRow, variant: TaskReadSelectVariant): 
     completed_at: variant.completedAt ? row.completed_at ?? null : null,
     archived_at: variant.archive ? row.archived_at ?? null : null,
     archived_by: variant.archive ? row.archived_by ?? null : null,
+    board_rank: variant.boardRank ? row.board_rank ?? null : null,
   };
 }
 
@@ -192,6 +201,7 @@ export function normalizeTaskRow(row: RawTaskRow): NormalizedTaskRow {
     project_id: row.project_id,
     goal_id: row.goal_id ?? null,
     focus_rank: row.focus_rank ?? null,
+    board_rank: row.board_rank ?? null,
     planned_for_date: row.planned_for_date ?? null,
     archived_at: row.archived_at ?? null,
     archived_by: row.archived_by ?? null,

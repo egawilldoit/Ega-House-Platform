@@ -171,6 +171,7 @@ export type TasksWorkspaceData = {
     project_id: string;
     goal_id: string | null;
     focus_rank: number | null;
+    board_rank: string | null;
     archived_at: string | null;
     archived_by: string | null;
     projects: { name: string; slug?: string | null } | null;
@@ -1786,6 +1787,12 @@ export async function updateTaskInline(
      */
     expectedUpdatedAt?: string;
     /**
+     * Board position for a card move (EGA-785). `null` explicitly means "append
+     * to the end of the column"; the database trigger assigns the append key.
+     * Provided together with `status` so status + order commit in one row write.
+     */
+    boardRank?: string | null;
+    /**
      * Canonical account local date (YYYY-MM-DD) from the owner's Time Context.
      * Used as the recurrence anchor fallback instead of the runtime-local date
      * so web writes agree with the Hono transport near account midnight.
@@ -1887,6 +1894,12 @@ export async function updateTaskInline(
 
   if (input.description !== undefined) {
     updatePayload.description = input.description;
+  }
+
+  if (options?.boardRank !== undefined) {
+    // Status and order are one row update, so a cross-column move cannot commit
+    // a new status with a stale position (or vice versa).
+    updatePayload.board_rank = options.boardRank;
   }
 
   if (input.scheduledStartAt !== undefined) {
@@ -2117,7 +2130,7 @@ export async function getTaskById(
   let { data, error } = await supabase
     .from("tasks")
     .select(
-      "id, title, description, blocked_reason, status, priority, due_date, planned_for_date, scheduled_start_at, scheduled_end_at, calendar_sync_enabled, calendar_reminder_minutes, estimate_minutes, updated_at, completed_at, project_id, goal_id, focus_rank, archived_at, archived_by, projects(name, slug), goals(title)",
+      "id, title, description, blocked_reason, status, priority, due_date, planned_for_date, scheduled_start_at, scheduled_end_at, calendar_sync_enabled, calendar_reminder_minutes, estimate_minutes, updated_at, completed_at, project_id, goal_id, focus_rank, board_rank, archived_at, archived_by, projects(name, slug), goals(title)",
     )
     .eq("id", normalizedTaskId)
     .maybeSingle();
@@ -2126,7 +2139,7 @@ export async function getTaskById(
     const fallbackResult = await supabase
       .from("tasks")
       .select(
-        "id, title, description, status, priority, due_date, planned_for_date, scheduled_start_at, scheduled_end_at, calendar_sync_enabled, calendar_reminder_minutes, estimate_minutes, updated_at, completed_at, project_id, goal_id, focus_rank, archived_at, archived_by, projects(name, slug), goals(title)",
+        "id, title, description, status, priority, due_date, planned_for_date, scheduled_start_at, scheduled_end_at, calendar_sync_enabled, calendar_reminder_minutes, estimate_minutes, updated_at, completed_at, project_id, goal_id, focus_rank, board_rank, archived_at, archived_by, projects(name, slug), goals(title)",
       )
       .eq("id", normalizedTaskId)
       .maybeSingle();
