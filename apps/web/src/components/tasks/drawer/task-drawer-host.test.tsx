@@ -461,3 +461,46 @@ describe("TaskDrawer subtasks", () => {
     expect(document.body.textContent).not.toContain("Add a subtask");
   });
 });
+
+describe("TaskDrawer activity", () => {
+  it("renders durable activity with honest actor attribution", () => {
+    currentParams = new URLSearchParams("task=t1");
+    act(() =>
+      root.render(
+        <TaskDrawerHost
+          task={TASK}
+          updateFieldAction={updateFieldAction}
+          updateDraftAction={updateDraftAction}
+          activity={[
+            {
+              id: "a1",
+              kind: "status",
+              occurredAt: "2026-10-27T10:00:00.000Z",
+              actorKind: "owner",
+              actorLabel: "Owner",
+              summary: "Status changed from todo to in progress",
+            },
+            {
+              id: "a2",
+              kind: "field_change",
+              occurredAt: "2026-10-27T09:00:00.000Z",
+              actorKind: "unknown",
+              actorLabel: null,
+              summary: "Priority: medium → high",
+            },
+          ]}
+        />,
+      ),
+    );
+
+    expect(document.body.textContent).toContain("Status changed from todo to in progress");
+    expect(document.body.textContent).toContain("You");
+    expect(document.body.textContent).toContain("Unknown actor");
+  });
+
+  it("shows an explicit empty state instead of inventing history", () => {
+    currentParams = new URLSearchParams("task=t1");
+    render(TASK);
+    expect(document.body.textContent).toContain("No activity recorded yet.");
+  });
+});

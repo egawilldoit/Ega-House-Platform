@@ -623,6 +623,45 @@ export const taskSubtasks = pgTable(
   ],
 );
 
+/**
+ * Durable task activity ledger for observable field changes (EGA-784).
+ *
+ * Append-only for product clients: rows are written by a SECURITY DEFINER
+ * trigger on `tasks`, so a client cannot forge history. Status transitions stay
+ * in `task_status_events` (the analytics ledger); the activity read model unions
+ * both plus timer session evidence.
+ */
+export const taskActivityEvents = pgTable(
+  "task_activity_events",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    ownerUserId: uuid("owner_user_id").default(sql`auth.uid()`).notNull(),
+    taskId: uuid("task_id").references(() => tasks.id, { onDelete: "set null" }),
+    actorKind: varchar("actor_kind", { length: 16 }).notNull(),
+    actorUserId: uuid("actor_user_id"),
+    actorLabel: text("actor_label"),
+    eventKind: varchar("event_kind", { length: 32 }).notNull(),
+    delta: jsonb("delta").notNull(),
+    occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("task_activity_events_owner_task_time_idx").on(
+      table.ownerUserId,
+      table.taskId,
+      table.occurredAt,
+    ),
+    check(
+      "task_activity_events_actor_kind_check",
+      sql`${table.actorKind} in ('owner', 'agent', 'system', 'unknown')`,
+    ),
+    check(
+      "task_activity_events_event_kind_check",
+      sql`${table.eventKind} in ('created', 'field_change', 'archived', 'restored')`,
+    ),
+  ],
+);
+
 export const taskSavedViews = pgTable(
   "task_saved_views",
   {

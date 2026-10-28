@@ -17,6 +17,7 @@ import { normalizeTaskViewFilter, type TaskViewFilter } from "@/lib/task-archive
 import { normalizeTaskSavedViewFilters } from "@/lib/task-saved-views";
 import { getTaskDrawerDetail, type TaskDrawerDetail } from "@/lib/services/task-service";
 import { getSubtaskCountsForTasks, listTaskSubtasks } from "@/lib/services/subtask-service";
+import { getTaskActivity } from "@/lib/services/task-activity-service";
 import { getTasksWorkspaceData } from "@/lib/services/task-service";
 import { getWebTimeContext } from "@/lib/services/time-context-service";
 import { isTaskDueSoon, isTaskOverdue } from "@/lib/task-due-date";
@@ -205,6 +206,9 @@ export async function getTasksPageModel(searchParams: TasksSearchParams) {
     ? (await listTaskSubtasks(selectedTaskId)).data ?? []
     : [];
   const subtaskCounts = await getSubtaskCountsForTasks(tasks.map((task) => task.id));
+  const selectedTaskActivity = selectedTaskId
+    ? (await getTaskActivity(selectedTaskId, { limit: 8 })).items
+    : [];
 
   return {
     selectedTaskId,
@@ -213,6 +217,7 @@ export async function getTasksPageModel(searchParams: TasksSearchParams) {
     selectedTaskError,
     selectedTaskSubtasks,
     subtaskCounts,
+    selectedTaskActivity,
     parsed,
     projects,
     goals,

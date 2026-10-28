@@ -11,6 +11,8 @@ import { TaskDrawer } from "./task-drawer";
 import { TaskDrawerDetailForm } from "./task-drawer-detail-form";
 import { TaskDrawerShortcuts } from "./task-drawer-shortcuts";
 import { TaskSubtasks } from "./task-subtasks";
+import { TaskActivityList } from "./task-activity-list";
+import type { TaskActivityItem } from "@/lib/task-activity";
 import type { SubtaskDto } from "@ega/contracts";
 import { useTaskDrawerParam } from "./use-task-drawer-param";
 
@@ -121,6 +123,8 @@ type TaskDrawerHostProps = {
   ownerId?: string | null;
   /** Ordered checklist items for the selected task. */
   subtasks?: SubtaskDto[];
+  /** Durable activity rows for the selected task. */
+  activity?: TaskActivityItem[];
   /** Server actions for the checklist, passed from the page. */
   subtaskActions?: {
     addAction: (formData: FormData) => void | Promise<void>;
@@ -151,6 +155,7 @@ export function TaskDrawerHost({
   updateDraftAction,
   ownerId = null,
   subtasks = [],
+  activity = [],
   subtaskActions,
   updateError = null,
   updateSuccess = null,
@@ -406,6 +411,8 @@ export function TaskDrawerHost({
           actions={subtaskActions}
         />
       ) : null}
+
+      <TaskActivityList items={activity} />
     </TaskDrawer>
   );
 }
