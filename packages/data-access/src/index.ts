@@ -8,6 +8,7 @@ export * from "./today/repository";
 export * from "./friction/repository";
 export * from "./inbox/repository";
 export * from "./time-context/repository";
+export * from "./preferences/repository";
 export * from "./execution-evidence/repository";
 export * from "./operator/repository";
 export * from "./weekly-review/repository";
