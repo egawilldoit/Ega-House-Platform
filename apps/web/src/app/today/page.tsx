@@ -31,6 +31,8 @@ import { getActiveTimerSession } from "@/lib/services/timer-service";
 import { getTaskDrawerDetail } from "@/lib/services/task-service";
 import { listTaskSubtasks } from "@/lib/services/subtask-service";
 import { getTaskActivity } from "@/lib/services/task-activity-service";
+import { isFavorite } from "@/lib/services/favorite-service";
+import { toggleFavoriteAction } from "@/app/favorites/actions";
 import { TASK_SUBTASK_ACTIONS } from "@/lib/task-subtask-actions";
 import { buildTaskDrawerLink } from "@/lib/task-drawer-url";
 import { getHealthSnapshotData } from "@/lib/services/health-snapshot-service";
@@ -204,6 +206,9 @@ export default async function TodayPage({
   const selectedTaskActivity = selectedTaskId
     ? (await getTaskActivity(selectedTaskId, { limit: 8 })).items
     : [];
+  const selectedTaskIsFavourite = selectedTaskId
+    ? await isFavorite("task", selectedTaskId)
+    : false;
   const activeTimerSessionId = todayData.activeTimer?.sessionId ?? null;
   const flexibleTodayActionable = todayData.flexibleTasks.filter(
     (task) => task.status !== "blocked" && !isTaskCompletedStatus(task.status),
@@ -269,6 +274,8 @@ export default async function TodayPage({
           ownerId={user?.id ?? null}
           subtasks={selectedTaskSubtasks}
           activity={selectedTaskActivity}
+          isFavourite={selectedTaskIsFavourite}
+          favouriteAction={toggleFavoriteAction}
           subtaskActions={TASK_SUBTASK_ACTIONS}
           updateError={taskUpdateTaskId === selectedTaskId ? taskUpdateError : null}
           updateSuccess={taskUpdateTaskId === selectedTaskId ? taskUpdateSuccess : null}

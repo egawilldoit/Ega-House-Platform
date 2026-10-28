@@ -66,9 +66,11 @@ const TASK_VIEWS = [
 export function TasksPageView({
   model,
   ownerId = null,
+  favouriteAction,
 }: {
   model: TasksPageModel;
   ownerId?: string | null;
+  favouriteAction?: (formData: FormData) => void | Promise<void>;
 }) {
   const {
     parsed,
@@ -348,6 +350,8 @@ export function TasksPageView({
           ownerId={ownerId}
           subtasks={selectedTaskSubtasks}
           activity={selectedTaskActivity}
+          isFavourite={Boolean(model.selectedTaskIsFavourite)}
+          favouriteAction={favouriteAction}
           subtaskActions={TASK_SUBTASK_ACTIONS}
           updateError={taskUpdateTaskId === selectedTaskId ? taskUpdateError : null}
           updateSuccess={taskUpdateTaskId === selectedTaskId ? taskUpdateSuccess : null}
