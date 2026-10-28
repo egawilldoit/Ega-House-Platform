@@ -11,6 +11,7 @@ import type { TaskCommentReactionActionResult } from "@/app/tasks/comment-action
 
 type ReactionBarProps = {
   commentId: string;
+  taskId: string;
   returnTo: string;
   reactions: TaskCommentReaction[];
   toggleAction: (formData: FormData) => Promise<TaskCommentReactionActionResult>;
@@ -18,6 +19,7 @@ type ReactionBarProps = {
 
 export function ReactionBar({
   commentId,
+  taskId,
   returnTo,
   reactions,
   toggleAction,
@@ -32,6 +34,7 @@ export function ReactionBar({
     setErrorMessage(null);
     const formData = new FormData();
     formData.set("commentId", commentId);
+    formData.set("taskId", taskId);
     formData.set("returnTo", returnTo);
     formData.set("emoji", emoji);
 

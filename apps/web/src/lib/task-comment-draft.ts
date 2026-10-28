@@ -1,4 +1,7 @@
-import { TASK_COMMENT_BODY_MAX } from "@ega/domain";
+import {
+  TASK_COMMENT_BODY_MAX,
+  normalizeTaskCommentRequestId,
+} from "@ega/domain";
 
 /**
  * Per-task comment drafts are local browser state, never product data.
@@ -14,6 +17,13 @@ type StoredDraft = {
   ownerId: string;
   taskId: string;
   body: string;
+  requestId?: string;
+};
+
+export type TaskCommentDraftState = {
+  body: string;
+  /** The retry identity that belongs to this exact draft, if one was saved. */
+  requestId: string | null;
 };
 
 export function taskCommentDraftKey(ownerId: string, taskId: string): string {
@@ -26,8 +36,33 @@ function isStoredDraft(value: unknown): value is StoredDraft {
   return (
     typeof record.ownerId === "string" &&
     typeof record.taskId === "string" &&
-    typeof record.body === "string"
+    typeof record.body === "string" &&
+    (record.requestId === undefined || typeof record.requestId === "string")
   );
+}
+
+export function readTaskCommentDraftState(
+  storage: Storage | null | undefined,
+  ownerId: string | null | undefined,
+  taskId: string | null | undefined,
+): TaskCommentDraftState {
+  if (!storage || !ownerId || !taskId) return { body: "", requestId: null };
+  try {
+    const raw = storage.getItem(taskCommentDraftKey(ownerId, taskId));
+    if (!raw) return { body: "", requestId: null };
+    const parsed: unknown = JSON.parse(raw);
+    if (!isStoredDraft(parsed)) return { body: "", requestId: null };
+    if (parsed.ownerId !== ownerId || parsed.taskId !== taskId) {
+      return { body: "", requestId: null };
+    }
+    const requestId = normalizeTaskCommentRequestId(parsed.requestId);
+    return {
+      body: parsed.body.slice(0, TASK_COMMENT_BODY_MAX),
+      requestId: requestId.ok ? requestId.value : null,
+    };
+  } catch {
+    return { body: "", requestId: null };
+  }
 }
 
 export function readTaskCommentDraft(
@@ -35,17 +70,7 @@ export function readTaskCommentDraft(
   ownerId: string | null | undefined,
   taskId: string | null | undefined,
 ): string {
-  if (!storage || !ownerId || !taskId) return "";
-  try {
-    const raw = storage.getItem(taskCommentDraftKey(ownerId, taskId));
-    if (!raw) return "";
-    const parsed: unknown = JSON.parse(raw);
-    if (!isStoredDraft(parsed)) return "";
-    if (parsed.ownerId !== ownerId || parsed.taskId !== taskId) return "";
-    return parsed.body.slice(0, TASK_COMMENT_BODY_MAX);
-  } catch {
-    return "";
-  }
+  return readTaskCommentDraftState(storage, ownerId, taskId).body;
 }
 
 export function writeTaskCommentDraft(
@@ -53,6 +78,7 @@ export function writeTaskCommentDraft(
   ownerId: string | null | undefined,
   taskId: string | null | undefined,
   body: string,
+  requestId?: string | null,
 ): void {
   if (!storage || !ownerId || !taskId) return;
   try {
@@ -61,12 +87,14 @@ export function writeTaskCommentDraft(
       storage.removeItem(key);
       return;
     }
+    const normalizedRequestId = normalizeTaskCommentRequestId(requestId);
     storage.setItem(
       key,
       JSON.stringify({
         ownerId,
         taskId,
         body: body.slice(0, TASK_COMMENT_BODY_MAX),
+        ...(normalizedRequestId.ok ? { requestId: normalizedRequestId.value } : {}),
       } satisfies StoredDraft),
     );
   } catch {

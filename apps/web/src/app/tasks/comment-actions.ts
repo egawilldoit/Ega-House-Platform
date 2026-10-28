@@ -56,6 +56,7 @@ export async function updateTaskCommentAction(
 ): Promise<TaskCommentActionResult> {
   const result = await updateTaskCommentForOwner({
     commentId: stringValue(formData, "commentId").trim(),
+    taskId: stringValue(formData, "taskId").trim(),
     body: stringValue(formData, "body"),
   });
 
@@ -72,6 +73,7 @@ export async function deleteTaskCommentAction(
 ): Promise<TaskCommentActionResult> {
   const result = await deleteTaskCommentForOwner(
     stringValue(formData, "commentId").trim(),
+    stringValue(formData, "taskId").trim(),
   );
 
   if (result.errorMessage) {
@@ -87,6 +89,7 @@ export async function toggleTaskCommentReactionAction(
 ): Promise<TaskCommentReactionActionResult> {
   const result = await toggleTaskCommentReactionForOwner({
     commentId: stringValue(formData, "commentId").trim(),
+    taskId: stringValue(formData, "taskId").trim(),
     emoji: stringValue(formData, "emoji"),
   });
 

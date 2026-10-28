@@ -415,7 +415,10 @@ export const notifications = pgTable(
     index("notifications_owner_unread_idx")
       .on(table.ownerUserId, table.createdAt.desc())
       .where(sql`${table.readAt} is null`),
-    check("notifications_type_check", sql`${table.type} in ('task_reminder')`),
+    check(
+      "notifications_type_check",
+      sql`${table.type} in ('task_reminder', 'task_comment_mention')`,
+    ),
     check(
       "notifications_target_type_check",
       sql`${table.targetType} is null or ${table.targetType} in ('task')`,
@@ -822,7 +825,7 @@ export const agentIntegrationTokens = pgTable(
  * Author identity is stable: `authorRef` is `owner` or `agent:<slug(name)>`,
  * while `authorTokenId` only records which credential wrote the row. Token
  * rotation/revocation therefore keeps historical attribution. Writes go through
- * the security-definer RPCs in migration 0068; product clients are read-only.
+ * the security-definer RPCs in migration 0070; product clients are read-only.
  */
 export const taskComments = pgTable(
   "task_comments",

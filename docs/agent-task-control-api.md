@@ -698,9 +698,10 @@ actors' counts. Allowed emoji: `👍`, `👀`, `✅`, `🎉`, `🙏`, `🔥`.
 }
 ```
 
-Errors use `FORBIDDEN` (missing scope, another author's comment), `NOT_FOUND`
-(wrong owner or missing task/comment), `CONFLICT` (reused idempotency identity
-with different content) or `VALIDATION_ERROR` (invalid body/emoji).
+Errors use `FORBIDDEN` (missing scope or invalid author context), `NOT_FOUND`
+(wrong owner, another author's comment, or missing task/comment), `CONFLICT`
+(reused idempotency identity with different content) or `VALIDATION_ERROR`
+(invalid body/emoji).
 
 ---
 

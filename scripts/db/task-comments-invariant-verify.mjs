@@ -160,7 +160,6 @@ async function resetDatabase(sql) {
   await sql.unsafe(`DROP SCHEMA IF EXISTS auth CASCADE;`);
   await sql.unsafe(`DROP SCHEMA IF EXISTS automation CASCADE;`);
   await sql.unsafe(`CREATE SCHEMA IF NOT EXISTS public;`);
-  await sql.unsafe(`GRANT USAGE ON SCHEMA public TO authenticated, anon, service_role;`);
 }
 
 async function asUser(sql, ownerUserId, fn) {
@@ -214,6 +213,7 @@ async function main() {
   try {
     await resetDatabase(sql);
     await applySupabaseShim(sql);
+    await sql.unsafe(`GRANT USAGE ON SCHEMA public TO authenticated, anon, service_role;`);
 
     for (const tag of await readJournal()) {
       await applyFile(sql, tag);
@@ -339,7 +339,7 @@ async function main() {
       WHERE task_id = ${TASK_A}::uuid AND event_kind = 'comment'
     `;
     check(activity?.actor_kind === "owner" && activity?.actor_label === "Owner", "activity attributes the owner honestly");
-    check(activity?.delta?.comment_id === first.id, "activity delta references the comment");
+    check(activity?.delta?.comment_id?.to === first.id, "activity delta references the comment");
     check(activity?.source_event_id === first.id, "activity source id makes a producer replay impossible");
 
     // Self-mention makes no inbox noise.
@@ -465,7 +465,7 @@ async function main() {
 
     const [agentActivity] = await sql`
       SELECT * FROM task_activity_events
-      WHERE task_id = ${TASK_A}::uuid AND delta->>'comment_id' = ${agentComment.id}
+      WHERE task_id = ${TASK_A}::uuid AND delta->'comment_id'->>'to' = ${agentComment.id}
     `;
     check(agentActivity?.actor_kind === "agent", "agent comment activity is attributed to the agent");
     check(agentActivity?.actor_agent_id === TOKEN_A_CODEX, "agent comment activity records the stable credential id");
@@ -562,16 +562,48 @@ async function main() {
       const [row] = await tx`
         SELECT * FROM public.update_task_comment(
           ${first.id}::uuid,
-          ${'Edited owner note'},
+          ${'Edited owner note @runner'},
           ${'owner'},
           ${OWNER_A}::uuid,
           NULL,
-          '[]'::jsonb
+          ${mentions({ kind: "agent", ref: "agent:runner", label: "Runner" })}::jsonb
         )
       `;
       return row;
     });
-    check(edited?.body === "Edited owner note" && edited?.edited_at !== null, "owner can edit their own comment");
+    check(
+      edited?.body === "Edited owner note @runner" && edited?.edited_at !== null,
+      "owner can edit their own comment with an agent mention",
+    );
+    check(
+      (await count(
+        sql,
+        "task_comment_mentions",
+        "comment_id = $1::uuid AND mention_ref = 'agent:runner'",
+        [first.id],
+      )) === 1,
+      "editing recomputes the mention reference",
+    );
+    check(
+      (await count(
+        sql,
+        "notifications",
+        "owner_user_id = $1::uuid AND idempotency_key = $2",
+        [OWNER_A, `task-comment:${first.id}:agent:runner`],
+      )) === 1,
+      "editing with a new mention creates one notification",
+    );
+
+    await expectFailure(
+      "update rejects a mismatched task path",
+      () =>
+        asUser(sql, OWNER_A, (tx) =>
+          tx`SELECT * FROM public.update_task_comment(
+            ${first.id}::uuid, ${'path mismatch'}, ${'owner'}, ${OWNER_A}::uuid, NULL, '[]'::jsonb, ${TASK_B}::uuid
+          )`,
+        ),
+      "not owned",
+    );
 
     await expectFailure(
       "owner B cannot edit owner A's comment",

@@ -73,7 +73,7 @@ export async function createAgentTaskComment(
 
 export async function updateAgentTaskComment(
   identity: AgentCommentIdentity,
-  input: { commentId: string; body: string },
+  input: { taskId: string; commentId: string; body: string },
 ): Promise<AgentCommentResult<TaskCommentDto>> {
   const result = await updateTaskComment(actorFor(identity), repository(), input);
   return result.ok
@@ -83,9 +83,14 @@ export async function updateAgentTaskComment(
 
 export async function deleteAgentTaskComment(
   identity: AgentCommentIdentity,
-  commentId: string,
+  input: { taskId: string; commentId: string },
 ): Promise<AgentCommentResult<{ deleted: true }>> {
-  const result = await deleteTaskComment(actorFor(identity), repository(), commentId);
+  const result = await deleteTaskComment(
+    actorFor(identity),
+    repository(),
+    input.commentId,
+    input.taskId,
+  );
   return result.ok
     ? { ok: true, data: result.data }
     : { ok: false, errorMessage: result.errorMessage, code: result.code };
@@ -93,7 +98,7 @@ export async function deleteAgentTaskComment(
 
 export async function toggleAgentTaskCommentReaction(
   identity: AgentCommentIdentity,
-  input: { commentId: string; emoji: string },
+  input: { taskId: string; commentId: string; emoji: string },
 ): Promise<AgentCommentResult<TaskCommentReaction[]>> {
   const result = await toggleTaskCommentReaction(actorFor(identity), repository(), input);
   return result.ok

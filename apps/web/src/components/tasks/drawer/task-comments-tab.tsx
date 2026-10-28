@@ -76,6 +76,7 @@ export function TaskCommentsTab({
     setPendingId(commentId);
     const formData = new FormData();
     formData.set("commentId", commentId);
+    formData.set("taskId", taskId);
     formData.set("returnTo", returnTo);
     formData.set("body", editBody);
 
@@ -97,6 +98,7 @@ export function TaskCommentsTab({
     setPendingId(comment.id);
     const formData = new FormData();
     formData.set("commentId", comment.id);
+    formData.set("taskId", taskId);
     formData.set("returnTo", returnTo);
 
     startTransition(async () => {
@@ -206,6 +208,7 @@ export function TaskCommentsTab({
                       .map((reaction) => `${reaction.emoji}:${reaction.count}:${reaction.reactedByViewer ? 1 : 0}`)
                       .join(",")}`}
                     commentId={comment.id}
+                    taskId={taskId}
                     returnTo={returnTo}
                     reactions={comment.reactions}
                     toggleAction={actions.toggleReactionAction}

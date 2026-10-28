@@ -495,7 +495,7 @@ BEGIN
       IF v_mention_kind = 'owner' THEN
         v_title := 'You were mentioned in "' || left(v_task_title, 200) || '"';
       ELSE
-        v_title := v_author_label || ' mentioned @' || substring(v_mention_ref from 7) || ' in "' || left(v_task_title, 200) || '"';
+        v_title := v_comment.author_label || ' mentioned @' || substring(v_mention_ref from 7) || ' in "' || left(v_task_title, 200) || '"';
       END IF;
 
       INSERT INTO public.notifications (
@@ -524,7 +524,8 @@ CREATE OR REPLACE FUNCTION public.update_task_comment(
   p_author_kind text,
   p_owner_user_id uuid DEFAULT NULL,
   p_author_token_id uuid DEFAULT NULL,
-  p_mentions jsonb DEFAULT '[]'::jsonb
+  p_mentions jsonb DEFAULT '[]'::jsonb,
+  p_task_id uuid DEFAULT NULL
 )
 RETURNS public.task_comments
 LANGUAGE plpgsql
@@ -586,6 +587,10 @@ BEGIN
     RAISE EXCEPTION 'comment not found or not owned';
   END IF;
 
+  IF p_task_id IS NOT NULL AND v_comment.task_id <> p_task_id THEN
+    RAISE EXCEPTION 'comment not found or not owned';
+  END IF;
+
   SELECT t.title
     INTO v_task_title
     FROM public.tasks t
@@ -635,7 +640,7 @@ BEGIN
       IF v_mention_kind = 'owner' THEN
         v_title := 'You were mentioned in "' || left(v_task_title, 200) || '"';
       ELSE
-        v_title := v_author_label || ' mentioned @' || substring(v_mention_ref from 7) || ' in "' || left(v_task_title, 200) || '"';
+        v_title := v_comment.author_label || ' mentioned @' || substring(v_mention_ref from 7) || ' in "' || left(v_task_title, 200) || '"';
       END IF;
 
       INSERT INTO public.notifications (
@@ -662,7 +667,8 @@ CREATE OR REPLACE FUNCTION public.delete_task_comment(
   p_comment_id uuid,
   p_author_kind text,
   p_owner_user_id uuid DEFAULT NULL,
-  p_author_token_id uuid DEFAULT NULL
+  p_author_token_id uuid DEFAULT NULL,
+  p_task_id uuid DEFAULT NULL
 )
 RETURNS boolean
 LANGUAGE plpgsql
@@ -716,6 +722,10 @@ BEGIN
     RAISE EXCEPTION 'comment not found or not owned';
   END IF;
 
+  IF p_task_id IS NOT NULL AND v_comment.task_id <> p_task_id THEN
+    RAISE EXCEPTION 'comment not found or not owned';
+  END IF;
+
   DELETE FROM public.task_comments
    WHERE id = v_comment.id
      AND owner_user_id = v_owner;
@@ -733,7 +743,8 @@ CREATE OR REPLACE FUNCTION public.toggle_task_comment_reaction(
   p_emoji text,
   p_actor_kind text,
   p_owner_user_id uuid DEFAULT NULL,
-  p_actor_token_id uuid DEFAULT NULL
+  p_actor_token_id uuid DEFAULT NULL,
+  p_task_id uuid DEFAULT NULL
 )
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -804,6 +815,10 @@ BEGIN
      WHERE t.id = v_comment.task_id
        AND t.owner_user_id = v_owner
   ) THEN
+    RAISE EXCEPTION 'comment not found or not owned';
+  END IF;
+
+  IF p_task_id IS NOT NULL AND v_comment.task_id <> p_task_id THEN
     RAISE EXCEPTION 'comment not found or not owned';
   END IF;
 
@@ -878,37 +893,37 @@ REVOKE ALL ON FUNCTION public.create_task_comment(uuid, text, text, text, uuid, 
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION public.create_task_comment(uuid, text, text, text, uuid, uuid, jsonb) FROM anon;
 --> statement-breakpoint
-REVOKE ALL ON FUNCTION public.update_task_comment(uuid, text, text, uuid, uuid, jsonb) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.update_task_comment(uuid, text, text, uuid, uuid, jsonb, uuid) FROM PUBLIC;
 --> statement-breakpoint
-REVOKE ALL ON FUNCTION public.update_task_comment(uuid, text, text, uuid, uuid, jsonb) FROM anon;
+REVOKE ALL ON FUNCTION public.update_task_comment(uuid, text, text, uuid, uuid, jsonb, uuid) FROM anon;
 --> statement-breakpoint
-REVOKE ALL ON FUNCTION public.delete_task_comment(uuid, text, uuid, uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.delete_task_comment(uuid, text, uuid, uuid, uuid) FROM PUBLIC;
 --> statement-breakpoint
-REVOKE ALL ON FUNCTION public.delete_task_comment(uuid, text, uuid, uuid) FROM anon;
+REVOKE ALL ON FUNCTION public.delete_task_comment(uuid, text, uuid, uuid, uuid) FROM anon;
 --> statement-breakpoint
-REVOKE ALL ON FUNCTION public.toggle_task_comment_reaction(uuid, text, text, uuid, uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.toggle_task_comment_reaction(uuid, text, text, uuid, uuid, uuid) FROM PUBLIC;
 --> statement-breakpoint
-REVOKE ALL ON FUNCTION public.toggle_task_comment_reaction(uuid, text, text, uuid, uuid) FROM anon;
+REVOKE ALL ON FUNCTION public.toggle_task_comment_reaction(uuid, text, text, uuid, uuid, uuid) FROM anon;
 --> statement-breakpoint
 GRANT EXECUTE ON FUNCTION public.list_task_comment_mentions(uuid) TO authenticated;
 --> statement-breakpoint
 GRANT EXECUTE ON FUNCTION public.create_task_comment(uuid, text, text, text, uuid, uuid, jsonb) TO authenticated;
 --> statement-breakpoint
-GRANT EXECUTE ON FUNCTION public.update_task_comment(uuid, text, text, uuid, uuid, jsonb) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.update_task_comment(uuid, text, text, uuid, uuid, jsonb, uuid) TO authenticated;
 --> statement-breakpoint
-GRANT EXECUTE ON FUNCTION public.delete_task_comment(uuid, text, uuid, uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.delete_task_comment(uuid, text, uuid, uuid, uuid) TO authenticated;
 --> statement-breakpoint
-GRANT EXECUTE ON FUNCTION public.toggle_task_comment_reaction(uuid, text, text, uuid, uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.toggle_task_comment_reaction(uuid, text, text, uuid, uuid, uuid) TO authenticated;
 --> statement-breakpoint
 GRANT EXECUTE ON FUNCTION public.list_task_comment_mentions(uuid) TO service_role;
 --> statement-breakpoint
 GRANT EXECUTE ON FUNCTION public.create_task_comment(uuid, text, text, text, uuid, uuid, jsonb) TO service_role;
 --> statement-breakpoint
-GRANT EXECUTE ON FUNCTION public.update_task_comment(uuid, text, text, uuid, uuid, jsonb) TO service_role;
+GRANT EXECUTE ON FUNCTION public.update_task_comment(uuid, text, text, uuid, uuid, jsonb, uuid) TO service_role;
 --> statement-breakpoint
-GRANT EXECUTE ON FUNCTION public.delete_task_comment(uuid, text, uuid, uuid) TO service_role;
+GRANT EXECUTE ON FUNCTION public.delete_task_comment(uuid, text, uuid, uuid, uuid) TO service_role;
 --> statement-breakpoint
-GRANT EXECUTE ON FUNCTION public.toggle_task_comment_reaction(uuid, text, text, uuid, uuid) TO service_role;
+GRANT EXECUTE ON FUNCTION public.toggle_task_comment_reaction(uuid, text, text, uuid, uuid, uuid) TO service_role;
 --> statement-breakpoint
 
 -- EGA-784 ledger: comments are a first-class `comment` event. The trigger is
@@ -933,8 +948,8 @@ BEGIN
     NEW.author_label,
     'comment',
     jsonb_build_object(
-      'comment_id', NEW.id,
-      'excerpt', left(NEW.body, 160)
+      'comment_id', jsonb_build_object('to', NEW.id::text),
+      'excerpt', jsonb_build_object('to', left(NEW.body, 160))
     ),
     NEW.id::text,
     NEW.created_at

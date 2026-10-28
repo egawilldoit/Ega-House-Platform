@@ -103,7 +103,7 @@ export async function createTaskCommentForOwner(
 }
 
 export async function updateTaskCommentForOwner(
-  input: { commentId: string; body: string },
+  input: { commentId: string; taskId?: string | null; body: string },
   options?: TaskCommentServiceOptions,
 ): Promise<TaskCommentWriteResult<TaskCommentDto>> {
   try {
@@ -119,11 +119,12 @@ export async function updateTaskCommentForOwner(
 
 export async function deleteTaskCommentForOwner(
   commentId: string,
+  taskId?: string | null,
   options?: TaskCommentServiceOptions,
 ): Promise<{ errorMessage: string | null }> {
   try {
     const { repository, author } = await getContext(options);
-    const result = await deleteTaskComment(author, repository, commentId);
+    const result = await deleteTaskComment(author, repository, commentId, taskId);
     return { errorMessage: result.ok ? null : result.errorMessage };
   } catch {
     return { errorMessage: "Unable to delete the comment right now." };
@@ -131,7 +132,7 @@ export async function deleteTaskCommentForOwner(
 }
 
 export async function toggleTaskCommentReactionForOwner(
-  input: { commentId: string; emoji: string },
+  input: { commentId: string; taskId?: string | null; emoji: string },
   options?: TaskCommentServiceOptions,
 ): Promise<TaskCommentWriteResult<TaskCommentReaction[]>> {
   try {
