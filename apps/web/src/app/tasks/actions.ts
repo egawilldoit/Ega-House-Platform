@@ -26,6 +26,8 @@ import {
   getTaskInsertScopeError,
   getTaskScopeSnapshot,
   normalizeTaskBlockedReasonInput,
+  rescheduleTaskDateForOwner,
+  rescheduleTaskScheduledWindowForOwner,
   unarchiveTask,
   updateTaskEmailReminder,
   updateTaskInline,
@@ -697,6 +699,74 @@ export async function updateTaskFieldAction(formData: FormData) {
   redirectWithWorkspaceFeedback(returnPath, {
     anchor: taskId ? `task-${taskId}` : undefined,
     ...(returnPath.includes("task=") ? { taskId } : {}),
+  });
+}
+
+/**
+ * Calendar reschedule entry point for both dragging and the non-drag editor.
+ *
+ * `mode=date` moves only the selected due/planned field. `mode=schedule` moves
+ * a scheduled block to another local day/time, preserving its duration through
+ * the canonical timezone-aware schedule validator and calendar resync queue.
+ */
+export async function rescheduleTaskCalendarAction(formData: FormData) {
+  const returnPath = getTasksReturnPath(formData.get("returnTo"));
+  const taskId = String(formData.get("taskId") ?? "").trim();
+  const mode = String(formData.get("mode") ?? "").trim();
+  const date = String(formData.get("date") ?? "").trim();
+  const field = String(formData.get("field") ?? "").trim();
+  const time = String(formData.get("time") ?? "").trim();
+  const expectedUpdatedAt =
+    String(formData.get("expectedUpdatedAt") ?? "").trim() || undefined;
+
+  const accountTimezoneResult = await resolveAccountTimezone();
+  if (!accountTimezoneResult.timezone) {
+    redirectWithTasksError(
+      returnPath,
+      accountTimezoneResult.error ?? "Unable to load the account timezone right now.",
+      taskId || undefined,
+    );
+  }
+
+  let errorMessage: string | null;
+
+  if (mode === "date") {
+    if (field !== "due" && field !== "planned") {
+      redirectWithTasksError(returnPath, "Choose a valid calendar date.", taskId || undefined);
+    }
+    const result = await rescheduleTaskDateForOwner(
+      { taskId, field, date, expectedUpdatedAt },
+      {
+        accountTimezone: accountTimezoneResult.timezone,
+        fallbackAnchorDate: accountTimezoneResult.localDate ?? undefined,
+      },
+    );
+    errorMessage = result.errorMessage;
+  } else if (mode === "schedule") {
+    const result = await rescheduleTaskScheduledWindowForOwner(
+      { taskId, date, time, expectedUpdatedAt },
+      {
+        accountTimezone: accountTimezoneResult.timezone,
+        fallbackAnchorDate: accountTimezoneResult.localDate ?? undefined,
+      },
+    );
+    errorMessage = result.errorMessage;
+  } else {
+    redirectWithTasksError(
+      returnPath,
+      "Unsupported calendar reschedule request.",
+      taskId || undefined,
+    );
+  }
+
+  if (errorMessage) {
+    redirectWithTasksError(returnPath, errorMessage, taskId || undefined);
+  }
+
+  revalidateWorkspaceFor("task", { returnTo: returnPath });
+  redirectWithWorkspaceFeedback(returnPath, {
+    anchor: taskId ? `task-${taskId}` : undefined,
+    taskSuccessMessage: "Task rescheduled.",
   });
 }
 

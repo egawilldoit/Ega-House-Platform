@@ -16,6 +16,7 @@ const CURRENT = {
   project_id: "project-1",
   start_date: null,
   due_date: "2026-05-01",
+  planned_for_date: "2026-05-02",
   estimate_minutes: 75,
   blocked_reason: null,
 };
@@ -29,6 +30,7 @@ test("accepts exactly the whitelisted fields", () => {
     "project",
     "startDate",
     "dueDate",
+    "plannedDate",
     "estimateMinutes",
     "blockedReason",
   ]);
@@ -72,6 +74,14 @@ test("a title patch changes the title and keeps the rest", () => {
   assert.equal(result.input.title, "Renamed");
   assert.equal(result.input.status, "in_progress");
   assert.equal(result.input.priority, "high");
+});
+
+test("a planned-date patch changes only the planned date", () => {
+  const result = buildTaskFieldPatchInput("task-1", CURRENT, "plannedDate", "2026-05-09");
+  assert.ok("input" in result);
+  assert.equal(result.input.plannedForDate, "2026-05-09");
+  assert.equal(result.input.dueDate, "2026-05-01");
+  assert.equal(result.input.status, "in_progress");
 });
 
 test("a priority patch keeps status, due date and estimate intact", () => {
