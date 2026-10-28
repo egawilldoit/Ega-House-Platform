@@ -32,13 +32,22 @@ export type ProjectProgressSummary = {
  * only applies canonical status semantics: `done` is complete, `review` is not,
  * and every supplied Task counts once toward the total.
  */
+function toProgressStatus(status: string) {
+  // Completed spellings are one semantic bucket. Keeping `complete` separate
+  // would count a Task as done while its status segment opened an unfiltered
+  // destination list.
+  if (isTaskCompletedStatus(status)) return "done";
+  return status;
+}
+
 export function buildProjectProgress(
   tasks: readonly ProjectProgressTask[],
 ): ProjectProgressSummary {
   const counts = new Map<string, number>();
 
   for (const task of tasks) {
-    counts.set(task.status, (counts.get(task.status) ?? 0) + 1);
+    const status = toProgressStatus(task.status);
+    counts.set(status, (counts.get(status) ?? 0) + 1);
   }
 
   const nonCanonicalStatuses = Array.from(counts.keys())
@@ -51,7 +60,7 @@ export function buildProjectProgress(
     .filter((entry) => entry.count > 0);
 
   const totalTaskCount = tasks.length;
-  const completedTaskCount = tasks.filter((task) => isTaskCompletedStatus(task.status)).length;
+  const completedTaskCount = counts.get("done") ?? 0;
 
   return {
     totalTaskCount,

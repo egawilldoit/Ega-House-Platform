@@ -890,8 +890,7 @@ test("project progress has an honest zero state and keeps unknown statuses", () 
   assert.equal(withUnknown.completedTaskCount, 2);
   assert.equal(withUnknown.progressPercent, 67);
   assert.deepEqual(withUnknown.statusCounts, [
-    { status: "done", count: 1 },
-    { status: "complete", count: 1 },
+    { status: "done", count: 2 },
     { status: "legacy_blocked", count: 1 },
   ]);
 });

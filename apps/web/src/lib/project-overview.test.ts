@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { getGoalHealthColor } from "./goal-health";
 import {
   buildProjectTimeSummary,
-  getGoalHealthColor,
   getProjectStatusBarColor,
   selectProjectComingUpTasks,
   type ProjectComingUpTask,

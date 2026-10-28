@@ -15,6 +15,7 @@ import {
   type ProjectStatus,
 } from "@ega/application";
 import { PROJECT_ARCHIVE_STATUS } from "@ega/domain";
+import { toGoalHealthOrNull } from "@ega/domain/goals";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import {
@@ -201,6 +202,7 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
       .from("tasks")
       .select("id, project_id, title, status, priority, updated_at")
       .in("project_id", projectIds)
+      .is("archived_at", null)
       .eq("owner_user_id", actor.userId)
       .order("updated_at", { ascending: false });
 
@@ -268,7 +270,7 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
         id: row.id,
         title: row.title,
         projectId: row.project_id,
-        health: row.health,
+        health: toGoalHealthOrNull(row.health),
         nextStep: row.next_step,
       })),
     };

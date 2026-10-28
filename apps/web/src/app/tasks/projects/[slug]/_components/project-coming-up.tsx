@@ -6,12 +6,13 @@ import { Card, CardContent } from "@/components/ui/card";
 import { buildTaskDrawerLink } from "@/lib/task-drawer-url";
 import { formatTaskDueDate } from "@/lib/task-due-date";
 import { formatTaskToken, getTaskStatusTone } from "@/lib/task-domain";
-import { formatTimerDateTime } from "@/lib/timer-domain";
 import type { ProjectComingUpItem, ProjectComingUpTask } from "@/lib/project-overview";
 
 type ProjectComingUpProps<T extends ProjectComingUpTask> = {
   items: ProjectComingUpItem<T>[];
   returnTo: string;
+  /** Owner timezone used for scheduled labels; defaults to UTC. */
+  timezone?: string;
 };
 
 const SOURCE_LABELS = {
@@ -20,9 +21,16 @@ const SOURCE_LABELS = {
   scheduled: "Scheduled",
 } as const;
 
-function dateLabel<T extends ProjectComingUpTask>(item: ProjectComingUpItem<T>) {
+function dateLabel<T extends ProjectComingUpTask>(item: ProjectComingUpItem<T>, timezone: string) {
   if (item.source === "scheduled" && item.task.scheduled_start_at) {
-    return `${SOURCE_LABELS.scheduled} ${formatTimerDateTime(item.task.scheduled_start_at)}`;
+    const scheduled = new Intl.DateTimeFormat("en-US", {
+      month: "short",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      timeZone: timezone,
+    }).format(new Date(item.task.scheduled_start_at));
+    return `${SOURCE_LABELS.scheduled} ${scheduled}`;
   }
 
   return `${SOURCE_LABELS[item.source]} ${formatTaskDueDate(item.date)}`;
@@ -31,6 +39,7 @@ function dateLabel<T extends ProjectComingUpTask>(item: ProjectComingUpItem<T>) 
 export function ProjectComingUp<T extends ProjectComingUpTask>({
   items,
   returnTo,
+  timezone = "UTC",
 }: ProjectComingUpProps<T>) {
   return (
     <Card
@@ -52,7 +61,7 @@ export function ProjectComingUp<T extends ProjectComingUpTask>({
                 />
                 <span className="row-main min-w-0">
                   <span className="row-title block truncate">{item.task.title}</span>
-                  <span className="row-meta truncate">{dateLabel(item)}</span>
+                  <span className="row-meta truncate">{dateLabel(item, timezone)}</span>
                 </span>
                 <span className="row-actions">
                   <Badge tone={getTaskStatusTone(item.task.status)}>

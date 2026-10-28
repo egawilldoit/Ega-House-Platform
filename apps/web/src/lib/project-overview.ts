@@ -209,13 +209,3 @@ const STATUS_BAR_COLORS: Record<string, string> = {
 export function getProjectStatusBarColor(status: string) {
   return STATUS_BAR_COLORS[status] ?? "var(--ega-text-tertiary)";
 }
-
-const GOAL_HEALTH_COLORS: Record<string, string> = {
-  on_track: "var(--status-healthy)",
-  at_risk: "var(--status-risk)",
-  off_track: "var(--status-overdue)",
-};
-
-export function getGoalHealthColor(health: string | null | undefined) {
-  return (health && GOAL_HEALTH_COLORS[health]) || "var(--ega-text-tertiary)";
-}

@@ -24,6 +24,7 @@ type ProjectOverviewProps<T extends ProjectComingUpTask> = {
   taskTitles: Map<string, string>;
   archivedTaskCount: number;
   projectIsArchived: boolean;
+  timezone: string;
   returnTo: string;
   deleteHref: string;
   statusError: string | null;
@@ -40,6 +41,7 @@ export function ProjectOverview<T extends ProjectComingUpTask>({
   taskTitles,
   archivedTaskCount,
   projectIsArchived,
+  timezone,
   returnTo,
   deleteHref,
   statusError,
@@ -65,7 +67,7 @@ export function ProjectOverview<T extends ProjectComingUpTask>({
         archivedTaskCount={archivedTaskCount}
       />
       <ProjectGoalsMilestones goals={goals} />
-      <ProjectComingUp items={comingUp} returnTo={returnTo} />
+      <ProjectComingUp items={comingUp} returnTo={returnTo} timezone={timezone} />
       <ProjectTimeCard summary={timeSummary} archivedTaskCount={archivedTaskCount} />
       <ProjectActivityCard items={activities} taskTitles={taskTitles} />
     </div>
