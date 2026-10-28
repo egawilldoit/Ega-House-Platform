@@ -5,6 +5,7 @@ import type { Json, TablesInsert, TablesUpdate } from "@/lib/supabase/database.t
 import {
   getTodayLocalIsoDate,
   normalizeTaskDueDateInput,
+  normalizeTaskStartDateInput,
   shiftDateOnlyValue,
 } from "@/lib/task-due-date";
 import { normalizeTaskEstimateInput } from "@/lib/task-estimate";
@@ -55,6 +56,10 @@ import {
   TASK_READ_PAGE_SIZE,
   type TaskReadQuery,
 } from "@/lib/services/task-read-service";
+import {
+  getTaskDependencyDetail,
+  type TaskDependencyDetail,
+} from "@/lib/services/task-dependency-service";
 import {
   isMissingTasksArchivedAtColumn,
   isMissingSupabaseColumn,
@@ -175,6 +180,7 @@ export type TasksWorkspaceData = {
     blocked_reason: string | null;
     status: string;
     priority: string;
+    start_date: string | null;
     due_date: string | null;
     planned_for_date: string | null;
     scheduled_start_at: string | null;
@@ -236,6 +242,7 @@ export type ValidateTaskInlineUpdateInput = {
   description?: unknown;
   status: string;
   priority: string;
+  startDate?: unknown;
   dueDate: unknown;
   estimateMinutes: unknown;
   blockedReason: unknown;
@@ -268,6 +275,7 @@ export type ValidatedTaskInlineUpdateInput = {
   description?: string | null;
   status: TaskStatus;
   priority: TaskPriority;
+  startDate?: string | null;
   dueDate: string | null;
   estimateMinutes: number | null;
   blockedReason: string | null;
@@ -1570,6 +1578,10 @@ export function validateTaskInlineUpdateInput(input: ValidateTaskInlineUpdateInp
       : String(input.description ?? "").trim() || null;
   const status = input.status.trim();
   const priority = input.priority.trim();
+  const startDateResult =
+    input.startDate === undefined
+      ? { value: undefined, error: null }
+      : normalizeTaskStartDateInput(input.startDate);
   const dueDateResult = normalizeTaskDueDateInput(input.dueDate);
   const estimateResult = normalizeTaskEstimateInput(input.estimateMinutes);
   const blockedReason = normalizeTaskBlockedReasonInput(input.blockedReason);
@@ -1629,9 +1641,21 @@ export function validateTaskInlineUpdateInput(input: ValidateTaskInlineUpdateInp
     };
   }
 
+  if (startDateResult.error) {
+    return {
+      errorMessage: startDateResult.error,
+    };
+  }
+
   if (dueDateResult.error) {
     return {
       errorMessage: dueDateResult.error,
+    };
+  }
+
+  if (startDateResult.value && dueDateResult.value && dueDateResult.value < startDateResult.value) {
+    return {
+      errorMessage: "Due date cannot be before the start date.",
     };
   }
 
@@ -1672,6 +1696,7 @@ export function validateTaskInlineUpdateInput(input: ValidateTaskInlineUpdateInp
       ...(description === undefined ? {} : { description }),
       status,
       priority,
+      ...(startDateResult.value === undefined ? {} : { startDate: startDateResult.value }),
       dueDate: dueDateResult.value,
       estimateMinutes: estimateResult.value,
       blockedReason: normalizedBlockedReason,
@@ -1943,7 +1968,7 @@ export async function updateTaskInline(
 
   let { data: currentTask, error: currentTaskError } = await supabase
     .from("tasks")
-    .select("id, owner_user_id, project_id, goal_id, status, completed_at, archived_at, updated_at")
+    .select("id, owner_user_id, project_id, goal_id, status, start_date, due_date, completed_at, archived_at, updated_at")
     .eq("id", input.taskId)
     .maybeSingle();
   let completedAtUnavailable = false;
@@ -1951,7 +1976,7 @@ export async function updateTaskInline(
   if (currentTaskError && isMissingTasksCompletedAtColumn(currentTaskError)) {
     const fallbackResult = await supabase
       .from("tasks")
-      .select("id, owner_user_id, project_id, goal_id, status, archived_at, updated_at")
+      .select("id, owner_user_id, project_id, goal_id, status, start_date, due_date, archived_at, updated_at")
       .eq("id", input.taskId)
       .maybeSingle();
 
@@ -1968,6 +1993,14 @@ export async function updateTaskInline(
 
   if (!currentTask) {
     return { errorMessage: "Task was not found or is no longer available." };
+  }
+
+  const effectiveStartDate =
+    input.startDate !== undefined ? input.startDate : currentTask.start_date ?? null;
+  const effectiveDueDate =
+    input.dueDate !== undefined ? input.dueDate : currentTask.due_date ?? null;
+  if (effectiveStartDate && effectiveDueDate && effectiveDueDate < effectiveStartDate) {
+    return { errorMessage: "Due date cannot be before the start date." };
   }
 
   if (input.projectId !== undefined || input.goalId !== undefined) {
@@ -2014,6 +2047,10 @@ export async function updateTaskInline(
     blocked_reason: input.blockedReason,
     updated_at: updatedAtIso,
   };
+
+  if (input.startDate !== undefined) {
+    updatePayload.start_date = input.startDate;
+  }
 
   if (input.title !== undefined) {
     updatePayload.title = input.title;
@@ -2265,7 +2302,7 @@ export async function getTaskById(
   let { data, error } = await supabase
     .from("tasks")
     .select(
-      "id, title, description, blocked_reason, status, priority, due_date, planned_for_date, scheduled_start_at, scheduled_end_at, calendar_sync_enabled, calendar_reminder_minutes, estimate_minutes, updated_at, completed_at, project_id, goal_id, focus_rank, board_rank, archived_at, archived_by, projects(name, slug), goals(title)",
+      "id, title, description, blocked_reason, status, priority, start_date, due_date, planned_for_date, scheduled_start_at, scheduled_end_at, calendar_sync_enabled, calendar_reminder_minutes, estimate_minutes, updated_at, completed_at, project_id, goal_id, focus_rank, board_rank, archived_at, archived_by, projects(name, slug), goals(title)",
     )
     .eq("id", normalizedTaskId)
     .maybeSingle();
@@ -2274,7 +2311,7 @@ export async function getTaskById(
     const fallbackResult = await supabase
       .from("tasks")
       .select(
-        "id, title, description, status, priority, due_date, planned_for_date, scheduled_start_at, scheduled_end_at, calendar_sync_enabled, calendar_reminder_minutes, estimate_minutes, updated_at, completed_at, project_id, goal_id, focus_rank, board_rank, archived_at, archived_by, projects(name, slug), goals(title)",
+        "id, title, description, status, priority, start_date, due_date, planned_for_date, scheduled_start_at, scheduled_end_at, calendar_sync_enabled, calendar_reminder_minutes, estimate_minutes, updated_at, completed_at, project_id, goal_id, focus_rank, board_rank, archived_at, archived_by, projects(name, slug), goals(title)",
       )
       .eq("id", normalizedTaskId)
       .maybeSingle();
@@ -2407,12 +2444,16 @@ export type TaskDrawerDetail = {
   description: string | null;
   status: string;
   priority: string;
+  start_date: string | null;
   due_date: string | null;
   estimate_minutes: number | null;
   blocked_reason: string | null;
   project_id: string | null;
   goal_id: string | null;
   archived_at: string | null;
+  /** Blocked-by dependency detail, loaded with the drawer row. */
+  dependencies: TaskDependencyDetail | null;
+  dependencyError: string | null;
 };
 
 /**
@@ -2443,7 +2484,7 @@ export async function getTaskDrawerDetail(
   const { data, error } = await supabase
     .from("tasks")
     .select(
-      "id, title, description, status, priority, due_date, estimate_minutes, blocked_reason, project_id, goal_id, archived_at",
+      "id, title, description, status, priority, start_date, due_date, estimate_minutes, blocked_reason, project_id, goal_id, archived_at",
     )
     .eq("id", normalizedId)
     .eq("owner_user_id", userId)
@@ -2455,7 +2496,16 @@ export async function getTaskDrawerDetail(
   if (error) return { kind: "error" };
   if (!data) return { kind: "unavailable" };
 
-  return { kind: "found", task: data as TaskDrawerDetail };
+  const dependencyResult = await getTaskDependencyDetail(normalizedId, { supabase });
+
+  return {
+    kind: "found",
+    task: {
+      ...(data as Omit<TaskDrawerDetail, "dependencies" | "dependencyError">),
+      dependencies: dependencyResult.data,
+      dependencyError: dependencyResult.errorMessage,
+    },
+  };
 }
 
 /**
@@ -2470,6 +2520,7 @@ export const TASK_FIELD_PATCH_FIELDS = [
   "description",
   "status",
   "priority",
+  "startDate",
   "dueDate",
   "estimateMinutes",
   "blockedReason",
@@ -2487,6 +2538,7 @@ export type TaskFieldPatchCurrent = {
   description: string | null;
   status: string;
   priority: string;
+  start_date: string | null;
   due_date: string | null;
   estimate_minutes: number | null;
   blocked_reason: string | null;
@@ -2520,6 +2572,7 @@ export function buildTaskFieldPatchInput(
     description: field === "description" ? value : undefined,
     status: current.status,
     priority: current.priority,
+    startDate: current.start_date ?? "",
     dueDate: current.due_date ?? "",
     estimateMinutes: current.estimate_minutes,
     blockedReason: current.blocked_reason,
@@ -2527,11 +2580,80 @@ export function buildTaskFieldPatchInput(
 
   if (field === "status") input.status = value;
   if (field === "priority") input.priority = value;
+  if (field === "startDate") input.startDate = value;
   if (field === "dueDate") input.dueDate = value;
   if (field === "estimateMinutes") input.estimateMinutes = value;
   if (field === "blockedReason") input.blockedReason = value;
 
   return { errorMessage: null, input };
+}
+
+/**
+ * Move/resize a planned task bar: both date-only endpoints in one versioned
+ * write.
+ *
+ * Timeline drag/resize and the non-drag date editor share this function, so
+ * they enforce the same date-only validation, `due >= start`, owner scope and
+ * optimistic version check. Routing through `updateTaskInline` also preserves
+ * the existing calendar-signal policy and unrelated task fields.
+ */
+export async function updateTaskTimelineSchedule(
+  input: {
+    taskId: string;
+    startDate: unknown;
+    dueDate: unknown;
+    expectedUpdatedAt?: string;
+  },
+  options?: { supabase?: SupabaseServerClient; accountTimezone?: string },
+): Promise<{ errorMessage: string | null }> {
+  const taskId = input.taskId.trim();
+  if (!taskId) return { errorMessage: "Task schedule update request is invalid." };
+
+  const startDateResult = normalizeTaskStartDateInput(input.startDate);
+  const dueDateResult = normalizeTaskDueDateInput(input.dueDate);
+  if (startDateResult.error) return { errorMessage: startDateResult.error };
+  if (dueDateResult.error) return { errorMessage: dueDateResult.error };
+  if (startDateResult.value && dueDateResult.value && dueDateResult.value < startDateResult.value) {
+    return { errorMessage: "Due date cannot be before the start date." };
+  }
+
+  const supabase = await resolveSupabaseClient(options?.supabase);
+  const userId = await getAuthenticatedUserId(supabase);
+  if (!userId) return { errorMessage: "Task was not found or is no longer available." };
+
+  const { data: current, error: loadError } = await supabase
+    .from("tasks")
+    .select("status, priority, start_date, due_date, estimate_minutes, blocked_reason, archived_at, updated_at")
+    .eq("id", taskId)
+    .eq("owner_user_id", userId)
+    .maybeSingle();
+  if (loadError) return { errorMessage: "Unable to load task right now." };
+  if (!current) return { errorMessage: "Task was not found or is no longer available." };
+  if (current.archived_at) return { errorMessage: "Restore this task before changing its dates." };
+
+  const expectedUpdatedAt = String(input.expectedUpdatedAt ?? "").trim() || current.updated_at;
+  if (expectedUpdatedAt !== current.updated_at) {
+    return { errorMessage: "This task changed since you opened it. Reload and try again." };
+  }
+
+  const validation = validateTaskInlineUpdateInput({
+    taskId,
+    status: String(current.status),
+    priority: String(current.priority),
+    startDate: startDateResult.value,
+    dueDate: dueDateResult.value,
+    estimateMinutes: current.estimate_minutes,
+    blockedReason: current.blocked_reason,
+    accountTimezone: options?.accountTimezone,
+  });
+  if (validation.errorMessage || !validation.data) {
+    return { errorMessage: validation.errorMessage ?? "Task schedule update is invalid." };
+  }
+
+  return updateTaskInline(validation.data, {
+    supabase,
+    expectedUpdatedAt: current.updated_at,
+  });
 }
 
 /**
@@ -2562,7 +2684,7 @@ export async function updateTaskFieldForOwner(
 
   const { data: current, error: loadError } = await supabase
     .from("tasks")
-    .select("title, description, status, priority, due_date, estimate_minutes, blocked_reason, updated_at")
+    .select("title, description, status, priority, start_date, due_date, estimate_minutes, blocked_reason, updated_at")
     .eq("id", taskId)
     .eq("owner_user_id", userId)
     .maybeSingle();

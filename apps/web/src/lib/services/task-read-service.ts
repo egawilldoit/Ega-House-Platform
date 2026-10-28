@@ -15,6 +15,7 @@ export type NormalizedTaskRow = {
   blocked_reason: string | null;
   status: string;
   priority: string;
+  start_date: string | null;
   due_date: string | null;
   estimate_minutes: number | null;
   scheduled_start_at: string | null;
@@ -94,6 +95,7 @@ const TASK_BASE_SELECT_COLUMNS = [
   "description",
   "status",
   "priority",
+  "start_date",
   "due_date",
   "scheduled_start_at",
   "scheduled_end_at",
@@ -195,6 +197,7 @@ export function normalizeTaskRow(row: RawTaskRow): NormalizedTaskRow {
     blocked_reason: row.blocked_reason ?? null,
     status: row.status,
     priority: row.priority,
+    start_date: row.start_date ?? null,
     due_date: row.due_date ?? null,
     estimate_minutes: row.estimate_minutes ?? null,
     scheduled_start_at: row.scheduled_start_at ?? null,
