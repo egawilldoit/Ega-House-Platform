@@ -4,7 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }),
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }),
 }));
 
 vi.mock("next/link", () => ({
@@ -53,7 +53,7 @@ vi.mock("@/app/tasks/create-task-form", () => ({
   CreateTaskForm: () => <form data-testid="mock-create-task-form" />,
 }));
 
-import { buildTaskKanbanBoard } from "@/lib/task-list";
+import { buildTaskKanbanBoard, buildTaskListUrl } from "@/lib/task-list";
 import { QUICK_TASK_EVENT } from "@/lib/workspace-events";
 import type { TaskRecord } from "@/lib/services/task-service";
 // Imports the mocked factory above, so assertions observe what the server
@@ -122,6 +122,19 @@ function buildModel(overrides: Partial<TasksPageViewModel> = {}): TasksPageViewM
         estimateMaxMinutes: null,
         dueWithinDays: null,
       },
+      view: {
+        version: 2,
+        filters: [
+          { field: "status", operator: "is", values: ["in_progress"] },
+          { field: "project", operator: "is", values: ["project-1"] },
+          { field: "goal", operator: "is", values: ["goal-1"] },
+          { field: "due_bucket", operator: "is", values: ["overdue"] },
+        ],
+        groupBy: "none",
+        sort: { key: "due", direction: "asc" },
+        search: "",
+        activeOnly: false,
+      },
       taskUpdateError: null,
       taskUpdateSuccess: null,
       taskUpdateTaskId: null,
@@ -144,21 +157,35 @@ function buildModel(overrides: Partial<TasksPageViewModel> = {}): TasksPageViewM
     savedViews: [],
     activeProjectId: "project-1",
     activeGoalId: "goal-1",
-    returnPath: "/tasks?status=in_progress&project=project-1&goal=goal-1&due=overdue&sort=due_date_asc",
+    returnPath: buildTaskListUrl("/tasks", {
+      filters: [
+        { field: "status", operator: "is", values: ["in_progress"] },
+        { field: "project", operator: "is", values: ["project-1"] },
+        { field: "goal", operator: "is", values: ["goal-1"] },
+        { field: "due_bucket", operator: "is", values: ["overdue"] },
+      ],
+      sortKey: "due",
+      sortDirection: "asc",
+    }),
     taskUrlFilters: {
-      status: "in_progress",
-      priority: "",
-      estimateMin: null,
-      estimateMax: null,
-      dueWithin: null,
+      filters: [
+        { field: "status", operator: "is", values: ["in_progress"] },
+        { field: "project", operator: "is", values: ["project-1"] },
+        { field: "goal", operator: "is", values: ["goal-1"] },
+        { field: "due_bucket", operator: "is", values: ["overdue"] },
+      ],
+      group: "none",
+      q: "",
+      sortKey: "due",
+      sortDirection: "asc",
       activeTasks: false,
-      project: "project-1",
-      goal: "goal-1",
-      due: "overdue",
-      sort: "due_date_asc",
       density: null,
       boardOrder: null,
     },
+    groups: [{ key: "all", label: "All tasks", count: tasks.length, tasks }],
+    filteredTotal: tasks.length,
+    loadedCount: tasks.length,
+    truncated: false,
     kanbanBoard: buildTaskKanbanBoard(tasks, "in_progress"),
     inProgressCount: 1,
     blockedCount: 1,
@@ -206,19 +233,19 @@ describe("TasksPageView workspace composition", () => {
     // The display label is "Current"; the query value stays the not-archived
     // scope (no `archive` param), exactly as before.
     expect(findLink("Current")?.getAttribute("href")).toBe(
-      "/tasks?status=in_progress&project=project-1&goal=goal-1&due=overdue&sort=due_date_asc",
+      "/tasks?status=in_progress&project=project-1&goal=goal-1&due=overdue&sort=due",
     );
     expect(findLink("Archived")?.getAttribute("href")).toBe(
-      "/tasks?status=in_progress&project=project-1&goal=goal-1&due=overdue&sort=due_date_asc&archive=archived",
+      "/tasks?status=in_progress&project=project-1&goal=goal-1&due=overdue&sort=due&archive=archived",
     );
     expect(findLink("All")?.getAttribute("href")).toBe(
-      "/tasks?status=in_progress&project=project-1&goal=goal-1&due=overdue&sort=due_date_asc&archive=all",
+      "/tasks?status=in_progress&project=project-1&goal=goal-1&due=overdue&sort=due&archive=all",
     );
     expect(findLink("List")?.getAttribute("href")).toBe(
-      "/tasks?status=in_progress&project=project-1&goal=goal-1&due=overdue&sort=due_date_asc",
+      "/tasks?status=in_progress&project=project-1&goal=goal-1&due=overdue&sort=due",
     );
     expect(findLink("Board")?.getAttribute("href")).toBe(
-      "/tasks?status=in_progress&project=project-1&goal=goal-1&due=overdue&sort=due_date_asc&layout=kanban",
+      "/tasks?status=in_progress&project=project-1&goal=goal-1&due=overdue&sort=due&layout=kanban",
     );
 
     expect(findLink("Current")?.getAttribute("aria-current")).toBe("page");
@@ -250,7 +277,7 @@ describe("TasksPageView workspace composition", () => {
     await render();
 
     const summary = container.querySelector('[data-testid="tasks-summary"]');
-    expect(summary?.textContent).toBe("1 shown · 3 total · 1 overdue · 1 in progress · 1 blocked");
+    expect(summary?.textContent).toBe("1 shown · 1 matching · 3 total · 1 overdue · 1 in progress · 1 blocked");
 
     // The rail no longer duplicates the primary CTA; the toolbar owns it.
     expect(container.querySelectorAll('[data-testid="tasks-new-task"]').length).toBe(1);

@@ -19,12 +19,15 @@ import {
 } from "@/app/tasks/actions";
 import { startTimerAction } from "@/app/timer/actions";
 import { BulkArchiveCompletedTasksForm } from "@/components/tasks/bulk-archive-completed-tasks-form";
-import { TaskFilterControls } from "@/components/tasks/task-filter-controls";
+import { TaskViewToolbar } from "@/components/tasks/view-toolbar/task-view-toolbar";
+import { TaskKanbanCard } from "@/components/tasks/task-kanban-card";
 import { TasksNewTaskButton } from "@/components/tasks/tasks-new-task-button";
+import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FilterPill } from "@/components/ui/filter-pill";
 import { buildTaskListUrl } from "@/lib/task-list";
+import { getTaskViewFromSavedView } from "@/lib/task-saved-views";
 import { isTaskCompletedStatus } from "@/lib/task-domain";
 import { formatDisplayCount } from "@/lib/presentation-format";
 import { ListChecks } from "lucide-react";
@@ -72,8 +75,7 @@ export function TasksPageView({
     tasks,
     taskTotalDurations,
     summary,
-    activeProjectId,
-    activeGoalId,
+    savedViews,
     returnPath,
     taskUrlFilters,
     kanbanBoard,
@@ -88,8 +90,12 @@ export function TasksPageView({
     subtaskCounts,
     selectedTaskActivity,
     selectedTaskActivityHasMore,
+    groups,
+    filteredTotal,
+    loadedCount,
+    truncated,
   } = model;
-  const { activeStatus, activeView, activeLayout, activeDueFilter, savedViewDefinitionFilters } = parsed;
+  const { activeView, activeLayout } = parsed;
   const completedTaskIdsInScope = getArchivableCompletedTaskIds(tasks);  // Restore clears archived state only; it must never resurrect a completed
   // task as unfinished work.
   const showBulkArchive = activeView === "active" && completedTaskIdsInScope.length > 0;
@@ -99,9 +105,11 @@ export function TasksPageView({
 
   const hasAnyTasks = summary.total > 0;
   const summaryParts = [
-    `${formatDisplayCount(tasks.length)} shown`,
+    `${formatDisplayCount(loadedCount)} shown`,
+    `${formatDisplayCount(filteredTotal)} matching`,
     `${formatDisplayCount(summary.total)} total`,
   ];
+  if (truncated) summaryParts.push("row limit reached");
   if (overdueCount > 0) summaryParts.push(`${formatDisplayCount(overdueCount)} overdue`);
   if (inProgressCount > 0) summaryParts.push(`${formatDisplayCount(inProgressCount)} in progress`);
   if (blockedCount > 0) summaryParts.push(`${formatDisplayCount(blockedCount)} blocked`);
@@ -256,24 +264,41 @@ export function TasksPageView({
 
             {/* Row 2 — data controls on the left, mutation actions on the right. */}
             <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-              <TaskFilterControls
+              <TaskViewToolbar
                 basePath="/tasks"
-                activeStatus={activeStatus}
-                activePriority={savedViewDefinitionFilters.priorityValues.join(",")}
-                activeProjectId={activeProjectId}
-                activeGoalId={activeGoalId}
-                activeDueFilter={activeDueFilter}
-                activeSort={parsed.activeSort}
-                activeView={activeView}
+                view={parsed.view}
                 activeLayout={activeLayout}
                 activeDensity={parsed.activeDensity}
-                activeBoardOrder={parsed.activeBoardOrder}
-                activeEstimateMin={savedViewDefinitionFilters.estimateMinMinutes}
-                activeEstimateMax={savedViewDefinitionFilters.estimateMaxMinutes}
-                activeDueWithin={savedViewDefinitionFilters.dueWithinDays}
-                activeTasksOnly={savedViewDefinitionFilters.activeTasks}
+                activeView={activeView}
                 projectOptions={projects}
-                goalOptions={goals.map((g) => ({ id: g.id, title: g.title }))}
+                goalOptions={goals.map((goal) => ({ id: goal.id, title: goal.title }))}
+                savedViews={savedViews.map((view) => {
+                  const savedView = getTaskViewFromSavedView({
+                    definitionJson: view.definition_json,
+                    status: view.status,
+                    projectId: view.project_id,
+                    goalId: view.goal_id,
+                    dueFilter: view.due_filter,
+                    sortValue: view.sort_value,
+                  });
+                  return {
+                    id: view.id,
+                    name: view.name,
+                    isBuiltIn: view.is_default,
+                    href: buildTaskListUrl("/tasks", {
+                      filters: savedView.filters,
+                      group: savedView.groupBy,
+                      q: savedView.search,
+                      sortKey: savedView.sort.key,
+                      sortDirection: savedView.sort.direction,
+                      activeTasks: savedView.activeOnly,
+                      view: activeView,
+                      layout: activeLayout,
+                      density: parsed.activeDensity,
+                    }),
+                  };
+                })}
+                feedback={parsed.savedViewFeedback}
               />
 
               <div className="ml-auto flex items-center gap-2">
@@ -312,7 +337,7 @@ export function TasksPageView({
             )
           ) : tasks.length === 0 ? (
             emptyState
-          ) : (
+          ) : parsed.view.groupBy === "none" ? (
             <TasksListTable
               tasks={tasks}
               taskTotalDurations={taskTotalDurations}
@@ -329,6 +354,52 @@ export function TasksPageView({
               density={parsed.activeDensity}
               actions={taskListActions}
             />
+          ) : (
+            <div className="flex flex-col gap-2 p-[18px]">
+              {groups.map((group) => (
+                <section
+                  key={group.key}
+                  aria-labelledby={`task-group-${parsed.view.groupBy}-${group.key}`}
+                  className="rounded-[var(--radius-md)] border border-[var(--ega-border)] bg-[var(--ega-surface)]"
+                >
+                  <details open>
+                    <summary className="flex cursor-pointer list-none flex-wrap items-center gap-2 px-3 py-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ega-focus-outline)]">
+                      <h2
+                        id={`task-group-${parsed.view.groupBy}-${group.key}`}
+                        className="text-[length:var(--text-meta-lg)] font-semibold text-[color:var(--ega-text)]"
+                      >
+                        {group.label}
+                      </h2>
+                      <Badge tone="muted">
+                        {group.count} task{group.count === 1 ? "" : "s"}
+                      </Badge>
+                    </summary>
+                    {group.tasks.length > 0 ? (
+                      <TasksListTable
+                        tasks={group.tasks}
+                        taskTotalDurations={taskTotalDurations}
+                        subtaskCounts={subtaskCounts}
+                        returnTo={returnPath}
+                        taskUpdateTaskId={taskUpdateTaskId}
+                        taskUpdateError={taskUpdateError}
+                        projectOptions={projects}
+                        goalOptions={goals.map((goal) => ({
+                          id: goal.id,
+                          title: goal.title,
+                          projectId: goal.project_id,
+                        }))}
+                        density={parsed.activeDensity}
+                        actions={taskListActions}
+                      />
+                    ) : (
+                      <p className="border-t border-[var(--ega-divider)] px-3 py-4 text-[length:var(--text-meta-lg)] text-[color:var(--ega-text-tertiary)]">
+                        No tasks in this group yet.
+                      </p>
+                    )}
+                  </details>
+                </section>
+              ))}
+            </div>
           )}
         </Card>
       </div>

@@ -40,7 +40,8 @@ export type HttpRequestOptions = {
   /** Relative path under the base URL, e.g. `/api/projects`. */
   path: string;
   method?: "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
-  query?: Record<string, string | undefined>;
+  /** Repeatable query values (e.g. several `filter` entries) are supported. */
+  query?: Record<string, string | string[] | undefined>;
   body?: unknown;
   /** Requests outside `/api/*` (e.g. `/health`) do not carry a token. */
   authenticated?: boolean;
@@ -64,14 +65,19 @@ export class HttpClient {
 
   private buildUrl(
     path: string,
-    query: Record<string, string | undefined> | undefined,
+    query: Record<string, string | string[] | undefined> | undefined,
   ): string {
     const url = `${this.baseUrl}${path.startsWith("/") ? path : `/${path}`}`;
     if (!query) return url;
 
     const params = new URLSearchParams();
     for (const [key, value] of Object.entries(query)) {
-      if (value !== undefined) params.set(key, value);
+      if (value === undefined) continue;
+      if (Array.isArray(value)) {
+        for (const entry of value) params.append(key, entry);
+      } else {
+        params.set(key, value);
+      }
     }
     const encoded = params.toString();
     return encoded.length > 0 ? `${url}?${encoded}` : url;
