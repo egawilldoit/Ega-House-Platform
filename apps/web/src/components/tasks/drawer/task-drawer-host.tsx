@@ -12,6 +12,7 @@ import { TaskDrawerDetailForm } from "./task-drawer-detail-form";
 import { TaskDrawerShortcuts } from "./task-drawer-shortcuts";
 import { TaskSubtasks } from "./task-subtasks";
 import { TaskActivityList } from "./task-activity-list";
+import { Star } from "lucide-react";
 import type { TaskActivityItem } from "@/lib/task-activity";
 import type { SubtaskDto } from "@ega/contracts";
 import { useTaskDrawerParam } from "./use-task-drawer-param";
@@ -125,6 +126,10 @@ type TaskDrawerHostProps = {
   subtasks?: SubtaskDto[];
   /** Durable activity rows for the selected task. */
   activity?: TaskActivityItem[];
+  /** Whether the selected task is a navigation favourite. */
+  isFavourite?: boolean;
+  /** Server action that toggles the task favourite. */
+  favouriteAction?: (formData: FormData) => void | Promise<void>;
   /** Server actions for the checklist, passed from the page. */
   subtaskActions?: {
     addAction: (formData: FormData) => void | Promise<void>;
@@ -156,6 +161,8 @@ export function TaskDrawerHost({
   ownerId = null,
   subtasks = [],
   activity = [],
+  isFavourite = false,
+  favouriteAction,
   subtaskActions,
   updateError = null,
   updateSuccess = null,
@@ -301,6 +308,26 @@ export function TaskDrawerHost({
           {updateSuccess}
         </p>
       ) : null}
+      {favouriteAction ? (
+        <form action={favouriteAction} className="mb-2">
+          <input type="hidden" name="kind" value="task" />
+          <input type="hidden" name="entityId" value={task.id} />
+          <input type="hidden" name="returnTo" value={returnTo} />
+          <button
+            type="submit"
+            aria-pressed={isFavourite}
+            className="inline-flex items-center gap-1 text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)] hover:text-[color:var(--ega-text)]"
+          >
+            <Star
+              className="h-3.5 w-3.5"
+              aria-hidden="true"
+              fill={isFavourite ? "currentColor" : "none"}
+            />
+            {isFavourite ? "Favourited" : "Favourite"}
+          </button>
+        </form>
+      ) : null}
+
       <TaskDrawerShortcuts
         key={`shortcuts-${task.id}`}
         task={task}

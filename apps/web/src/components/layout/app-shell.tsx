@@ -2,6 +2,7 @@ import { cache } from "react";
 import type { ReactNode } from "react";
 import { createClient } from "@/lib/supabase/server";
 import { getShellIdentity, getWorkspaceShellMetrics } from "@/lib/workspace-shell";
+import { listFavorites } from "@/lib/services/favorite-service";
 
 import { cn } from "@/lib/utils";
 import type { SidebarGoal, SidebarProject } from "./sidebar";
@@ -95,12 +96,19 @@ export async function AppShell({
   contentClassName,
   hideHeader = false,
 }: AppShellProps) {
-  const [projects, goals, metrics, identity] = await Promise.all([
+  const [projects, goals, metrics, identity, favoritesResult] = await Promise.all([
     getSidebarProjects(),
     getSidebarGoals(),
     getWorkspaceShellMetrics(),
     getShellIdentity(),
+    listFavorites().catch(() => ({ items: [], errorMessage: null })),
   ]);
+  const favorites = favoritesResult.items.map((item) => ({
+    id: item.favoriteId,
+    label: item.label,
+    href: item.href,
+    kind: item.kind,
+  }));
 
   return (
     <ToastProvider>
@@ -108,6 +116,7 @@ export async function AppShell({
       <GlobalQuickActionControllers projects={projects} goals={goals} />
 
       <WorkspaceShell
+        favorites={favorites}
         projects={projects}
         metrics={metrics}
         identity={identity}
