@@ -26,6 +26,7 @@ import {
   TASK_VISIBLE_SORT_KEYS,
   TASK_VIEW_FILTER_FIELDS,
   TASK_VIEW_GROUP_BY_VALUES,
+  TASK_VIEW_MAX_FILTERS,
   TASK_VIEW_SORT_LABELS,
   getDefaultTaskViewSortDirection,
   getTaskViewFilterOperators,
@@ -37,7 +38,7 @@ import {
   type TaskViewGroupBy,
   type TaskViewSortKey,
 } from "@ega/contracts/common/task-list";
-import { buildTaskListUrl, type TaskDensity, type TaskLayoutMode } from "@/lib/task-list";
+import { buildTaskListUrl, type TaskBoardOrder, type TaskDensity, type TaskLayoutMode } from "@/lib/task-list";
 import { Input } from "@/components/ui/input";
 import { MenuList } from "@/components/ui/menu-list";
 import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
@@ -65,6 +66,7 @@ type TaskViewToolbarProps = {
   activeLayout: TaskLayoutMode;
   activeDensity: TaskDensity;
   activeView: string;
+  activeBoardOrder?: TaskBoardOrder | null;
   projectOptions?: Array<{ id: string; name: string }>;
   goalOptions?: Array<{ id: string; title: string }>;
   savedViews?: TaskViewToolbarSavedView[];
@@ -88,7 +90,10 @@ function isSingleValueOperator(operator: TaskViewFilterOperator) {
 
 function filterStateForUrl(
   view: TaskViewDefinition,
-  props: Pick<TaskViewToolbarProps, "activeLayout" | "activeDensity" | "activeView">,
+  props: Pick<
+    TaskViewToolbarProps,
+    "activeLayout" | "activeDensity" | "activeView" | "activeBoardOrder"
+  >,
 ): TaskFilterState {
   return {
     filters: view.filters,
@@ -100,6 +105,7 @@ function filterStateForUrl(
     view: props.activeView,
     layout: props.activeLayout,
     density: props.activeDensity,
+    boardOrder: props.activeBoardOrder ?? null,
   };
 }
 
@@ -109,6 +115,7 @@ export function TaskViewToolbar({
   activeLayout,
   activeDensity,
   activeView,
+  activeBoardOrder = null,
   projectOptions = [],
   goalOptions = [],
   savedViews = [],
@@ -127,7 +134,12 @@ export function TaskViewToolbar({
   const [rangeMax, setRangeMax] = useState("");
   const [editorError, setEditorError] = useState<string | null>(null);
 
-  const urlState = filterStateForUrl(view, { activeLayout, activeDensity, activeView });
+  const urlState = filterStateForUrl(view, {
+    activeLayout,
+    activeDensity,
+    activeView,
+    activeBoardOrder,
+  });
   const hrefFor = (overrides: {
     filters?: readonly TaskViewFilter[];
     groupBy?: TaskViewGroupBy;
@@ -200,6 +212,11 @@ export function TaskViewToolbar({
   };
 
   const applyFilter = () => {
+    if (editingIndex === null && view.filters.length >= TASK_VIEW_MAX_FILTERS) {
+      setEditorError(`You can stack up to ${TASK_VIEW_MAX_FILTERS} filters.`);
+      return;
+    }
+
     let nextValues: string[] = [];
     if (field === "estimate") {
       if (!rangeMin && !rangeMax) {
@@ -256,8 +273,17 @@ export function TaskViewToolbar({
       description: savedView.isBuiltIn ? "Built-in view" : undefined,
     })),
   ];
-  const activeViewId =
-    savedViews.find((savedView) => savedView.href === buildCurrentHref())?.id ?? "all-tasks";
+  const activeSavedView = savedViews.find(
+    (savedView) => savedView.href === buildCurrentHref(),
+  ) ?? null;
+  const isDefaultView =
+    view.filters.length === 0 &&
+    !view.search &&
+    view.groupBy === "none" &&
+    view.sort.key === "updated" &&
+    view.sort.direction === "desc" &&
+    !view.activeOnly;
+  const activeViewId = activeSavedView?.id ?? (isDefaultView ? "all-tasks" : null);
 
   function buildCurrentHref() {
     return buildTaskListUrlCompat(basePath, urlState);
@@ -478,7 +504,7 @@ export function TaskViewToolbar({
               <Link
                 href={chip.removeHref}
                 aria-label={`Remove ${chip.label} filter`}
-                className="inline-flex size-4 items-center justify-center rounded-full hover:bg-[var(--ega-surface-muted)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--ega-focus-outline)]"
+                className="-m-1 inline-flex size-6 items-center justify-center rounded-full hover:bg-[var(--ega-surface-muted)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--ega-focus-outline)]"
               >
                 <X className="h-3 w-3" aria-hidden="true" />
               </Link>
@@ -555,6 +581,9 @@ export function TaskViewToolbar({
           <input type="hidden" name="archive" value={activeView === "active" ? "" : activeView} />
           {activeLayout === "kanban" ? <input type="hidden" name="layout" value="kanban" /> : null}
           {activeDensity === "compact" ? <input type="hidden" name="density" value="compact" /> : null}
+          {activeBoardOrder ? (
+            <input type="hidden" name="boardOrder" value={activeBoardOrder} />
+          ) : null}
           <label htmlFor={`${editorId}-search`} className="sr-only">
             Search tasks by title
           </label>
@@ -587,7 +616,11 @@ export function TaskViewToolbar({
         <div className="ml-auto flex items-center gap-2">
           <PropertyPill
             label="Saved views"
-            triggerLabel={`Views: ${viewItems.find((item) => item.id === activeViewId)?.label ?? "All tasks"}`}
+            triggerLabel={
+              activeViewId
+                ? `Views: ${viewItems.find((item) => item.id === activeViewId)?.label ?? "All tasks"}`
+                : "Views: custom view"
+            }
             value={activeViewId}
             items={viewItems}
             displayValue="Views"

@@ -335,11 +335,9 @@ function normalizeFilterValues(
   if (values.length === 0 || values.length > TASK_VIEW_MAX_FILTER_VALUES) return null;
 
   const unique = Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)));
-  if (unique.length === 0 || unique.length !== values.length) {
-    // Duplicate values would make the chip state ambiguous; reject rather than
-    // silently changing the user's saved definition.
-    if (unique.length === 0) return null;
-  }
+  // Duplicate values would make the chip state ambiguous; reject rather than
+  // silently changing the user's saved definition.
+  if (unique.length === 0 || unique.length !== values.length) return null;
 
   if (operator === "is" || operator === "is_not") {
     if (unique.length !== 1) return null;

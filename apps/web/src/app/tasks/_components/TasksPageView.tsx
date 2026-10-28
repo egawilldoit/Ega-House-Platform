@@ -20,7 +20,6 @@ import {
 import { startTimerAction } from "@/app/timer/actions";
 import { BulkArchiveCompletedTasksForm } from "@/components/tasks/bulk-archive-completed-tasks-form";
 import { TaskViewToolbar } from "@/components/tasks/view-toolbar/task-view-toolbar";
-import { TaskKanbanCard } from "@/components/tasks/task-kanban-card";
 import { TasksNewTaskButton } from "@/components/tasks/tasks-new-task-button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -270,6 +269,7 @@ export function TasksPageView({
                 activeLayout={activeLayout}
                 activeDensity={parsed.activeDensity}
                 activeView={activeView}
+                activeBoardOrder={parsed.activeBoardOrder}
                 projectOptions={projects}
                 goalOptions={goals.map((goal) => ({ id: goal.id, title: goal.title }))}
                 savedViews={savedViews.map((view) => {
