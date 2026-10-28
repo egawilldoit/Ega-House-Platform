@@ -145,6 +145,27 @@ describe("CommentComposer", () => {
     expect(String(second.get("clientRequestId"))).toBe(requestId);
   });
 
+
+  it("posts with Ctrl+Enter even while the mention menu is open", async () => {
+    const action = vi.fn(async () => ({ ok: true, errorMessage: null, requestId: "req-1" }));
+    render({ createAction: action as never });
+    const textarea = document.querySelector("textarea")!;
+    act(() => {
+      textarea.focus();
+      setNativeValue(textarea, "@co");
+    });
+    expect(document.querySelectorAll('[role="option"]').length).toBe(1);
+
+    await act(async () => {
+      textarea.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Enter", ctrlKey: true, bubbles: true }),
+      );
+      await Promise.resolve();
+    });
+
+    expect(action).toHaveBeenCalledTimes(1);
+  });
+
   it("keeps drafts per task and never exposes another owner's draft", () => {
     render({ ownerId: "owner-a", taskId: "task-1" });
     let textarea = document.querySelector("textarea")!;

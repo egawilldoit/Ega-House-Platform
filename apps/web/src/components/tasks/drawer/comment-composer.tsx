@@ -3,6 +3,7 @@
 import {
   useActionState,
   useEffect,
+  useId,
   useRef,
   useState,
   type FormEvent,
@@ -71,7 +72,10 @@ export function CommentComposer({
 }: CommentComposerProps) {
   const router = useRouter();
   const [body, setBody] = useState("");
-  const [requestId, setRequestId] = useState(newRequestId);
+  const reactId = useId();
+  const [requestId, setRequestId] = useState(
+    () => `comment-${reactId.replace(/[^A-Za-z0-9_-]/g, "") || "draft"}`,
+  );
   const [mention, setMention] = useState<MentionContext | null>(null);
   const [activeIndex, setActiveIndex] = useState(0);
   const [state, formAction, pending] = useActionState(createAction, INITIAL_STATE);
@@ -142,6 +146,12 @@ export function CommentComposer({
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.nativeEvent.isComposing) return;
 
+    if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+      event.preventDefault();
+      submit();
+      return;
+    }
+
     if (mentionOpen) {
       if (event.key === "ArrowDown") {
         event.preventDefault();
@@ -166,11 +176,6 @@ export function CommentComposer({
         setMention(null);
         return;
       }
-    }
-
-    if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
-      event.preventDefault();
-      submit();
     }
   };
 

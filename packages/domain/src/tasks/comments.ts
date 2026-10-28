@@ -112,7 +112,9 @@ export function isTaskCommentReactionEmoji(
  * a mention because the `@` must start a word. Duplicates collapse.
  */
 export function extractTaskCommentMentionHandles(body: unknown): string[] {
-  const text = String(body ?? "");
+  const text = String(body ?? "")
+    .replace(/```[\s\S]*?```/g, " ")
+    .replace(/`[^`\n]*`/g, " ");
   const handles: string[] = [];
   const pattern = /(^|[\s([{])@([a-z0-9][a-z0-9-]{0,62})/gi;
   for (const match of text.matchAll(pattern)) {

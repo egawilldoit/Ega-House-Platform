@@ -103,7 +103,7 @@ test("posting derives the author from the token and returns 201", async () => {
 test("caller-supplied author, owner and mention fields are rejected", async () => {
   const handlers = createCommentHandlers(repo);
 
-  for (const field of ["authorRef", "author_token_id", "ownerUserId", "actorRef"]) {
+  for (const field of ["authorRef", "author_token_id", "ownerUserId", "actorRef", "mentions"]) {
     const response = await handlers.POST_COMMENTS(
       request({ body: "hello", clientRequestId: "req-1", [field]: "spoof" }, "POST"),
       "task-1",

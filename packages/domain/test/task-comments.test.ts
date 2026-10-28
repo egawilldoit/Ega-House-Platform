@@ -56,6 +56,10 @@ test("typed mentions ignore email-like tokens and unknown actors", () => {
     ),
     ["codex", "owner"],
   );
+  assert.deepEqual(
+    extractTaskCommentMentionHandles("`@codex` and ```@owner``` and @codex"),
+    ["codex"],
+  );
 
   const resolved = resolveTaskCommentMentions("@codex @ghost @codex", [
     { kind: "owner", ref: "owner", handle: "owner", label: "You (owner)" },

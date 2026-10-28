@@ -53,6 +53,9 @@ const FORBIDDEN_AUTHOR_FIELDS = new Set([
   "actor_ref",
   "actorKind",
   "actor_kind",
+  "mentions",
+  "mentionRefs",
+  "mention_refs",
 ]);
 
 function hasTaskScope(
@@ -103,7 +106,7 @@ function rejectAuthorFields(body: Record<string, unknown>): ReturnType<typeof Ne
   const present = Object.keys(body).filter((key) => FORBIDDEN_AUTHOR_FIELDS.has(key));
   if (present.length === 0) return null;
   const err = invalidRequest(
-    `Author and owner fields are derived from the verified token: ${present.join(", ")}.`,
+    `Author, owner and mention fields are derived from the verified token and comment body: ${present.join(", ")}.`,
   );
   return NextResponse.json(err.body, { status: err.status });
 }
@@ -243,6 +246,7 @@ export function createCommentHandlers(
       }
       const rateLimitResponse = checkRateLimit(auth!.tokenId);
       if (rateLimitResponse) return rateLimitResponse;
+      runTelemetry(auth!.tokenId);
 
       const parsed = await readBody(request);
       if (!parsed.ok) {
@@ -279,6 +283,7 @@ export function createCommentHandlers(
       }
       const rateLimitResponse = checkRateLimit(auth!.tokenId);
       if (rateLimitResponse) return rateLimitResponse;
+      runTelemetry(auth!.tokenId);
 
       const result = await deleteAgentTaskComment(identity(auth!), commentId);
       if (!result.ok) return failureResponse(result);
@@ -302,6 +307,7 @@ export function createCommentHandlers(
       }
       const rateLimitResponse = checkRateLimit(auth!.tokenId);
       if (rateLimitResponse) return rateLimitResponse;
+      runTelemetry(auth!.tokenId);
 
       const parsed = await readBody(request);
       if (!parsed.ok) {
