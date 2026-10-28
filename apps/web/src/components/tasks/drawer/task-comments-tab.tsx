@@ -1,11 +1,10 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type {
   TaskCommentDto,
   TaskCommentMentionCandidateDto,
-  TaskCommentReaction,
 } from "@ega/contracts";
 
 import type {
@@ -62,20 +61,11 @@ export function TaskCommentsTab({
   actions,
 }: TaskCommentsTabProps) {
   const router = useRouter();
-  const [reactionOverrides, setReactionOverrides] = useState<
-    Record<string, TaskCommentReaction[]>
-  >({});
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editBody, setEditBody] = useState("");
   const [actionError, setActionError] = useState<string | null>(null);
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [, startTransition] = useTransition();
-
-  useEffect(() => {
-    // Server truth wins after a refresh; local overrides only bridge the gap
-    // while a reaction round-trip is in flight.
-    setReactionOverrides({});
-  }, [comments]);
 
   const saveEdit = (commentId: string) => {
     if (!editBody.trim()) {
@@ -143,7 +133,6 @@ export function TaskCommentsTab({
       ) : (
         <ol className="mt-3 flex flex-col gap-3">
           {comments.map((comment) => {
-            const reactions = reactionOverrides[comment.id] ?? comment.reactions;
             const isEditing = editingId === comment.id;
             const isPending = pendingId === comment.id;
 
@@ -213,16 +202,13 @@ export function TaskCommentsTab({
 
                 {!isEditing ? (
                   <ReactionBar
+                    key={`${comment.id}-${comment.reactions
+                      .map((reaction) => `${reaction.emoji}:${reaction.count}:${reaction.reactedByViewer ? 1 : 0}`)
+                      .join(",")}`}
                     commentId={comment.id}
                     returnTo={returnTo}
-                    reactions={reactions}
+                    reactions={comment.reactions}
                     toggleAction={actions.toggleReactionAction}
-                    onReactions={(next) =>
-                      setReactionOverrides((current) => ({
-                        ...current,
-                        [comment.id]: next,
-                      }))
-                    }
                   />
                 ) : null}
 

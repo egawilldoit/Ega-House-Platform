@@ -495,7 +495,7 @@ BEGIN
       IF v_mention_kind = 'owner' THEN
         v_title := 'You were mentioned in "' || left(v_task_title, 200) || '"';
       ELSE
-        v_title := 'Mentioned @' || substring(v_mention_ref from 7) || ' in "' || left(v_task_title, 200) || '"';
+        v_title := v_author_label || ' mentioned @' || substring(v_mention_ref from 7) || ' in "' || left(v_task_title, 200) || '"';
       END IF;
 
       INSERT INTO public.notifications (
@@ -635,7 +635,7 @@ BEGIN
       IF v_mention_kind = 'owner' THEN
         v_title := 'You were mentioned in "' || left(v_task_title, 200) || '"';
       ELSE
-        v_title := 'Mentioned @' || substring(v_mention_ref from 7) || ' in "' || left(v_task_title, 200) || '"';
+        v_title := v_author_label || ' mentioned @' || substring(v_mention_ref from 7) || ' in "' || left(v_task_title, 200) || '"';
       END IF;
 
       INSERT INTO public.notifications (

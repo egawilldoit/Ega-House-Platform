@@ -831,6 +831,10 @@ export const taskComments = pgTable(
       sql`${table.authorKind} in ('owner', 'agent')`,
     ),
     check(
+      "task_comments_author_ref_check",
+      sql`((${table.authorKind} = 'owner' and ${table.authorRef} = 'owner') or (${table.authorKind} = 'agent' and ${table.authorRef} ~ '^agent:[a-z0-9][a-z0-9-]{0,62}$'))`,
+    ),
+    check(
       "task_comments_body_length_check",
       sql`char_length(${table.body}) between 1 and 4000`,
     ),
@@ -863,6 +867,10 @@ export const taskCommentMentions = pgTable(
     check(
       "task_comment_mentions_kind_check",
       sql`${table.mentionKind} in ('owner', 'agent')`,
+    ),
+    check(
+      "task_comment_mentions_ref_check",
+      sql`((${table.mentionKind} = 'owner' and ${table.mentionRef} = 'owner') or (${table.mentionKind} = 'agent' and ${table.mentionRef} ~ '^agent:[a-z0-9][a-z0-9-]{0,62}$'))`,
     ),
   ],
 );
@@ -899,6 +907,14 @@ export const taskCommentReactions = pgTable(
     check(
       "task_comment_reactions_actor_kind_check",
       sql`${table.actorKind} in ('owner', 'agent')`,
+    ),
+    check(
+      "task_comment_reactions_actor_ref_check",
+      sql`((${table.actorKind} = 'owner' and ${table.actorRef} = 'owner') or (${table.actorKind} = 'agent' and ${table.actorRef} ~ '^agent:[a-z0-9][a-z0-9-]{0,62}$'))`,
+    ),
+    check(
+      "task_comment_reactions_emoji_check",
+      sql`${table.emoji} in ('👍', '👀', '✅', '🎉', '🙏', '🔥')`,
     ),
   ],
 );

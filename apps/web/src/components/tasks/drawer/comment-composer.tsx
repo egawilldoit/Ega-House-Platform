@@ -81,6 +81,7 @@ export function CommentComposer({
   const menuId = `comment-mentions-${taskId}`;
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- restore the account-scoped browser draft after hydration
     setBody(readTaskCommentDraft(window.localStorage, ownerId, taskId));
   }, [ownerId, taskId]);
 
@@ -202,6 +203,8 @@ export function CommentComposer({
         rows={2}
         maxLength={TASK_COMMENT_BODY_MAX}
         placeholder="Add a note, decision or agent hand-off…"
+        role="combobox"
+        aria-haspopup="listbox"
         aria-keyshortcuts="Meta+Enter Control+Enter"
         aria-autocomplete="list"
         aria-expanded={mentionOpen}
