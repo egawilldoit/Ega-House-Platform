@@ -40,7 +40,14 @@ import {
   type TaskViewGroupBy,
   type TaskViewSortKey,
 } from "@ega/contracts/common/task-list";
-import { buildTaskListUrl, type TaskBoardOrder, type TaskDensity, type TaskLayoutMode } from "@/lib/task-list";
+import {
+  buildTaskListUrl,
+  type TaskBoardOrder,
+  type TaskCalendarDateField,
+  type TaskCalendarView,
+  type TaskDensity,
+  type TaskLayoutMode,
+} from "@/lib/task-list";
 import { Input } from "@/components/ui/input";
 import { MenuList } from "@/components/ui/menu-list";
 import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
@@ -69,6 +76,9 @@ type TaskViewToolbarProps = {
   activeDensity: TaskDensity;
   activeView: string;
   activeBoardOrder?: TaskBoardOrder | null;
+  activeCalendarView?: TaskCalendarView;
+  activeCalendarDate?: string | null;
+  activeCalendarDateField?: TaskCalendarDateField;
   projectOptions?: Array<{ id: string; name: string }>;
   goalOptions?: Array<{ id: string; title: string }>;
   savedViews?: TaskViewToolbarSavedView[];
@@ -94,7 +104,13 @@ function filterStateForUrl(
   view: TaskViewDefinition,
   props: Pick<
     TaskViewToolbarProps,
-    "activeLayout" | "activeDensity" | "activeView" | "activeBoardOrder"
+    | "activeLayout"
+    | "activeDensity"
+    | "activeView"
+    | "activeBoardOrder"
+    | "activeCalendarView"
+    | "activeCalendarDate"
+    | "activeCalendarDateField"
   >,
 ): TaskFilterState {
   return {
@@ -109,6 +125,9 @@ function filterStateForUrl(
     density: props.activeDensity,
     boardOrder: props.activeBoardOrder ?? null,
     columns: view.columns,
+    cal: props.activeCalendarView ?? "month",
+    date: props.activeCalendarDate ?? null,
+    dateField: props.activeCalendarDateField ?? "due",
   };
 }
 
@@ -119,6 +138,9 @@ export function TaskViewToolbar({
   activeDensity,
   activeView,
   activeBoardOrder = null,
+  activeCalendarView = "month",
+  activeCalendarDate = null,
+  activeCalendarDateField = "due",
   projectOptions = [],
   goalOptions = [],
   savedViews = [],
@@ -142,6 +164,9 @@ export function TaskViewToolbar({
     activeDensity,
     activeView,
     activeBoardOrder,
+    activeCalendarView,
+    activeCalendarDate,
+    activeCalendarDateField,
   });
   const hrefFor = (overrides: {
     filters?: readonly TaskViewFilter[];
@@ -587,6 +612,20 @@ export function TaskViewToolbar({
           ))}
           <input type="hidden" name="archive" value={activeView === "active" ? "" : activeView} />
           {activeLayout === "kanban" ? <input type="hidden" name="layout" value="kanban" /> : null}
+          {activeLayout === "calendar" ? (
+            <>
+              <input type="hidden" name="layout" value="calendar" />
+              {activeCalendarView !== "month" ? (
+                <input type="hidden" name="cal" value={activeCalendarView} />
+              ) : null}
+              {activeCalendarDate ? (
+                <input type="hidden" name="date" value={activeCalendarDate} />
+              ) : null}
+              {activeCalendarDateField !== "due" ? (
+                <input type="hidden" name="dateField" value={activeCalendarDateField} />
+              ) : null}
+            </>
+          ) : null}
           {activeDensity === "compact" ? <input type="hidden" name="density" value="compact" /> : null}
           {activeBoardOrder ? (
             <input type="hidden" name="boardOrder" value={activeBoardOrder} />

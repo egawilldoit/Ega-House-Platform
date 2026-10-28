@@ -2,6 +2,8 @@ import {
   DEFAULT_TASK_DUE_FILTER,
   DEFAULT_TASK_SORT,
   buildTaskListUrl,
+  type TaskCalendarDateField,
+  type TaskCalendarView,
   type TaskDensity,
   type TaskBoardOrder,
   type TaskLayoutMode,
@@ -47,6 +49,9 @@ export type TaskFilterState = {
   /** Table column layout; persisted through `cols`/`widths`. */
   columns?: readonly TaskTableColumnConfig[];
   tab?: string | null;
+  cal?: TaskCalendarView | null;
+  date?: string | null;
+  dateField?: TaskCalendarDateField | null;
 };
 
 export const DEFAULT_TASK_FILTER_STATE = {
