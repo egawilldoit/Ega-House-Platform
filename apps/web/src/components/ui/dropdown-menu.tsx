@@ -24,6 +24,22 @@ export const DropdownMenuSeparator = forwardRef<
   );
 });
 
+export const DropdownMenuLabel = forwardRef<
+  ElementRef<typeof DropdownMenuPrimitive.Label>,
+  ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Label>
+>(function DropdownMenuLabel({ className, ...props }, ref) {
+  return (
+    <DropdownMenuPrimitive.Label
+      ref={ref}
+      className={cn(
+        "px-2 py-1.5 text-[length:var(--text-micro)] font-semibold uppercase tracking-[0.08em] text-[color:var(--ega-text-tertiary)]",
+        className,
+      )}
+      {...props}
+    />
+  );
+});
+
 export const DropdownMenuContent = forwardRef<
   ElementRef<typeof DropdownMenuPrimitive.Content>,
   ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Content>

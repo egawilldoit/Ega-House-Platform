@@ -1089,6 +1089,32 @@ export async function undoTaskOperationAction(
 }
 
 // ---------------------------------------------------------------------------
+// Board moves (EGA-785)
+//
+// A move returns state instead of redirecting so the board can roll the
+// optimistic card back, keep the drop target in view, and announce the real
+// server outcome. Status, timers, completion and recurrence still flow through
+// `updateTaskInline`; the board only supplies the target rank.
+// ---------------------------------------------------------------------------
+
+export async function moveTaskOnBoardAction(
+  input: import("@/lib/services/task-board-service").MoveTaskOnBoardInput & {
+    returnTo?: string;
+  },
+): Promise<import("@/lib/services/task-board-service").BoardMoveResult> {
+  const { moveTaskOnBoardForOwner } = await import("@/lib/services/task-board-service");
+  const result = await moveTaskOnBoardForOwner(input);
+
+  if (result.ok) {
+    revalidateWorkspaceFor("task", {
+      returnTo: getTasksReturnPath(input.returnTo),
+    });
+  }
+
+  return result;
+}
+
+// ---------------------------------------------------------------------------
 // Subtasks / checklist (EGA-782)
 // ---------------------------------------------------------------------------
 

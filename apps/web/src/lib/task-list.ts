@@ -8,6 +8,7 @@ import {
   type TaskDueFilter,
   type TaskSortValue,
 } from "@ega/contracts/common/task-list";
+import { compareBoardRankedItems } from "@ega/domain";
 
 import { isTaskDueToday, isTaskDueSoon, isTaskOverdue } from "@/lib/task-due-date";
 import { isTaskStatus, type TaskStatus } from "@/lib/task-domain";
@@ -53,6 +54,70 @@ type TaskKanbanLike = { status: string };
 
 export type TaskKanbanColumn = (typeof TASK_KANBAN_COLUMNS)[number];
 
+/**
+ * Board-local ordering. It is intentionally separate from the shared
+ * `TASK_SORT_VALUES` contract: only the web board renders `board_rank`, and a
+ * "manual" value in the shared list contract would silently change list order
+ * for every consumer (including mobile) without them knowing.
+ *
+ * `null` means "use the active list sort" (Recent / due date). Only `manual`
+ * enables dragging, so a drag can never silently replace an explicit sort.
+ */
+export const TASK_BOARD_ORDER_VALUES = ["manual", "priority"] as const;
+export type TaskBoardOrder = (typeof TASK_BOARD_ORDER_VALUES)[number];
+
+export function isTaskBoardOrder(value: string): value is TaskBoardOrder {
+  return (TASK_BOARD_ORDER_VALUES as readonly string[]).includes(value);
+}
+
+export function normalizeTaskBoardOrder(
+  value: string | null | undefined,
+): TaskBoardOrder | null {
+  return value && isTaskBoardOrder(value) ? value : null;
+}
+
+const TASK_PRIORITY_ORDER: Record<string, number> = {
+  urgent: 0,
+  high: 1,
+  medium: 2,
+  low: 3,
+};
+
+type BoardSortableTask = {
+  id: string;
+  priority: string;
+  updated_at: string;
+  board_rank?: string | null;
+};
+
+/**
+ * Order tasks for the board without touching the list's sort.
+ *
+ * Manual order is `(board_rank, id)` exactly as the database orders it, so a
+ * filtered/project board is a projection of the one canonical order. Priority
+ * order is board-local and still breaks ties deterministically.
+ */
+export function sortTasksForBoard<T extends BoardSortableTask>(
+  tasks: T[],
+  boardOrder: TaskBoardOrder | null,
+): T[] {
+  if (boardOrder === "manual") {
+    return [...tasks].sort(compareBoardRankedItems);
+  }
+
+  if (boardOrder === "priority") {
+    return [...tasks].sort((left, right) => {
+      const leftPriority = TASK_PRIORITY_ORDER[left.priority] ?? 99;
+      const rightPriority = TASK_PRIORITY_ORDER[right.priority] ?? 99;
+      if (leftPriority !== rightPriority) return leftPriority - rightPriority;
+      const updatedResult = right.updated_at.localeCompare(left.updated_at);
+      return updatedResult !== 0 ? updatedResult : left.id.localeCompare(right.id);
+    });
+  }
+
+  return tasks;
+}
+
 export function normalizeTaskLayout(value: string | null | undefined): TaskLayoutMode {
   return value === "kanban" ? "kanban" : DEFAULT_TASK_LAYOUT;
 }
@@ -96,6 +161,7 @@ export function buildTaskListUrl(
     view?: string | null;
     layout?: TaskLayoutMode;
     density?: TaskDensity | string | null;
+    boardOrder?: TaskBoardOrder | null;
   },
 ) {
   const searchParams = new URLSearchParams();
@@ -113,6 +179,7 @@ export function buildTaskListUrl(
   if (filters.view && filters.view !== "active") searchParams.set("archive", filters.view);
   if (filters.layout === "kanban") searchParams.set("layout", "kanban");
   if (filters.density === "compact") searchParams.set("density", "compact");
+  if (filters.boardOrder) searchParams.set("boardOrder", filters.boardOrder);
 
   const query = searchParams.toString();
   return query ? `${basePath}?${query}` : basePath;

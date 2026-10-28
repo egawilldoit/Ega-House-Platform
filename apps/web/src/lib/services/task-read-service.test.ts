@@ -272,6 +272,7 @@ test("getTaskForOwner returns a normalized task row when modern task columns exi
     title: "Plan launch",
     description: "Draft checklist",
     blocked_reason: "Waiting on review",
+    board_rank: null,
     status: "blocked",
     priority: "high",
     due_date: "2026-05-01",
