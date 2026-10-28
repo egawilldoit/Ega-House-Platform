@@ -98,20 +98,27 @@ export async function getTaskTotalDurationMap(
     return {} as Record<string, number>;
   }
 
-  const { data, error } = await supabase
-    .from("task_sessions")
-    .select("task_id, started_at, ended_at, duration_seconds")
-    .in("task_id", uniqueTaskIds);
+  const totals: Record<string, number> = {};
+  const chunkSize = 200;
 
-  if (error) {
-    throw new Error(`Failed to load task session totals: ${error.message}`);
+  for (let index = 0; index < uniqueTaskIds.length; index += chunkSize) {
+    const chunk = uniqueTaskIds.slice(index, index + chunkSize);
+    const { data, error } = await supabase
+      .from("task_sessions")
+      .select("task_id, started_at, ended_at, duration_seconds")
+      .in("task_id", chunk);
+
+    if (error) {
+      throw new Error(`Failed to load task session totals: ${error.message}`);
+    }
+
+    for (const session of data ?? []) {
+      const sessionDuration = getTaskSessionDurationSeconds(session, nowIso);
+      totals[session.task_id] = (totals[session.task_id] ?? 0) + sessionDuration;
+    }
   }
 
-  return (data ?? []).reduce<Record<string, number>>((totals, session) => {
-    const sessionDuration = getTaskSessionDurationSeconds(session, nowIso);
-    totals[session.task_id] = (totals[session.task_id] ?? 0) + sessionDuration;
-    return totals;
-  }, {});
+  return totals;
 }
 
 // Keep the web import surface stable while using the application-owned formatter.
