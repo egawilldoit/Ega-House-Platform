@@ -148,5 +148,30 @@ for (const file of serverRouteFiles) {
 }
 assert(serverRepositorySitesChecked > 0, `checked apps/server request-scoped repository construction sites (${serverRepositorySitesChecked})`);
 
+// ---------------------------------------------------------------------------
+// 4. Task comments: safe rendering and owner-scoped persistence
+// ---------------------------------------------------------------------------
+console.log('\n[4] task comment rendering and persistence proof');
+
+const commentRenderFiles = [
+  'apps/web/src/components/tasks/drawer/task-comment-body.tsx',
+  'apps/web/src/components/tasks/drawer/task-comments-tab.tsx',
+  'apps/web/src/components/tasks/drawer/comment-composer.tsx',
+];
+for (const file of commentRenderFiles) {
+  const source = fs.readFileSync(file, 'utf8');
+  assert(!source.includes('dangerouslySetInnerHTML'), `${file}: never injects an HTML string`);
+}
+const markdownParser = fs.readFileSync('apps/web/src/lib/comment-markdown.ts', 'utf8');
+assert(markdownParser.includes('ALLOWED_URL_SCHEMES'), 'comment markdown has an explicit URL scheme allowlist');
+assert(markdownParser.includes('"http", "https", "mailto"'), 'comment markdown allowlist is http/https/mailto only');
+assert(!markdownParser.includes('javascript:'), 'comment markdown does not whitelist javascript URLs');
+
+const commentRepository = fs.readFileSync('packages/data-access/src/tasks/comments-repository.ts', 'utf8');
+assert(commentRepository.includes('owner_user_id'), 'comment repository filters by owner_user_id');
+assert(commentRepository.includes('viewer.ownerUserId'), 'comment reads scope by the trusted viewer owner id');
+assert(commentRepository.includes('actor.ownerUserId'), 'comment writes pass the trusted author owner id');
+assert(!commentRepository.includes('getSupabaseServiceClient'), 'comment repository has no service-role authorization path');
+
 console.log('\n' + (failures === 0 ? 'security-proofs: ALL CHECKS PASSED' : `security-proofs: ${failures} CHECK(S) FAILED`));
 process.exit(failures === 0 ? 0 : 1);

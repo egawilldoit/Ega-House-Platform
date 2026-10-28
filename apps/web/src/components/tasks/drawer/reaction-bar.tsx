@@ -14,7 +14,6 @@ type ReactionBarProps = {
   returnTo: string;
   reactions: TaskCommentReaction[];
   toggleAction: (formData: FormData) => Promise<TaskCommentReactionActionResult>;
-  onReactions: (reactions: TaskCommentReaction[]) => void;
 };
 
 export function ReactionBar({
@@ -22,8 +21,8 @@ export function ReactionBar({
   returnTo,
   reactions,
   toggleAction,
-  onReactions,
 }: ReactionBarProps) {
+  const [localReactions, setLocalReactions] = useState(reactions);
   const [pendingEmoji, setPendingEmoji] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [, startTransition] = useTransition();
@@ -43,14 +42,15 @@ export function ReactionBar({
         setErrorMessage(result.errorMessage ?? "Unable to update the reaction right now.");
         return;
       }
-      onReactions(result.reactions);
+      // The server returns every actor's summary, not just this one's toggle.
+      setLocalReactions(result.reactions);
     });
   };
 
   return (
     <div className="mt-1.5">
       <div className="flex flex-wrap items-center gap-1">
-        {reactions.map((reaction) => (
+        {localReactions.map((reaction) => (
           <button
             key={reaction.emoji}
             type="button"

@@ -74,7 +74,7 @@ export function TabsTrigger({
     <button
       type="button"
       className={cn(
-        "rounded-[0.8rem] px-3 py-2 text-sm font-medium transition-precise focus-visible:outline-none",
+        "rounded-[0.8rem] px-3 py-2 text-sm font-medium transition-precise focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ega-accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--ega-surface)]",
         isActive
           ? "bg-[color:var(--ega-surface-elevated)] text-[color:var(--foreground)] shadow-[var(--ega-shadow-sm)]"
           : "text-[color:var(--muted-foreground)] hover:bg-[var(--ega-surface-hover)] hover:text-[color:var(--foreground)]",

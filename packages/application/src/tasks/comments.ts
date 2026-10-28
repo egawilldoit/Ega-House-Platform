@@ -158,7 +158,9 @@ export async function listTaskComments(
 ): Promise<ApplicationResult<TaskCommentDto[]>> {
   const invalid = validViewer(viewer);
   if (invalid) return applicationFailure(invalid);
-  if (!taskId?.trim()) return applicationFailure("Task was not found or is no longer available.");
+  if (!taskId?.trim()) {
+    return applicationFailure("Task was not found or is no longer available.", "notFound");
+  }
 
   return fromRepository(
     await repository.listTaskComments(viewer, taskId),
@@ -174,14 +176,14 @@ export async function createTaskComment(
   const invalidActor = validateActor(actor);
   if (invalidActor) return applicationFailure(invalidActor);
   if (!input.taskId?.trim()) {
-    return applicationFailure("Task was not found or is no longer available.");
+    return applicationFailure("Task was not found or is no longer available.", "notFound");
   }
 
   const body = normalizeTaskCommentBody(input.body);
-  if (!body.ok) return applicationFailure(body.errorMessage);
+  if (!body.ok) return applicationFailure(body.errorMessage, "validation");
 
   const requestId = normalizeTaskCommentRequestId(input.clientRequestId);
-  if (!requestId.ok) return applicationFailure(requestId.errorMessage);
+  if (!requestId.ok) return applicationFailure(requestId.errorMessage, "validation");
 
   const mentions = await resolveMentions(
     body.value,
@@ -208,10 +210,10 @@ export async function updateTaskComment(
 ): Promise<ApplicationResult<TaskCommentDto>> {
   const invalidActor = validateActor(actor);
   if (invalidActor) return applicationFailure(invalidActor);
-  if (!input.commentId?.trim()) return applicationFailure("Comment was not found.");
+  if (!input.commentId?.trim()) return applicationFailure("Comment was not found.", "notFound");
 
   const body = normalizeTaskCommentBody(input.body);
-  if (!body.ok) return applicationFailure(body.errorMessage);
+  if (!body.ok) return applicationFailure(body.errorMessage, "validation");
 
   const mentions = await resolveMentions(
     body.value,
@@ -237,7 +239,7 @@ export async function deleteTaskComment(
 ): Promise<ApplicationResult<{ deleted: true }>> {
   const invalidActor = validateActor(actor);
   if (invalidActor) return applicationFailure(invalidActor);
-  if (!commentId?.trim()) return applicationFailure("Comment was not found.");
+  if (!commentId?.trim()) return applicationFailure("Comment was not found.", "notFound");
 
   const result = await repository.deleteTaskComment(actor, commentId);
   if (!result.ok) {
@@ -257,9 +259,9 @@ export async function toggleTaskCommentReaction(
 ): Promise<ApplicationResult<TaskCommentReaction[]>> {
   const invalidActor = validateActor(actor);
   if (invalidActor) return applicationFailure(invalidActor);
-  if (!input.commentId?.trim()) return applicationFailure("Comment was not found.");
+  if (!input.commentId?.trim()) return applicationFailure("Comment was not found.", "notFound");
   if (!isTaskCommentReactionEmoji(input.emoji)) {
-    return applicationFailure("That reaction is not supported.");
+    return applicationFailure("That reaction is not supported.", "validation");
   }
 
   return fromRepository(

@@ -12,6 +12,11 @@ test("status, archive and field changes get honest human summaries", () => {
   assert.equal(describeTaskActivity({ kind: "archived" }), "Task archived");
   assert.equal(describeTaskActivity({ kind: "restored" }), "Task restored");
   assert.equal(
+    describeTaskActivity({ kind: "commented", excerpt: "Ship it" }),
+    "Commented: Ship it",
+  );
+  assert.equal(describeTaskActivity({ kind: "commented" }), "Commented");
+  assert.equal(
     describeTaskActivity({
       kind: "field_change",
       delta: { priority: { from: "medium", to: "high" } },
@@ -140,4 +145,28 @@ test("an unauthenticated read returns no rows", async () => {
   const page = await getTaskActivity("t1", { supabase: client as never });
   assert.deepEqual(page.items, []);
   assert.equal(page.errorMessage, "Task was not found.");
+});
+
+test("comment ledger rows appear once with agent attribution and excerpt", async () => {
+  const client = stubClient({
+    fields: [
+      {
+        id: "c1",
+        actor_kind: "agent",
+        actor_label: "Codex",
+        event_kind: "commented",
+        delta: { comment_id: "comment-1", excerpt: "Handed off the draft" },
+        occurred_at: "2026-10-27T12:00:00.000Z",
+      },
+    ],
+    status: [],
+    sessions: [],
+  });
+
+  const page = await getTaskActivity("t1", { supabase: client as never, limit: 10 });
+  assert.equal(page.items.length, 1);
+  assert.equal(page.items[0]?.kind, "commented");
+  assert.equal(page.items[0]?.actorKind, "agent");
+  assert.equal(page.items[0]?.actorLabel, "Codex");
+  assert.equal(page.items[0]?.summary, "Commented: Handed off the draft");
 });
