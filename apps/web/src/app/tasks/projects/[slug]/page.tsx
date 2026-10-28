@@ -67,6 +67,7 @@ import { formatTaskEstimate } from "@/lib/task-estimate";
 import { buildTaskDrawerLink } from "@/lib/task-drawer-url";
 import { listTaskSubtasks } from "@/lib/services/subtask-service";
 import { getProjectTaskActivity, getTaskActivity } from "@/lib/services/task-activity-service";
+import { taskActivityActorLabel } from "@/lib/task-activity";
 import { isFavorite } from "@/lib/services/favorite-service";
 import { toggleFavoriteAction } from "@/app/favorites/actions";
 import { TASK_SUBTASK_ACTIONS } from "@/lib/task-subtask-actions";
@@ -294,9 +295,10 @@ export default async function ProjectDetailPage({
   const selectedTaskSubtasks = selectedTaskId
     ? (await listTaskSubtasks(selectedTaskId)).data ?? []
     : [];
-  const selectedTaskActivity = selectedTaskId
-    ? (await getTaskActivity(selectedTaskId, { limit: 8 })).items
-    : [];
+  const selectedTaskActivityPage = selectedTaskId
+    ? await getTaskActivity(selectedTaskId, { limit: 8 })
+    : { items: [], hasMore: false };
+  const selectedTaskActivity = selectedTaskActivityPage.items;
   const projectActivity = await getProjectTaskActivity(tasks.map((task) => task.id), {
     limit: 5,
   });
@@ -788,13 +790,7 @@ export default async function ProjectDetailPage({
                           <span className="row-title">{taskTitle}</span>
                           <span className="row-meta">{item.summary}</span>
                           <span className="row-meta">
-                            {item.actorKind === "owner"
-                              ? "You"
-                              : item.actorKind === "system"
-                                ? "System"
-                                : item.actorKind === "agent"
-                                  ? (item.actorLabel ?? "Agent")
-                                  : "Unknown actor"}
+                            {taskActivityActorLabel(item.actor)}
                             {" · "}
                             {formatTimerDateTime(item.occurredAt)}
                           </span>
@@ -852,6 +848,7 @@ export default async function ProjectDetailPage({
           ownerId={currentUser?.id ?? null}
           subtasks={selectedTaskSubtasks}
           activity={selectedTaskActivity}
+          activityHasMore={selectedTaskActivityPage.hasMore}
           isFavourite={selectedTaskIsFavourite}
           favouriteAction={toggleFavoriteAction}
           subtaskActions={TASK_SUBTASK_ACTIONS}

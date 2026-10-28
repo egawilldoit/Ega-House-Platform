@@ -126,6 +126,8 @@ type TaskDrawerHostProps = {
   subtasks?: SubtaskDto[];
   /** Durable activity rows for the selected task. */
   activity?: TaskActivityItem[];
+  /** Whether older activity exists beyond the rows shown. */
+  activityHasMore?: boolean;
   /** Whether the selected task is a navigation favourite. */
   isFavourite?: boolean;
   /** Server action that toggles the task favourite. */
@@ -161,6 +163,7 @@ export function TaskDrawerHost({
   ownerId = null,
   subtasks = [],
   activity = [],
+  activityHasMore = false,
   isFavourite = false,
   favouriteAction,
   subtaskActions,
@@ -439,7 +442,7 @@ export function TaskDrawerHost({
         />
       ) : null}
 
-      <TaskActivityList items={activity} />
+      <TaskActivityList items={activity} hasMore={activityHasMore} />
     </TaskDrawer>
   );
 }

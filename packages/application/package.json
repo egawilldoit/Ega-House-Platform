@@ -16,6 +16,7 @@
     "./tasks/mutations-ports": "./src/tasks/mutations-ports.ts",
     "./tasks/service": "./src/tasks/service.ts",
     "./tasks/read-model": "./src/tasks/read-model.ts",
+    "./tasks/activity-read-model": "./src/tasks/activity-read-model.ts",
     "./tasks/list-view": "./src/tasks/list-view.ts",
     "./tasks/focus-queue": "./src/tasks/focus-queue.ts",
     "./tasks/recurrence": "./src/tasks/recurrence.ts",
