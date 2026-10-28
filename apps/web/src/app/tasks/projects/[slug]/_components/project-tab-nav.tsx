@@ -113,7 +113,7 @@ export function ProjectTabNav({
                 aria-controls={`project-panel-${tab.value}`}
                 tabIndex={isActive ? 0 : -1}
                 className={cn(
-                  "min-h-9 px-4",
+                  "min-h-9 px-4 focus-visible:ring-2 focus-visible:ring-[var(--ega-focus-outline)] focus-visible:ring-offset-1",
                   isActive && "ring-1 ring-[var(--ega-border-strong)]",
                 )}
               >

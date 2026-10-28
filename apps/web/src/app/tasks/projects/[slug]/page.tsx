@@ -47,7 +47,6 @@ import { getTaskSessionSummaryMap } from "@/lib/task-session";
 import { buildTaskDrawerLink } from "@/lib/task-drawer-url";
 import { listTaskSubtasks } from "@/lib/services/subtask-service";
 import { getProjectTaskActivity, getTaskActivity } from "@/lib/services/task-activity-service";
-import { taskActivityActorLabel } from "@/lib/task-activity";
 import { isFavorite } from "@/lib/services/favorite-service";
 import { toggleFavoriteAction } from "@/app/favorites/actions";
 import { TASK_SUBTASK_ACTIONS } from "@/lib/task-subtask-actions";

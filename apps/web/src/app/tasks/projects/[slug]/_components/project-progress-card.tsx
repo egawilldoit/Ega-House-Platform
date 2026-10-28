@@ -51,47 +51,46 @@ export function ProjectProgressCard({
           value={progressPercent}
           label="Project completion"
           valueText={`${completedTaskCount} of ${totalTaskCount} tasks done (${progressPercent}%)`}
+          variant="green"
           size="md"
         />
 
         {statusCounts.length ? (
           <div className="flex flex-col gap-3">
-            <div className="flex items-stretch gap-1" aria-hidden="true">
+            <div className="flex items-stretch gap-1" role="group" aria-label="Tasks by status">
               {statusCounts.map((entry) => (
-                <span
+                <Link
                   key={entry.status}
-                  className="h-2 min-w-2 rounded-[var(--radius-pill)]"
-                  style={{
-                    background: getProjectStatusBarColor(entry.status),
-                    flexGrow: entry.count,
-                    flexBasis: 0,
-                  }}
-                />
+                  href={statusFilterHref(projectId, entry.status)}
+                  aria-label={`${entry.count} ${formatTaskToken(entry.status)} ${
+                    entry.count === 1 ? "task" : "tasks"
+                  } — open the filtered task list`}
+                  className="group flex min-h-8 min-w-8 items-center rounded-[var(--radius-sm)] px-0.5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ega-focus-outline)]"
+                  style={{ flexGrow: entry.count, flexBasis: 0 }}
+                >
+                  <span
+                    aria-hidden="true"
+                    className="h-2 w-full rounded-[var(--radius-pill)] transition-[filter] group-hover:brightness-110 motion-reduce:transition-none"
+                    style={{ background: getProjectStatusBarColor(entry.status) }}
+                  />
+                </Link>
               ))}
             </div>
 
-            <ul className="flex flex-wrap gap-1.5" aria-label="Tasks by status">
+            <ul className="flex flex-wrap gap-x-3 gap-y-1.5" aria-label="Status legend">
               {statusCounts.map((entry) => (
-                <li key={entry.status}>
-                  <Link
-                    href={statusFilterHref(projectId, entry.status)}
-                    aria-label={`${entry.count} ${formatTaskToken(entry.status)} ${
-                      entry.count === 1 ? "task" : "tasks"
-                    } — open the filtered task list`}
-                    className="inline-flex min-h-8 items-center gap-1.5 rounded-[var(--radius-pill)] border border-[var(--ega-border)] bg-[color:var(--ega-surface-subtle)] px-2.5 py-1 text-[length:var(--text-meta)] transition-precise hover:border-[var(--ega-border-strong)] hover:bg-[var(--ega-surface-hover)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ega-focus-outline)]"
-                  >
-                    <span
-                      aria-hidden="true"
-                      className="h-2 w-2 shrink-0 rounded-full"
-                      style={{ background: getProjectStatusBarColor(entry.status) }}
-                    />
-                    <span className="text-[color:var(--ega-text-secondary)]">
-                      {formatTaskToken(entry.status)}
-                    </span>
-                    <span className="tabular-nums font-medium text-[color:var(--ega-text)]">
-                      {entry.count}
-                    </span>
-                  </Link>
+                <li key={entry.status} className="inline-flex items-center gap-1.5">
+                  <span
+                    aria-hidden="true"
+                    className="h-2 w-2 shrink-0 rounded-full"
+                    style={{ background: getProjectStatusBarColor(entry.status) }}
+                  />
+                  <span className="text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
+                    {formatTaskToken(entry.status)}
+                  </span>
+                  <span className="tabular-nums text-[length:var(--text-meta)] font-medium text-[color:var(--ega-text)]">
+                    {entry.count}
+                  </span>
                 </li>
               ))}
             </ul>
