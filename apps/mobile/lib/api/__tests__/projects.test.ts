@@ -53,7 +53,7 @@ const PROJECT_IDENTITY: ProjectIdentityReadModel = {
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-02T00:00:00.000Z',
   },
-  goals: [{ id: 'g-1', title: 'Ship v1', projectId: 'p-1' }],
+  goals: [{ id: 'g-1', title: 'Ship v1', projectId: 'p-1', health: null, nextStep: null }],
 };
 
 const PROJECT_FORM_VALUES: ProjectFormValues = {
