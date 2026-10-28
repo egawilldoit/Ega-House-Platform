@@ -43,7 +43,7 @@ due date falls into `later`.
 Every sort is deterministic. Missing values sort last in both directions, and
 ties always break on task id ascending:
 
-- `manual` — `focus_rank`, then id
+- `manual` — `board_rank` (785 manual order), then id
 - `title`, `due`, `planned`, `created`, `updated`
 - `priority` — urgent → high → medium → low
 - `status` — todo → in progress → blocked → done

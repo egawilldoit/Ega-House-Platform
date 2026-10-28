@@ -300,7 +300,16 @@ export function getTaskSavedViewLegacyColumns(view: TaskViewDefinition) {
     status: status?.values.length === 1 ? status.values[0] : null,
     projectId: project?.values.length === 1 ? project.values[0] : null,
     goalId: goal?.values.length === 1 ? goal.values[0] : null,
-    dueFilter: due?.values[0] ?? "all",
+    dueFilter:
+      due?.values[0] === "overdue"
+        ? "overdue"
+        : due?.values[0] === "today"
+          ? "due_today"
+          : due?.values[0] === "next_7_days"
+            ? "due_soon"
+            : due?.values[0] === "none"
+              ? "no_due_date"
+              : "all",
     sortValue:
       view.sort.key === "due" && view.sort.direction === "asc"
         ? "due_date_asc"
