@@ -4,7 +4,9 @@ import { useCallback, useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { formatTaskToken } from "@/lib/task-domain";
 import type { TaskDrawerDetail } from "@/lib/services/task-service";
+
 import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
+
 import { StatusIcon, type TaskStatusIconName } from "@/components/ui/status-icon";
 import { PriorityIcon, type TaskPriorityIconName } from "@/components/ui/priority-icon";
 import { TaskDrawer } from "./task-drawer";
@@ -42,7 +44,7 @@ type PropertyFieldProps = {
   action: TaskFieldAction;
   taskId: string;
   returnTo: string;
-  field: "status" | "priority" | "dueDate" | "estimateMinutes" | "blockedReason" | "title";
+  field: "status" | "priority" | "startDate" | "dueDate" | "estimateMinutes" | "blockedReason" | "title";
   label: string;
   value: string;
   type?: "date" | "number";
@@ -156,6 +158,9 @@ type TaskDrawerHostProps = {
   updateError?: string | null;
   /** Field-patch success surfaced by the action's redirect. */
   updateSuccess?: string | null;
+  /** Add/remove "blocked by" edges for the selected task. */
+  addDependencyAction: TaskFieldAction;
+  removeDependencyAction: TaskFieldAction;
 };
 
 /**
@@ -184,6 +189,8 @@ export function TaskDrawerHost({
   subtaskActions,
   updateError = null,
   updateSuccess = null,
+  addDependencyAction,
+  removeDependencyAction,
 }: TaskDrawerHostProps) {
   const { taskId, mode, close, setMode } = useTaskDrawerParam();
   // Scoped to the task it belongs to: a stale flag must never make a later,
@@ -405,6 +412,18 @@ export function TaskDrawerHost({
             }))}
           />
         </dd>
+        <dt className="text-[color:var(--ega-text-tertiary)]">Start</dt>
+        <dd className="text-[color:var(--ega-text)]">
+          <PropertyField
+            action={updateFieldAction}
+            taskId={task.id}
+            returnTo={returnTo}
+            field="startDate"
+            label="Start date"
+            value={task.start_date ?? ""}
+            type="date"
+          />
+        </dd>
         <dt className="text-[color:var(--ega-text-tertiary)]">Due</dt>
         <dd className="text-[color:var(--ega-text)]">
           <PropertyField
@@ -494,6 +513,144 @@ export function TaskDrawerHost({
       ) : (
         <TaskActivityList items={activity} hasMore={activityHasMore} />
       )}
+
+      <TaskDependencySection
+        task={task}
+        returnTo={returnTo}
+        addAction={addDependencyAction}
+        removeAction={removeDependencyAction}
+      />
     </TaskDrawer>
+  );
+}
+
+/**
+ * "Blocked by" editor plus the read-only "Blocking" list.
+ *
+ * The picker is a small fixed-set listbox served by the native select for this
+ * stage; dependency edges are informational and never write status or dates.
+ */
+function TaskDependencySection({
+  task,
+  returnTo,
+  addAction,
+  removeAction,
+}: {
+  task: TaskDrawerDetail;
+  returnTo: string;
+  addAction: TaskFieldAction;
+  removeAction: TaskFieldAction;
+}) {
+  const detail = task.dependencies;
+  const options = detail?.options ?? [];
+
+  return (
+    <section className="mt-5 border-t border-[var(--ega-divider)] pt-3" aria-labelledby={`deps-${task.id}`}>
+      <h2
+        id={`deps-${task.id}`}
+        className="text-[length:var(--text-meta)] font-semibold text-[color:var(--ega-text-secondary)]"
+      >
+        Dependencies
+      </h2>
+      <p className="mt-1 text-[length:var(--text-meta)] text-[color:var(--ega-text-tertiary)]">
+        Informational only. Adding a dependency never changes status, dates or
+        scheduling.
+      </p>
+
+      {task.dependencyError ? (
+        <p role="alert" className="mt-2 text-[length:var(--text-meta)] text-[color:var(--status-overdue)]">
+          {task.dependencyError}
+        </p>
+      ) : null}
+
+      <h3 className="mt-3 text-[length:var(--text-meta)] text-[color:var(--ega-text-tertiary)]">
+        Blocked by
+      </h3>
+      {!detail || detail.blockedBy.length === 0 ? (
+        <p className="mt-1 text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
+          Not blocked by another task.
+        </p>
+      ) : (
+        <ul className="mt-1 flex flex-col gap-1">
+          {detail.blockedBy.map((dependency) => (
+            <li key={dependency.id} className="flex flex-wrap items-center gap-2 text-sm">
+              <span>{dependency.title ?? "Unavailable task"}</span>
+              {dependency.startDate || dependency.dueDate ? (
+                <span className="text-[length:var(--text-meta)] text-[color:var(--ega-text-tertiary)]">
+                  {dependency.startDate ?? "No start"} – {dependency.dueDate ?? "No due date"}
+                </span>
+              ) : null}
+              <form action={removeAction}>
+                <input type="hidden" name="taskId" value={task.id} />
+                <input type="hidden" name="blockedByTaskId" value={dependency.id} />
+                <input type="hidden" name="returnTo" value={returnTo} />
+                <button
+                  type="submit"
+                  className="text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)] underline underline-offset-2"
+                  aria-label={`Remove dependency on ${dependency.title ?? "unavailable task"}`}
+                >
+                  Remove
+                </button>
+              </form>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {options.length > 0 ? (
+        <form action={addAction} className="mt-2 flex flex-wrap items-end gap-2">
+          <input type="hidden" name="taskId" value={task.id} />
+          <input type="hidden" name="returnTo" value={returnTo} />
+          <label className="flex flex-col gap-1 text-[length:var(--text-meta)] text-[color:var(--ega-text-tertiary)]">
+            Add blocked-by task
+            <select
+              name="blockedByTaskId"
+              defaultValue=""
+              required
+              className="h-8 min-w-[12rem] rounded-[var(--radius-sm)] border border-[var(--ega-border)] bg-[var(--ega-surface)] px-1.5 text-xs text-[color:var(--ega-text)]"
+            >
+              <option value="" disabled>
+                Choose a task
+              </option>
+              {options.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.title}
+                </option>
+              ))}
+            </select>
+          </label>
+          <PendingSubmitButton
+            type="submit"
+            variant="secondary"
+            size="sm"
+            className="h-8 px-2 text-xs"
+            pendingLabel="Adding…"
+          >
+            Add
+          </PendingSubmitButton>
+        </form>
+      ) : (
+        <p className="mt-2 text-[length:var(--text-meta)] text-[color:var(--ega-text-tertiary)]">
+          No other task available to link.
+        </p>
+      )}
+
+      <h3 className="mt-3 text-[length:var(--text-meta)] text-[color:var(--ega-text-tertiary)]">
+        Blocking
+      </h3>
+      {!detail || detail.blocking.length === 0 ? (
+        <p className="mt-1 text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
+          Not blocking another task.
+        </p>
+      ) : (
+        <ul className="mt-1 flex flex-col gap-1">
+          {detail.blocking.map((dependency) => (
+            <li key={dependency.id} className="text-sm">
+              {dependency.title ?? "Unavailable task"}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }

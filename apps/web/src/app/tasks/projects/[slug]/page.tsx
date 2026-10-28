@@ -17,8 +17,10 @@ import { TaskDrawerHost } from "@/components/tasks/drawer/task-drawer-host";
 import { buildTaskFilterReturnPath } from "@/components/tasks/task-filter-url";
 import { TasksWorkspaceShell } from "@/components/tasks/tasks-workspace-shell";
 import {
+  addTaskDependencyAction,
   deleteTaskAction,
   pinTaskAction,
+  removeTaskDependencyAction,
   unpinTaskAction,
   updateTaskFieldAction,
   updateTaskFieldDraftAction,
@@ -496,6 +498,8 @@ export default async function ProjectDetailPage({
           subtaskActions={TASK_SUBTASK_ACTIONS}
           updateError={taskUpdateTaskId === selectedTaskId ? taskUpdateError : null}
           updateSuccess={taskUpdateTaskId === selectedTaskId ? taskUpdateSuccess : null}
+          addDependencyAction={addTaskDependencyAction}
+          removeDependencyAction={removeTaskDependencyAction}
         />
       ) : null}
     </TasksWorkspaceShell>
