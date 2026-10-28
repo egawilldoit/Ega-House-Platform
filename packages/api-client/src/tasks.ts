@@ -3,6 +3,14 @@ import type {
   MobileTaskListResponse,
   MobileTaskMutationResponse,
 } from "@ega/contracts/mobile";
+import type {
+  TaskCommentCreateInput,
+  TaskCommentDeleteResponse,
+  TaskCommentListResponse,
+  TaskCommentMutationResponse,
+  TaskCommentReactionResponse,
+  TaskCommentUpdateInput,
+} from "@ega/contracts";
 import {
   toTaskViewSearchPairs,
   type TaskDueFilter,
@@ -60,6 +68,25 @@ export type TasksApi = {
   cancelReminder(taskId: string, reminderId: string): Promise<ApiResult<MobileTaskMutationResponse>>;
   setRecurrence(taskId: string, input: SetTaskRecurrenceInput): Promise<ApiResult<MobileTaskMutationResponse>>;
   clearRecurrence(taskId: string): Promise<ApiResult<MobileTaskMutationResponse>>;
+  listComments(taskId: string): Promise<ApiResult<TaskCommentListResponse>>;
+  createComment(
+    taskId: string,
+    input: TaskCommentCreateInput,
+  ): Promise<ApiResult<TaskCommentMutationResponse>>;
+  updateComment(
+    taskId: string,
+    commentId: string,
+    input: TaskCommentUpdateInput,
+  ): Promise<ApiResult<TaskCommentMutationResponse>>;
+  deleteComment(
+    taskId: string,
+    commentId: string,
+  ): Promise<ApiResult<TaskCommentDeleteResponse>>;
+  toggleCommentReaction(
+    taskId: string,
+    commentId: string,
+    emoji: string,
+  ): Promise<ApiResult<TaskCommentReactionResponse>>;
 };
 
 function queryValue(value: string | number | boolean | null | undefined): string | undefined {
@@ -155,6 +182,41 @@ export function createTasksApi(http: HttpClient): TasksApi {
       return http.request<MobileTaskMutationResponse>({
         path: idPath(taskId, "/recurrence"),
         method: "DELETE",
+      });
+    },
+    listComments(taskId) {
+      return http.request<TaskCommentListResponse>({
+        path: idPath(taskId, "/comments"),
+      });
+    },
+    createComment(taskId, input) {
+      return http.request<TaskCommentMutationResponse>({
+        path: idPath(taskId, "/comments"),
+        method: "POST",
+        body: input,
+      });
+    },
+    updateComment(taskId, commentId, input) {
+      return http.request<TaskCommentMutationResponse>({
+        path: idPath(taskId, `/comments/${encodeURIComponent(commentId)}`),
+        method: "PATCH",
+        body: input,
+      });
+    },
+    deleteComment(taskId, commentId) {
+      return http.request<TaskCommentDeleteResponse>({
+        path: idPath(taskId, `/comments/${encodeURIComponent(commentId)}`),
+        method: "DELETE",
+      });
+    },
+    toggleCommentReaction(taskId, commentId, emoji) {
+      return http.request<TaskCommentReactionResponse>({
+        path: idPath(
+          taskId,
+          `/comments/${encodeURIComponent(commentId)}/reactions`,
+        ),
+        method: "POST",
+        body: { emoji },
       });
     },
   };

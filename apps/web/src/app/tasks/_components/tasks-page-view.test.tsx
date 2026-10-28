@@ -5,6 +5,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }),
+  usePathname: () => "/tasks",
+  useSearchParams: () => new URLSearchParams(),
+  redirect: vi.fn(),
 }));
 
 vi.mock("next/link", () => ({
@@ -147,6 +150,13 @@ function buildModel(overrides: Partial<TasksPageViewModel> = {}): TasksPageViewM
     selectedTaskSubtasks: [],
     selectedTaskActivity: [],
     selectedTaskActivityHasMore: false,
+    selectedTaskComments: {
+      comments: [],
+      mentionCandidates: [],
+      errorMessage: null,
+    },
+    selectedTaskCommentMentions: [],
+    selectedTaskCommentError: null,
     selectedTaskIsFavourite: false,
     subtaskCounts: {},
     projects: [{ id: "project-1", name: "EGA House" }],

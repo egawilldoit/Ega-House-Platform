@@ -28,6 +28,7 @@ import { getTodayLocalIsoDate } from "@/lib/task-due-date";
 import { getTaskDrawerDetail, type TaskDrawerDetail } from "@/lib/services/task-service";
 import { getSubtaskCountsForTasks, listTaskSubtasks } from "@/lib/services/subtask-service";
 import { getTaskActivity } from "@/lib/services/task-activity-service";
+import { getTaskCommentThread } from "@/lib/services/task-comment-service";
 import { isFavorite } from "@/lib/services/favorite-service";
 import { getTasksWorkspaceData } from "@/lib/services/task-service";
 import { getWebTimeContext } from "@/lib/services/time-context-service";
@@ -294,6 +295,13 @@ export async function getTasksPageModel(searchParams: TasksSearchParams) {
     : { items: [], hasMore: false };
   const selectedTaskActivity = selectedTaskActivityPage.items;
   const selectedTaskActivityHasMore = selectedTaskActivityPage.hasMore;
+  const selectedTaskComments = selectedTaskId
+    ? await getTaskCommentThread(selectedTaskId)
+    : {
+        comments: [],
+        mentionCandidates: [],
+        errorMessage: null,
+      };
   const selectedTaskIsFavourite = selectedTaskId
     ? await isFavorite("task", selectedTaskId)
     : false;
@@ -307,6 +315,9 @@ export async function getTasksPageModel(searchParams: TasksSearchParams) {
     subtaskCounts,
     selectedTaskActivity,
     selectedTaskActivityHasMore,
+    selectedTaskComments,
+    selectedTaskCommentMentions: selectedTaskComments.mentionCandidates,
+    selectedTaskCommentError: selectedTaskComments.errorMessage,
     selectedTaskIsFavourite,
     parsed,
     projects,

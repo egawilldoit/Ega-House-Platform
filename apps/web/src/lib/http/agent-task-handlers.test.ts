@@ -38,6 +38,7 @@ const mockRepo: TokenRepository = {
 function makeAuthContext(overrides?: Partial<AgentAuthContext>): AgentAuthContext {
   return {
     tokenId: "token-1",
+    tokenName: "Codex",
     ownerUserId: "00000000-0000-0000-0000-000000000001",
     scopes: {
       projects: { read: true },

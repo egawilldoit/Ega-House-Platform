@@ -97,6 +97,7 @@ export async function resolveAgentAuth(
     ok: true,
     context: {
       tokenId: record.id,
+      tokenName: record.name,
       ownerUserId: record.ownerUserId,
       scopes: record.scopes,
     },
@@ -174,6 +175,7 @@ export function getCapabilities(scopes: AgentTokenScopes): AgentCapabilities {
       updateAny: tasks.updateAny ?? false,
       archive: tasks.archive ?? false,
       bulk: tasks.bulk ?? false,
+      comment: tasks.comment ?? false,
     },
     projects: { read: projects.read ?? false },
     goals: { read: goals.read ?? false },
