@@ -5,12 +5,17 @@ import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 
 import type { WorkspaceShellMetrics } from "@/lib/workspace-shell";
 import { SidebarCreateButton } from "./sidebar-create-button";
-import { SidebarNavigation, type SidebarProject } from "./sidebar-navigation";
+import {
+  SidebarNavigation,
+  type SidebarFavorite,
+  type SidebarProject,
+} from "./sidebar-navigation";
 import { WorkspaceSearchTrigger } from "./workspace-search-trigger";
 
-export type { SidebarGoal, SidebarProject } from "./sidebar-navigation";
+export type { SidebarFavorite, SidebarGoal, SidebarProject } from "./sidebar-navigation";
 
 type SidebarProps = {
+  favorites?: SidebarFavorite[];
   projects?: SidebarProject[];
   metrics: WorkspaceShellMetrics;
   collapsed?: boolean;
@@ -18,6 +23,7 @@ type SidebarProps = {
 };
 
 export function Sidebar({
+  favorites = [],
   projects = [],
   metrics,
   collapsed = false,
@@ -68,6 +74,7 @@ export function Sidebar({
       {/* The only scroll region: primary navigation, workspaces, system nav. */}
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain [scrollbar-width:thin]">
         <SidebarNavigation
+          favorites={favorites}
           projects={projects}
           metrics={metrics}
           compact={collapsed}

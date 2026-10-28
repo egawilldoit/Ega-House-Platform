@@ -662,6 +662,35 @@ export const taskActivityEvents = pgTable(
   ],
 );
 
+/**
+ * Durable navigation favourites (EGA-787). Distinct from `tasks.focus_rank`
+ * (Today ranking): a favourite is a sidebar/page shortcut for a project or task.
+ * Polymorphic entity references are validated against the owner in the RLS
+ * WITH CHECK, so an arbitrary UUID plus owner id is not enough.
+ */
+export const favorites = pgTable(
+  "favorites",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    ownerUserId: uuid("owner_user_id").default(sql`auth.uid()`).notNull(),
+    entityKind: varchar("entity_kind", { length: 16 }).notNull(),
+    entityId: uuid("entity_id").notNull(),
+    position: integer("position").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("favorites_owner_entity_unique").on(
+      table.ownerUserId,
+      table.entityKind,
+      table.entityId,
+    ),
+    index("favorites_owner_position_idx").on(table.ownerUserId, table.position),
+    check("favorites_entity_kind_check", sql`${table.entityKind} in ('project', 'task')`),
+    check("favorites_position_check", sql`${table.position} >= 0`),
+  ],
+);
+
 export const taskSavedViews = pgTable(
   "task_saved_views",
   {
