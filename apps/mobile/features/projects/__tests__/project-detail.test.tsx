@@ -60,7 +60,7 @@ const DETAIL: ProjectIdentityReadModel = {
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-02T00:00:00.000Z',
   },
-  goals: [{ id: 'g-1', title: 'Prove the loop', projectId: 'p-1' }],
+  goals: [{ id: 'g-1', title: 'Prove the loop', projectId: 'p-1', health: null, nextStep: null }],
 };
 
 function collectText(node: TestRenderer.ReactTestInstance): string[] {
