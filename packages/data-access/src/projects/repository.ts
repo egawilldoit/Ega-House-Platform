@@ -51,6 +51,8 @@ type GoalRow = {
   id: string;
   title: string;
   project_id: string;
+  health: string | null;
+  next_step: string | null;
 };
 
 function mapProjectRow(row: ProjectRow): ProjectRecord {
@@ -251,7 +253,7 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
   ): Promise<RepositoryResult<ProjectGoalRecord[]>> {
     const { data, error } = await this.supabase
       .from("goals")
-      .select("id, title, project_id")
+      .select("id, title, project_id, health, next_step")
       .eq("project_id", projectId)
       .eq("owner_user_id", actor.userId)
       .order("created_at", { ascending: false });
@@ -266,6 +268,8 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
         id: row.id,
         title: row.title,
         projectId: row.project_id,
+        health: row.health,
+        nextStep: row.next_step,
       })),
     };
   }

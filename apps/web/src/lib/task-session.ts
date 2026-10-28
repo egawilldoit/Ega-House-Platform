@@ -1,45 +1,21 @@
 import { createClient } from "@/lib/supabase/server";
-import type { Tables } from "@/lib/supabase/database.types";
 import { getCurrentLocalDayWindow } from "@ega/domain/time-context";
+import {
+  getSessionDurationWithinWindowSeconds,
+  getTaskSessionDurationSeconds,
+  sessionOverlapsWindow,
+  type SessionWindow,
+  type TaskSessionDurationRow,
+} from "@/lib/session-duration";
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
-type TaskSessionDurationRow = Pick<
-  Tables<"task_sessions">,
-  "task_id" | "started_at" | "ended_at" | "duration_seconds"
->;
-
-type SessionWindow = {
-  startIso: string;
-  endIso: string;
-};
-
-function toMs(iso: string) {
-  const value = new Date(iso).getTime();
-  return Number.isFinite(value) ? value : null;
-}
-
-export function getTaskSessionDurationSeconds(
-  session: TaskSessionDurationRow,
-  nowIso = new Date().toISOString(),
-) {
-  const sessionStartMs = toMs(session.started_at);
-  const sessionEndMs = session.ended_at ? toMs(session.ended_at) : toMs(nowIso);
-
-  if (
-    sessionStartMs !== null &&
-    sessionEndMs !== null &&
-    sessionEndMs >= sessionStartMs
-  ) {
-    return Math.floor((sessionEndMs - sessionStartMs) / 1000);
-  }
-
-  if (typeof session.duration_seconds === "number") {
-    return Math.max(0, session.duration_seconds);
-  }
-
-  return 0;
-}
+export {
+  getSessionDurationWithinWindowSeconds,
+  getTaskSessionDurationSeconds,
+  sessionOverlapsWindow,
+} from "@/lib/session-duration";
+export type { SessionWindow, TaskSessionDurationRow } from "@/lib/session-duration";
 
 export function getCurrentDayWindow(now = new Date(), timezone?: string): SessionWindow {
   if (timezone) {
@@ -56,35 +32,6 @@ export function getCurrentDayWindow(now = new Date(), timezone?: string): Sessio
     startIso: dayStart.toISOString(),
     endIso: now.toISOString(),
   };
-}
-
-export function getSessionDurationWithinWindowSeconds(
-  session: TaskSessionDurationRow,
-  window: SessionWindow,
-  nowIso = new Date().toISOString(),
-) {
-  const sessionStartMs = toMs(session.started_at);
-  const sessionEndMs = session.ended_at ? toMs(session.ended_at) : toMs(nowIso);
-  const windowStartMs = toMs(window.startIso);
-  const windowEndMs = toMs(window.endIso);
-
-  if (
-    sessionStartMs === null ||
-    sessionEndMs === null ||
-    windowStartMs === null ||
-    windowEndMs === null
-  ) {
-    return 0;
-  }
-
-  const overlapStart = Math.max(sessionStartMs, windowStartMs);
-  const overlapEnd = Math.min(sessionEndMs, windowEndMs);
-
-  if (overlapEnd <= overlapStart) {
-    return 0;
-  }
-
-  return Math.floor((overlapEnd - overlapStart) / 1000);
 }
 
 export async function getTaskTotalDurationMap(
@@ -119,6 +66,63 @@ export async function getTaskTotalDurationMap(
   }
 
   return totals;
+}
+
+export type TaskSessionSummary = {
+  totalSeconds: number;
+  weekSeconds: number;
+  weekSessionCount: number;
+};
+
+/**
+ * One bounded session read for a Task scope, summarized for both lifetime
+ * tracked time and a supplied week window. Callers pass every Task id whose
+ * historical time should be retained (including archived Tasks).
+ */
+export async function getTaskSessionSummaryMap(
+  supabase: SupabaseServerClient,
+  taskIds: string[],
+  weekWindow: SessionWindow,
+  nowIso = new Date().toISOString(),
+): Promise<{
+  sessions: TaskSessionDurationRow[];
+  byTask: Record<string, TaskSessionSummary>;
+}> {
+  const uniqueTaskIds = Array.from(new Set(taskIds.filter(Boolean)));
+
+  if (uniqueTaskIds.length === 0) {
+    return { sessions: [], byTask: {} };
+  }
+
+  const { data, error } = await supabase
+    .from("task_sessions")
+    .select("task_id, started_at, ended_at, duration_seconds")
+    .in("task_id", uniqueTaskIds);
+
+  if (error) {
+    throw new Error(`Failed to load task session totals: ${error.message}`);
+  }
+
+  const sessions = (data ?? []) as TaskSessionDurationRow[];
+  const summaries: Record<string, TaskSessionSummary> = {};
+
+  for (const session of sessions) {
+    const summary = summaries[session.task_id] ?? {
+      totalSeconds: 0,
+      weekSeconds: 0,
+      weekSessionCount: 0,
+    };
+
+    summary.totalSeconds += getTaskSessionDurationSeconds(session, nowIso);
+    summary.weekSeconds += getSessionDurationWithinWindowSeconds(session, weekWindow, nowIso);
+    if (sessionOverlapsWindow(session, weekWindow, nowIso)) {
+      summary.weekSessionCount += 1;
+    }
+
+    summaries[session.task_id] = summary;
+  }
+
+  return { sessions, byTask: summaries };
 }
 
 // Keep the web import surface stable while using the application-owned formatter.
