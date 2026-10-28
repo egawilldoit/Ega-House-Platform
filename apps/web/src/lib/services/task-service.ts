@@ -636,6 +636,17 @@ function isTaskRecurrencesUnavailable(error: unknown) {
   );
 }
 
+/** Keep `.in()` URLs bounded when a filtered view loads thousands of rows. */
+const TASK_ID_QUERY_CHUNK = 200;
+
+function chunkTaskIds(taskIds: string[]) {
+  const chunks: string[][] = [];
+  for (let index = 0; index < taskIds.length; index += TASK_ID_QUERY_CHUNK) {
+    chunks.push(taskIds.slice(index, index + TASK_ID_QUERY_CHUNK));
+  }
+  return chunks;
+}
+
 export async function getTaskRemindersForTasks(
   supabase: SupabaseServerClient,
   taskIds: string[],
@@ -647,22 +658,24 @@ export async function getTaskRemindersForTasks(
     return remindersByTaskId;
   }
 
-  const { data, error } = await supabase
-    .from("task_reminders")
-    .select(
-      "id, task_id, remind_at, channel, status, sent_at, failure_reason, created_at, updated_at",
-    )
-    .in("task_id", uniqueTaskIds)
-    .order("remind_at", { ascending: false });
+  for (const chunk of chunkTaskIds(uniqueTaskIds)) {
+    const { data, error } = await supabase
+      .from("task_reminders")
+      .select(
+        "id, task_id, remind_at, channel, status, sent_at, failure_reason, created_at, updated_at",
+      )
+      .in("task_id", chunk)
+      .order("remind_at", { ascending: false });
 
-  if (error) {
-    throw new Error(`Failed to load task reminders: ${error.message}`);
-  }
+    if (error) {
+      throw new Error(`Failed to load task reminders: ${error.message}`);
+    }
 
-  for (const reminder of data ?? []) {
-    const normalizedReminder = normalizeTaskReminderRow(reminder);
-    remindersByTaskId[normalizedReminder.task_id] ??= [];
-    remindersByTaskId[normalizedReminder.task_id]?.push(normalizedReminder);
+    for (const reminder of data ?? []) {
+      const normalizedReminder = normalizeTaskReminderRow(reminder);
+      remindersByTaskId[normalizedReminder.task_id] ??= [];
+      remindersByTaskId[normalizedReminder.task_id]?.push(normalizedReminder);
+    }
   }
 
   return remindersByTaskId;
@@ -679,33 +692,35 @@ export async function getTaskRecurrencesForTasks(
     return recurrencesByTaskId;
   }
 
-  const { data, error } = await supabase
-    .from("task_recurrences")
-    .select(
-      "id, task_id, rule, anchor_date, timezone, next_occurrence_date, last_generated_at, created_at, updated_at",
-    )
-    .in("task_id", uniqueTaskIds);
+  for (const chunk of chunkTaskIds(uniqueTaskIds)) {
+    const { data, error } = await supabase
+      .from("task_recurrences")
+      .select(
+        "id, task_id, rule, anchor_date, timezone, next_occurrence_date, last_generated_at, created_at, updated_at",
+      )
+      .in("task_id", chunk);
 
-  if (error) {
-    if (isTaskRecurrencesUnavailable(error)) {
-      console.warn("task_recurrences unavailable during task recurrence load", {
-        taskCount: uniqueTaskIds.length,
-        code: error.code,
-        message: error.message,
-      });
-      return recurrencesByTaskId;
+    if (error) {
+      if (isTaskRecurrencesUnavailable(error)) {
+        console.warn("task_recurrences unavailable during task recurrence load", {
+          taskCount: uniqueTaskIds.length,
+          code: error.code,
+          message: error.message,
+        });
+        return recurrencesByTaskId;
+      }
+
+      throw new Error(`Failed to load task recurrences: ${error.message}`);
     }
 
-    throw new Error(`Failed to load task recurrences: ${error.message}`);
-  }
-
-  for (const recurrence of data ?? []) {
-    const normalizedRecurrence = normalizeTaskRecurrenceRow(recurrence);
-    if (!normalizedRecurrence) {
-      continue;
+    for (const recurrence of data ?? []) {
+      const normalizedRecurrence = normalizeTaskRecurrenceRow(recurrence);
+      if (!normalizedRecurrence) {
+        continue;
+      }
+      recurrencesByTaskId[normalizedRecurrence.task_id] ??= [];
+      recurrencesByTaskId[normalizedRecurrence.task_id]?.push(normalizedRecurrence);
     }
-    recurrencesByTaskId[normalizedRecurrence.task_id] ??= [];
-    recurrencesByTaskId[normalizedRecurrence.task_id]?.push(normalizedRecurrence);
   }
 
   return recurrencesByTaskId;

@@ -770,46 +770,73 @@ export class SupabaseTasksRepository implements TasksRepository {
   private async hydrateTasks(actor: AuthenticatedActor, rows: Row[]): Promise<RepositoryResult<TaskRecord[]>> {
     if (rows.length === 0) return { ok: true, value: [] };
     const taskIds = rows.map((row) => String(row.id));
+    const chunkSize = 200;
+    const chunks: string[][] = [];
+    for (let index = 0; index < taskIds.length; index += chunkSize) {
+      chunks.push(taskIds.slice(index, index + chunkSize));
+    }
 
-    const [reminders, recurrences, sessionTotals] = await Promise.all([
-      this.supabase
-        .from("task_reminders")
-        .select(REMINDER_SELECT)
-        .eq("owner_user_id", actor.userId)
-        .in("task_id", taskIds)
-        .order("remind_at", { ascending: true }),
-      this.supabase
-        .from("task_recurrences")
-        .select(RECURRENCE_SELECT)
-        .eq("owner_user_id", actor.userId)
-        .in("task_id", taskIds),
-      this.supabase
-        .from("task_sessions")
-        .select(SESSION_TOTAL_SELECT)
-        .eq("owner_user_id", actor.userId)
-        .in("task_id", taskIds),
+    const [reminderPages, recurrencePages, sessionPages] = await Promise.all([
+      Promise.all(
+        chunks.map((chunk) =>
+          this.supabase
+            .from("task_reminders")
+            .select(REMINDER_SELECT)
+            .eq("owner_user_id", actor.userId)
+            .in("task_id", chunk)
+            .order("remind_at", { ascending: true }),
+        ),
+      ),
+      Promise.all(
+        chunks.map((chunk) =>
+          this.supabase
+            .from("task_recurrences")
+            .select(RECURRENCE_SELECT)
+            .eq("owner_user_id", actor.userId)
+            .in("task_id", chunk),
+        ),
+      ),
+      Promise.all(
+        chunks.map((chunk) =>
+          this.supabase
+            .from("task_sessions")
+            .select(SESSION_TOTAL_SELECT)
+            .eq("owner_user_id", actor.userId)
+            .in("task_id", chunk),
+        ),
+      ),
     ]);
 
-    if (reminders.error) return failure(reminders.error);
-    if (recurrences.error) return failure(recurrences.error);
+    for (const page of reminderPages) {
+      if (page.error) return failure(page.error);
+    }
+    for (const page of recurrencePages) {
+      if (page.error) return failure(page.error);
+    }
 
     const durationByTaskId = new Map<string, number>();
-    for (const rawRow of asRows(sessionTotals.data)) {
-      const row = rawRow as Record<string, unknown>;
-      const taskId = String(row.task_id);
-      const seconds = typeof row.duration_seconds === "number" ? row.duration_seconds : Number(row.duration_seconds ?? 0);
-      durationByTaskId.set(taskId, (durationByTaskId.get(taskId) ?? 0) + (Number.isFinite(seconds) ? seconds : 0));
+    for (const page of sessionPages) {
+      for (const rawRow of asRows(page.data)) {
+        const row = rawRow as Record<string, unknown>;
+        const taskId = String(row.task_id);
+        const seconds = typeof row.duration_seconds === "number" ? row.duration_seconds : Number(row.duration_seconds ?? 0);
+        durationByTaskId.set(taskId, (durationByTaskId.get(taskId) ?? 0) + (Number.isFinite(seconds) ? seconds : 0));
+      }
     }
 
     const reminderMap = new Map<string, TaskReminderRecord[]>();
-    for (const row of asRows(reminders.data)) {
-      const taskId = String(row.task_id);
-      reminderMap.set(taskId, [...(reminderMap.get(taskId) ?? []), mapReminder(row)]);
+    for (const page of reminderPages) {
+      for (const row of asRows(page.data)) {
+        const taskId = String(row.task_id);
+        reminderMap.set(taskId, [...(reminderMap.get(taskId) ?? []), mapReminder(row)]);
+      }
     }
 
     const recurrenceMap = new Map<string, TaskRecurrenceRecord>();
-    for (const row of asRows(recurrences.data)) {
-      recurrenceMap.set(String(row.task_id), mapRecurrence(row));
+    for (const page of recurrencePages) {
+      for (const row of asRows(page.data)) {
+        recurrenceMap.set(String(row.task_id), mapRecurrence(row));
+      }
     }
 
     return {
