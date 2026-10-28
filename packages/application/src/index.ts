@@ -30,6 +30,7 @@ export * from "./operator/proposal";
 export * from "./operator/lifecycle";
 export * from "./timer/ports";
 export * from "./timer/service";
+export * from "./timer/tracked-time";
 export * from "./friction/ports";
 export * from "./friction/stale-blocked-signals";
 export * from "./friction/estimate-accuracy";
