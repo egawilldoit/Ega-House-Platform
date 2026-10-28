@@ -116,3 +116,24 @@ test("EGA-650: no chips when no filters are active", () => {
   });
   assert.equal(chips.length, 0);
 });
+
+test("EGA-792: table column state survives filter and sort changes", () => {
+  const withColumns: TaskFilterState = {
+    ...fullState,
+    cols: "task,project,status",
+    widths: "status:400",
+  };
+
+  const filtered = params(mergeTaskFilterUrl("/tasks", withColumns, { status: "todo" }));
+  assert.equal(filtered.get("cols"), "task,project,status");
+  assert.equal(filtered.get("widths"), "status:400");
+
+  const sorted = params(mergeTaskFilterUrl("/tasks", withColumns, { sort: "priority_desc" }));
+  assert.equal(sorted.get("cols"), "task,project,status");
+  assert.equal(sorted.get("widths"), "status:400");
+  assert.equal(sorted.get("sort"), "priority_desc");
+
+  const cleared = params(buildClearTaskFiltersUrl("/tasks", withColumns));
+  assert.equal(cleared.get("cols"), "task,project,status");
+  assert.equal(cleared.get("widths"), "status:400");
+});

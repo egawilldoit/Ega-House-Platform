@@ -11,6 +11,10 @@ vi.mock("next/link", () => ({
   ),
 }));
 
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ refresh: vi.fn(), replace: vi.fn(), push: vi.fn() }),
+}));
+
 vi.mock("@/app/tasks/actions", () => ({
   archiveManyCompletedTasksAction: vi.fn(),
   archiveTaskAction: vi.fn(),
@@ -32,6 +36,7 @@ vi.mock("@/app/tasks/actions", () => ({
   updateTaskEditorAction: vi.fn(),
   updateTaskReminderAction: vi.fn(),
   updateTaskInlineAction: vi.fn(),
+  updateTaskTableCellAction: vi.fn(),
 }));
 
 vi.mock("@/app/timer/actions", () => ({
@@ -49,6 +54,7 @@ vi.mock("@/app/tasks/create-task-form", () => ({
 }));
 
 import { buildTaskKanbanBoard } from "@/lib/task-list";
+import { normalizeTaskTableColumns } from "@ega/contracts/common/task-list";
 import { QUICK_TASK_EVENT } from "@/lib/workspace-events";
 import type { TaskRecord } from "@/lib/services/task-service";
 // Imports the mocked factory above, so assertions observe what the server
@@ -100,6 +106,9 @@ function buildModel(overrides: Partial<TasksPageViewModel> = {}): TasksPageViewM
       activeLayout: "list",
       activeDensity: "comfortable",
       activeView: "active",
+      tableColumns: normalizeTaskTableColumns(null),
+      columnsParam: null,
+      widthsParam: null,
       projectParam: "project-1",
       goalParam: "goal-1",
       savedViewDefinitionFilters: {
@@ -148,6 +157,8 @@ function buildModel(overrides: Partial<TasksPageViewModel> = {}): TasksPageViewM
       due: "overdue",
       sort: "due_date_asc",
       density: null,
+      cols: null,
+      widths: null,
     },
     kanbanBoard: buildTaskKanbanBoard(tasks, "in_progress"),
     inProgressCount: 1,

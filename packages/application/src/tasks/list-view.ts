@@ -1,6 +1,7 @@
 import {
   DEFAULT_TASK_DUE_FILTER,
   DEFAULT_TASK_SORT,
+  TASK_SORT_DEFINITIONS,
   type TaskDueFilter,
   type TaskSortValue,
 } from "@ega/contracts/common/task-list";
@@ -12,6 +13,8 @@ import type {
   MobileTaskProject,
 } from "@ega/contracts/mobile";
 import {
+  compareTaskField,
+  compareTaskIds,
   isTaskDueSoon,
   isTaskDueToday,
   isTaskOverdue,
@@ -81,7 +84,10 @@ export function toMobileTaskListItem(record: TaskRecord): MobileTaskListItem {
   };
 }
 
-type DueSortable = Pick<TaskRecord, "dueDate" | "status" | "updatedAt">;
+type DueSortable = Pick<
+  TaskRecord,
+  "id" | "title" | "dueDate" | "status" | "priority" | "estimateMinutes" | "updatedAt"
+>;
 
 function filterByDueFilter<T extends DueSortable>(
   tasks: T[],
@@ -102,32 +108,38 @@ function filterByDueFilter<T extends DueSortable>(
   }
 }
 
-function compareDueDates(
-  left: string | null,
-  right: string | null,
-  direction: "asc" | "desc",
-) {
-  if (!left && !right) return 0;
-  if (!left) return 1;
-  if (!right) return -1;
-  return direction === "asc"
-    ? left.localeCompare(right)
-    : right.localeCompare(left);
+function sortFieldValue(
+  task: DueSortable,
+  field: "title" | "due" | "priority" | "status" | "estimate" | "updated",
+): string | number | null {
+  switch (field) {
+    case "due":
+      return task.dueDate;
+    case "priority":
+      return task.priority;
+    case "status":
+      return task.status;
+    case "estimate":
+      return task.estimateMinutes;
+    case "updated":
+      return task.updatedAt;
+    case "title":
+    default:
+      return task.title;
+  }
 }
 
 function sortByValue<T extends DueSortable>(tasks: T[], sortValue: TaskSortValue): T[] {
+  const definition = TASK_SORT_DEFINITIONS[sortValue] ?? TASK_SORT_DEFINITIONS[DEFAULT_TASK_SORT];
+
   return [...tasks].sort((left, right) => {
-    if (sortValue === "due_date_asc") {
-      const dueResult = compareDueDates(left.dueDate, right.dueDate, "asc");
-      return dueResult !== 0 ? dueResult : right.updatedAt.localeCompare(left.updatedAt);
-    }
-
-    if (sortValue === "due_date_desc") {
-      const dueResult = compareDueDates(left.dueDate, right.dueDate, "desc");
-      return dueResult !== 0 ? dueResult : right.updatedAt.localeCompare(left.updatedAt);
-    }
-
-    return right.updatedAt.localeCompare(left.updatedAt);
+    const primary = compareTaskField(
+      definition.field,
+      definition.direction,
+      sortFieldValue(left, definition.field),
+      sortFieldValue(right, definition.field),
+    );
+    return primary !== 0 ? primary : compareTaskIds(left.id, right.id);
   });
 }
 

@@ -7,6 +7,11 @@ import {
   type TaskSortValue,
 } from "@/lib/task-list";
 import {
+  normalizeTaskTableColumns,
+  TASK_TABLE_DEFAULT_COLUMNS,
+  type TaskTableColumnConfig,
+} from "@ega/contracts/common/task-list";
+import {
   isTaskPriority,
   isTaskStatus,
   type TaskPriority,
@@ -34,17 +39,34 @@ export type TaskSavedViewFilters = {
   dueWithinDays: number | null;
 };
 
-export type TaskSavedViewDefinition = {
-  version: 1;
-  filters: {
-    activeTasks?: boolean;
-    status?: TaskStatus;
-    priority?: TaskPriority[];
-    estimateMinMinutes?: number;
-    estimateMaxMinutes?: number;
-    dueWithinDays?: number;
-  };
+export type TaskSavedViewFilterDefinition = {
+  activeTasks?: boolean;
+  status?: TaskStatus;
+  priority?: TaskPriority[];
+  estimateMinMinutes?: number;
+  estimateMaxMinutes?: number;
+  dueWithinDays?: number;
 };
+
+export type TaskSavedViewDefinitionV1 = {
+  version: 1;
+  filters: TaskSavedViewFilterDefinition;
+};
+
+/**
+ * Version 2 keeps the v1 filter shape and adds the per-view table column
+ * configuration. Project/goal/due/sort remain owned by the dedicated saved-view
+ * columns; this object never duplicates them.
+ */
+export type TaskSavedViewDefinitionV2 = {
+  version: 2;
+  filters: TaskSavedViewFilterDefinition;
+  columns: TaskTableColumnConfig[];
+};
+
+export type TaskSavedViewDefinition =
+  | TaskSavedViewDefinitionV1
+  | TaskSavedViewDefinitionV2;
 
 export function normalizeTaskSavedViewFilters(input: {
   status?: string | null;
@@ -121,19 +143,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-export function normalizeTaskSavedViewDefinition(
-  rawDefinition: unknown,
-): TaskSavedViewDefinition | null {
-  if (!isRecord(rawDefinition)) {
-    return null;
-  }
-
-  if (rawDefinition.version !== 1) {
-    return null;
-  }
-
-  const filters = isRecord(rawDefinition.filters) ? rawDefinition.filters : null;
-  if (!filters) {
+function normalizeSavedViewFilterDefinition(
+  rawFilters: unknown,
+): TaskSavedViewFilterDefinition | null {
+  if (!isRecord(rawFilters)) {
     return null;
   }
 
@@ -145,55 +158,105 @@ export function normalizeTaskSavedViewDefinition(
     "estimateMaxMinutes",
     "dueWithinDays",
   ]);
-  if (Object.keys(filters).some((key) => !allowedFilterKeys.has(key))) {
+  if (Object.keys(rawFilters).some((key) => !allowedFilterKeys.has(key))) {
     return null;
   }
 
-  const activeTasks = filters.activeTasks === true;
-  const status = typeof filters.status === "string" && isTaskStatus(filters.status)
-    ? filters.status
-    : null;
-  if (filters.status !== undefined && !status) {
+  const activeTasks = rawFilters.activeTasks === true;
+  const status =
+    typeof rawFilters.status === "string" && isTaskStatus(rawFilters.status)
+      ? rawFilters.status
+      : null;
+  if (rawFilters.status !== undefined && !status) {
     return null;
   }
-  const priority = Array.isArray(filters.priority)
+  const priority = Array.isArray(rawFilters.priority)
     ? Array.from(
-        new Set(filters.priority.filter((value): value is TaskPriority =>
-          typeof value === "string" && isTaskPriority(value),
-        )),
+        new Set(
+          rawFilters.priority.filter((value): value is TaskPriority =>
+            typeof value === "string" && isTaskPriority(value),
+          ),
+        ),
       )
     : [];
-  if (filters.priority !== undefined) {
-    if (!Array.isArray(filters.priority) || priority.length !== filters.priority.length) {
+  if (rawFilters.priority !== undefined) {
+    if (!Array.isArray(rawFilters.priority) || priority.length !== rawFilters.priority.length) {
       return null;
     }
   }
   const estimateMinMinutes =
-    typeof filters.estimateMinMinutes === "number" ? filters.estimateMinMinutes : Number.NaN;
+    typeof rawFilters.estimateMinMinutes === "number"
+      ? rawFilters.estimateMinMinutes
+      : Number.NaN;
   const normalizedEstimateMinMinutes =
     Number.isSafeInteger(estimateMinMinutes) && estimateMinMinutes > 0
       ? estimateMinMinutes
       : undefined;
-  if (filters.estimateMinMinutes !== undefined && !normalizedEstimateMinMinutes) {
+  if (rawFilters.estimateMinMinutes !== undefined && !normalizedEstimateMinMinutes) {
     return null;
   }
   const estimateMaxMinutes =
-    typeof filters.estimateMaxMinutes === "number" ? filters.estimateMaxMinutes : Number.NaN;
+    typeof rawFilters.estimateMaxMinutes === "number"
+      ? rawFilters.estimateMaxMinutes
+      : Number.NaN;
   const normalizedEstimateMaxMinutes =
     Number.isSafeInteger(estimateMaxMinutes) && estimateMaxMinutes > 0
       ? estimateMaxMinutes
       : undefined;
-  if (filters.estimateMaxMinutes !== undefined && !normalizedEstimateMaxMinutes) {
+  if (rawFilters.estimateMaxMinutes !== undefined && !normalizedEstimateMaxMinutes) {
     return null;
   }
   const dueWithinDays =
-    typeof filters.dueWithinDays === "number" ? filters.dueWithinDays : Number.NaN;
+    typeof rawFilters.dueWithinDays === "number"
+      ? rawFilters.dueWithinDays
+      : Number.NaN;
   const normalizedDueWithinDays =
     Number.isSafeInteger(dueWithinDays) && dueWithinDays > 0 ? dueWithinDays : undefined;
-  if (filters.dueWithinDays !== undefined && !normalizedDueWithinDays) {
+  if (rawFilters.dueWithinDays !== undefined && !normalizedDueWithinDays) {
     return null;
   }
 
+  return {
+    ...(activeTasks ? { activeTasks: true } : {}),
+    ...(status ? { status } : {}),
+    ...(priority.length > 0 ? { priority } : {}),
+    ...(normalizedEstimateMinMinutes
+      ? { estimateMinMinutes: normalizedEstimateMinMinutes }
+      : {}),
+    ...(normalizedEstimateMaxMinutes
+      ? { estimateMaxMinutes: normalizedEstimateMaxMinutes }
+      : {}),
+    ...(normalizedDueWithinDays ? { dueWithinDays: normalizedDueWithinDays } : {}),
+  };
+}
+
+export function normalizeTaskSavedViewDefinition(
+  rawDefinition: unknown,
+): TaskSavedViewDefinition | null {
+  if (!isRecord(rawDefinition)) {
+    return null;
+  }
+
+  if (rawDefinition.version !== 1 && rawDefinition.version !== 2) {
+    return null;
+  }
+
+  const filters = normalizeSavedViewFilterDefinition(rawDefinition.filters);
+  if (!filters) {
+    return null;
+  }
+
+  if (rawDefinition.version === 2) {
+    return {
+      version: 2,
+      filters,
+      columns: normalizeTaskTableColumns(rawDefinition.columns),
+    };
+  }
+
+  const activeTasks = filters.activeTasks === true;
+  const status = filters.status ?? null;
+  const priority = filters.priority ?? [];
   const allowedPriority =
     priority.length === DEEP_WORK_PRIORITIES.length &&
     DEEP_WORK_PRIORITIES.every((value) => priority.includes(value));
@@ -201,30 +264,30 @@ export function normalizeTaskSavedViewDefinition(
     activeTasks &&
     !status &&
     allowedPriority &&
-    normalizedEstimateMinMinutes === 30 &&
-    normalizedEstimateMaxMinutes === undefined &&
-    normalizedDueWithinDays === undefined;
+    filters.estimateMinMinutes === 30 &&
+    filters.estimateMaxMinutes === undefined &&
+    filters.dueWithinDays === undefined;
   const isQuickWinsDefinition =
     activeTasks &&
     !status &&
     priority.length === 0 &&
-    normalizedEstimateMinMinutes === undefined &&
-    normalizedEstimateMaxMinutes === 15 &&
-    normalizedDueWithinDays === undefined;
+    filters.estimateMinMinutes === undefined &&
+    filters.estimateMaxMinutes === 15 &&
+    filters.dueWithinDays === undefined;
   const isBlockedDefinition =
     activeTasks &&
     status === "blocked" &&
     priority.length === 0 &&
-    normalizedEstimateMinMinutes === undefined &&
-    normalizedEstimateMaxMinutes === undefined &&
-    normalizedDueWithinDays === undefined;
+    filters.estimateMinMinutes === undefined &&
+    filters.estimateMaxMinutes === undefined &&
+    filters.dueWithinDays === undefined;
   const isDueThisWeekDefinition =
     activeTasks &&
     !status &&
     priority.length === 0 &&
-    normalizedEstimateMinMinutes === undefined &&
-    normalizedEstimateMaxMinutes === undefined &&
-    normalizedDueWithinDays === 7;
+    filters.estimateMinMinutes === undefined &&
+    filters.estimateMaxMinutes === undefined &&
+    filters.dueWithinDays === 7;
 
   if (isDeepWorkDefinition) {
     return DEEP_WORK_SAVED_VIEW_DEFINITION;
@@ -242,7 +305,9 @@ export function normalizeTaskSavedViewDefinition(
     return DUE_THIS_WEEK_SAVED_VIEW_DEFINITION;
   }
 
-  return null;
+  // An old custom definition still carries usable filters even though it has
+  // no column config; it reads as v1 and gets the default table columns.
+  return { version: 1, filters };
 }
 
 export const DEEP_WORK_SAVED_VIEW_DEFINITION = {
@@ -252,7 +317,7 @@ export const DEEP_WORK_SAVED_VIEW_DEFINITION = {
     priority: [...DEEP_WORK_PRIORITIES],
     estimateMinMinutes: 30,
   },
-} satisfies TaskSavedViewDefinition;
+} satisfies TaskSavedViewDefinitionV1;
 
 export const QUICK_WINS_SAVED_VIEW_DEFINITION = {
   version: 1,
@@ -260,7 +325,7 @@ export const QUICK_WINS_SAVED_VIEW_DEFINITION = {
     activeTasks: true,
     estimateMaxMinutes: 15,
   },
-} satisfies TaskSavedViewDefinition;
+} satisfies TaskSavedViewDefinitionV1;
 
 export const BLOCKED_SAVED_VIEW_DEFINITION = {
   version: 1,
@@ -268,7 +333,7 @@ export const BLOCKED_SAVED_VIEW_DEFINITION = {
     activeTasks: true,
     status: "blocked",
   },
-} satisfies TaskSavedViewDefinition;
+} satisfies TaskSavedViewDefinitionV1;
 
 export const DUE_THIS_WEEK_SAVED_VIEW_DEFINITION = {
   version: 1,
@@ -276,7 +341,7 @@ export const DUE_THIS_WEEK_SAVED_VIEW_DEFINITION = {
     activeTasks: true,
     dueWithinDays: 7,
   },
-} satisfies TaskSavedViewDefinition;
+} satisfies TaskSavedViewDefinitionV1;
 
 export function getTaskSavedViewFiltersFromDefinition(
   definition: TaskSavedViewDefinition | null,
@@ -285,41 +350,60 @@ export function getTaskSavedViewFiltersFromDefinition(
     return {};
   }
 
-  if (definition === DEEP_WORK_SAVED_VIEW_DEFINITION) {
-    return {
-      activeTasks: true,
-      priorityValues: [...DEEP_WORK_PRIORITIES],
-      estimateMinMinutes: 30,
-    };
+  const filters = definition.filters;
+  return {
+    ...(filters.activeTasks === true ? { activeTasks: true } : {}),
+    ...(filters.status ? { status: filters.status } : {}),
+    ...(filters.priority && filters.priority.length > 0
+      ? { priorityValues: [...filters.priority] }
+      : {}),
+    ...(filters.estimateMinMinutes
+      ? { estimateMinMinutes: filters.estimateMinMinutes }
+      : {}),
+    ...(filters.estimateMaxMinutes
+      ? { estimateMaxMinutes: filters.estimateMaxMinutes }
+      : {}),
+    ...(filters.dueWithinDays ? { dueWithinDays: filters.dueWithinDays } : {}),
+  };
+}
+
+/**
+ * Build the durable definition for a saved view written by the current app.
+ * Always v2 so the view records its column layout alongside the filters that
+ * have no dedicated column of their own.
+ */
+export function buildTaskSavedViewDefinition(
+  filters: TaskSavedViewFilters,
+  columns: readonly TaskTableColumnConfig[],
+): TaskSavedViewDefinitionV2 {
+  return {
+    version: 2,
+    filters: {
+      ...(filters.activeTasks ? { activeTasks: true } : {}),
+      ...(filters.status && isTaskStatus(filters.status) ? { status: filters.status } : {}),
+      ...(filters.priorityValues.length > 0
+        ? { priority: [...filters.priorityValues] }
+        : {}),
+      ...(filters.estimateMinMinutes
+        ? { estimateMinMinutes: filters.estimateMinMinutes }
+        : {}),
+      ...(filters.estimateMaxMinutes
+        ? { estimateMaxMinutes: filters.estimateMaxMinutes }
+        : {}),
+      ...(filters.dueWithinDays ? { dueWithinDays: filters.dueWithinDays } : {}),
+    },
+    columns: normalizeTaskTableColumns(columns),
+  };
+}
+
+export function getTaskSavedViewColumnsFromDefinition(
+  definition: TaskSavedViewDefinition | null,
+): TaskTableColumnConfig[] {
+  if (definition?.version === 2) {
+    return normalizeTaskTableColumns(definition.columns);
   }
 
-  if (definition === QUICK_WINS_SAVED_VIEW_DEFINITION) {
-    return {
-      activeTasks: true,
-      estimateMaxMinutes: 15,
-    };
-  }
-
-  if (definition === BLOCKED_SAVED_VIEW_DEFINITION) {
-    return {
-      activeTasks: true,
-      status: "blocked",
-    };
-  }
-
-  if (definition === DUE_THIS_WEEK_SAVED_VIEW_DEFINITION) {
-    return {
-      activeTasks: true,
-      dueWithinDays: 7,
-    };
-  }
-
-  const normalized = normalizeTaskSavedViewDefinition(definition);
-  if (!normalized) {
-    return {};
-  }
-
-  return getTaskSavedViewFiltersFromDefinition(normalized);
+  return TASK_TABLE_DEFAULT_COLUMNS.map((column) => ({ ...column }));
 }
 
 function hasDeepWorkPriority(filters: TaskSavedViewFilters) {
@@ -331,7 +415,7 @@ function hasDeepWorkPriority(filters: TaskSavedViewFilters) {
 
 export function getTaskSavedViewDefinitionFromFilters(
   filters: TaskSavedViewFilters,
-): TaskSavedViewDefinition | null {
+): TaskSavedViewDefinitionV1 | null {
   if (
     filters.activeTasks &&
     filters.status === null &&

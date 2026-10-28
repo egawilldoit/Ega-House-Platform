@@ -42,6 +42,8 @@ type TaskFilterControlsProps = {
   activeEstimateMax?: number | string | null;
   activeDueWithin?: number | string | null;
   activeTasksOnly?: boolean | null;
+  columns?: string | null;
+  widths?: string | null;
   projectOptions?: Array<{ id: string; name: string }>;
   goalOptions?: Array<{ id: string; title: string }>;
   includePriority?: boolean;
@@ -100,6 +102,8 @@ export function TaskFilterControls({
   activeEstimateMax = null,
   activeDueWithin = null,
   activeTasksOnly = null,
+  columns = null,
+  widths = null,
   projectOptions = [],
   goalOptions = [],
   includePriority = false,
@@ -121,6 +125,8 @@ export function TaskFilterControls({
     view: activeView,
     layout: activeLayout,
     density: activeDensity ?? DEFAULT_TASK_DENSITY,
+    cols: columns,
+    widths,
   };
 
   const hrefFor = (overrides: TaskFilterState) => mergeTaskFilterUrl(basePath, filterState, overrides);

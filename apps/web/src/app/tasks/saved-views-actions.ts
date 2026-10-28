@@ -7,10 +7,11 @@ import { GOAL_ARCHIVE_STATUS } from "@/lib/goal-archive";
 import { createClient } from "@/lib/supabase/server";
 import {
   getTaskSavedViewNameError,
-  getTaskSavedViewDefinitionFromFilters,
+  buildTaskSavedViewDefinition,
   normalizeTaskSavedViewFilters,
   validateTaskSavedViewScope,
 } from "@/lib/task-saved-views";
+import { parseTaskTableColumns } from "@/lib/task-table-columns";
 import { isMissingSupabaseTable } from "@/lib/supabase-error";
 
 const SAVED_VIEWS_UNAVAILABLE_MESSAGE =
@@ -84,6 +85,13 @@ function getSavedViewFilters(formData: FormData) {
   });
 }
 
+function getSavedViewColumns(formData: FormData) {
+  return parseTaskTableColumns({
+    cols: String(formData.get("cols") ?? ""),
+    widths: String(formData.get("widths") ?? ""),
+  });
+}
+
 async function validateSavedViewWrite(
   supabase: Awaited<ReturnType<typeof createClient>>,
   name: string,
@@ -92,14 +100,15 @@ async function validateSavedViewWrite(
   const nameError = getTaskSavedViewNameError(name);
 
   if (nameError) {
-    return { errorMessage: nameError, filters: null };
+    return { errorMessage: nameError, filters: null, columns: null };
   }
 
   const filters = getSavedViewFilters(formData);
+  const columns = getSavedViewColumns(formData);
   const scope = await getVisibleTaskScope(supabase);
 
   if (scope.errorMessage) {
-    return { errorMessage: scope.errorMessage, filters: null };
+    return { errorMessage: scope.errorMessage, filters: null, columns: null };
   }
 
   const scopeError = validateTaskSavedViewScope(filters, {
@@ -108,10 +117,10 @@ async function validateSavedViewWrite(
   });
 
   if (scopeError) {
-    return { errorMessage: scopeError, filters: null };
+    return { errorMessage: scopeError, filters: null, columns: null };
   }
 
-  return { errorMessage: null, filters };
+  return { errorMessage: null, filters, columns };
 }
 
 export async function createTaskSavedViewAction(formData: FormData) {
@@ -120,7 +129,7 @@ export async function createTaskSavedViewAction(formData: FormData) {
   const supabase = await createClient();
   const validation = await validateSavedViewWrite(supabase, name, formData);
 
-  if (validation.errorMessage || !validation.filters) {
+  if (validation.errorMessage || !validation.filters || !validation.columns) {
     redirectWithSavedViewFeedback(returnPath, {
       error: validation.errorMessage ?? "Unable to save the current filters right now.",
     });
@@ -133,7 +142,7 @@ export async function createTaskSavedViewAction(formData: FormData) {
     goal_id: validation.filters.goalId,
     due_filter: validation.filters.dueFilter,
     sort_value: validation.filters.sortValue,
-    definition_json: getTaskSavedViewDefinitionFromFilters(validation.filters),
+    definition_json: buildTaskSavedViewDefinition(validation.filters, validation.columns),
   });
 
   if (error) {
@@ -162,7 +171,7 @@ export async function updateTaskSavedViewAction(formData: FormData) {
   const supabase = await createClient();
   const validation = await validateSavedViewWrite(supabase, name, formData);
 
-  if (validation.errorMessage || !validation.filters) {
+  if (validation.errorMessage || !validation.filters || !validation.columns) {
     redirectWithSavedViewFeedback(returnPath, {
       error: validation.errorMessage ?? "Unable to update the saved view right now.",
     });
@@ -177,7 +186,7 @@ export async function updateTaskSavedViewAction(formData: FormData) {
       goal_id: validation.filters.goalId,
       due_filter: validation.filters.dueFilter,
       sort_value: validation.filters.sortValue,
-      definition_json: getTaskSavedViewDefinitionFromFilters(validation.filters),
+      definition_json: buildTaskSavedViewDefinition(validation.filters, validation.columns),
       updated_at: new Date().toISOString(),
     })
     .eq("id", viewId);

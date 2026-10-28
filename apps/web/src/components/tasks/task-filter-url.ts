@@ -23,6 +23,8 @@ export type TaskFilterState = {
   view?: string | null;
   layout?: TaskLayoutMode;
   density?: TaskDensity | null;
+  cols?: string | null;
+  widths?: string | null;
 };
 
 export const DEFAULT_TASK_FILTER_STATE = {
@@ -51,6 +53,24 @@ export function getSortLabel(value: TaskSortValue): string {
       return "Due soonest";
     case "due_date_desc":
       return "Due latest";
+    case "title_asc":
+      return "Title A–Z";
+    case "title_desc":
+      return "Title Z–A";
+    case "priority_asc":
+      return "Priority low → high";
+    case "priority_desc":
+      return "Priority high → low";
+    case "status_asc":
+      return "Status workflow";
+    case "status_desc":
+      return "Status reverse";
+    case "estimate_asc":
+      return "Estimate low → high";
+    case "estimate_desc":
+      return "Estimate high → low";
+    case "updated_asc":
+      return "Oldest first";
     default:
       return "Recent";
   }

@@ -5,6 +5,8 @@ import {
   GOAL_HEALTH_VALUES,
   TASK_PRIORITY_VALUES,
   TASK_STATUS_VALUES,
+  compareTaskField,
+  compareTaskIds,
   getNextTaskRecurrenceDateFromAnchor,
   isGoalHealth,
   isProjectArchivedStatus,
@@ -107,4 +109,21 @@ test("subtask progress is a plain count, never a parent completion signal", () =
     { done: 2, total: 3, label: "2/3" },
   );
   assert.deepEqual(getSubtaskProgress([]), { done: 0, total: 0, label: "0/0" });
+});
+
+test("shared sort field semantics keep priority/status ranks and nulls stable", () => {
+  assert.ok(compareTaskField("priority", "desc", "urgent", "low") < 0);
+  assert.ok(compareTaskField("priority", "asc", "urgent", "low") > 0);
+  assert.ok(compareTaskField("status", "asc", "todo", "done") < 0);
+  assert.ok(compareTaskField("status", "desc", "todo", "done") > 0);
+
+  // Missing dates/estimates stay last in both directions.
+  assert.ok(compareTaskField("due", "asc", null, "2026-05-01") > 0);
+  assert.ok(compareTaskField("due", "desc", null, "2026-05-01") > 0);
+  assert.ok(compareTaskField("estimate", "asc", null, 15) > 0);
+  assert.ok(compareTaskField("estimate", "desc", null, 15) > 0);
+
+  assert.ok(compareTaskField("title", "asc", "Task 2", "Task 10") < 0);
+  assert.equal(compareTaskField("updated", "asc", "2026-05-01T10:00:00.000Z", "2026-05-01T10:00:00.000Z"), 0);
+  assert.ok(compareTaskIds("task-a", "task-b") < 0);
 });
