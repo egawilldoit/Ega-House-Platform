@@ -230,7 +230,7 @@ export class SupabaseTaskCommentsRepository implements TaskCommentsRepository {
         ref: mention.ref,
         label: mention.label,
       })),
-      p_task_id: input.taskId ?? null,
+      p_task_id: input.taskId?.trim() || null,
     });
 
     if (error) return mapRpcError(error);
@@ -250,7 +250,7 @@ export class SupabaseTaskCommentsRepository implements TaskCommentsRepository {
       p_author_kind: actor.kind,
       p_owner_user_id: actor.ownerUserId,
       p_author_token_id: actor.tokenId ?? null,
-      p_task_id: taskId ?? null,
+      p_task_id: taskId?.trim() || null,
     });
 
     if (error) return mapRpcError(error);
@@ -270,7 +270,7 @@ export class SupabaseTaskCommentsRepository implements TaskCommentsRepository {
         p_actor_kind: actor.kind,
         p_owner_user_id: actor.ownerUserId,
         p_actor_token_id: actor.tokenId ?? null,
-        p_task_id: input.taskId ?? null,
+        p_task_id: input.taskId?.trim() || null,
       },
     );
 

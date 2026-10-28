@@ -518,6 +518,15 @@ END;
 $$;
 --> statement-breakpoint
 
+-- Replace branch-revision overloads if an environment applied an earlier
+-- version of this migration before the task-path parameter was added.
+DROP FUNCTION IF EXISTS public.update_task_comment(uuid, text, text, uuid, uuid, jsonb);
+--> statement-breakpoint
+DROP FUNCTION IF EXISTS public.delete_task_comment(uuid, text, uuid, uuid);
+--> statement-breakpoint
+DROP FUNCTION IF EXISTS public.toggle_task_comment_reaction(uuid, text, text, uuid, uuid);
+--> statement-breakpoint
+
 CREATE OR REPLACE FUNCTION public.update_task_comment(
   p_comment_id uuid,
   p_body text,
