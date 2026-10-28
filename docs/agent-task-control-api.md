@@ -93,7 +93,7 @@ retrieved again. Store it securely.
 | `tasks.bulk` | Permit bulk operations (optional, for visibility) |
 | `tasks.bulkLimit` | Per-request bulk cap (integer 1–50, default 50) |
 | `tasks.idempotency` | Must be `"source+sourceId"` to enable idempotent creates |
-| `tasks.comment` | Read and write task comments, edit/delete only the token's own comments, and toggle its own reactions |
+| `tasks.comment` | Post, edit and delete the token's own comments, and toggle its own reactions (listing still needs `tasks.read`) |
 | `projects.read` | List projects |
 | `goals.read` | List goals |
 
@@ -160,7 +160,8 @@ curl -X GET "$EGA_AGENT_BASE_URL/capabilities" \
       "archive": false,
       "bulk": true,
       "bulkLimit": 25,
-      "idempotency": "source+sourceId"
+      "idempotency": "source+sourceId",
+      "comment": false
     },
     "projects": { "read": true },
     "goals": { "read": true }

@@ -679,6 +679,50 @@ async function main() {
     `;
     check(Boolean(agentReaction), "agent reaction row is intact after owner toggle");
 
+    // Two concurrent toggles for the same actor are serialised by the advisory
+    // lock: both resolve, the pair lands back on "off", and the other actor's
+    // row is never touched.
+    const [concurrentA, concurrentB] = await Promise.all([
+      asUser(sql, OWNER_A, async (tx) => {
+        const [row] = await tx`
+          SELECT public.toggle_task_comment_reaction(
+            ${first.id}::uuid, ${'👍'}, ${'owner'}, ${OWNER_A}::uuid, NULL
+          ) AS value
+        `;
+        return row.value;
+      }),
+      asUser(sql, OWNER_A, async (tx) => {
+        const [row] = await tx`
+          SELECT public.toggle_task_comment_reaction(
+            ${first.id}::uuid, ${'👍'}, ${'owner'}, ${OWNER_A}::uuid, NULL
+          ) AS value
+        `;
+        return row.value;
+      }),
+    ]);
+    check(
+      Array.isArray(concurrentA) && Array.isArray(concurrentB),
+      "concurrent same-actor toggles both resolve without a unique violation",
+    );
+    check(
+      (await count(
+        sql,
+        "task_comment_reactions",
+        "comment_id = $1::uuid AND actor_ref = 'owner' AND emoji = '👍'",
+        [first.id],
+      )) === 1,
+      "concurrent same-actor toggles land on the deterministic final state",
+    );
+    check(
+      (await count(
+        sql,
+        "task_comment_reactions",
+        "comment_id = $1::uuid AND actor_ref = 'agent:codex'",
+        [first.id],
+      )) === 1,
+      "concurrent owner toggles preserve the agent's reaction",
+    );
+
     await expectFailure(
       "unsupported emoji is rejected",
       () =>
