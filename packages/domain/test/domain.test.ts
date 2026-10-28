@@ -21,6 +21,9 @@ import {
   moveSubtaskPosition,
   getSubtaskProgress,
   SUBTASK_TITLE_MAX,
+  TASK_ACTIVITY_EVENT_KINDS,
+  isTaskActivityEventKind,
+  taskActivityActorLabel,
 } from "../src/index";
 
 test("canonical task and goal values remain stable", () => {
@@ -107,4 +110,27 @@ test("subtask progress is a plain count, never a parent completion signal", () =
     { done: 2, total: 3, label: "2/3" },
   );
   assert.deepEqual(getSubtaskProgress([]), { done: 0, total: 0, label: "0/0" });
+});
+
+test("activity actor labels never invent an identity", () => {
+  assert.deepEqual(TASK_ACTIVITY_EVENT_KINDS, [
+    "created",
+    "field_change",
+    "archived",
+    "restored",
+    "reminder_scheduled",
+    "reminder_updated",
+    "reminder_cancelled",
+    "comment",
+  ]);
+  assert.equal(isTaskActivityEventKind("comment"), true);
+  assert.equal(isTaskActivityEventKind("status"), false);
+  assert.equal(taskActivityActorLabel({ kind: "owner", userId: "u1" }), "You");
+  assert.equal(
+    taskActivityActorLabel({ kind: "agent", agentId: "client-a", label: "Hermes" }),
+    "Hermes",
+  );
+  assert.equal(taskActivityActorLabel({ kind: "agent", agentId: "client-a" }), "Agent");
+  assert.equal(taskActivityActorLabel({ kind: "system" }), "System");
+  assert.equal(taskActivityActorLabel({ kind: "unknown" }), "Unknown actor");
 });
