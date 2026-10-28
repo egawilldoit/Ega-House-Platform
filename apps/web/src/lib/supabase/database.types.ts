@@ -458,6 +458,53 @@ export type Database = {
           },
         ]
       }
+      task_activity_events: {
+        Row: {
+          id: string
+          owner_user_id: string
+          task_id: string | null
+          actor_kind: string
+          actor_user_id: string | null
+          actor_label: string | null
+          event_kind: string
+          delta: Json
+          occurred_at: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          owner_user_id?: string
+          task_id?: string | null
+          actor_kind: string
+          actor_user_id?: string | null
+          actor_label?: string | null
+          event_kind: string
+          delta: Json
+          occurred_at: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          owner_user_id?: string
+          task_id?: string | null
+          actor_kind?: string
+          actor_user_id?: string | null
+          actor_label?: string | null
+          event_kind?: string
+          delta?: Json
+          occurred_at?: string
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "task_activity_events_task_id_tasks_id_fk"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       task_subtasks: {
         Row: {
           id: string

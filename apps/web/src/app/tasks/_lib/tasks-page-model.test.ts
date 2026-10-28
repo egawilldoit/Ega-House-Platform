@@ -39,6 +39,10 @@ vi.mock("@/lib/services/task-service", () => ({
   getTaskDrawerDetail: vi.fn(async () => ({ kind: "unavailable" })),
 }));
 
+vi.mock("@/lib/services/task-activity-service", () => ({
+  getTaskActivity: vi.fn(async () => ({ items: [], hasMore: false, errorMessage: null })),
+}));
+
 vi.mock("@/lib/services/subtask-service", () => ({
   listTaskSubtasks: vi.fn(async () => ({ data: [], errorMessage: null })),
   getSubtaskCountsForTasks: vi.fn(async () => ({})),
