@@ -11,7 +11,12 @@ import type {
   TaskCommentReactionResponse,
   TaskCommentUpdateInput,
 } from "@ega/contracts";
-import type { TaskDueFilter, TaskSortValue } from "@ega/contracts/common/task-list";
+import {
+  toTaskViewSearchPairs,
+  type TaskDueFilter,
+  type TaskSortValue,
+  type TaskViewDefinition,
+} from "@ega/contracts/common/task-list";
 import type { TaskPriority, TaskStatus } from "@ega/domain";
 
 import type { ApiResult } from "./errors";
@@ -27,6 +32,12 @@ export type TaskListQuery = Readonly<{
   sort?: TaskSortValue | null;
   includeArchived?: boolean;
   limit?: number | null;
+  /**
+   * Canonical view definition shared with the web toolbar and saved views.
+   * When present it supersedes the legacy scalar filters above; both surfaces
+   * then run the same application filter/sort/group engine.
+   */
+  view?: TaskViewDefinition | null;
 }>;
 
 export type SetTaskRecurrenceInput = Readonly<{
@@ -90,16 +101,36 @@ function idPath(taskId: string, suffix = "") {
 export function createTasksApi(http: HttpClient): TasksApi {
   return {
     list(query = {}) {
+      const viewPairs = query.view ? toTaskViewSearchPairs(query.view) : [];
+      const serialized: Record<string, string | string[] | undefined> = {};
+      for (const [key, value] of viewPairs) {
+        if (key === "filter") {
+          const existing = serialized.filter;
+          serialized.filter = Array.isArray(existing)
+            ? [...existing, value]
+            : existing
+              ? [existing, value]
+              : [value];
+        } else {
+          serialized[key] = value;
+        }
+      }
+
       return http.request<MobileTaskListResponse>({
         path: "/api/tasks",
         query: {
-          status: queryValue(query.status),
-          priority: queryValue(query.priority),
+          ...serialized,
+          ...(query.view
+            ? {}
+            : {
+                status: queryValue(query.status),
+                priority: queryValue(query.priority),
+                due: queryValue(query.due),
+                sort: queryValue(query.sort),
+              }),
           projectId: queryValue(query.projectId),
           goalId: queryValue(query.goalId),
           plannedForDate: queryValue(query.plannedForDate),
-          due: queryValue(query.due),
-          sort: queryValue(query.sort),
           includeArchived: queryValue(query.includeArchived),
           limit: queryValue(query.limit),
         },

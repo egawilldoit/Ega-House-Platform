@@ -1,6 +1,6 @@
 import type { TaskPriority, TaskRecurrenceRule, TaskStatus } from "@ega/domain";
 
-import type { TaskDueFilter, TaskSortValue } from "./common/task-list";
+import type { TaskDueFilter, TaskSortValue, TaskViewGroupBy, TaskViewSortDirection, TaskViewSortKey } from "./common/task-list";
 import type { OperatorSnapshotDto } from "./operator";
 
 export type { TaskPriority, TaskStatus, TaskDueFilter, TaskSortValue };
@@ -157,6 +157,17 @@ export type MobileTaskCounters = {
   pinned: number;
   overdue: number;
   dueToday: number;
+  /** Rows included in `tasks` after pagination. */
+  loaded?: number;
+  /** True when the owner's filtered set is larger than the loaded page. */
+  truncated?: boolean;
+};
+
+export type MobileTaskGroup = {
+  key: string;
+  label: string;
+  /** Count across the full filtered set, not just the loaded page. */
+  count: number;
 };
 
 export type MobileTaskListFilters = {
@@ -169,6 +180,11 @@ export type MobileTaskListFilters = {
   plannedForDate: string | null;
   includeArchived: boolean;
   limit: number | null;
+  /** Echo of the canonical view search (EGA-791). */
+  search?: string;
+  groupBy?: TaskViewGroupBy;
+  sortKey?: TaskViewSortKey;
+  sortDirection?: TaskViewSortDirection;
 };
 
 export type MobileTaskListResponse = {
@@ -176,6 +192,8 @@ export type MobileTaskListResponse = {
   tasks: MobileTaskListItem[];
   counters: MobileTaskCounters;
   filters: MobileTaskListFilters;
+  /** Group headers for the requested `groupBy`, with full filtered counts. */
+  groups?: MobileTaskGroup[];
   projects: MobileTaskProject[];
   goals: MobileTaskGoal[];
 };
