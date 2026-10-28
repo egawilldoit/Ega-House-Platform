@@ -22,12 +22,19 @@ const TASK = {
   description: "Existing description",
   status: "in_progress",
   priority: "high",
+  start_date: null as string | null,
   due_date: "2026-05-01",
   estimate_minutes: 90,
   blocked_reason: null as string | null,
   project_id: "p1",
   goal_id: "g1",
   archived_at: null as string | null,
+  dependencies: {
+    blockedBy: [],
+    blocking: [],
+    options: [],
+  },
+  dependencyError: null,
 };
 
 let container: HTMLDivElement;
@@ -68,6 +75,7 @@ const updateDraftAction = vi.fn(async (_state: unknown, _formData: FormData) => 
   successMessage: null,
   savedValue: null,
 }));
+const dependencyAction = vi.fn();
 
 function render(
   task: typeof TASK | null,
@@ -82,6 +90,8 @@ function render(
         updateFieldAction={updateFieldAction}
         updateDraftAction={updateDraftAction}
         ownerId="owner-1"
+        addDependencyAction={dependencyAction}
+        removeDependencyAction={dependencyAction}
         {...extra}
       />,
     ),
@@ -151,8 +161,10 @@ describe("TaskDrawerHost", () => {
     const selects = Array.from(document.body.querySelectorAll<HTMLSelectElement>("select"));
     // Status and priority are inline editors now; assert the bound values.
     expect(selects.map((select) => select.value)).toEqual(["in_progress", "high"]);
-    const dueDate = document.body.querySelector<HTMLInputElement>('input[type="date"]');
+    const dueDate = document.body.querySelector<HTMLInputElement>('input[aria-label="Due date"]');
     expect(dueDate?.value).toBe("2026-05-01");
+    const startDate = document.body.querySelector<HTMLInputElement>('input[aria-label="Start date"]');
+    expect(startDate?.value).toBe("");
   });
 
   it("edits the title, description and estimate in place", () => {
@@ -214,6 +226,8 @@ describe("TaskDrawerHost", () => {
         task={{ ...TASK, title: "Server changed this" }}
         updateFieldAction={updateFieldAction}
         updateDraftAction={updateDraftAction}
+        addDependencyAction={dependencyAction}
+        removeDependencyAction={dependencyAction}
       />,
     ));
 
