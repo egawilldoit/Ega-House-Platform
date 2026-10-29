@@ -28,6 +28,12 @@ export const SYSTEM_ROUTES = [
     group: "system",
     description: "Capture ideas and future work",
   },
+  {
+    href: "/archive",
+    label: "Archive",
+    group: "system",
+    description: "Restore archived work",
+  },
   { href: "/notifications", label: "Notifications", group: "system", description: "Reminders" },
   { href: "/startup", label: "Startup", group: "system", description: "Start the day" },
   { href: "/shutdown", label: "Shutdown", group: "system", description: "Close the day" },

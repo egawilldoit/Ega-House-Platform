@@ -51,6 +51,28 @@ function createTaskReadSupabaseMock(
 
   return {
     from(table: string) {
+      if (table === "projects" || table === "goals") {
+        // Archived-ancestry scope read: this fixture has no archived parents.
+        return {
+          select() {
+            return {
+              eq() {
+                return this;
+              },
+              not(column: string, operator: string, value: unknown) {
+                assert.equal(column, "archived_at");
+                assert.equal(operator, "is");
+                assert.equal(value, null);
+                return this;
+              },
+              then<TResult>(onFulfilled?: ((value: unknown) => TResult) | null) {
+                return Promise.resolve({ data: [], error: null }).then(onFulfilled ?? undefined);
+              },
+            };
+          },
+        };
+      }
+
       assert.equal(table, "tasks");
 
       return {
@@ -137,7 +159,16 @@ function createTaskReadSupabaseMock(
               state.onlyActive = true;
               return this;
             },
-            not(column: keyof MockTask, operator: string, value: null) {
+            not(column: keyof MockTask, operator: string, value: string | null) {
+              if (operator === "in" && column === "project_id") {
+                const ids = String(value)
+                  .replace(/[()]/g, "")
+                  .split(",")
+                  .filter(Boolean);
+                state.filters.push((task) => !ids.includes(task.project_id));
+                return this;
+              }
+
               assert.equal(operator, "is");
               assert.equal(value, null);
               state.filters.push((task) => task[column] !== null && task[column] !== undefined);
@@ -166,6 +197,19 @@ function createTaskReadSupabaseMock(
 
                       return false;
                     });
+                  }
+
+                  if (clause === "goal_id.is.null") {
+                    return task.goal_id === null;
+                  }
+
+                  if (clause.startsWith("goal_id.not.in.")) {
+                    const ids = clause
+                      .slice("goal_id.not.in.".length)
+                      .replace(/[()]/g, "")
+                      .split(",")
+                      .filter(Boolean);
+                    return task.goal_id !== null && !ids.includes(task.goal_id);
                   }
 
                   const [column, operator, value] = clause.split(".");

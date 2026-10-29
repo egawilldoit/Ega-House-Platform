@@ -5,9 +5,12 @@ import { createAuthenticatedActor } from "@ega/application";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import {
+  SupabaseArchiveRepository,
   SupabaseGoalsRepository,
   SupabaseProjectsRepository,
+  excludeArchivedAncestry,
   isSupabaseForeignKeyViolation,
+  loadArchivedAncestorScope,
   sanitizeSupabaseError,
 } from "../src/index";
 
@@ -67,8 +70,8 @@ class FakeQueryBuilder {
     private readonly supabase: FakeSupabase,
   ) {}
 
-  select(columns: string) {
-    this.steps.push({ method: "select", args: [columns] });
+  select(columns: string, options?: unknown) {
+    this.steps.push({ method: "select", args: [columns, options] });
     return this;
   }
 
@@ -99,6 +102,21 @@ class FakeQueryBuilder {
 
   order(column: string, options?: unknown) {
     this.steps.push({ method: "order", args: [column, options] });
+    return this;
+  }
+
+  or(filters: string) {
+    this.steps.push({ method: "or", args: [filters] });
+    return this;
+  }
+
+  ilike(column: string, pattern: string) {
+    this.steps.push({ method: "ilike", args: [column, pattern] });
+    return this;
+  }
+
+  limit(count: number) {
+    this.steps.push({ method: "limit", args: [count] });
     return this;
   }
 
@@ -141,6 +159,10 @@ function projectsRepository(fake: FakeSupabase) {
 
 function goalsRepository(fake: FakeSupabase) {
   return new SupabaseGoalsRepository(fake as unknown as SupabaseClient);
+}
+
+function archiveRepository(fake: FakeSupabase) {
+  return new SupabaseArchiveRepository(fake as unknown as SupabaseClient);
 }
 
 function stepsFor(fake: FakeSupabase, index = 0) {
@@ -728,4 +750,290 @@ test("listGoalTasks keeps only rows with a goal id and scopes by owner", async (
   const steps = stepsFor(fake);
   assert.ok(steps.some((step) => step.method === "not" && step.args[0] === "goal_id"));
   assert.ok(steps.some((step) => step.method === "eq" && step.args[0] === "owner_user_id"));
+});
+
+const ARCHIVE_PROJECT_ID = "123e4567-e89b-12d3-a456-426614174000";
+const ARCHIVE_GOAL_ID = "223e4567-e89b-12d3-a456-426614174000";
+
+test("archive summary counts archived rows per owner", async () => {
+  const fake = fakeSupabase();
+  fake.pushResult("tasks", { data: null, error: null, count: 4 });
+  fake.pushResult("goals", { data: null, error: null, count: 2 });
+  fake.pushResult("projects", { data: null, error: null, count: 1 });
+
+  const result = await archiveRepository(fake).getArchiveSummary(ACTOR);
+
+  assert.deepEqual(result, { ok: true, value: { tasks: 4, goals: 2, projects: 1 } });
+
+  for (const [index, table] of ["tasks", "goals", "projects"].entries()) {
+    assert.equal(fake.calls[index]?.table, table);
+    const steps = stepsFor(fake, index);
+    assert.deepEqual(steps[0].args[0], "id");
+    assert.deepEqual(steps[0].args[1], { count: "exact", head: true });
+    assert.ok(
+      steps.some(
+        (step) =>
+          step.method === "eq" && step.args[0] === "owner_user_id" && step.args[1] === "user-123",
+      ),
+    );
+    assert.ok(
+      steps.some(
+        (step) =>
+          step.method === "not" &&
+          step.args[0] === "archived_at" &&
+          step.args[1] === "is" &&
+          step.args[2] === null,
+      ),
+    );
+  }
+});
+
+test("archive task list is archived-only, owner-scoped, ordered and search-escaped", async () => {
+  const fake = fakeSupabase();
+  fake.pushResult("tasks", {
+    data: [
+      {
+        id: "task-1",
+        title: "Ship 100% _done",
+        status: "todo",
+        priority: "high",
+        project_id: ARCHIVE_PROJECT_ID,
+        goal_id: ARCHIVE_GOAL_ID,
+        archived_at: "2026-05-02T10:00:00.000Z",
+        updated_at: "2026-05-02T10:00:00.000Z",
+        projects: { name: "Platform", slug: "platform", archived_at: null },
+        goals: { title: "Q2", archived_at: "2026-05-01T00:00:00.000Z" },
+      },
+      {
+        id: "task-without-timestamp",
+        title: "Not archived",
+        status: "todo",
+        priority: "low",
+        project_id: ARCHIVE_PROJECT_ID,
+        goal_id: null,
+        archived_at: null,
+        updated_at: "2026-05-02T10:00:00.000Z",
+        projects: null,
+        goals: null,
+      },
+    ],
+    error: null,
+  });
+
+  const result = await archiveRepository(fake).listArchivedTasks(ACTOR, {
+    search: "100% _done",
+    limit: 25,
+  });
+
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.value.length, 1);
+  assert.deepEqual(result.value[0], {
+    id: "task-1",
+    title: "Ship 100% _done",
+    status: "todo",
+    priority: "high",
+    projectId: ARCHIVE_PROJECT_ID,
+    projectName: "Platform",
+    projectSlug: "platform",
+    projectArchived: false,
+    goalId: ARCHIVE_GOAL_ID,
+    goalTitle: "Q2",
+    goalArchived: true,
+    archivedAt: "2026-05-02T10:00:00.000Z",
+    updatedAt: "2026-05-02T10:00:00.000Z",
+  });
+
+  const steps = stepsFor(fake);
+  assert.ok(steps.some((step) => step.method === "eq" && step.args[1] === "user-123"));
+  assert.ok(steps.some((step) => step.method === "not" && step.args[0] === "archived_at"));
+  assert.deepEqual(
+    steps.find((step) => step.method === "ilike")?.args,
+    ["title", "%100\\% \\_done%"],
+  );
+  assert.deepEqual(
+    steps.find((step) => step.method === "order")?.args,
+    ["archived_at", { ascending: false }],
+  );
+  assert.deepEqual(steps.find((step) => step.method === "limit")?.args, [25]);
+});
+
+test("archive goal and project lists stay owner-scoped and archived-only", async () => {
+  const fake = fakeSupabase();
+  fake.pushResult("goals", {
+    data: [
+      {
+        id: ARCHIVE_GOAL_ID,
+        title: "Q2",
+        status: "archived",
+        project_id: ARCHIVE_PROJECT_ID,
+        archived_at: "2026-05-02T10:00:00.000Z",
+        updated_at: "2026-05-02T10:00:00.000Z",
+        projects: { name: "Platform", archived_at: null },
+      },
+    ],
+    error: null,
+  });
+  fake.pushResult("projects", {
+    data: [
+      {
+        id: ARCHIVE_PROJECT_ID,
+        name: "Platform",
+        slug: "platform",
+        archived_at: "2026-05-02T10:00:00.000Z",
+        updated_at: "2026-05-02T10:00:00.000Z",
+      },
+    ],
+    error: null,
+  });
+
+  const goals = await archiveRepository(fake).listArchivedGoals(ACTOR, { search: "", limit: 10 });
+  const projects = await archiveRepository(fake).listArchivedProjects(ACTOR, {
+    search: "plat",
+    limit: 10,
+  });
+
+  assert.equal(goals.ok, true);
+  assert.equal(projects.ok, true);
+  if (!goals.ok || !projects.ok) return;
+  assert.equal(goals.value[0]?.projectArchived, false);
+  assert.equal(projects.value[0]?.name, "Platform");
+  assert.ok(stepsFor(fake, 0).some((step) => step.method === "eq" && step.args[1] === "user-123"));
+  assert.ok(stepsFor(fake, 1).some((step) => step.method === "ilike"));
+  assert.ok(stepsFor(fake, 1).some((step) => step.method === "eq" && step.args[1] === "user-123"));
+});
+
+test("project archive state writes the marker, attribution and status together", async () => {
+  const fake = fakeSupabase();
+  fake.pushResult("projects", { data: null, error: null });
+  fake.pushResult("projects", { data: null, error: null });
+
+  const repository = projectsRepository(fake);
+  await repository.updateProjectArchiveState(ACTOR, {
+    projectId: ARCHIVE_PROJECT_ID,
+    archivedAt: "2026-05-02T10:00:00.000Z",
+    updatedAt: "2026-05-02T10:00:00.000Z",
+  });
+  await repository.updateProjectArchiveState(ACTOR, {
+    projectId: ARCHIVE_PROJECT_ID,
+    archivedAt: null,
+    updatedAt: "2026-05-03T10:00:00.000Z",
+  });
+
+  const archivedSteps = stepsFor(fake, 0);
+  assert.deepEqual(archivedSteps.find((step) => step.method === "update")?.args[0], {
+    status: "archived",
+    archived_at: "2026-05-02T10:00:00.000Z",
+    archived_by: "user-123",
+    updated_at: "2026-05-02T10:00:00.000Z",
+  });
+  assert.ok(
+    archivedSteps.some(
+      (step) => step.method === "eq" && step.args[0] === "owner_user_id" && step.args[1] === "user-123",
+    ),
+  );
+
+  assert.deepEqual(stepsFor(fake, 1).find((step) => step.method === "update")?.args[0], {
+    status: "active",
+    archived_at: null,
+    archived_by: null,
+    updated_at: "2026-05-03T10:00:00.000Z",
+  });
+});
+
+test("goal archive state writes the marker, attribution and status together", async () => {
+  const fake = fakeSupabase();
+  fake.pushResult("goals", { data: null, error: null });
+
+  await goalsRepository(fake).updateGoalArchiveState(ACTOR, {
+    goalId: ARCHIVE_GOAL_ID,
+    archivedAt: "2026-05-02T10:00:00.000Z",
+    updatedAt: "2026-05-02T10:00:00.000Z",
+  });
+
+  assert.deepEqual(stepsFor(fake).find((step) => step.method === "update")?.args[0], {
+    status: "archived",
+    archived_at: "2026-05-02T10:00:00.000Z",
+    archived_by: "user-123",
+    updated_at: "2026-05-02T10:00:00.000Z",
+  });
+});
+
+test("parent archive guard reads open sessions only for the owner's scoped tasks", async () => {
+  const fake = fakeSupabase();
+  fake.pushResult("tasks", { data: [{ id: "task-1" }, { id: "task-2" }], error: null });
+  fake.pushResult("task_sessions", { data: [{ id: "session-1" }], error: null });
+
+  const result = await projectsRepository(fake).hasOpenTaskSessionForProject(ACTOR, ARCHIVE_PROJECT_ID);
+
+  assert.deepEqual(result, { ok: true, value: true });
+  const taskSteps = stepsFor(fake, 0);
+  assert.ok(taskSteps.some((step) => step.method === "eq" && step.args[0] === "project_id"));
+  assert.ok(taskSteps.some((step) => step.method === "eq" && step.args[1] === "user-123"));
+
+  const sessionSteps = stepsFor(fake, 1);
+  assert.deepEqual(
+    sessionSteps.find((step) => step.method === "in")?.args,
+    ["task_id", ["task-1", "task-2"]],
+  );
+  assert.ok(
+    sessionSteps.some(
+      (step) =>
+        step.method === "is" && step.args[0] === "ended_at" && step.args[1] === null,
+    ),
+  );
+});
+
+test("archived ancestor scope is owner-scoped and only accepts uuid ids", async () => {
+  const fake = fakeSupabase();
+  fake.pushResult("projects", { data: [{ id: ARCHIVE_PROJECT_ID }], error: null });
+  fake.pushResult("goals", { data: [{ id: ARCHIVE_GOAL_ID }, { id: "not-a-uuid" }], error: null });
+
+  const result = await loadArchivedAncestorScope(
+    fake as unknown as SupabaseClient,
+    "user-123",
+  );
+
+  assert.deepEqual(result, {
+    ok: true,
+    value: { projectIds: [ARCHIVE_PROJECT_ID], goalIds: [ARCHIVE_GOAL_ID] },
+  });
+  assert.ok(stepsFor(fake, 0).some((step) => step.method === "eq" && step.args[1] === "user-123"));
+});
+
+test("ancestry exclusion keeps goal-less tasks and drops archived parents", async () => {
+  const fake = fakeSupabase();
+  fake.pushResult("tasks", { data: [], error: null });
+
+  const query = excludeArchivedAncestry(fake.from("tasks"), {
+    projectIds: [ARCHIVE_PROJECT_ID],
+    goalIds: [ARCHIVE_GOAL_ID],
+  });
+  await query;
+
+  const steps = stepsFor(fake);
+  assert.deepEqual(
+    steps.find((step) => step.method === "not")?.args,
+    ["project_id", "in", `(${ARCHIVE_PROJECT_ID})`],
+  );
+  assert.deepEqual(steps.find((step) => step.method === "or")?.args, [
+    `goal_id.is.null,goal_id.not.in.(${ARCHIVE_GOAL_ID})`,
+  ]);
+});
+
+test("active goal list excludes archived project ancestry", async () => {
+  const fake = fakeSupabase();
+  fake.pushResult("projects", { data: [{ id: ARCHIVE_PROJECT_ID }], error: null });
+  fake.pushResult("goals", { data: [], error: null });
+  fake.pushResult("goals", { data: [], error: null });
+
+  const result = await goalsRepository(fake).listGoals(ACTOR, "active");
+
+  assert.deepEqual(result, { ok: true, value: [] });
+  const listSteps = stepsFor(fake, 2);
+  assert.ok(listSteps.some((step) => step.method === "neq" && step.args[1] === "archived"));
+  assert.deepEqual(
+    listSteps.find((step) => step.method === "not")?.args,
+    ["project_id", "in", `(${ARCHIVE_PROJECT_ID})`],
+  );
 });

@@ -104,6 +104,8 @@ export type Database = {
       }
       goals: {
         Row: {
+          archived_at: string | null
+          archived_by: string | null
           created_at: string
           description: string | null
           health: string | null
@@ -117,6 +119,8 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          archived_at?: string | null
+          archived_by?: string | null
           created_at?: string
           description?: string | null
           health?: string | null
@@ -130,6 +134,8 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          archived_at?: string | null
+          archived_by?: string | null
           created_at?: string
           description?: string | null
           health?: string | null
@@ -204,6 +210,8 @@ export type Database = {
       }
       projects: {
         Row: {
+          archived_at: string | null
+          archived_by: string | null
           created_at: string
           description: string | null
           id: string
@@ -214,6 +222,8 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          archived_at?: string | null
+          archived_by?: string | null
           created_at?: string
           description?: string | null
           id?: string
@@ -224,6 +234,8 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          archived_at?: string | null
+          archived_by?: string | null
           created_at?: string
           description?: string | null
           id?: string
