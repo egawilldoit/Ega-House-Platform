@@ -5,12 +5,16 @@ import {
   TASK_SORT_VALUES,
   isTaskDueFilter,
   isTaskSortValue,
+  normalizeTaskTableColumns,
   parseTaskViewSearchParams,
+  parseTaskTableColumns,
+  serializeTaskTableColumns,
   taskViewFromLegacyInput,
   toTaskViewSearchPairs,
   getDefaultTaskViewSortDirection,
   type TaskDueFilter,
   type TaskSortValue,
+  type TaskTableColumnConfig,
   type TaskViewDefinition,
   type TaskViewFilter,
   type TaskViewSearchParams,
@@ -27,7 +31,10 @@ export {
   TASK_SORT_VALUES,
   isTaskDueFilter,
   isTaskSortValue,
+  normalizeTaskTableColumns,
   parseTaskViewSearchParams,
+  parseTaskTableColumns,
+  serializeTaskTableColumns,
   taskViewFromLegacyInput,
   toTaskViewSearchPairs,
   getDefaultTaskViewSortDirection,
@@ -35,6 +42,7 @@ export {
 export type {
   TaskDueFilter,
   TaskSortValue,
+  TaskTableColumnConfig,
   TaskViewDefinition,
   TaskViewFilter,
   TaskViewSearchParams,
@@ -185,6 +193,10 @@ export type TaskListUrlFilters = {
   sortKey?: TaskViewDefinition["sort"]["key"];
   sortDirection?: TaskViewDefinition["sort"]["direction"];
   boardOrder?: TaskBoardOrder | null;
+  /** Table column layout; `cols`/`widths` are the compact URL spelling. */
+  columns?: readonly TaskTableColumnConfig[];
+  cols?: string | null;
+  widths?: string | null;
   /** Timeline window anchor (YYYY-MM-DD) and week/month zoom. */
   timelineStart?: string | null;
   timelineZoom?: string | null;
@@ -221,6 +233,11 @@ function viewFromUrlFilters(filters: TaskListUrlFilters): TaskViewDefinition {
           }
         : legacy.sort,
     search: filters.q !== undefined && filters.q !== null ? String(filters.q).trim() : legacy.search,
+    columns: filters.columns
+      ? normalizeTaskTableColumns(filters.columns)
+      : filters.cols || filters.widths
+        ? parseTaskTableColumns({ cols: filters.cols, widths: filters.widths })
+        : legacy.columns,
   };
 }
 

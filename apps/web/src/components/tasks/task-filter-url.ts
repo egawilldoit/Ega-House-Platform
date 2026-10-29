@@ -20,6 +20,7 @@ import {
   type TaskViewFilterOperator,
 } from "@ega/contracts/common/task-list";
 import type { TaskDueBucket, TaskPriority, TaskStatus } from "@ega/domain";
+import type { TaskTableColumnConfig } from "@ega/contracts/common/task-list";
 import { formatTaskToken } from "@/lib/task-domain";
 
 export type TaskFilterState = {
@@ -43,6 +44,8 @@ export type TaskFilterState = {
   q?: string | null;
   sortKey?: TaskViewDefinition["sort"]["key"];
   sortDirection?: TaskViewDefinition["sort"]["direction"];
+  /** Table column layout; persisted through `cols`/`widths`. */
+  columns?: readonly TaskTableColumnConfig[];
   tab?: string | null;
 };
 

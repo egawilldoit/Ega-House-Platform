@@ -6,16 +6,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setDisplayTimezone } from "@/lib/presentation-format";
 
 const refresh = vi.fn();
+const replace = vi.fn();
 
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ refresh: () => refresh() }),
+  useRouter: () => ({ refresh: () => refresh(), replace: (...args: unknown[]) => replace(...args) }),
 }));
 
 import type { TaskRecord } from "@/lib/services/task-service";
 import type { UpdateTaskEditorFormState } from "@/app/tasks/actions";
+import { normalizeTaskTableColumns } from "@ega/contracts/common/task-list";
 
 import { ToastProvider } from "@/components/ui/toast-provider";
-import { TasksListTable, type TaskListActions } from "./tasks-list-table";
+import { TaskTable, type TaskTableActions } from "./task-table";
 
 let container: HTMLDivElement;
 let root: Root;
@@ -52,7 +54,7 @@ function buildTask(overrides: Partial<TaskRecord> = {}): TaskRecord {
   };
 }
 
-function buildActions(): TaskListActions {
+function buildActions(): TaskTableActions {
   return {
     updateAction: vi.fn(),
     updateEditorAction: vi.fn(
@@ -77,28 +79,42 @@ function buildActions(): TaskListActions {
     bulkFieldAction: vi.fn(),
     bulkArchiveAction: vi.fn(),
     undoAction: vi.fn(),
+    updateCellAction: vi.fn(async () => ({
+      errorMessage: null,
+      savedValue: null,
+      updatedAt: null,
+    })),
+  };
+}
+
+function tableProps(overrides: Partial<Parameters<typeof TaskTable>[0]> = {}) {
+  return {
+    tasks: [buildTask()],
+    taskTotalDurations: { "task-1": 3661 },
+    returnTo: "/tasks?status=todo&layout=kanban",
+    columns: normalizeTaskTableColumns(null),
+    sortKey: "updated" as const,
+    sortDirection: "desc" as const,
+    taskUpdateTaskId: null,
+    taskUpdateError: null,
+    projectOptions: [{ id: "project-1", name: "EGA House" }],
+    goalOptions: [
+      { id: "goal-1", title: "Tighten weekly review", projectId: "project-1" },
+    ],
+    actions: buildActions(),
+    ...overrides,
   };
 }
 
 function renderTable(
   tasks: TaskRecord[] = [buildTask()],
-  actions: TaskListActions = buildActions(),
-  props: Partial<Parameters<typeof TasksListTable>[0]> = {},
+  actions: TaskTableActions = buildActions(),
+  props: Partial<Parameters<typeof TaskTable>[0]> = {},
 ) {
   return act(async () => {
     root.render(
       <ToastProvider>
-      <TasksListTable
-        tasks={tasks}
-        taskTotalDurations={{ "task-1": 3661 }}
-        returnTo="/tasks?status=todo&layout=kanban"
-        taskUpdateTaskId={null}
-        taskUpdateError={null}
-        projectOptions={[{ id: "project-1", name: "EGA House" }]}
-        goalOptions={[{ id: "goal-1", title: "Tighten weekly review", projectId: "project-1" }]}
-        actions={actions}
-        {...props}
-      />
+        <TaskTable {...tableProps({ tasks, actions, ...props })} />
       </ToastProvider>,
     );
   });
@@ -106,6 +122,8 @@ function renderTable(
 
 beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  refresh.mockClear();
+  replace.mockClear();
   container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);
@@ -116,7 +134,7 @@ afterEach(async () => {
   container.remove();
 });
 
-describe("TasksListTable dense inventory", () => {
+describe("TaskTable dense inventory", () => {
   it("renders a real data table with the consolidated inventory columns", async () => {
     await renderTable();
 
@@ -130,27 +148,22 @@ describe("TasksListTable dense inventory", () => {
     expect(headers).toEqual(["Task", "Priority", "Due", "Status", "Actions"]);
   });
 
-  it("lets the table fill its column without the removed Project/Goal tracks", async () => {
+  it("applies persisted column widths and a desktop min-width without a percentage track", async () => {
     await renderTable();
 
-    const table = container.querySelector("table.data-table");
+    const table = container.querySelector<HTMLTableElement>("table.data-table");
     expect(table?.classList.contains("min-[761px]:w-full")).toBe(true);
+    expect(table?.classList.contains("min-[761px]:min-w-[var(--table-min-width)]")).toBe(true);
+    expect(table?.style.getPropertyValue("--table-min-width")).toBe("900px");
 
-    const headerWidths = Array.from(container.querySelectorAll("thead th")).map(
-      (header) => header.getAttribute("class") ?? "",
-    );
-    const trackOf = (index: number) => {
-      const match = headerWidths[index]?.match(/w-\[(\d+(?:\.\d+)?)%\]/);
-      return match ? Number(match[1]) : null;
-    };
-
-    // The Task column stays auto so it takes every leftover pixel and acts as
-    // the remaining space owner.
-    expect(headerWidths[0]).not.toMatch(/w-\[/);
-    // The compact state columns are percentage tracks.
-    for (const index of [1, 2, 3, 4]) {
-      expect(trackOf(index)).not.toBeNull();
-    }
+    const headers = Array.from(container.querySelectorAll<HTMLTableCellElement>("thead th"));
+    expect(headers.map((header) => header.style.width)).toEqual([
+      "360px",
+      "112px",
+      "152px",
+      "144px",
+      "132px",
+    ]);
   });
 
   it("carries project and goal as a muted context line under the title", async () => {
@@ -357,18 +370,15 @@ describe("TasksListTable dense inventory", () => {
   });
 
   it("auto-opens the editor for the row that carries the save error", async () => {
-    await act(async () => {
-      root.render(
-        <TasksListTable
-          tasks={[buildTask(), buildTask({ id: "task-2", title: "Second task" })]}
-          taskTotalDurations={{}}
-          returnTo="/tasks"
-          taskUpdateTaskId="task-2"
-          taskUpdateError="Could not save task"
-          actions={buildActions()}
-        />,
-      );
-    });
+    await renderTable(
+      [buildTask(), buildTask({ id: "task-2", title: "Second task" })],
+      buildActions(),
+      {
+        returnTo: "/tasks",
+        taskUpdateTaskId: "task-2",
+        taskUpdateError: "Could not save task",
+      },
+    );
 
     const dialogs = document.querySelectorAll('[role="dialog"]');
     expect(dialogs.length).toBe(1);
@@ -403,18 +413,11 @@ describe("TasksListTable dense inventory", () => {
 
   it("flags done rows quiet and offers the direct archive control only for done tasks", async () => {
     const actions = buildActions();
-    await act(async () => {
-      root.render(
-        <TasksListTable
-          tasks={[buildTask({ status: "done", completed_at: "2026-09-24T09:00:00.000Z" })]}
-          taskTotalDurations={{}}
-          returnTo="/tasks"
-          taskUpdateTaskId={null}
-          taskUpdateError={null}
-          actions={actions}
-        />,
-      );
-    });
+    await renderTable(
+      [buildTask({ status: "done", completed_at: "2026-09-24T09:00:00.000Z" })],
+      actions,
+      { returnTo: "/tasks" },
+    );
 
     const row = container.querySelector("#task-task-1");
     expect(row?.getAttribute("data-row-done")).toBe("true");
@@ -524,7 +527,7 @@ describe("TasksListTable dense inventory", () => {
   });
 });
 
-describe("TasksListTable selection and bulk actions", () => {
+describe("TaskTable selection and bulk actions", () => {
   it("scopes selection to the rendered rows and shows the bulk toolbar", async () => {
     await renderTable([
       buildTask({ id: "task-1", title: "First task", task_recurrences: [] }),
@@ -594,5 +597,284 @@ describe("TasksListTable selection and bulk actions", () => {
       expect.objectContaining({ taskIds: ["task-1"], archived: true }),
     );
     expect(document.body.textContent).toContain("1 task updated");
+  });
+});
+
+async function pointerClick(element: Element | null | undefined) {
+  await act(async () => {
+    element?.dispatchEvent(
+      new MouseEvent("click", { bubbles: true, cancelable: true, button: 0 }),
+    );
+  });
+}
+
+async function flushCloseFocus() {
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+}
+
+function headerLabels() {
+  return Array.from(container.querySelectorAll("thead th")).map((header) =>
+    header.textContent?.trim(),
+  );
+}
+
+function setInputValue(input: HTMLInputElement, value: string) {
+  const setter = Object.getOwnPropertyDescriptor(
+    HTMLInputElement.prototype,
+    "value",
+  )?.set;
+  setter?.call(input, value);
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+describe("EGA-792 table view behavior", () => {
+  it("keeps header sort and the toolbar sort on the same URL contract", async () => {
+    await renderTable([buildTask()], buildActions(), {
+      sortKey: "updated",
+      sortDirection: "desc",
+    });
+
+    const priorityLink = container.querySelector<HTMLAnchorElement>(
+      '[data-testid="sort-header-priority"]',
+    );
+    expect(priorityLink).not.toBeNull();
+    // The toolbar's default priority direction is ascending.
+    expect(priorityLink?.getAttribute("href")).toContain("sort=priority");
+    expect(priorityLink?.getAttribute("href")).not.toContain("dir=");
+    expect(priorityLink?.getAttribute("aria-label")).toContain("currently not sorted");
+
+    await renderTable([buildTask()], buildActions(), {
+      sortKey: "priority",
+      sortDirection: "desc",
+    });
+
+    const activeHeader = container.querySelector<HTMLTableCellElement>(
+      'th[aria-sort="descending"]',
+    );
+    expect(activeHeader?.textContent).toContain("Priority");
+    const toggledLink = container.querySelector<HTMLAnchorElement>(
+      '[data-testid="sort-header-priority"]',
+    );
+    expect(toggledLink?.getAttribute("href")).toContain("sort=priority");
+    expect(toggledLink?.getAttribute("href")).not.toContain("dir=asc");
+  });
+
+  it("persists column visibility in the URL and keeps focus on the toggled control", async () => {
+    await renderTable();
+    expect(headerLabels()).toEqual(["Task", "Priority", "Due", "Status", "Actions"]);
+
+    await pointerClick(container.querySelector('[data-testid="table-columns-trigger"]'));
+    const statusToggle = document.body.querySelector<HTMLInputElement>(
+      'input[aria-label="Show Status column"]',
+    );
+    expect(statusToggle).not.toBeNull();
+    await act(async () => statusToggle?.click());
+
+    expect(headerLabels()).toEqual(["Task", "Priority", "Due", "Actions"]);
+    expect(replace).toHaveBeenCalledWith(
+      expect.stringContaining("cols=task%2Cpriority%2Cdue"),
+      { scroll: false },
+    );
+    expect(document.activeElement).toBe(statusToggle);
+  });
+
+  it("reorders columns through the settings controls and preserves the URL state", async () => {
+    await renderTable();
+    await pointerClick(container.querySelector('[data-testid="table-columns-trigger"]'));
+
+    const movePriorityDown = document.body.querySelector<HTMLButtonElement>(
+      'button[aria-label="Move Priority column down"]',
+    );
+    expect(movePriorityDown?.disabled).toBe(false);
+    await act(async () => movePriorityDown?.click());
+
+    expect(headerLabels()).toEqual(["Task", "Due", "Priority", "Status", "Actions"]);
+    expect(replace).toHaveBeenCalledWith(
+      expect.stringContaining("cols=task%2Cdue%2Cpriority%2Cstatus"),
+      { scroll: false },
+    );
+    expect(document.activeElement?.getAttribute("data-column-focus")).toBe(
+      "down:priority",
+    );
+  });
+
+  it("resizes a column with the keyboard handle and clamps to the bounds", async () => {
+    await renderTable();
+    const handle = container.querySelector<HTMLElement>(
+      '[data-testid="column-resize-priority"]',
+    );
+    expect(handle).not.toBeNull();
+    handle?.focus();
+
+    await act(async () => {
+      handle?.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true, cancelable: true }),
+      );
+      handle?.dispatchEvent(
+        new KeyboardEvent("keyup", { key: "ArrowRight", bubbles: true }),
+      );
+    });
+
+    expect(replace).toHaveBeenCalledWith(
+      expect.stringContaining("widths=priority%3A128"),
+      { scroll: false },
+    );
+    expect(handle?.getAttribute("aria-valuenow")).toBe("128");
+  });
+
+  it("saves a status cell through the single-field action and updates optimistically", async () => {
+    const actions = buildActions();
+    actions.updateCellAction = vi.fn(async () => ({
+      errorMessage: null,
+      savedValue: "in_progress",
+      updatedAt: "2026-04-28T11:00:00.000Z",
+    }));
+
+    await renderTable([buildTask()], actions, { returnTo: "/tasks" });
+    const select = container.querySelector<HTMLSelectElement>(
+      '[data-testid="task-status-cell-task-1"]',
+    );
+    expect(select).not.toBeNull();
+    await act(async () => {
+      select!.value = "in_progress";
+      select!.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await act(async () => {});
+
+    expect(actions.updateCellAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        taskId: "task-1",
+        field: "status",
+        value: "in_progress",
+        expectedUpdatedAt: "2026-04-28T10:00:00.000Z",
+        returnTo: "/tasks",
+      }),
+    );
+    expect(refresh).toHaveBeenCalled();
+    expect(container.querySelector("#task-task-1")?.textContent).toContain("In progress");
+  });
+
+  it("shows a stale-write error inline and never claims a refresh", async () => {
+    const actions = buildActions();
+    actions.updateCellAction = vi.fn(async () => ({
+      errorMessage: "This task changed since you opened it. Reload and try again.",
+      savedValue: null,
+      updatedAt: null,
+    }));
+
+    await renderTable([buildTask()], actions, { returnTo: "/tasks" });
+    const select = container.querySelector<HTMLSelectElement>(
+      '[data-testid="task-status-cell-task-1"]',
+    );
+    expect(select).not.toBeNull();
+    await act(async () => {
+      select!.value = "done";
+      select!.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await act(async () => {});
+
+    expect(
+      container.querySelector('[data-testid="task-status-cell-task-1-error"]')?.textContent,
+    ).toContain("changed since you opened it");
+    expect(refresh).not.toHaveBeenCalled();
+    expect(container.querySelector("#task-task-1")?.textContent).toContain("To do");
+  });
+
+  it("retains a failed due-date draft and exposes the field error", async () => {
+    const actions = buildActions();
+    actions.updateCellAction = vi.fn(async () => ({
+      errorMessage: "This task changed since you opened it. Reload and try again.",
+      savedValue: null,
+      updatedAt: null,
+    }));
+
+    await renderTable([buildTask()], actions, { returnTo: "/tasks" });
+    await pointerClick(
+      container.querySelector('[data-testid="task-due-cell-task-1-trigger"]'),
+    );
+    const input = document.body.querySelector<HTMLInputElement>(
+      '[role="dialog"] input[type="date"]',
+    );
+    expect(input?.value).toBe("2026-05-01");
+    await act(async () => setInputValue(input!, "2026-05-10"));
+
+    const form = input?.closest("form");
+    await act(async () => {
+      form?.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    });
+    await act(async () => {});
+
+    expect(actions.updateCellAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        field: "dueDate",
+        value: "2026-05-10",
+        expectedUpdatedAt: "2026-04-28T10:00:00.000Z",
+      }),
+    );
+    expect(input?.value).toBe("2026-05-10");
+    expect(document.body.textContent).toContain("changed since you opened it");
+    expect(refresh).not.toHaveBeenCalled();
+  });
+
+  it("edits a project only when the project column is shown", async () => {
+    const actions = buildActions();
+    actions.updateCellAction = vi.fn(async () => ({
+      errorMessage: null,
+      savedValue: "project-2",
+      updatedAt: "2026-04-28T11:00:00.000Z",
+    }));
+
+    await renderTable([buildTask()], actions, {
+      returnTo: "/tasks",
+      projectOptions: [
+        { id: "project-1", name: "EGA House" },
+        { id: "project-2", name: "Second project" },
+      ],
+    });
+
+    await pointerClick(container.querySelector('[data-testid="table-columns-trigger"]'));
+    const projectToggle = document.body.querySelector<HTMLInputElement>(
+      'input[aria-label="Show Project column"]',
+    );
+    expect(projectToggle).not.toBeNull();
+    await act(async () => projectToggle?.click());
+
+    expect(container.querySelector('[data-testid="task-project-cell-task-1"]')).not.toBeNull();
+    const select = container.querySelector<HTMLSelectElement>(
+      '[data-testid="task-project-cell-task-1"]',
+    );
+    expect(select).not.toBeNull();
+    await act(async () => {
+      select!.value = "project-2";
+      select!.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await act(async () => {});
+
+    expect(actions.updateCellAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        taskId: "task-1",
+        field: "project",
+        value: "project-2",
+      }),
+    );
+    expect(container.querySelector("#task-task-1")?.textContent).toContain("Second project");
+  });
+
+  it("returns focus to the cell trigger after Escape", async () => {
+    await renderTable([buildTask()], buildActions(), { returnTo: "/tasks" });
+    const trigger = container.querySelector<HTMLButtonElement>(
+      '[data-testid="task-due-cell-task-1-trigger"]',
+    );
+    trigger?.focus();
+    await pointerClick(trigger);
+    expect(document.body.querySelector('[role="dialog"]')).not.toBeNull();
+
+    await act(async () => {
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    });
+    await flushCloseFocus();
+    expect(document.activeElement).toBe(trigger);
   });
 });

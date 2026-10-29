@@ -13,6 +13,7 @@ import {
   updateTaskInlineAction,
   updateTaskEditorAction,
   updateTaskFieldDraftAction,
+  updateTaskTableCellAction,
   bulkTaskFieldAction,
   bulkTaskArchiveAction,
   undoTaskOperationAction,
@@ -35,7 +36,8 @@ import { isTaskCompletedStatus } from "@/lib/task-domain";
 import { formatDisplayCount } from "@/lib/presentation-format";
 import { ListChecks } from "lucide-react";
 import type { TasksPageModel } from "../_lib/tasks-page-model";
-import { TasksListTable, type TaskListActions } from "./tasks-list-table";
+import { TaskTable, type TaskTableActions } from "./table/task-table";
+import { normalizeTaskTableColumns } from "@ega/contracts/common/task-list";
 import { TaskDrawerHost } from "@/components/tasks/drawer/task-drawer-host";
 import { updateTaskFieldAction } from "@/app/tasks/actions";
 import { TASK_SUBTASK_ACTIONS } from "@/lib/task-subtask-actions";
@@ -108,6 +110,7 @@ export function TasksPageView({
     ownerToday,
   } = model;
   const { activeView, activeLayout } = parsed;
+  const tableColumns = parsed.view.columns ?? normalizeTaskTableColumns(null);
   const completedTaskIdsInScope = getArchivableCompletedTaskIds(tasks);  // Restore clears archived state only; it must never resurrect a completed
   // task as unfinished work.
   const showBulkArchive = activeView === "active" && completedTaskIdsInScope.length > 0;
@@ -144,7 +147,7 @@ export function TasksPageView({
       )
     : null;
 
-  const taskListActions: TaskListActions = {
+  const taskListActions: TaskTableActions = {
     updateAction: updateTaskInlineAction,
     updateEditorAction: updateTaskEditorAction,
     deleteAction: deleteTaskAction,
@@ -159,6 +162,7 @@ export function TasksPageView({
     bulkFieldAction: bulkTaskFieldAction,
     bulkArchiveAction: bulkTaskArchiveAction,
     undoAction: undoTaskOperationAction,
+    updateCellAction: updateTaskTableCellAction,
   };
 
   const bulkArchiveControl = showBulkArchive ? (
@@ -336,6 +340,7 @@ export function TasksPageView({
                       view: activeView,
                       layout: activeLayout,
                       density: parsed.activeDensity,
+                      columns: savedView.columns,
                     }),
                   };
                 })}
@@ -388,11 +393,14 @@ export function TasksPageView({
           ) : tasks.length === 0 ? (
             emptyState
           ) : parsed.view.groupBy === "none" ? (
-            <TasksListTable
+            <TaskTable
               tasks={tasks}
               taskTotalDurations={taskTotalDurations}
               subtaskCounts={subtaskCounts}
               returnTo={returnPath}
+              columns={tableColumns}
+              sortKey={parsed.view.sort.key}
+              sortDirection={parsed.view.sort.direction}
               taskUpdateTaskId={taskUpdateTaskId}
               taskUpdateError={taskUpdateError}
               projectOptions={projects}
@@ -425,11 +433,14 @@ export function TasksPageView({
                       </Badge>
                     </summary>
                     {group.tasks.length > 0 ? (
-                      <TasksListTable
+                      <TaskTable
                         tasks={group.tasks}
                         taskTotalDurations={taskTotalDurations}
                         subtaskCounts={subtaskCounts}
                         returnTo={returnPath}
+                        columns={tableColumns}
+                        sortKey={parsed.view.sort.key}
+                        sortDirection={parsed.view.sort.direction}
                         taskUpdateTaskId={taskUpdateTaskId}
                         taskUpdateError={taskUpdateError}
                         projectOptions={projects}

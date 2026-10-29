@@ -204,3 +204,26 @@ test("EGA-791: chips describe stackable filters and remove only their own filter
   const searchChip = chips.find((chip) => chip.key === "search")!;
   assert.equal(parseTaskListView(searchParamsRecord(searchChip.removeHref)).search, "");
 });
+
+test("EGA-792: table column layout survives filter and sort changes", () => {
+  const columns = parseTaskListView({
+    cols: "task,project,status",
+    widths: "task:420",
+  }).columns;
+  const withColumns: TaskFilterState = { ...fullState, columns };
+
+  const filtered = params(mergeTaskFilterUrl("/tasks", withColumns, { status: "todo" }));
+  assert.equal(filtered.get("cols"), "task,project,status");
+  assert.equal(filtered.get("widths"), "task:420");
+
+  const sorted = params(
+    mergeTaskFilterUrl("/tasks", withColumns, { sortKey: "priority", sortDirection: "desc" }),
+  );
+  assert.equal(sorted.get("cols"), "task,project,status");
+  assert.equal(sorted.get("sort"), "priority");
+  assert.equal(sorted.get("dir"), "desc");
+
+  const cleared = params(buildClearTaskFiltersUrl("/tasks", withColumns));
+  assert.equal(cleared.get("cols"), "task,project,status");
+  assert.equal(cleared.get("widths"), "task:420");
+});
