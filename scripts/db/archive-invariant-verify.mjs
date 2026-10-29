@@ -420,7 +420,9 @@ async function main() {
 
     await seedLegacyRows(sql);
     await applyFile(sql, ARCHIVE_TAG);
-    assert((await readJournal()).at(-1) === ARCHIVE_TAG, "archive migration is the journal head");
+    // The journal grows past this tag; the archive proof exercises its own
+    // migration over legacy data and must not assume it is the newest entry.
+    assert(tags.includes(ARCHIVE_TAG), `journal includes ${ARCHIVE_TAG}`);
     log("MIGRATE", `${ARCHIVE_TAG} applied over legacy data`);
 
     await grantProofRolePrivileges(sql);
