@@ -1,11 +1,14 @@
-import type { ArchiveGoalRecord, ArchiveProjectRecord, ArchiveTaskRecord } from "@ega/application";
+import type {
+  ArchiveGoalRecord,
+  ArchiveProjectRecord,
+  ArchiveTaskRecord,
+} from "@ega/application";
 import type { ArchiveTab } from "@ega/domain";
 import { Archive, FolderArchive, Goal, ListChecks, Search } from "lucide-react";
 import Link from "next/link";
 
 import { restoreArchivedEntityAction } from "@/app/archive/actions";
 import type { ArchivePageModel } from "@/app/archive/_lib/archive-page-model";
-import { AppShell } from "@/components/layout/app-shell";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -23,9 +26,19 @@ const ARCHIVE_TABS: ReadonlyArray<{
   icon: typeof ListChecks;
   searchPlaceholder: string;
 }> = [
-  { tab: "tasks", label: "Tasks", icon: ListChecks, searchPlaceholder: "Task title" },
+  {
+    tab: "tasks",
+    label: "Tasks",
+    icon: ListChecks,
+    searchPlaceholder: "Task title",
+  },
   { tab: "goals", label: "Goals", icon: Goal, searchPlaceholder: "Goal title" },
-  { tab: "projects", label: "Projects", icon: FolderArchive, searchPlaceholder: "Project name" },
+  {
+    tab: "projects",
+    label: "Projects",
+    icon: FolderArchive,
+    searchPlaceholder: "Project name",
+  },
 ];
 
 export function getArchiveHref(tab: ArchiveTab, search: string) {
@@ -107,9 +120,7 @@ function ArchiveRow({
       </span>
 
       <span className="flex shrink-0 flex-wrap items-center gap-1.5">
-        {statusLabel ? (
-          <Badge tone={statusTone}>{statusLabel}</Badge>
-        ) : null}
+        {statusLabel ? <Badge tone={statusTone}>{statusLabel}</Badge> : null}
         <Badge tone="warn">Archived</Badge>
       </span>
 
@@ -121,13 +132,24 @@ function ArchiveRow({
       </time>
 
       <span className="row-actions">
-        <RestoreForm entity={entity} id={id} itemTitle={title} returnTo={returnTo} />
+        <RestoreForm
+          entity={entity}
+          id={id}
+          itemTitle={title}
+          returnTo={returnTo}
+        />
       </span>
     </li>
   );
 }
 
-function TaskRows({ tasks, returnTo }: { tasks: ArchiveTaskRecord[]; returnTo: string }) {
+function TaskRows({
+  tasks,
+  returnTo,
+}: {
+  tasks: ArchiveTaskRecord[];
+  returnTo: string;
+}) {
   return (
     <>
       {tasks.map((task) => (
@@ -136,7 +158,10 @@ function TaskRows({ tasks, returnTo }: { tasks: ArchiveTaskRecord[]; returnTo: s
           entity="tasks"
           id={task.id}
           title={task.title}
-          meta={[task.projectName ?? "No project", task.goalTitle ? `Goal: ${task.goalTitle}` : null]
+          meta={[
+            task.projectName ?? "No project",
+            task.goalTitle ? `Goal: ${task.goalTitle}` : null,
+          ]
             .filter(Boolean)
             .join(" · ")}
           statusLabel={formatTaskToken(task.status)}
@@ -152,7 +177,13 @@ function TaskRows({ tasks, returnTo }: { tasks: ArchiveTaskRecord[]; returnTo: s
   );
 }
 
-function GoalRows({ goals, returnTo }: { goals: ArchiveGoalRecord[]; returnTo: string }) {
+function GoalRows({
+  goals,
+  returnTo,
+}: {
+  goals: ArchiveGoalRecord[];
+  returnTo: string;
+}) {
   return (
     <>
       {goals.map((goal) => (
@@ -199,26 +230,36 @@ function ProjectRows({
   );
 }
 
-const EMPTY_COPY: Record<ArchiveTab, { title: string; description: string; searchDescription: string }> = {
+const EMPTY_COPY: Record<
+  ArchiveTab,
+  { title: string; description: string; searchDescription: string }
+> = {
   tasks: {
     title: "No archived tasks",
-    description: "Tasks you archive from the task list appear here so you can restore them later.",
-    searchDescription: "No archived task matches this search. Try a different title.",
+    description:
+      "Tasks you archive from the task list appear here so you can restore them later.",
+    searchDescription:
+      "No archived task matches this search. Try a different title.",
   },
   goals: {
     title: "No archived goals",
-    description: "Archived goals stay available for reference until you restore them.",
-    searchDescription: "No archived goal matches this search. Try a different title.",
+    description:
+      "Archived goals stay available for reference until you restore them.",
+    searchDescription:
+      "No archived goal matches this search. Try a different title.",
   },
   projects: {
     title: "No archived projects",
-    description: "Archived projects stay available for reference until you restore them.",
-    searchDescription: "No archived project matches this search. Try a different name.",
+    description:
+      "Archived projects stay available for reference until you restore them.",
+    searchDescription:
+      "No archived project matches this search. Try a different name.",
   },
 };
 
 export function ArchivePageView({ model }: { model: ArchivePageModel }) {
-  const activeTab = ARCHIVE_TABS.find((entry) => entry.tab === model.tab) ?? ARCHIVE_TABS[0];
+  const activeTab =
+    ARCHIVE_TABS.find((entry) => entry.tab === model.tab) ?? ARCHIVE_TABS[0];
   const returnTo = getArchiveHref(model.tab, model.search);
   const counts: Record<ArchiveTab, number> = {
     tasks: model.summary.tasks,
@@ -235,119 +276,120 @@ export function ArchivePageView({ model }: { model: ArchivePageModel }) {
   const Icon = activeTab.icon;
 
   return (
-    <AppShell
-      title="Archive"
-      description="Restore archived tasks, goals and projects. Archived work keeps its history."
-    >
-      <div className="flex flex-col gap-6">
-        {model.errorMessage ? (
-          <p role="alert" className="feedback-block feedback-block-error">
-            {model.errorMessage}
-          </p>
-        ) : null}
-        {model.notice ? (
-          <p role="status" className="feedback-block">
-            {model.notice}
-          </p>
-        ) : null}
+    <div className="flex flex-col gap-6">
+      {model.errorMessage ? (
+        <p role="alert" className="feedback-block feedback-block-error">
+          {model.errorMessage}
+        </p>
+      ) : null}
+      {model.notice ? (
+        <p role="status" className="feedback-block">
+          {model.notice}
+        </p>
+      ) : null}
 
-        <section className="flex flex-col gap-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div
-              className="flex flex-wrap items-center gap-2"
-              role="group"
-              aria-label="Archive sections"
-            >
-              {ARCHIVE_TABS.map((entry) => (
-                <FilterPill
-                  key={entry.tab}
-                  label={`${entry.label} (${counts[entry.tab]})`}
-                  href={getArchiveHref(entry.tab, model.search)}
-                  active={model.tab === entry.tab}
-                  ariaCurrent={model.tab === entry.tab ? "page" : undefined}
-                />
-              ))}
-            </div>
-            <p className="text-[length:var(--text-meta)] tabular-nums text-[color:var(--ega-text-tertiary)]">
-              {itemCount === 1 ? "1 item" : `${itemCount} items`}
-              {model.search ? " matching this search" : " in this section"}
-            </p>
-          </div>
-
-          <form action="/archive" method="get" className="panel">
-            {model.tab !== "tasks" ? (
-              <input type="hidden" name="tab" value={model.tab} />
-            ) : null}
-            <div className="panel-body flex flex-wrap items-end gap-3">
-              <div className="flex min-w-52 flex-1 flex-col gap-1.5">
-                <label htmlFor="archive-search" className="form-label">
-                  Search {activeTab.label.toLowerCase()}
-                </label>
-                <Input
-                  id="archive-search"
-                  name="q"
-                  type="search"
-                  defaultValue={model.search}
-                  placeholder={activeTab.searchPlaceholder}
-                  className="h-8 text-[length:var(--text-meta-lg)]"
-                />
-              </div>
-            </div>
-            <div className="panel-footer">
-              <div className="flex flex-wrap items-center gap-2">
-                <PendingSubmitButton
-                  type="submit"
-                  size="sm"
-                  className="gap-2"
-                  pendingLabel="Searching…"
-                >
-                  <Search className="h-4 w-4" aria-hidden="true" />
-                  Search
-                </PendingSubmitButton>
-                <Link
-                  href={getArchiveHref(model.tab, "")}
-                  className={cn(buttonVariants({ variant: "muted", size: "sm" }))}
-                >
-                  Clear
-                </Link>
-              </div>
-            </div>
-          </form>
-
-          <Card>
-            {itemCount === 0 ? (
-              <EmptyState
-                icon={Icon}
-                title={model.search ? "No matches in the archive" : emptyCopy.title}
-                description={
-                  model.search ? emptyCopy.searchDescription : emptyCopy.description
-                }
-                actionLabel={model.search ? "Clear search" : undefined}
-                actionHref={model.search ? getArchiveHref(model.tab, "") : undefined}
+      <section className="flex flex-col gap-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div
+            className="flex flex-wrap items-center gap-2"
+            role="group"
+            aria-label="Archive sections"
+          >
+            {ARCHIVE_TABS.map((entry) => (
+              <FilterPill
+                key={entry.tab}
+                label={`${entry.label} (${counts[entry.tab]})`}
+                href={getArchiveHref(entry.tab, model.search)}
+                active={model.tab === entry.tab}
+                ariaCurrent={model.tab === entry.tab ? "page" : undefined}
               />
-            ) : (
-              <ul className="rows">
-                {model.tab === "tasks" ? (
-                  <TaskRows tasks={model.tasks} returnTo={returnTo} />
-                ) : model.tab === "goals" ? (
-                  <GoalRows goals={model.goals} returnTo={returnTo} />
-                ) : (
-                  <ProjectRows projects={model.projects} returnTo={returnTo} />
-                )}
-              </ul>
-            )}
-          </Card>
-
-          <p className="flex items-start gap-2 text-[length:var(--text-meta)] leading-[var(--leading-snug)] text-[color:var(--ega-text-tertiary)]">
-            <Archive className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-            <span>
-              Restoring never changes archived children or past sessions. Permanent
-              deletion is not available in the archive centre: it needs the owner&apos;s
-              approved retention and cascade policy first.
-            </span>
+            ))}
+          </div>
+          <p className="text-[length:var(--text-meta)] tabular-nums text-[color:var(--ega-text-tertiary)]">
+            {itemCount === 1 ? "1 item" : `${itemCount} items`}
+            {model.search ? " matching this search" : " in this section"}
           </p>
-        </section>
-      </div>
-    </AppShell>
+        </div>
+
+        <form action="/archive" method="get" className="panel">
+          {model.tab !== "tasks" ? (
+            <input type="hidden" name="tab" value={model.tab} />
+          ) : null}
+          <div className="panel-body flex flex-wrap items-end gap-3">
+            <div className="flex min-w-52 flex-1 flex-col gap-1.5">
+              <label htmlFor="archive-search" className="form-label">
+                Search {activeTab.label.toLowerCase()}
+              </label>
+              <Input
+                id="archive-search"
+                name="q"
+                type="search"
+                defaultValue={model.search}
+                placeholder={activeTab.searchPlaceholder}
+                className="h-8 text-[length:var(--text-meta-lg)]"
+              />
+            </div>
+          </div>
+          <div className="panel-footer">
+            <div className="flex flex-wrap items-center gap-2">
+              <PendingSubmitButton
+                type="submit"
+                size="sm"
+                className="gap-2"
+                pendingLabel="Searching…"
+              >
+                <Search className="h-4 w-4" aria-hidden="true" />
+                Search
+              </PendingSubmitButton>
+              <Link
+                href={getArchiveHref(model.tab, "")}
+                className={cn(buttonVariants({ variant: "muted", size: "sm" }))}
+              >
+                Clear
+              </Link>
+            </div>
+          </div>
+        </form>
+
+        <Card>
+          {itemCount === 0 ? (
+            <EmptyState
+              icon={Icon}
+              title={
+                model.search ? "No matches in the archive" : emptyCopy.title
+              }
+              description={
+                model.search
+                  ? emptyCopy.searchDescription
+                  : emptyCopy.description
+              }
+              actionLabel={model.search ? "Clear search" : undefined}
+              actionHref={
+                model.search ? getArchiveHref(model.tab, "") : undefined
+              }
+            />
+          ) : (
+            <ul className="rows">
+              {model.tab === "tasks" ? (
+                <TaskRows tasks={model.tasks} returnTo={returnTo} />
+              ) : model.tab === "goals" ? (
+                <GoalRows goals={model.goals} returnTo={returnTo} />
+              ) : (
+                <ProjectRows projects={model.projects} returnTo={returnTo} />
+              )}
+            </ul>
+          )}
+        </Card>
+
+        <p className="flex items-start gap-2 text-[length:var(--text-meta)] leading-[var(--leading-snug)] text-[color:var(--ega-text-tertiary)]">
+          <Archive className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          <span>
+            Restoring never changes archived children or past sessions.
+            Permanent deletion is not available in the archive centre: it needs
+            the owner&apos;s approved retention and cascade policy first.
+          </span>
+        </p>
+      </section>
+    </div>
   );
 }

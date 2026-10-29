@@ -68,8 +68,8 @@ describe("CommandPalette", () => {
     await openViaShortcut();
 
     const options = document.body.querySelectorAll('[role="option"]');
-    // 13 destinations plus three creation commands.
-    expect(options.length).toBe(16);
+    // 14 destinations plus three creation commands.
+    expect(options.length).toBe(17);
     expect(options[0].textContent).toContain("Today");
     expect(options[0].getAttribute("aria-selected")).toBe("true");
 
