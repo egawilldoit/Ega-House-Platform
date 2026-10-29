@@ -125,7 +125,9 @@ export function getTaskSavedViewHref(view: TaskSavedViewRow, activeLayout?: Task
 }
 
 export function getTaskSavedViewsAllTasksHref(activeLayout?: TaskLayoutMode) {
-  return activeLayout === "kanban" ? "/tasks?layout=kanban" : "/tasks";
+  if (activeLayout === "kanban") return "/tasks?layout=kanban";
+  if (activeLayout === "calendar") return "/tasks?layout=calendar";
+  return "/tasks";
 }
 
 export function canEditTaskSavedView(view: Pick<TaskSavedViewRow, "id" | "is_default">) {

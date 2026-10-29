@@ -13,6 +13,7 @@ const getTasksWorkspaceData = vi.hoisted(() =>
     savedViewsUnavailable: false,
     activeProjectId: null,
     activeGoalId: null,
+    calendar: null,
   })),
 );
 
@@ -86,6 +87,7 @@ const LIVE_MODEL_KEYS = [
   "returnPath",
   "taskUrlFilters",
   "kanbanBoard",
+  "calendar",
   "inProgressCount",
   "blockedCount",
   "overdueCount",
@@ -119,6 +121,49 @@ describe("getTasksPageModel dead /tasks work removal", () => {
     getTasksWorkspaceData.mockClear();
     await getTasksPageModel({});
     expect(getTasksWorkspaceData).toHaveBeenCalledTimes(1);
+  });
+
+  it("passes the validated calendar window and owner timezone to the bounded read", async () => {
+    getTasksWorkspaceData.mockClear();
+    const model = await getTasksPageModel({
+      layout: "calendar",
+      cal: "week",
+      date: "2026-05-06",
+      dateField: "planned",
+    });
+
+    expect(model.parsed.activeLayout).toBe("calendar");
+    expect(model.parsed.activeCalendarView).toBe("week");
+    expect(model.parsed.activeCalendarDate).toBe("2026-05-06");
+    expect(model.parsed.activeCalendarDateField).toBe("planned");
+    expect(getTasksWorkspaceData).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        todayIsoDate: "2026-05-03",
+        calendar: {
+          view: "week",
+          dateField: "planned",
+          anchorDate: "2026-05-06",
+          timezone: "Asia/Tokyo",
+        },
+      }),
+    );
+  });
+
+  it("ignores an invalid calendar anchor instead of querying a broken range", async () => {
+    getTasksWorkspaceData.mockClear();
+    const model = await getTasksPageModel({
+      layout: "calendar",
+      date: "2026-02-30",
+    });
+
+    expect(model.parsed.activeCalendarDate).toBeNull();
+    expect(getTasksWorkspaceData).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        calendar: expect.objectContaining({ anchorDate: "2026-05-03" }),
+      }),
+    );
   });
 
   it("keeps saved-view data available without resolving feedback the UI never reads", async () => {

@@ -20,6 +20,7 @@ import {
   updateTaskReminderAction,
   moveTaskOnBoardAction,
   updateTaskTimelineScheduleAction,
+  rescheduleTaskCalendarAction,
 } from "@/app/tasks/actions";
 import { startTimerAction } from "@/app/timer/actions";
 import { BulkArchiveCompletedTasksForm } from "@/components/tasks/bulk-archive-completed-tasks-form";
@@ -32,12 +33,15 @@ import { FilterPill } from "@/components/ui/filter-pill";
 import { buildTaskListUrl } from "@/lib/task-list";
 import { getTaskViewFromSavedView } from "@/lib/task-saved-views";
 import { buildTimelineModel } from "@/lib/task-timeline";
+import { shiftCalendarAnchor } from "@/lib/task-calendar";
 import { isTaskCompletedStatus } from "@/lib/task-domain";
 import { formatDisplayCount } from "@/lib/presentation-format";
 import { ListChecks } from "lucide-react";
 import type { TasksPageModel } from "../_lib/tasks-page-model";
 import { TaskTable, type TaskTableActions } from "./table/task-table";
 import { normalizeTaskTableColumns } from "@ega/contracts/common/task-list";
+import { TaskCalendar } from "./calendar/task-calendar";
+import type { CalendarNavigation } from "./calendar/calendar-toolbar";
 import { TaskDrawerHost } from "@/components/tasks/drawer/task-drawer-host";
 import { updateTaskFieldAction } from "@/app/tasks/actions";
 import { TASK_SUBTASK_ACTIONS } from "@/lib/task-subtask-actions";
@@ -86,6 +90,7 @@ export function TasksPageView({
     returnPath,
     taskUrlFilters,
     kanbanBoard,
+    calendar,
     inProgressCount,
     blockedCount,
     overdueCount,
@@ -164,6 +169,67 @@ export function TasksPageView({
     undoAction: undoTaskOperationAction,
     updateCellAction: updateTaskTableCellAction,
   };
+
+  const calendarNavigation: CalendarNavigation | null = calendar
+    ? {
+        prevHref: buildTaskListUrl("/tasks", {
+          ...taskUrlFilters,
+          view: activeView,
+          layout: "calendar",
+          cal: calendar.view,
+          date: shiftCalendarAnchor(calendar.view, calendar.anchorDate, -1),
+          dateField: calendar.dateField,
+        }),
+        nextHref: buildTaskListUrl("/tasks", {
+          ...taskUrlFilters,
+          view: activeView,
+          layout: "calendar",
+          cal: calendar.view,
+          date: shiftCalendarAnchor(calendar.view, calendar.anchorDate, 1),
+          dateField: calendar.dateField,
+        }),
+        todayHref: buildTaskListUrl("/tasks", {
+          ...taskUrlFilters,
+          view: activeView,
+          layout: "calendar",
+          cal: calendar.view,
+          date: calendar.todayDate,
+          dateField: calendar.dateField,
+        }),
+        monthHref: buildTaskListUrl("/tasks", {
+          ...taskUrlFilters,
+          view: activeView,
+          layout: "calendar",
+          cal: "month",
+          date: calendar.anchorDate,
+          dateField: calendar.dateField,
+        }),
+        weekHref: buildTaskListUrl("/tasks", {
+          ...taskUrlFilters,
+          view: activeView,
+          layout: "calendar",
+          cal: "week",
+          date: calendar.anchorDate,
+          dateField: calendar.dateField,
+        }),
+        dueHref: buildTaskListUrl("/tasks", {
+          ...taskUrlFilters,
+          view: activeView,
+          layout: "calendar",
+          cal: calendar.view,
+          date: calendar.anchorDate,
+          dateField: "due",
+        }),
+        plannedHref: buildTaskListUrl("/tasks", {
+          ...taskUrlFilters,
+          view: activeView,
+          layout: "calendar",
+          cal: calendar.view,
+          date: calendar.anchorDate,
+          dateField: "planned",
+        }),
+      }
+    : null;
 
   const bulkArchiveControl = showBulkArchive ? (
     <BulkArchiveCompletedTasksForm
@@ -296,6 +362,20 @@ export function TasksPageView({
                   active={activeLayout === "timeline"}
                   ariaCurrent={activeLayout === "timeline" ? "page" : undefined}
                 />
+                <FilterPill
+                  href={buildTaskListUrl("/tasks", {
+                    ...taskUrlFilters,
+                    view: activeView,
+                    layout: "calendar",
+                    cal: parsed.activeCalendarView,
+                    date: parsed.activeCalendarDate,
+                    dateField: parsed.activeCalendarDateField,
+                    density: parsed.activeDensity,
+                  })}
+                  label="Calendar"
+                  active={activeLayout === "calendar"}
+                  ariaCurrent={activeLayout === "calendar" ? "page" : undefined}
+                />
               </div>
 
               <p
@@ -315,6 +395,9 @@ export function TasksPageView({
                 activeDensity={parsed.activeDensity}
                 activeView={activeView}
                 activeBoardOrder={parsed.activeBoardOrder}
+                activeCalendarView={parsed.activeCalendarView}
+                activeCalendarDate={parsed.activeCalendarDate}
+                activeCalendarDateField={parsed.activeCalendarDateField}
                 projectOptions={projects}
                 goalOptions={goals.map((goal) => ({ id: goal.id, title: goal.title }))}
                 savedViews={savedViews.map((view) => {
@@ -367,6 +450,30 @@ export function TasksPageView({
               returnTo={returnPath}
               action={updateTaskTimelineScheduleAction}
             />
+          ) : activeLayout === "calendar" ? (
+            <>
+              {taskUpdateError ? (
+                <p role="alert" className="feedback-block feedback-block-error m-[18px]">
+                  {taskUpdateError}
+                </p>
+              ) : null}
+              {calendar && calendarNavigation ? (
+                <div className="p-[18px]">
+                  <TaskCalendar
+                    data={calendar}
+                    navigation={calendarNavigation}
+                    returnTo={returnPath}
+                    rescheduleAction={rescheduleTaskCalendarAction}
+                  />
+                </div>
+              ) : (
+                <EmptyState
+                  icon={ListChecks}
+                  title="Calendar unavailable"
+                  description="The calendar range could not be loaded. Refresh the page to try again."
+                />
+              )}
+            </>
           ) : activeLayout === "kanban" ? (
             tasks.length === 0 ? (
               emptyState

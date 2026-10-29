@@ -48,8 +48,18 @@ export type {
   TaskViewSearchParams,
 };
 
-export const TASK_LAYOUT_VALUES = ["list", "kanban", "timeline"] as const;
+export const TASK_LAYOUT_VALUES = ["list", "kanban", "timeline", "calendar"] as const;
 export const DEFAULT_TASK_LAYOUT = "list" as const;
+
+/** Calendar range modes for `layout=calendar`. */
+export const TASK_CALENDAR_VIEW_VALUES = ["month", "week"] as const;
+export type TaskCalendarView = (typeof TASK_CALENDAR_VIEW_VALUES)[number];
+export const DEFAULT_TASK_CALENDAR_VIEW: TaskCalendarView = "month";
+
+/** Which task date field places a task on a calendar day. */
+export const TASK_CALENDAR_DATE_FIELD_VALUES = ["due", "planned"] as const;
+export type TaskCalendarDateField = (typeof TASK_CALENDAR_DATE_FIELD_VALUES)[number];
+export const DEFAULT_TASK_CALENDAR_DATE_FIELD: TaskCalendarDateField = "due";
 
 export const TASK_DENSITY_VALUES = ["comfortable", "compact"] as const;
 export type TaskDensity = (typeof TASK_DENSITY_VALUES)[number];
@@ -146,12 +156,25 @@ export function sortTasksForBoard<T extends BoardSortableTask>(
 export function normalizeTaskLayout(value: string | null | undefined): TaskLayoutMode {
   if (value === "kanban") return "kanban";
   if (value === "timeline") return "timeline";
+  if (value === "calendar") return "calendar";
   return DEFAULT_TASK_LAYOUT;
 }
 
 /** True only for a layout the web workspace can render today. */
 export function isTaskLayout(value: unknown): value is TaskLayoutMode {
-  return value === "list" || value === "kanban";
+  return value === "list" || value === "kanban" || value === "timeline" || value === "calendar";
+}
+
+export function normalizeTaskCalendarView(
+  value: string | null | undefined,
+): TaskCalendarView {
+  return value === "week" ? "week" : DEFAULT_TASK_CALENDAR_VIEW;
+}
+
+export function normalizeTaskCalendarDateField(
+  value: string | null | undefined,
+): TaskCalendarDateField {
+  return value === "planned" ? "planned" : DEFAULT_TASK_CALENDAR_DATE_FIELD;
 }
 
 export function buildTaskKanbanBoard<T extends TaskKanbanLike>(
@@ -207,6 +230,12 @@ export type TaskListUrlFilters = {
   timelineZoom?: string | null;
   /** Project detail section, when the list is embedded in a tabbed route. */
   tab?: string | null;
+  /** Calendar range mode while `layout=calendar`. */
+  cal?: TaskCalendarView | null;
+  /** Visible-window anchor date while `layout=calendar`. */
+  date?: string | null;
+  /** Task date field that places tasks on calendar days. */
+  dateField?: TaskCalendarDateField | null;
 };
 
 function viewFromUrlFilters(filters: TaskListUrlFilters): TaskViewDefinition {
@@ -262,6 +291,18 @@ export function buildTaskListUrl(
     searchParams.set("layout", "timeline");
     if (filters.timelineStart) searchParams.set("tlStart", filters.timelineStart);
     if (filters.timelineZoom === "month") searchParams.set("tlZoom", "month");
+  }
+  if (filters.layout === "calendar") {
+    searchParams.set("layout", "calendar");
+    // Calendar parameters only exist while the calendar layout is active, so
+    // switching back to list/board cannot leave a stale anchor behind.
+    if (filters.cal && filters.cal !== DEFAULT_TASK_CALENDAR_VIEW) {
+      searchParams.set("cal", filters.cal);
+    }
+    if (filters.date) searchParams.set("date", filters.date);
+    if (filters.dateField && filters.dateField !== DEFAULT_TASK_CALENDAR_DATE_FIELD) {
+      searchParams.set("dateField", filters.dateField);
+    }
   }
   if (filters.density === "compact") searchParams.set("density", "compact");
   if (filters.boardOrder) searchParams.set("boardOrder", filters.boardOrder);
