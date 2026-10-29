@@ -459,18 +459,24 @@ async function main() {
     await applySupabaseShim(sql);
 
     let applied = 0;
-    for (const tag of tags) {
-      if (tag === skipMigration) continue;
+    const skipIndex = tags.indexOf(skipMigration);
+    // Apply the schema that existed before 0063, seed the pre-migration state,
+    // then replay 0063 and every later migration in real journal order. Later
+    // migrations may (and do) depend on 0063's tables.
+    for (const tag of tags.slice(0, skipIndex)) {
       const statements = await applyFile(sql, tag);
       applied += 1;
       log("MIGRATE", `${tag}: ${statements} statement(s) applied`);
     }
-    log("MIGRATE", `${applied} baseline migrations applied (excluding ${skipMigration})`);
+    log("MIGRATE", `${applied} baseline migrations applied (before ${skipMigration})`);
 
     await seedPreMigrationTasks(sql);
 
-    const statements = await applyFile(sql, skipMigration);
-    log("MIGRATE", `${skipMigration}: ${statements} statement(s) applied`);
+    for (const tag of tags.slice(skipIndex)) {
+      const statements = await applyFile(sql, tag);
+      applied += 1;
+      log("MIGRATE", `${tag}: ${statements} statement(s) applied`);
+    }
 
     // Table-level read grant for the RLS proof (row filtering still comes from
     // the policies; real Supabase grants this via default privileges).

@@ -11,7 +11,7 @@ const searchWorkspaceAction = vi.fn();
 const routerPush = vi.fn();
 
 vi.mock("@/app/search/actions", () => ({
-  searchWorkspaceAction: (query: string) => searchWorkspaceAction(query),
+  searchWorkspaceAction: (query: string, scope?: string) => searchWorkspaceAction(query, scope),
 }));
 
 vi.mock("next/navigation", () => ({
@@ -37,9 +37,9 @@ afterEach(async () => {
   document.body.style.overflow = "";
 });
 
-async function renderPalette() {
+async function renderPalette(ownerId: string | null = null) {
   await act(async () => {
-    root.render(<CommandPalette />);
+    root.render(<CommandPalette ownerId={ownerId} />);
   });
 }
 
@@ -63,9 +63,15 @@ describe("CommandPalette", () => {
     expect(document.activeElement).toBe(input());
   });
 
-  it("shows navigation entries for an empty query and navigates on Enter", async () => {
+  it("shows navigation entries in Commands mode and navigates on Enter", async () => {
     await renderPalette();
     await openViaShortcut();
+
+    await act(async () => {
+      Array.from(document.body.querySelectorAll<HTMLButtonElement>('[role="tab"]'))
+        .find((tab) => tab.textContent === "Commands")
+        ?.click();
+    });
 
     const options = document.body.querySelectorAll('[role="option"]');
     // 14 destinations plus three creation commands.
@@ -89,6 +95,11 @@ describe("CommandPalette", () => {
     try {
       await renderPalette();
       await openViaShortcut();
+      await act(async () => {
+        Array.from(document.body.querySelectorAll<HTMLButtonElement>('[role="tab"]'))
+          .find((tab) => tab.textContent === "Commands")
+          ?.click();
+      });
       const capture = document.body.querySelector('[role="option"][aria-label="Add to Backlog"]');
       expect(capture).not.toBeNull();
       const hintId = capture?.getAttribute("aria-describedby");
@@ -101,6 +112,97 @@ describe("CommandPalette", () => {
       expect(routerPush).not.toHaveBeenCalled();
     } finally {
       window.removeEventListener(QUICK_TASK_EVENT, onQuickTask);
+    }
+  });
+
+  it("passes the selected scope to the search action", async () => {
+    vi.useFakeTimers();
+    try {
+      searchWorkspaceAction.mockResolvedValue({
+        query: "landing",
+        scope: "ideas",
+        tasks: [],
+        projects: [],
+        goals: [],
+        ideas: [],
+      });
+      await renderPalette();
+      await openViaShortcut();
+
+      await act(async () => {
+        Array.from(document.body.querySelectorAll<HTMLButtonElement>('[role="tab"]'))
+          .find((tab) => tab.textContent === "Search")
+          ?.click();
+      });
+      await act(async () => {
+        Array.from(document.body.querySelectorAll<HTMLButtonElement>('button[aria-pressed]'))
+          .find((button) => button.textContent === "Tasks")
+          ?.click();
+      });
+      const inputElement = input();
+      if (inputElement) {
+        const setter = Object.getOwnPropertyDescriptor(
+          window.HTMLInputElement.prototype,
+          "value",
+        )?.set;
+        setter?.call(inputElement, "landing");
+        inputElement.dispatchEvent(new Event("input", { bubbles: true }));
+      }
+      await act(async () => {
+        vi.advanceTimersByTime(400);
+      });
+      await act(async () => {});
+
+      expect(searchWorkspaceAction).toHaveBeenCalledWith("landing", "tasks");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("remembers an opened task for this owner, not for the next account", async () => {
+    vi.useFakeTimers();
+    try {
+      searchWorkspaceAction.mockResolvedValue({
+        query: "land",
+        scope: "all",
+        tasks: [{ id: "t1", title: "Ship landing page", status: "todo", projectName: "Web" }],
+        projects: [],
+        goals: [],
+        ideas: [],
+      });
+      await renderPalette("owner-a");
+      await openViaShortcut();
+
+      const inputElement = input();
+      if (inputElement) {
+        const setter = Object.getOwnPropertyDescriptor(
+          window.HTMLInputElement.prototype,
+          "value",
+        )?.set;
+        setter?.call(inputElement, "land");
+        inputElement.dispatchEvent(new Event("input", { bubbles: true }));
+      }
+      await act(async () => {
+        vi.advanceTimersByTime(400);
+      });
+      await act(async () => {});
+      const option = document.body.querySelector<HTMLButtonElement>('[role="option"]');
+      expect(option).not.toBeNull();
+      await act(async () => option?.click());
+      expect(routerPush).toHaveBeenCalledWith("/tasks?task=t1");
+
+      await openViaShortcut();
+      const recentsOptions = Array.from(document.body.querySelectorAll('[role="option"]'));
+      expect(recentsOptions[0]?.textContent).toContain("Ship landing page");
+
+      // Switching accounts must not surface the previous owner's recents.
+      await act(async () => root.unmount());
+      root = createRoot(container);
+      await renderPalette("owner-b");
+      await openViaShortcut();
+      expect(document.body.textContent).toContain("Nothing opened yet");
+    } finally {
+      vi.useRealTimers();
     }
   });
 
@@ -126,9 +228,11 @@ describe("CommandPalette", () => {
     try {
       searchWorkspaceAction.mockResolvedValue({
         query: "landing",
+        scope: "all",
         tasks: [{ id: "t1", title: "Ship landing page", status: "todo", projectName: "Web" }],
         projects: [],
         goals: [],
+        ideas: [],
       });
 
       await renderPalette();
@@ -152,7 +256,7 @@ describe("CommandPalette", () => {
       });
       await act(async () => {});
 
-      expect(searchWorkspaceAction).toHaveBeenCalledWith("landing");
+      expect(searchWorkspaceAction).toHaveBeenCalledWith("landing", "all");
 
       const options = document.body.querySelectorAll('[role="option"]');
       expect(options.length).toBe(1);

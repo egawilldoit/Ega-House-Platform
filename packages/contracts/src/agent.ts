@@ -7,6 +7,7 @@ export type AgentTokenScopes = {
     bulk?: boolean;
     bulkLimit?: number;
     idempotency?: string;
+    comment?: boolean;
   };
   projects?: { read?: boolean };
   goals?: { read?: boolean };
@@ -14,6 +15,8 @@ export type AgentTokenScopes = {
 
 export type AgentAuthContext = {
   tokenId: string;
+  /** Stable display name; author attribution must use this, not the token id. */
+  tokenName: string;
   ownerUserId: string;
   scopes: AgentTokenScopes;
 };
@@ -27,6 +30,7 @@ export type AgentCapabilities = {
     bulk: boolean;
     bulkLimit?: number;
     idempotency?: string;
+    comment: boolean;
   };
   projects: { read: boolean };
   goals: { read: boolean };

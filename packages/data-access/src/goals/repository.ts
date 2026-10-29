@@ -253,7 +253,7 @@ export class SupabaseGoalsRepository implements GoalsRepository {
 
   /**
    * Archive/restore in one statement. `goals_archive_state_check` (migration
-   * 0064) ties `archived_at` to `status = 'archived'`, so the pair is written
+   * 0073) ties `archived_at` to `status = 'archived'`, so the pair is written
    * together and can never half-apply.
    */
   async updateGoalArchiveState(

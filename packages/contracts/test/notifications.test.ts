@@ -11,10 +11,14 @@ import {
 } from "../src/notifications";
 
 test("notification wire values remain stable", () => {
-  assert.deepEqual(NOTIFICATION_TYPE_VALUES, ["task_reminder"]);
+  assert.deepEqual(NOTIFICATION_TYPE_VALUES, [
+    "task_reminder",
+    "task_comment_mention",
+  ]);
   assert.deepEqual(NOTIFICATION_TARGET_TYPE_VALUES, ["task"]);
   assert.deepEqual(NOTIFICATION_DELIVERY_MODE_VALUES, ["push", "email", "both"]);
   assert.equal(isNotificationType("task_reminder"), true);
+  assert.equal(isNotificationType("task_comment_mention"), true);
   assert.equal(isNotificationType("timer"), false);
   assert.equal(isNotificationTargetType("task"), true);
   assert.equal(isNotificationTargetType("goal"), false);

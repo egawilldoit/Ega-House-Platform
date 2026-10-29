@@ -36,7 +36,15 @@ import {
   pinTaskInFocusQueue,
   unpinTaskInFocusQueue,
 } from "@/lib/services/focus-queue-service";
-import { updateTaskFieldForOwner } from "@/lib/services/task-service";
+import { updateTaskFieldForOwner, updateTaskTimelineSchedule } from "@/lib/services/task-service";
+import {
+  isTaskTableCellEditableField,
+  type TaskTableCellEditableField,
+} from "@/lib/task-table-columns";
+import {
+  addTaskDependency,
+  removeTaskDependency,
+} from "@/lib/services/task-dependency-service";
 import type { TaskFieldDraftState } from "@/lib/task-field-draft";
 import { getWebTimeContext } from "@/lib/services/time-context-service";
 import {
@@ -728,6 +736,151 @@ export async function updateTaskFieldDraftAction(
   return { errorMessage: null, successMessage: "Saved.", savedValue: value };
 }
 
+export type UpdateTaskTimelineScheduleState = {
+  errorMessage: string | null;
+  successMessage: string | null;
+  taskId: string | null;
+};
+
+/**
+ * Timeline move/resize and the non-drag date editor.
+ *
+ * Returns state instead of redirecting so an optimistic bar can keep its draft
+ * and show a field-level error when a concurrent write wins. The service owns
+ * date validation, `due >= start`, owner scope and the version check; the
+ * domain/DB dependency rules are untouched by date edits.
+ */
+export type TaskTableCellUpdateResult = {
+  errorMessage: string | null;
+  savedValue: string | null;
+  updatedAt: string | null;
+};
+
+export type TaskTableCellUpdateInput = {
+  taskId: string;
+  field: TaskTableCellEditableField | string;
+  value: string;
+  /** The row revision the table rendered; a changed row is a conflict. */
+  expectedUpdatedAt: string;
+  returnTo?: string;
+};
+
+/**
+ * Persist one table-cell edit without navigating away from the table.
+ *
+ * The cell owns its draft until the server accepts the change, and the row's
+ * rendered `updated_at` is a required precondition so a stale table can never
+ * overwrite another editor's work.
+ */
+export async function updateTaskTableCellAction(
+  input: TaskTableCellUpdateInput,
+): Promise<TaskTableCellUpdateResult> {
+  const payload = input && typeof input === "object" ? input : null;
+  const taskId = typeof payload?.taskId === "string" ? payload.taskId.trim() : "";
+  const field = typeof payload?.field === "string" ? payload.field : "";
+  const value = typeof payload?.value === "string" ? payload.value : null;
+  const expectedUpdatedAt =
+    typeof payload?.expectedUpdatedAt === "string"
+      ? payload.expectedUpdatedAt.trim()
+      : "";
+
+  if (
+    !taskId ||
+    !isTaskTableCellEditableField(field) ||
+    value === null ||
+    !expectedUpdatedAt ||
+    value.length > 2_000
+  ) {
+    return {
+      errorMessage: "Task update request is invalid.",
+      savedValue: null,
+      updatedAt: null,
+    };
+  }
+
+  const returnPath = getTasksReturnPath(payload?.returnTo);
+  const accountTimezoneResult = await resolveAccountTimezone();
+  const result = await updateTaskFieldForOwner(
+    { taskId, field, value, expectedUpdatedAt },
+    {
+      accountTimezone: accountTimezoneResult.timezone ?? undefined,
+      fallbackAnchorDate: accountTimezoneResult.localDate ?? undefined,
+    },
+  );
+
+  if (result.errorMessage) {
+    return { errorMessage: result.errorMessage, savedValue: null, updatedAt: null };
+  }
+
+  revalidateWorkspaceFor("task", { returnTo: returnPath });
+  return {
+    errorMessage: null,
+    savedValue: result.savedValue ?? value,
+    updatedAt: result.updatedAt ?? null,
+  };
+}
+
+export async function updateTaskTimelineScheduleAction(
+  _previous: UpdateTaskTimelineScheduleState,
+  formData: FormData,
+): Promise<UpdateTaskTimelineScheduleState> {
+  const taskId = String(formData.get("taskId") ?? "").trim();
+  const returnPath = getTasksReturnPath(formData.get("returnTo"));
+  const accountTimezoneResult = await resolveAccountTimezone();
+  const result = await updateTaskTimelineSchedule(
+    {
+      taskId,
+      startDate: formData.get("startDate"),
+      dueDate: formData.get("dueDate"),
+      expectedUpdatedAt: String(formData.get("expectedUpdatedAt") ?? "").trim() || undefined,
+    },
+    { accountTimezone: accountTimezoneResult.timezone ?? undefined },
+  );
+
+  if (result.errorMessage) {
+    return { errorMessage: result.errorMessage, successMessage: null, taskId };
+  }
+
+  revalidateWorkspaceFor("task", { returnTo: returnPath });
+  return { errorMessage: null, successMessage: "Dates updated.", taskId };
+}
+
+export async function addTaskDependencyAction(formData: FormData) {
+  const returnPath = getTasksReturnPath(formData.get("returnTo"));
+  const taskId = String(formData.get("taskId") ?? "").trim();
+  const blockedByTaskId = String(formData.get("blockedByTaskId") ?? "").trim();
+
+  const result = await addTaskDependency({ taskId, blockedByTaskId });
+  if (result.errorMessage) {
+    redirectWithTasksError(returnPath, result.errorMessage, taskId || undefined);
+  }
+
+  revalidateWorkspaceFor("task", { returnTo: returnPath });
+  redirectWithWorkspaceFeedback(returnPath, {
+    anchor: taskId ? `task-${taskId}` : undefined,
+    taskSuccessMessage: result.successMessage ?? "Dependency added.",
+    taskId,
+  });
+}
+
+export async function removeTaskDependencyAction(formData: FormData) {
+  const returnPath = getTasksReturnPath(formData.get("returnTo"));
+  const taskId = String(formData.get("taskId") ?? "").trim();
+  const blockedByTaskId = String(formData.get("blockedByTaskId") ?? "").trim();
+
+  const result = await removeTaskDependency({ taskId, blockedByTaskId });
+  if (result.errorMessage) {
+    redirectWithTasksError(returnPath, result.errorMessage, taskId || undefined);
+  }
+
+  revalidateWorkspaceFor("task", { returnTo: returnPath });
+  redirectWithWorkspaceFeedback(returnPath, {
+    anchor: taskId ? `task-${taskId}` : undefined,
+    taskSuccessMessage: result.successMessage ?? "Dependency removed.",
+    taskId,
+  });
+}
+
 export type UpdateTaskEditorFormState = {
   errorMessage: string | null;
   successMessage: string | null;
@@ -1018,4 +1171,193 @@ export async function deleteTaskAction(formData: FormData) {
 
   revalidateWorkspaceFor("task", { returnTo: returnPath });
   redirectWithWorkspaceFeedback(returnPath);
+}
+
+// ---------------------------------------------------------------------------
+// Bulk task operations (EGA-786)
+//
+// The client calls these with explicit visible ids and shows a toast from the
+// returned operation id. They return state instead of redirecting so a partial
+// result can be reported per item and Undo can report the server's real
+// outcome; no client-supplied row snapshot is trusted.
+// ---------------------------------------------------------------------------
+
+export async function bulkTaskFieldAction(input: {
+  taskIds: string[];
+  field: string;
+  value: string;
+  returnTo?: string;
+}): Promise<import("@/lib/services/task-bulk-service").BulkTaskResult> {
+  const { bulkPatchTasksForOwner } = await import("@/lib/services/task-bulk-service");
+  const result = await bulkPatchTasksForOwner({
+    taskIds: Array.isArray(input.taskIds) ? input.taskIds : [],
+    field: input.field,
+    value: input.value,
+  });
+
+  if (result.applied > 0) {
+    revalidateWorkspaceFor("task", {
+      returnTo: getTasksReturnPath(input.returnTo),
+    });
+  }
+
+  return result;
+}
+
+export async function bulkTaskArchiveAction(input: {
+  taskIds: string[];
+  archived: boolean;
+  returnTo?: string;
+}): Promise<import("@/lib/services/task-bulk-service").BulkTaskResult> {
+  const { bulkArchiveTasksForOwner } = await import("@/lib/services/task-bulk-service");
+  const result = await bulkArchiveTasksForOwner({
+    taskIds: Array.isArray(input.taskIds) ? input.taskIds : [],
+    archived: Boolean(input.archived),
+  });
+
+  if (result.applied > 0) {
+    revalidateWorkspaceFor("task", {
+      returnTo: getTasksReturnPath(input.returnTo),
+    });
+  }
+
+  return result;
+}
+
+export async function undoTaskOperationAction(
+  operationId: string,
+): Promise<"success" | "conflict" | "failure"> {
+  const { undoTaskOperationForOwner } = await import("@/lib/services/task-bulk-service");
+  const { results, errorMessage } = await undoTaskOperationForOwner(String(operationId ?? ""));
+
+  if (errorMessage && results.length === 0) return "failure";
+
+  const restored = results.filter((result) => result.outcome === "restored").length;
+  if (restored > 0) {
+    revalidateWorkspaceFor("task", { returnTo: "/tasks" });
+    return results.some((result) => result.outcome !== "restored") ? "conflict" : "success";
+  }
+
+  return results.some((result) => result.outcome === "conflict") ? "conflict" : "failure";
+}
+
+// ---------------------------------------------------------------------------
+// Board moves (EGA-785)
+//
+// A move returns state instead of redirecting so the board can roll the
+// optimistic card back, keep the drop target in view, and announce the real
+// server outcome. Status, timers, completion and recurrence still flow through
+// `updateTaskInline`; the board only supplies the target rank.
+// ---------------------------------------------------------------------------
+
+export async function moveTaskOnBoardAction(
+  input: import("@/lib/services/task-board-service").MoveTaskOnBoardInput & {
+    returnTo?: string;
+  },
+): Promise<import("@/lib/services/task-board-service").BoardMoveResult> {
+  const { moveTaskOnBoardForOwner } = await import("@/lib/services/task-board-service");
+  const result = await moveTaskOnBoardForOwner(input);
+
+  if (result.ok) {
+    revalidateWorkspaceFor("task", {
+      returnTo: getTasksReturnPath(input.returnTo),
+    });
+  }
+
+  return result;
+}
+
+// ---------------------------------------------------------------------------
+// Subtasks / checklist (EGA-782)
+// ---------------------------------------------------------------------------
+
+async function subtaskFeedback(
+  returnPath: string,
+  taskId: string,
+  result: { errorMessage: string | null },
+  successMessage: string,
+): Promise<never> {
+  if (result.errorMessage) {
+    redirectWithTasksError(returnPath, result.errorMessage, taskId);
+  }
+  revalidateWorkspaceFor("task", { returnTo: returnPath });
+  redirectWithWorkspaceFeedback(returnPath, {
+    taskSuccessMessage: successMessage,
+    taskId,
+  });
+  // `redirect` inside redirectWithWorkspaceFeedback is `never`; keep TS happy.
+  throw new Error("unreachable");
+}
+
+export async function addSubtaskAction(formData: FormData): Promise<never> {
+  const returnPath = getTasksReturnPath(formData.get("returnTo"));
+  const taskId = String(formData.get("taskId") ?? "").trim();
+  const { addTaskSubtask } = await import("@/lib/services/subtask-service");
+  const result = await addTaskSubtask({
+    taskId,
+    title: String(formData.get("title") ?? ""),
+  });
+  return subtaskFeedback(returnPath, taskId, result, "Subtask added.");
+}
+
+export async function toggleSubtaskAction(formData: FormData): Promise<never> {
+  const returnPath = getTasksReturnPath(formData.get("returnTo"));
+  const taskId = String(formData.get("taskId") ?? "").trim();
+  const { setTaskSubtaskDone } = await import("@/lib/services/subtask-service");
+  const result = await setTaskSubtaskDone({
+    subtaskId: String(formData.get("subtaskId") ?? "").trim(),
+    done: String(formData.get("done") ?? "") === "true",
+  });
+  return subtaskFeedback(returnPath, taskId, result, "Subtask updated.");
+}
+
+export async function renameSubtaskAction(formData: FormData): Promise<never> {
+  const returnPath = getTasksReturnPath(formData.get("returnTo"));
+  const taskId = String(formData.get("taskId") ?? "").trim();
+  const { renameTaskSubtask } = await import("@/lib/services/subtask-service");
+  const result = await renameTaskSubtask({
+    subtaskId: String(formData.get("subtaskId") ?? "").trim(),
+    title: String(formData.get("title") ?? ""),
+  });
+  return subtaskFeedback(returnPath, taskId, result, "Subtask renamed.");
+}
+
+export async function deleteSubtaskAction(formData: FormData): Promise<never> {
+  const returnPath = getTasksReturnPath(formData.get("returnTo"));
+  const taskId = String(formData.get("taskId") ?? "").trim();
+  const { deleteTaskSubtask } = await import("@/lib/services/subtask-service");
+  const result = await deleteTaskSubtask(String(formData.get("subtaskId") ?? "").trim());
+  return subtaskFeedback(returnPath, taskId, result, "Subtask deleted.");
+}
+
+export async function moveSubtaskAction(formData: FormData): Promise<never> {
+  const returnPath = getTasksReturnPath(formData.get("returnTo"));
+  const taskId = String(formData.get("taskId") ?? "").trim();
+  const direction = String(formData.get("direction") ?? "") === "up" ? "up" : "down";
+  const { moveTaskSubtask } = await import("@/lib/services/subtask-service");
+  const result = await moveTaskSubtask({
+    taskId,
+    subtaskId: String(formData.get("subtaskId") ?? "").trim(),
+    direction,
+  });
+  return subtaskFeedback(returnPath, taskId, result, "Subtask reordered.");
+}
+
+export async function promoteSubtaskAction(formData: FormData): Promise<never> {
+  const returnPath = getTasksReturnPath(formData.get("returnTo"));
+  const taskId = String(formData.get("taskId") ?? "").trim();
+  const { promoteTaskSubtask } = await import("@/lib/services/subtask-service");
+  const result = await promoteTaskSubtask(String(formData.get("subtaskId") ?? "").trim());
+  if (result.errorMessage || !result.data) {
+    redirectWithTasksError(returnPath, result.errorMessage ?? "Unable to promote the subtask.", taskId);
+  }
+  revalidateWorkspaceFor("task", { returnTo: returnPath });
+  const target = new URL(returnPath, "https://egawilldoit.online");
+  target.searchParams.set("task", result.data.taskId);
+  target.searchParams.delete("taskMode");
+  redirectWithWorkspaceFeedback(`${target.pathname}?${target.searchParams.toString()}`, {
+    taskSuccessMessage: "Subtask promoted to a task.",
+    taskId: result.data.taskId,
+  });
+  throw new Error("unreachable");
 }

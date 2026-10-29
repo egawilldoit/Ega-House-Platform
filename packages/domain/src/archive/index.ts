@@ -4,7 +4,7 @@
  * The archive state itself is owned by persistence: tasks use
  * `archived_at`/`archived_by`, and projects/goals carry the same metadata with
  * `status = 'archived'` tied to it by a database CHECK constraint (migration
- * 0064). This module only normalises the view inputs, so the page, the read
+ * 0073). This module only normalises the view inputs, so the page, the read
  * model and the URL contract cannot drift apart.
  */
 export const ARCHIVE_TAB_VALUES = ["tasks", "goals", "projects"] as const;

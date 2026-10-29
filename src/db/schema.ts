@@ -102,6 +102,8 @@ export const tasks = pgTable(
     priority: varchar("priority", { length: 32 }).notNull().default("medium"),
     estimateMinutes: integer("estimate_minutes"),
     focusRank: integer("focus_rank"),
+    boardRank: text("board_rank"),
+    startDate: date("start_date"),
     dueDate: date("due_date"),
     plannedForDate: date("planned_for_date"),
     scheduledStartAt: timestamp("scheduled_start_at", { withTimezone: true }),
@@ -124,7 +126,13 @@ export const tasks = pgTable(
   (table) => [
     index("tasks_owner_user_id_idx").on(table.ownerUserId),
     index("tasks_owner_user_id_focus_rank_idx").on(table.ownerUserId, table.focusRank),
+    index("tasks_owner_status_board_rank_idx").on(
+      table.ownerUserId,
+      table.status,
+      table.boardRank,
+    ),
     index("tasks_owner_user_id_planned_for_date_idx").on(table.ownerUserId, table.plannedForDate),
+    index("tasks_owner_user_id_start_date_idx").on(table.ownerUserId, table.startDate),
     index("tasks_owner_user_id_scheduled_start_at_idx").on(table.ownerUserId, table.scheduledStartAt),
     index("tasks_owner_active_updated_idx")
       .on(table.ownerUserId, table.updatedAt.desc())
@@ -143,6 +151,45 @@ export const tasks = pgTable(
     check(
       "tasks_calendar_sync_status_check",
       sql`${table.calendarSyncStatus} is null or ${table.calendarSyncStatus} in ('pending', 'synced', 'failed', 'skipped')`,
+    ),
+    check(
+      "tasks_board_rank_format_check",
+      sql`${table.boardRank} is null or (length(${table.boardRank}) between 1 and 512 and ${table.boardRank} ~ '^[0-9A-Z]+$')`,
+    ),
+    check(
+      "tasks_date_window_check",
+      sql`${table.startDate} is null or ${table.dueDate} is null or ${table.dueDate} >= ${table.startDate}`,
+    ),
+  ],
+);
+
+export const taskDependencies = pgTable(
+  "task_dependencies",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    ownerUserId: uuid("owner_user_id").default(sql`auth.uid()`).notNull(),
+    taskId: uuid("task_id")
+      .notNull()
+      .references(() => tasks.id, { onDelete: "cascade" }),
+    blockedByTaskId: uuid("blocked_by_task_id")
+      .notNull()
+      .references(() => tasks.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("task_dependencies_owner_edge_unique").on(
+      table.ownerUserId,
+      table.taskId,
+      table.blockedByTaskId,
+    ),
+    index("task_dependencies_owner_task_idx").on(table.ownerUserId, table.taskId),
+    index("task_dependencies_owner_blocked_by_idx").on(
+      table.ownerUserId,
+      table.blockedByTaskId,
+    ),
+    check(
+      "task_dependencies_no_self_check",
+      sql`${table.taskId} <> ${table.blockedByTaskId}`,
     ),
   ],
 );
@@ -336,6 +383,10 @@ export const taskSessions = pgTable(
     startedAt: timestamp("started_at", { withTimezone: true }).notNull(),
     endedAt: timestamp("ended_at", { withTimezone: true }),
     durationSeconds: integer("duration_seconds"),
+    actorKind: varchar("actor_kind", { length: 16 }).notNull().default("unknown"),
+    actorUserId: uuid("actor_user_id"),
+    actorAgentId: text("actor_agent_id"),
+    actorLabel: text("actor_label"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
@@ -348,6 +399,10 @@ export const taskSessions = pgTable(
     uniqueIndex("task_sessions_owner_open_unique")
       .on(table.ownerUserId)
       .where(sql`${table.endedAt} is null`),
+    check(
+      "task_sessions_actor_kind_check",
+      sql`${table.actorKind} in ('owner', 'agent', 'system', 'unknown')`,
+    ),
   ],
 );
 
@@ -417,7 +472,10 @@ export const notifications = pgTable(
     index("notifications_owner_unread_idx")
       .on(table.ownerUserId, table.createdAt.desc())
       .where(sql`${table.readAt} is null`),
-    check("notifications_type_check", sql`${table.type} in ('task_reminder')`),
+    check(
+      "notifications_type_check",
+      sql`${table.type} in ('task_reminder', 'task_comment_mention')`,
+    ),
     check(
       "notifications_target_type_check",
       sql`${table.targetType} is null or ${table.targetType} in ('task')`,
@@ -562,6 +620,10 @@ export const taskStatusEvents = pgTable(
     fromStatus: varchar("from_status", { length: 64 }),
     toStatus: varchar("to_status", { length: 64 }).notNull(),
     occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull(),
+    actorKind: varchar("actor_kind", { length: 16 }).notNull().default("unknown"),
+    actorUserId: uuid("actor_user_id"),
+    actorAgentId: text("actor_agent_id"),
+    actorLabel: text("actor_label"),
     operationMetadata: jsonb("operation_metadata"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
@@ -574,6 +636,149 @@ export const taskStatusEvents = pgTable(
       table.taskId,
       table.occurredAt,
     ),
+    check(
+      "task_status_events_actor_kind_check",
+      sql`${table.actorKind} in ('owner', 'agent', 'system', 'unknown')`,
+    ),
+  ],
+);
+
+/**
+ * Server-owned undo receipts for bounded bulk operations (EGA-786).
+ *
+ * Each receipt records the fields one operation changed and the values before
+ * and after. Undo re-reads the task, refuses if the after-values no longer hold,
+ * restores only the recorded fields and marks the receipt consumed. Receipts
+ * expire and are never deleted by the client; they are the audit trail.
+ */
+export const taskOperationReceipts = pgTable(
+  "task_operation_receipts",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    ownerUserId: uuid("owner_user_id").default(sql`auth.uid()`).notNull(),
+    operationId: uuid("operation_id").notNull(),
+    taskId: uuid("task_id")
+      .notNull()
+      .references(() => tasks.id, { onDelete: "cascade" }),
+    action: varchar("action", { length: 32 }).notNull(),
+    beforeValues: jsonb("before_values").notNull(),
+    afterValues: jsonb("after_values").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    undoneAt: timestamp("undone_at", { withTimezone: true }),
+  },
+  (table) => [
+    index("task_operation_receipts_owner_operation_idx").on(table.ownerUserId, table.operationId),
+    index("task_operation_receipts_owner_task_idx").on(table.ownerUserId, table.taskId),
+    uniqueIndex("task_operation_receipts_operation_task_unique").on(
+      table.operationId,
+      table.taskId,
+    ),
+    check(
+      "task_operation_receipts_action_check",
+      sql`${table.action} in ('archive', 'restore', 'patch')`,
+    ),
+  ],
+);
+
+/**
+ * Ordered checklist items inside a task (EGA-782). These are deliberately not
+ * tasks: no timers, reminders, recurrence or completion evidence are copied or
+ * shared, and completion of every item never completes the parent task.
+ */
+export const taskSubtasks = pgTable(
+  "task_subtasks",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    ownerUserId: uuid("owner_user_id").default(sql`auth.uid()`).notNull(),
+    taskId: uuid("task_id")
+      .notNull()
+      .references(() => tasks.id, { onDelete: "cascade" }),
+    title: varchar("title", { length: 256 }).notNull(),
+    done: boolean("done").notNull().default(false),
+    position: integer("position").notNull(),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("task_subtasks_task_position_idx").on(table.taskId, table.position),
+    index("task_subtasks_owner_idx").on(table.ownerUserId),
+    check("task_subtasks_title_not_blank", sql`length(btrim(${table.title})) > 0`),
+    check("task_subtasks_position_check", sql`${table.position} >= 0`),
+  ],
+);
+
+/**
+ * Durable task activity ledger for observable field changes (EGA-784).
+ *
+ * Append-only for product clients: rows are written by a SECURITY DEFINER
+ * trigger on `tasks`, so a client cannot forge history. Status transitions stay
+ * in `task_status_events` (the analytics ledger); the activity read model unions
+ * both plus timer session evidence.
+ */
+export const taskActivityEvents = pgTable(
+  "task_activity_events",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    ownerUserId: uuid("owner_user_id").default(sql`auth.uid()`).notNull(),
+    taskId: uuid("task_id").references(() => tasks.id, { onDelete: "set null" }),
+    actorKind: varchar("actor_kind", { length: 16 }).notNull(),
+    actorUserId: uuid("actor_user_id"),
+    actorAgentId: text("actor_agent_id"),
+    actorLabel: text("actor_label"),
+    eventKind: varchar("event_kind", { length: 32 }).notNull(),
+    delta: jsonb("delta").notNull(),
+    sourceEventId: varchar("source_event_id", { length: 128 }),
+    occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("task_activity_events_owner_task_time_idx").on(
+      table.ownerUserId,
+      table.taskId,
+      table.occurredAt,
+    ),
+    uniqueIndex("task_activity_events_source_unique")
+      .on(table.ownerUserId, table.eventKind, table.sourceEventId)
+      .where(sql`${table.sourceEventId} is not null`),
+    check(
+      "task_activity_events_actor_kind_check",
+      sql`${table.actorKind} in ('owner', 'agent', 'system', 'unknown')`,
+    ),
+    check(
+      "task_activity_events_event_kind_check",
+      sql`${table.eventKind} in ('created', 'field_change', 'archived', 'restored', 'reminder_scheduled', 'reminder_updated', 'reminder_cancelled', 'comment')`,
+    ),
+  ],
+);
+
+/**
+ * Durable navigation favourites (EGA-787). Distinct from `tasks.focus_rank`
+ * (Today ranking): a favourite is a sidebar/page shortcut for a project or task.
+ * Polymorphic entity references are validated against the owner in the RLS
+ * WITH CHECK, so an arbitrary UUID plus owner id is not enough.
+ */
+export const favorites = pgTable(
+  "favorites",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    ownerUserId: uuid("owner_user_id").default(sql`auth.uid()`).notNull(),
+    entityKind: varchar("entity_kind", { length: 16 }).notNull(),
+    entityId: uuid("entity_id").notNull(),
+    position: integer("position").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("favorites_owner_entity_unique").on(
+      table.ownerUserId,
+      table.entityKind,
+      table.entityId,
+    ),
+    index("favorites_owner_position_idx").on(table.ownerUserId, table.position),
+    check("favorites_entity_kind_check", sql`${table.entityKind} in ('project', 'task')`),
+    check("favorites_position_check", sql`${table.position} >= 0`),
   ],
 );
 
@@ -671,12 +876,194 @@ export const agentIntegrationTokens = pgTable(
   ],
 );
 
+/**
+ * Owner-scoped task comment thread (EGA-783).
+ *
+ * Author identity is stable: `authorRef` is `owner` or `agent:<slug(name)>`,
+ * while `authorTokenId` only records which credential wrote the row. Token
+ * rotation/revocation therefore keeps historical attribution. Writes go through
+ * the security-definer RPCs in migration 0070; product clients are read-only.
+ */
+export const taskComments = pgTable(
+  "task_comments",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    ownerUserId: uuid("owner_user_id").default(sql`auth.uid()`).notNull(),
+    taskId: uuid("task_id")
+      .notNull()
+      .references(() => tasks.id, { onDelete: "cascade" }),
+    authorKind: varchar("author_kind", { length: 16 }).notNull(),
+    authorUserId: uuid("author_user_id"),
+    authorTokenId: uuid("author_token_id").references(
+      () => agentIntegrationTokens.id,
+      { onDelete: "set null" },
+    ),
+    authorRef: text("author_ref").notNull(),
+    authorLabel: text("author_label").notNull(),
+    body: text("body").notNull(),
+    clientRequestId: text("client_request_id").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+    editedAt: timestamp("edited_at", { withTimezone: true }),
+  },
+  (table) => [
+    uniqueIndex("task_comments_owner_request_unique").on(
+      table.ownerUserId,
+      table.clientRequestId,
+    ),
+    index("task_comments_owner_task_time_idx").on(
+      table.ownerUserId,
+      table.taskId,
+      table.createdAt,
+    ),
+    index("task_comments_author_ref_idx").on(table.ownerUserId, table.authorRef),
+    check(
+      "task_comments_author_kind_check",
+      sql`${table.authorKind} in ('owner', 'agent')`,
+    ),
+    check(
+      "task_comments_author_ref_check",
+      sql`((${table.authorKind} = 'owner' and ${table.authorRef} = 'owner') or (${table.authorKind} = 'agent' and ${table.authorRef} ~ '^agent:[a-z0-9][a-z0-9-]{0,62}$'))`,
+    ),
+    check(
+      "task_comments_body_length_check",
+      sql`char_length(${table.body}) between 1 and 4000`,
+    ),
+    check(
+      "task_comments_request_id_check",
+      sql`char_length(${table.clientRequestId}) between 1 and 128`,
+    ),
+  ],
+);
+
+export const taskCommentMentions = pgTable(
+  "task_comment_mentions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    ownerUserId: uuid("owner_user_id").default(sql`auth.uid()`).notNull(),
+    commentId: uuid("comment_id")
+      .notNull()
+      .references(() => taskComments.id, { onDelete: "cascade" }),
+    mentionKind: varchar("mention_kind", { length: 16 }).notNull(),
+    mentionRef: text("mention_ref").notNull(),
+    mentionLabel: text("mention_label").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("task_comment_mentions_comment_ref_unique").on(
+      table.commentId,
+      table.mentionRef,
+    ),
+    index("task_comment_mentions_owner_idx").on(table.ownerUserId),
+    check(
+      "task_comment_mentions_kind_check",
+      sql`${table.mentionKind} in ('owner', 'agent')`,
+    ),
+    check(
+      "task_comment_mentions_ref_check",
+      sql`((${table.mentionKind} = 'owner' and ${table.mentionRef} = 'owner') or (${table.mentionKind} = 'agent' and ${table.mentionRef} ~ '^agent:[a-z0-9][a-z0-9-]{0,62}$'))`,
+    ),
+  ],
+);
+
+export const taskCommentReactions = pgTable(
+  "task_comment_reactions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    ownerUserId: uuid("owner_user_id").default(sql`auth.uid()`).notNull(),
+    commentId: uuid("comment_id")
+      .notNull()
+      .references(() => taskComments.id, { onDelete: "cascade" }),
+    actorKind: varchar("actor_kind", { length: 16 }).notNull(),
+    actorUserId: uuid("actor_user_id"),
+    actorTokenId: uuid("actor_token_id").references(
+      () => agentIntegrationTokens.id,
+      { onDelete: "set null" },
+    ),
+    actorRef: text("actor_ref").notNull(),
+    actorLabel: text("actor_label").notNull(),
+    emoji: varchar("emoji", { length: 32 }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("task_comment_reactions_comment_actor_emoji_unique").on(
+      table.commentId,
+      table.actorRef,
+      table.emoji,
+    ),
+    index("task_comment_reactions_owner_comment_idx").on(
+      table.ownerUserId,
+      table.commentId,
+    ),
+    check(
+      "task_comment_reactions_actor_kind_check",
+      sql`${table.actorKind} in ('owner', 'agent')`,
+    ),
+    check(
+      "task_comment_reactions_actor_ref_check",
+      sql`((${table.actorKind} = 'owner' and ${table.actorRef} = 'owner') or (${table.actorKind} = 'agent' and ${table.actorRef} ~ '^agent:[a-z0-9][a-z0-9-]{0,62}$'))`,
+    ),
+    check(
+      "task_comment_reactions_emoji_check",
+      sql`${table.emoji} in ('👍', '👀', '✅', '🎉', '🙏', '🔥')`,
+    ),
+  ],
+);
+
 export const userTimeContext = pgTable("user_time_context", {
   userId: uuid("user_id").default(sql`auth.uid()`).primaryKey(),
   ianaTimezone: varchar("iana_timezone", { length: 128 }).notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
+
+/**
+ * Durable workspace preferences (EGA-798). One row per owner; a missing row
+ * means the documented defaults, so pre-existing accounts keep today's
+ * behaviour. `user_id` defaults to the verified request identity and is never
+ * supplied by the client.
+ */
+export const userPreferences = pgTable(
+  "user_preferences",
+  {
+    userId: uuid("user_id").default(sql`auth.uid()`).primaryKey(),
+    theme: varchar("theme", { length: 16 }).default("system").notNull(),
+    accent: varchar("accent", { length: 16 }).default("neutral").notNull(),
+    density: varchar("density", { length: 16 }).default("comfortable").notNull(),
+    reducedMotion: boolean("reduced_motion").default(false).notNull(),
+    launchPage: varchar("launch_page", { length: 16 }).default("home").notNull(),
+    taskLayout: varchar("task_layout", { length: 16 }).default("list").notNull(),
+    taskOpenMode: varchar("task_open_mode", { length: 16 }).default("panel").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    check(
+      "user_preferences_theme_check",
+      sql`${table.theme} in ('system', 'light', 'dark')`,
+    ),
+    check(
+      "user_preferences_accent_check",
+      sql`${table.accent} in ('neutral', 'blue', 'green', 'violet', 'amber')`,
+    ),
+    check(
+      "user_preferences_density_check",
+      sql`${table.density} in ('comfortable', 'compact')`,
+    ),
+    check(
+      "user_preferences_launch_page_check",
+      sql`${table.launchPage} in ('home', 'today', 'tasks')`,
+    ),
+    check(
+      "user_preferences_task_layout_check",
+      sql`${table.taskLayout} in ('list', 'kanban')`,
+    ),
+    check(
+      "user_preferences_task_open_mode_check",
+      sql`${table.taskOpenMode} in ('panel', 'full')`,
+    ),
+  ],
+);
 
 export const operatorProposals = pgTable(
   "operator_proposals",

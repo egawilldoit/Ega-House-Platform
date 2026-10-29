@@ -91,6 +91,15 @@ function createShutdownDataSupabaseMock(options?: {
               order() {
                 return chain;
               },
+              range() {
+                return chain;
+              },
+              lt() {
+                return chain;
+              },
+              ilike() {
+                return chain;
+              },
               limit() {
                 return Promise.resolve({
                   data: dueSoonRows,
@@ -112,6 +121,15 @@ function createShutdownDataSupabaseMock(options?: {
               return chain;
             },
             order() {
+              return chain;
+            },
+            range() {
+              return chain;
+            },
+            lt() {
+              return chain;
+            },
+            ilike() {
               return chain;
             },
             limit() {

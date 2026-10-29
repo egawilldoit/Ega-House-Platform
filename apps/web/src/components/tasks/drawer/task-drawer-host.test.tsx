@@ -22,12 +22,19 @@ const TASK = {
   description: "Existing description",
   status: "in_progress",
   priority: "high",
+  start_date: null as string | null,
   due_date: "2026-05-01",
   estimate_minutes: 90,
   blocked_reason: null as string | null,
   project_id: "p1",
   goal_id: "g1",
   archived_at: null as string | null,
+  dependencies: {
+    blockedBy: [],
+    blocking: [],
+    options: [],
+  },
+  dependencyError: null,
 };
 
 let container: HTMLDivElement;
@@ -68,6 +75,7 @@ const updateDraftAction = vi.fn(async (_state: unknown, _formData: FormData) => 
   successMessage: null,
   savedValue: null,
 }));
+const dependencyAction = vi.fn();
 
 function render(
   task: typeof TASK | null,
@@ -81,6 +89,9 @@ function render(
         loadFailed={loadFailed}
         updateFieldAction={updateFieldAction}
         updateDraftAction={updateDraftAction}
+        ownerId="owner-1"
+        addDependencyAction={dependencyAction}
+        removeDependencyAction={dependencyAction}
         {...extra}
       />,
     ),
@@ -91,6 +102,54 @@ describe("TaskDrawerHost", () => {
   it("renders nothing when no task is selected in the URL", () => {
     render(TASK);
     expect(document.body.querySelector('[role="dialog"]')).toBeNull();
+  });
+
+  it("mounts the comments tab with a count, safe body and reaction controls", () => {
+    currentParams = new URLSearchParams("task=t1");
+    const action = vi.fn(async () => ({ ok: true, errorMessage: null }));
+    act(() =>
+      root.render(
+        <TaskDrawerHost
+          task={TASK}
+          updateFieldAction={updateFieldAction}
+          updateDraftAction={updateDraftAction}
+          addDependencyAction={dependencyAction}
+          removeDependencyAction={dependencyAction}
+          ownerId="owner-1"
+          activity={[]}
+          comments={[
+            {
+              id: "c1",
+              taskId: "t1",
+              body: "Hello **@codex**",
+              author: { kind: "agent", ref: "agent:codex", label: "Codex" },
+              mentions: [{ kind: "agent", ref: "agent:codex", label: "Codex" }],
+              reactions: [{ emoji: "👍", count: 1, reactedByViewer: false }],
+              createdAt: "2026-10-28T10:00:00.000Z",
+              updatedAt: "2026-10-28T10:00:00.000Z",
+              editedAt: null,
+              viewerCanEdit: false,
+              viewerCanDelete: false,
+            },
+          ]}
+          commentMentions={[
+            { kind: "owner", ref: "owner", handle: "owner", label: "You (owner)" },
+          ]}
+          commentActions={{
+            createAction: action,
+            updateAction: action,
+            deleteAction: action,
+            toggleReactionAction: action,
+          }}
+        />,
+      ),
+    );
+
+    const dialog = document.body.querySelector('[role="dialog"]');
+    expect(dialog?.textContent).toContain("Comments 1");
+    expect(dialog?.textContent).toContain("Codex");
+    expect(dialog?.textContent).toContain("@codex");
+    expect(dialog?.querySelector('button[aria-pressed][aria-label*="reaction"]')).not.toBeNull();
   });
 
   it("shows the selected task with its status, priority and due date", () => {
@@ -104,8 +163,10 @@ describe("TaskDrawerHost", () => {
     const selects = Array.from(document.body.querySelectorAll<HTMLSelectElement>("select"));
     // Status and priority are inline editors now; assert the bound values.
     expect(selects.map((select) => select.value)).toEqual(["in_progress", "high"]);
-    const dueDate = document.body.querySelector<HTMLInputElement>('input[type="date"]');
+    const dueDate = document.body.querySelector<HTMLInputElement>('input[aria-label="Due date"]');
     expect(dueDate?.value).toBe("2026-05-01");
+    const startDate = document.body.querySelector<HTMLInputElement>('input[aria-label="Start date"]');
+    expect(startDate?.value).toBe("");
   });
 
   it("edits the title, description and estimate in place", () => {
@@ -167,6 +228,8 @@ describe("TaskDrawerHost", () => {
         task={{ ...TASK, title: "Server changed this" }}
         updateFieldAction={updateFieldAction}
         updateDraftAction={updateDraftAction}
+        addDependencyAction={dependencyAction}
+        removeDependencyAction={dependencyAction}
       />,
     ));
 
@@ -335,5 +398,173 @@ describe("TaskDrawerHost", () => {
     expect(params.has("task")).toBe(false);
     expect(params.get("layout")).toBe("board");
     expect(params.get("sort")).toBe("due");
+  });
+});
+
+describe("TaskDrawer character shortcuts", () => {
+  const press = (key: string) => {
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true }));
+    });
+  };
+
+  it("sets status from the explicit number mapping", async () => {
+    currentParams = new URLSearchParams("task=t1");
+    updateDraftAction.mockClear();
+    render(TASK);
+
+    await act(async () => {
+      press("4");
+      await Promise.resolve();
+    });
+
+    expect(updateDraftAction).toHaveBeenCalledTimes(1);
+    const submitted = updateDraftAction.mock.calls[0][1] as FormData;
+    expect(submitted.get("field")).toBe("status");
+    expect(submitted.get("value")).toBe("done");
+  });
+
+  it("uses P as a prefix for priority and does not mutate on P alone", () => {
+    currentParams = new URLSearchParams("task=t1");
+    updateDraftAction.mockClear();
+    render(TASK);
+
+    press("p");
+
+    expect(updateDraftAction).not.toHaveBeenCalled();
+    expect(document.body.textContent).toContain("Press 1 low");
+  });
+
+  it("refuses blocked without a reason instead of submitting an invalid patch", () => {
+    currentParams = new URLSearchParams("task=t1");
+    updateDraftAction.mockClear();
+    render(TASK);
+
+    press("5");
+
+    expect(updateDraftAction).not.toHaveBeenCalled();
+    expect(document.body.textContent).toContain("blocked reason");
+  });
+
+  it("ignores character shortcuts while typing in an editor", () => {
+    currentParams = new URLSearchParams("task=t1");
+    updateDraftAction.mockClear();
+    render(TASK);
+
+    const title = document.body.querySelector<HTMLInputElement>('input[maxlength="256"]');
+    act(() => {
+      title?.dispatchEvent(new KeyboardEvent("keydown", { key: "4", bubbles: true }));
+    });
+
+    expect(updateDraftAction).not.toHaveBeenCalled();
+  });
+});
+
+describe("TaskDrawer subtasks", () => {
+  const actions = {
+    addAction: vi.fn(),
+    toggleAction: vi.fn(),
+    renameAction: vi.fn(),
+    deleteAction: vi.fn(),
+    moveAction: vi.fn(),
+    promoteAction: vi.fn(),
+  };
+
+  it("shows progress, the ordered checklist and the add form", () => {
+    currentParams = new URLSearchParams("task=t1");
+    act(() =>
+      root.render(
+        <TaskDrawerHost
+          task={TASK}
+          updateFieldAction={updateFieldAction}
+          updateDraftAction={updateDraftAction}
+          addDependencyAction={dependencyAction}
+          removeDependencyAction={dependencyAction}
+          subtasks={[
+            {
+              id: "s1",
+              taskId: "t1",
+              title: "First item",
+              done: true,
+              position: 0,
+              completedAt: "2026-10-27T10:00:00.000Z",
+              createdAt: "2026-10-27T09:00:00.000Z",
+              updatedAt: "2026-10-27T10:00:00.000Z",
+            },
+            {
+              id: "s2",
+              taskId: "t1",
+              title: "Second item",
+              done: false,
+              position: 1,
+              completedAt: null,
+              createdAt: "2026-10-27T09:00:00.000Z",
+              updatedAt: "2026-10-27T09:00:00.000Z",
+            },
+          ]}
+          subtaskActions={actions}
+        />,
+      ),
+    );
+
+    expect(document.body.textContent).toContain("First item");
+    expect(document.body.textContent).toContain("1/2");
+    expect(
+      document.body.querySelector<HTMLInputElement>('input[name="title"]')?.placeholder,
+    ).toContain("Add a subtask");
+
+    const toggle = document.body.querySelector(
+      'button[aria-label="Complete Second item"]',
+    );
+    expect(toggle?.getAttribute("aria-pressed")).toBe("false");
+  });
+
+  it("does not render the checklist without the server action bundle", () => {
+    currentParams = new URLSearchParams("task=t1");
+    render(TASK);
+    expect(document.body.textContent).not.toContain("Add a subtask");
+  });
+});
+
+describe("TaskDrawer activity", () => {
+  it("renders durable activity with honest actor attribution", () => {
+    currentParams = new URLSearchParams("task=t1");
+    act(() =>
+      root.render(
+        <TaskDrawerHost
+          task={TASK}
+          updateFieldAction={updateFieldAction}
+          updateDraftAction={updateDraftAction}
+          addDependencyAction={dependencyAction}
+          removeDependencyAction={dependencyAction}
+          activity={[
+            {
+              id: "a1",
+              kind: "status",
+              occurredAt: "2026-10-27T10:00:00.000Z",
+              actor: { kind: "owner" },
+              summary: "Status changed from todo to in progress",
+            },
+            {
+              id: "a2",
+              kind: "field_change",
+              occurredAt: "2026-10-27T09:00:00.000Z",
+              actor: { kind: "unknown" },
+              summary: "Priority: medium → high",
+            },
+          ]}
+        />,
+      ),
+    );
+
+    expect(document.body.textContent).toContain("Status changed from todo to in progress");
+    expect(document.body.textContent).toContain("You");
+    expect(document.body.textContent).toContain("Unknown actor");
+  });
+
+  it("shows an explicit empty state instead of inventing history", () => {
+    currentParams = new URLSearchParams("task=t1");
+    render(TASK);
+    expect(document.body.textContent).toContain("No activity recorded yet.");
   });
 });

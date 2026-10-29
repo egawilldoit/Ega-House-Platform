@@ -25,6 +25,16 @@ describe("readTaskDrawerParam", () => {
     expect(readTaskDrawerParam(params).mode).toBe("panel");
   });
 
+  it("uses the owner default when the address has no mode, and an explicit mode still wins", () => {
+    expect(readTaskDrawerParam(new URLSearchParams("task=abc"), "full").mode).toBe("full");
+    expect(
+      readTaskDrawerParam(new URLSearchParams("task=abc&taskMode=panel"), "full").mode,
+    ).toBe("panel");
+    expect(
+      readTaskDrawerParam(new URLSearchParams("task=abc&taskMode=full"), "panel").mode,
+    ).toBe("full");
+  });
+
   it("trims whitespace and ignores a blank id", () => {
     expect(readTaskDrawerParam(new URLSearchParams("task=%20%20")).taskId).toBeNull();
     expect(readTaskDrawerParam(new URLSearchParams("task=%20abc%20")).taskId).toBe("abc");

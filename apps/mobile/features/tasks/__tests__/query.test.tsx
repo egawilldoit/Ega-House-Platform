@@ -53,7 +53,7 @@ const LIST_RESPONSE: MobileTaskListResponse = {
   ],
   counters: {
     total: 1,
-    byStatus: { todo: 1, in_progress: 0, done: 0, blocked: 0 },
+    byStatus: { todo: 1, in_progress: 0, review: 0, done: 0, blocked: 0 },
     byPriority: { low: 0, medium: 0, high: 0, urgent: 1 },
     pinned: 0,
     overdue: 0,

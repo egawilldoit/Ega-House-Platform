@@ -216,7 +216,7 @@ export async function deleteArchivedProject(
   }
 
   const [tasksResult, goalsResult] = await Promise.all([
-    repository.listTasksForProjects(actor, [projectId]),
+    repository.listTasksForProjects(actor, [projectId], { includeArchived: true }),
     repository.listGoalsForProject(actor, projectId),
   ]);
 

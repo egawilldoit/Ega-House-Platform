@@ -13,10 +13,10 @@ import { Badge } from "@/components/ui/badge";
 import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { formatTaskEstimate } from "@/lib/task-estimate";
+import { getTaskStatusTransitions } from "@ega/domain";
 import {
   formatTaskToken,
   isTaskCompletedStatus,
-  isTaskStatus,
   type TaskStatus,
 } from "@/lib/task-domain";
 import { formatTaskDueDate } from "@/lib/task-due-date";
@@ -41,20 +41,18 @@ type TaskKanbanCardProps = {
   cancelReminderAction?: (formData: FormData) => void | Promise<void>;
   returnTo?: string;
   trackedSeconds?: number;
+  subtaskCount?: { done: number; total: number } | null;
   projectOptions?: Array<{ id: string; name: string }>;
   goalOptions?: Array<{ id: string; title: string; projectId: string }>;
   error?: string | null;
 };
 
-const NEXT_STATUS_BY_STATUS = {
-  todo: ["in_progress", "blocked", "done"],
-  in_progress: ["todo", "blocked", "done"],
-  blocked: ["todo", "in_progress", "done"],
-  done: ["todo"],
-} as const satisfies Record<TaskStatus, readonly TaskStatus[]>;
-
+// Review is an explicit hand-off, never an implicit next step: work enters it
+// from in progress and leaves it back to in progress or straight to done. The
+// matrix lives in @ega/domain so board drag, card buttons and tap alternatives
+// cannot drift apart.
 export function getTaskKanbanNextStatuses(status: string): TaskStatus[] {
-  return isTaskStatus(status) ? [...NEXT_STATUS_BY_STATUS[status]] : [];
+  return getTaskStatusTransitions(status);
 }
 
 export function getTaskKanbanStatusActionLabel(status: TaskStatus) {
@@ -64,6 +62,10 @@ export function getTaskKanbanStatusActionLabel(status: TaskStatus) {
 
   if (status === "in_progress") {
     return "In Progress";
+  }
+
+  if (status === "review") {
+    return "Review";
   }
 
   if (status === "blocked") {
@@ -93,6 +95,7 @@ export function TaskKanbanCard({
   cancelReminderAction,
   returnTo = "/tasks?layout=kanban",
   trackedSeconds,
+  subtaskCount,
   projectOptions = [],
   goalOptions = [],
   error,
@@ -104,6 +107,10 @@ export function TaskKanbanCard({
   const isCompleted = isTaskCompletedStatus(task.status);
   const isBlocked = task.status === "blocked";
   const estimateLabel = formatTaskEstimate(task.estimate_minutes);
+  const subtaskLabel =
+    subtaskCount && subtaskCount.total > 0
+      ? `${subtaskCount.done}/${subtaskCount.total}`
+      : null;
   const trackedLabel = typeof trackedSeconds === "number" ? formatDurationLabel(trackedSeconds) : null;
   const recurrenceRule = task.task_recurrences[0]?.rule ?? null;
   const recurrenceLabel = recurrenceRule ? formatTaskRecurrenceRule(recurrenceRule) : null;
@@ -123,6 +130,7 @@ export function TaskKanbanCard({
     goalName ||
       estimateLabel ||
       trackedLabel ||
+      subtaskLabel ||
       recurrenceLabel ||
       task.blocked_reason ||
       showReminderPanel ||
@@ -259,6 +267,9 @@ export function TaskKanbanCard({
                     ) : null}
                     {trackedLabel ? (
                       <TaskKanbanDetailItem label="Tracked">{trackedLabel}</TaskKanbanDetailItem>
+                    ) : null}
+                    {subtaskLabel ? (
+                      <TaskKanbanDetailItem label="Subtasks">☑ {subtaskLabel}</TaskKanbanDetailItem>
                     ) : null}
                     {recurrenceLabel ? (
                       <TaskKanbanDetailItem label="Repeat">{recurrenceLabel}</TaskKanbanDetailItem>

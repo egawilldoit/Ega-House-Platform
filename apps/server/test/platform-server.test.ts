@@ -40,6 +40,12 @@ class Builder {
   eq(...args: unknown[]) { this.steps.push({ method: "eq", args }); return this; }
   is(...args: unknown[]) { this.steps.push({ method: "is", args }); return this; }
   order(...args: unknown[]) { this.steps.push({ method: "order", args }); return this; }
+  range(...args: unknown[]) { this.steps.push({ method: "range", args }); return this; }
+  lt(...args: unknown[]) { this.steps.push({ method: "lt", args }); return this; }
+  ilike(...args: unknown[]) { this.steps.push({ method: "ilike", args }); return this; }
+  gte(...args: unknown[]) { this.steps.push({ method: "gte", args }); return this; }
+  lte(...args: unknown[]) { this.steps.push({ method: "lte", args }); return this; }
+  not(...args: unknown[]) { this.steps.push({ method: "not", args }); return this; }
   limit(...args: unknown[]) { this.steps.push({ method: "limit", args }); return this; }
   maybeSingle(...args: unknown[]) { this.steps.push({ method: "maybeSingle", args }); return this; }
   single(...args: unknown[]) { this.steps.push({ method: "single", args }); return this; }

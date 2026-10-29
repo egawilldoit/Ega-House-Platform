@@ -11,6 +11,7 @@ import type {
   ProjectsRepository,
   ProjectTaskContextRecord,
 } from "./ports";
+import { buildProjectProgress } from "./progress";
 
 export type ProjectCardReadModel = ProjectRecord & {
   taskCount: number;
@@ -81,24 +82,16 @@ export async function getProjectsReadModel(
   return applicationSuccess({
     projects: projects.map((project) => {
       const projectTasks = tasksByProject.get(project.id) ?? [];
-      const statusCountMap = new Map<string, number>();
-      for (const task of projectTasks) {
-        statusCountMap.set(task.status, (statusCountMap.get(task.status) ?? 0) + 1);
-      }
-      const completedTaskCount = projectTasks.filter((task) => task.status === "done").length;
-      const progressPercent = projectTasks.length
-        ? Math.round((completedTaskCount / projectTasks.length) * 100)
-        : 0;
-      const statusCounts = Array.from(statusCountMap.entries())
-        .map(([status, count]) => ({ status, count }))
+      const progress = buildProjectProgress(projectTasks);
+      const statusCounts = [...progress.statusCounts]
         .sort((left, right) => right.count - left.count || left.status.localeCompare(right.status))
         .slice(0, 3);
 
       return {
         ...project,
-        taskCount: projectTasks.length,
-        completedTaskCount,
-        progressPercent,
+        taskCount: progress.totalTaskCount,
+        completedTaskCount: progress.completedTaskCount,
+        progressPercent: progress.progressPercent,
         statusCounts,
         recentTasks: projectTasks.slice(0, 2),
       };

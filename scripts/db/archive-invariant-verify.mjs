@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 /**
  * Ephemeral-database proof for the archive-centre reconciliation
- * (drizzle/0064_archive_centre.sql) and the parent-ancestry visibility rule.
+ * (drizzle/0073_archive_centre.sql) and the parent-ancestry visibility rule.
  *
  * Applies the drizzle migration journal up to 0063, seeds legacy rows that only
- * carry `status = 'archived'`, then applies 0064 and proves:
+ * carry `status = 'archived'`, then applies 0073 and proves:
  *
  *   BACKFILL    - legacy archived projects/goals gain archived_at from
  *                 updated_at, archived_by from the owner, and mixed-case
@@ -32,7 +32,7 @@ import { argv, exit } from "node:process";
 import postgres from "postgres";
 
 const DRIZZLE_DIR = new URL("../../drizzle/", import.meta.url);
-const ARCHIVE_TAG = "0064_archive_centre";
+const ARCHIVE_TAG = "0073_archive_centre";
 
 function parseArgs() {
   const args = {};

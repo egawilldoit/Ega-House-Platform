@@ -380,7 +380,7 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  min-height: 32px;
+  min-height: var(--nav-item-min-height);
   width: 100%;
   padding-inline: 10px;
   border: 0;
@@ -1232,7 +1232,7 @@ select.ega-glass-input {
 }
 
 .data-table tbody td {
-  padding: 12px;
+  padding: var(--data-table-cell-padding);
   border-bottom: 1px solid var(--ega-divider);
   color: var(--ega-text);
   vertical-align: middle;
@@ -1486,7 +1486,7 @@ select.ega-glass-input {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 10px 16px;
+  padding: var(--row-padding-block) 16px;
   border-bottom: 1px solid var(--ega-divider);
 }
 
@@ -1839,4 +1839,105 @@ select.ega-glass-input {
   }
 }
 
+}
+
+/* ══════════════════════════════════════════════════════════════
+   Settings: section navigation and choice cards (EGA-798)
+   ══════════════════════════════════════════════════════════════ */
+
+.settings-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--ega-border);
+}
+
+.settings-nav-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding-inline: 12px;
+  border-radius: var(--radius-sm);
+  color: var(--ega-text-secondary);
+  font-size: var(--text-body);
+  font-weight: 500;
+  text-decoration: none;
+  transition: background var(--duration-fast) var(--ease-default),
+    color var(--duration-fast) var(--ease-default);
+}
+
+.settings-nav-link:hover {
+  background: var(--ega-surface-hover);
+  color: var(--ega-text);
+}
+
+.settings-nav-link[aria-current="page"] {
+  background: var(--ega-surface-muted);
+  color: var(--ega-text);
+}
+
+.settings-nav-link:focus-visible {
+  outline: var(--ega-focus-outline);
+  outline-offset: 2px;
+}
+
+.choice-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--ega-border);
+  border-radius: var(--radius-md);
+  background: var(--ega-surface);
+  cursor: pointer;
+  transition: border-color var(--duration-fast) var(--ease-default),
+    background var(--duration-fast) var(--ease-default);
+}
+
+.choice-card:hover {
+  border-color: var(--ega-border-strong);
+  background: var(--ega-surface-hover);
+}
+
+.choice-card:has(input:checked) {
+  border-color: var(--ega-ink);
+  background: var(--ega-surface-subtle);
+}
+
+/* `:has()` keeps the focus ring on the whole selectable card while the native
+   radio keeps arrow keys, Space/Enter and its own accessible name. */
+.choice-card:has(input:focus-visible) {
+  outline: var(--ega-focus-outline);
+  outline-offset: 2px;
+}
+
+.choice-card-label {
+  display: block;
+  font-size: var(--text-body);
+  font-weight: 500;
+  color: var(--ega-text);
+}
+
+.choice-card-description {
+  display: block;
+  margin-top: 2px;
+  font-size: var(--text-meta);
+  color: var(--ega-text-secondary);
+}
+
+.theme-control-error {
+  margin: 6px 6px 2px;
+  font-size: var(--text-meta);
+  color: var(--status-overdue);
+}
+
+@media (pointer: coarse) {
+  .settings-nav-link {
+    min-height: 44px;
+  }
+
+  .choice-card {
+    min-height: 48px;
+  }
 }

@@ -8,7 +8,7 @@
 //
 // Later issues will add create, update, and archive operations.
 
-import { getSupabaseServiceClient } from "@/lib/supabase/service";
+import { createActorScopedServiceClient, getSupabaseServiceClient } from "@/lib/supabase/service";
 import type { TaskScopeSnapshot } from "@/lib/services/task-service";
 import {
   getTaskInsertScopeError,
@@ -467,7 +467,12 @@ export async function createTasks(
   tokenId: string,
   taskPayloads: AgentCreateTaskPayload[],
 ): Promise<AgentTaskCreateBulkResponse> {
-  const supabase = getSupabaseServiceClient();
+  // Activity attribution is derived from the verified token id; the database
+  // snapshots its name. Never from a request body field.
+  const supabase = createActorScopedServiceClient({
+    kind: "agent",
+    agentId: tokenId,
+  });
 
   // 1. Idempotency: bulk-query task_external_refs for (ownerUserId, source, sourceId) tuples
   const idempotentPairs: { source: string; sourceId: string }[] = [];
@@ -621,7 +626,10 @@ export async function updateTasks(
   tokenId: string,
   updates: AgentTaskUpdatePayload[],
 ): Promise<AgentTaskUpdateBulkResponse> {
-  const supabase = getSupabaseServiceClient();
+  const supabase = createActorScopedServiceClient({
+    kind: "agent",
+    agentId: tokenId,
+  });
   const updated: AgentTaskResponse[] = [];
   const errors: { index: number; error: string }[] = [];
 
@@ -772,7 +780,10 @@ export async function archiveTasks(
   unarchived: AgentTaskResponse[];
   errors: { index: number; error: string }[];
 }> {
-  const supabase = getSupabaseServiceClient();
+  const supabase = createActorScopedServiceClient({
+    kind: "agent",
+    agentId: tokenId,
+  });
   const archived: AgentTaskResponse[] = [];
   const unarchived: AgentTaskResponse[] = [];
   const errors: { index: number; error: string }[] = [];
