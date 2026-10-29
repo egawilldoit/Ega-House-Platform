@@ -1,3 +1,4 @@
+import { AgentBadge } from "@/components/agents/agent-badge";
 import {
   taskActivityActorLabel,
   type TaskActivityItem,
@@ -39,8 +40,17 @@ export function TaskActivityList({
             {items.map((item) => (
               <li key={item.id} className="text-[length:var(--text-meta)]">
                 <p className="text-[color:var(--ega-text)]">{item.summary}</p>
-                <p className="text-[color:var(--ega-text-tertiary)]">
-                  {taskActivityActorLabel(item.actor)} ·{" "}
+                <p className="flex flex-wrap items-center gap-1 text-[color:var(--ega-text-tertiary)]">
+                  {item.actor.kind === "agent" ? (
+                    <AgentBadge
+                      displayName={taskActivityActorLabel(item.actor)}
+                      showKind={false}
+                      size="sm"
+                    />
+                  ) : (
+                    <span>{taskActivityActorLabel(item.actor)}</span>
+                  )}
+                  <span aria-hidden="true">·</span>
                   <time dateTime={item.occurredAt}>{formatActivityTime(item.occurredAt)}</time>
                 </p>
               </li>

@@ -87,6 +87,7 @@ const ROUTE_ICONS: Record<string, LucideIcon> = {
   "/startup": Rocket,
   "/shutdown": Power,
   "/apps": Grid2X2,
+  "/agents": Bot,
   "/help": CircleHelp,
   "/settings/account": Settings,
 };
