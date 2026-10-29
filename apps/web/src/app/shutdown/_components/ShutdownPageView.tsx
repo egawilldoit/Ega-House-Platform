@@ -18,7 +18,7 @@ export function ShutdownPageView({ model }: { model: ShutdownPageModel }) {
   const data = shutdownResult.data;
 
   return (
-    <div className="flex flex-col gap-8">
+    <div className="motion-rise flex flex-col gap-8">
       {actionSuccess ? <p className="feedback-block">{actionSuccess}</p> : null}
       {actionError ? <p className="feedback-block feedback-block-error">{actionError}</p> : null}
 
@@ -76,7 +76,7 @@ export function ShutdownPageView({ model }: { model: ShutdownPageModel }) {
         <ShutdownTaskList
           title="Prepare tomorrow shortlist"
           description="Pin tomorrow's first moves from due-soon and focus candidates."
-          emptyMessage="No shortlist suggestions yet. Open /today or /tasks to select tomorrow work."
+          emptyMessage="No shortlist suggestions yet. Open Today or Tasks to select tomorrow's work."
           tasks={data.tomorrowShortlist}
           action={carryForwardTaskToTomorrowAction}
           actionLabel="Add to tomorrow"
