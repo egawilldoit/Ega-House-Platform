@@ -3284,4 +3284,3 @@ export async function rescheduleTaskScheduledWindowForOwner(
 
   return { errorMessage: result.errorMessage, changed: result.errorMessage === null };
 }
-}
