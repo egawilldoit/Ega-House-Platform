@@ -253,6 +253,8 @@ export default async function BacklogPage({ searchParams }: BacklogPageProps) {
                 icon={Inbox}
                 title={hasSearch ? "No items match your search" : copy.emptyTitle}
                 description={hasSearch ? "Try a different search term." : copy.emptyDescription}
+                actionLabel={hasSearch ? "Clear search" : undefined}
+                actionHref={hasSearch ? "/backlog" : undefined}
               />
             ) : (
               <ul className="rows">
