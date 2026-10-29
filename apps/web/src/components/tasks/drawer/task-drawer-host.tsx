@@ -3,8 +3,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { formatTaskToken } from "@/lib/task-domain";
+import { formatDisplayDuration } from "@/lib/presentation-format";
 import type { TaskDrawerDetail } from "@/lib/services/task-service";
-
+import { EstimateVsActualBadge } from "@/components/tasks/estimate-vs-actual-badge";
 import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 
 import { StatusIcon, type TaskStatusIconName } from "@/components/ui/status-icon";
@@ -454,12 +455,31 @@ export function TaskDrawerHost({
             returnTo={returnTo}
             field="estimateMinutes"
             label="Estimate minutes"
-            value={task.estimate_minutes ? String(task.estimate_minutes) : ""}
+            value={task.estimate_minutes !== null ? String(task.estimate_minutes) : ""}
             type="number"
           />
           <span className="ml-1 text-[length:var(--text-meta)] text-[color:var(--ega-text-tertiary)]">
             minutes
           </span>
+        </dd>
+        <dt className="text-[color:var(--ega-text-tertiary)]">Tracked</dt>
+        <dd className="flex flex-wrap items-center gap-1.5 text-[color:var(--ega-text)]">
+          {task.tracked_seconds === null ? (
+            <span className="text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
+              Tracked time is unavailable right now. Refresh to retry.
+            </span>
+          ) : task.estimate_minutes !== null ? (
+            <EstimateVsActualBadge
+              estimateMinutes={task.estimate_minutes}
+              trackedSeconds={task.tracked_seconds}
+              hasOpenSession={task.has_open_session}
+            />
+          ) : (
+            <span className="text-[length:var(--text-body)]">
+              {formatDisplayDuration(task.tracked_seconds, "minute")}
+              {task.has_open_session ? " · running" : ""}
+            </span>
+          )}
         </dd>
         {task.status === "blocked" ? (
           <>

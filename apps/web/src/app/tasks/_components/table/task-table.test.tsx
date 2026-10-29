@@ -252,7 +252,7 @@ describe("TaskTable dense inventory", () => {
     expect(phoneMeta?.textContent).toContain("To do");
     expect(phoneMeta?.textContent).toContain("High");
     expect(phoneMeta?.textContent).toContain("Due May 1, 2026");
-    expect(phoneMeta?.textContent).toContain("Tracked 1h 1m 1s");
+    expect(phoneMeta?.textContent).toContain("1h 15m est · 1h 1m tracked, -19%");
     expect(row?.textContent).toContain("Summarize the week and pick the next lever.");
   });
 

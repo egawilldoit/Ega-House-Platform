@@ -4,6 +4,7 @@ import React, { useRef } from "react";
 import { ChevronDown, Clock3, Folder, Pin } from "lucide-react";
 
 import { FocusPinToggleForm } from "@/components/tasks/focus-pin-toggle-form";
+import { EstimateVsActualBadge } from "@/components/tasks/estimate-vs-actual-badge";
 import { TaskEditModalTrigger } from "@/components/tasks/task-edit-modal-trigger";
 import { ConfirmDeleteTaskButton } from "@/components/tasks/confirm-delete-task-button";
 import type { UpdateTaskEditorAction } from "@/components/tasks/edit-task-modal";
@@ -12,7 +13,6 @@ import { TaskReminderPanel } from "@/components/tasks/task-reminder-panel";
 import { Badge } from "@/components/ui/badge";
 import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import { StatusBadge } from "@/components/ui/status-badge";
-import { formatTaskEstimate } from "@/lib/task-estimate";
 import { getTaskStatusTransitions } from "@ega/domain";
 import {
   formatTaskToken,
@@ -106,11 +106,11 @@ export function TaskKanbanCard({
   const isPinned = task.focus_rank !== null;
   const isCompleted = isTaskCompletedStatus(task.status);
   const isBlocked = task.status === "blocked";
-  const estimateLabel = formatTaskEstimate(task.estimate_minutes);
   const subtaskLabel =
     subtaskCount && subtaskCount.total > 0
       ? `${subtaskCount.done}/${subtaskCount.total}`
       : null;
+  const hasEstimate = task.estimate_minutes !== null && task.estimate_minutes !== undefined;
   const trackedLabel = typeof trackedSeconds === "number" ? formatDurationLabel(trackedSeconds) : null;
   const recurrenceRule = task.task_recurrences[0]?.rule ?? null;
   const recurrenceLabel = recurrenceRule ? formatTaskRecurrenceRule(recurrenceRule) : null;
@@ -128,7 +128,7 @@ export function TaskKanbanCard({
   );
   const showDetails = Boolean(
     goalName ||
-      estimateLabel ||
+      hasEstimate ||
       trackedLabel ||
       subtaskLabel ||
       recurrenceLabel ||
@@ -257,15 +257,19 @@ export function TaskKanbanCard({
                 />
               </summary>
               <div className="mt-2 space-y-3">
-                {goalName || estimateLabel || trackedLabel || recurrenceLabel || task.blocked_reason ? (
+                {goalName || hasEstimate || trackedLabel || recurrenceLabel || task.blocked_reason ? (
                   <dl className="grid gap-2 rounded-[var(--radius-sm)] border border-[var(--ega-border)] bg-[var(--ega-surface-subtle)] p-2 text-xs leading-5">
                     {goalName ? (
                       <TaskKanbanDetailItem label="Goal">{goalName}</TaskKanbanDetailItem>
                     ) : null}
-                    {estimateLabel ? (
-                      <TaskKanbanDetailItem label="Estimate">{estimateLabel}</TaskKanbanDetailItem>
-                    ) : null}
-                    {trackedLabel ? (
+                    {hasEstimate ? (
+                      <TaskKanbanDetailItem label="Estimate vs tracked">
+                        <EstimateVsActualBadge
+                          estimateMinutes={task.estimate_minutes}
+                          trackedSeconds={trackedSeconds ?? 0}
+                        />
+                      </TaskKanbanDetailItem>
+                    ) : trackedLabel ? (
                       <TaskKanbanDetailItem label="Tracked">{trackedLabel}</TaskKanbanDetailItem>
                     ) : null}
                     {subtaskLabel ? (
