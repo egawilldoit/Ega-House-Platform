@@ -28,24 +28,20 @@ export function HomeCountValue({
 
   useEffect(() => {
     if (hasAnimated.current) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setDisplay(value);
-      return;
+      const frame = requestAnimationFrame(() => setDisplay(value));
+      return () => cancelAnimationFrame(frame);
     }
 
     hasAnimated.current = true;
 
     if (reduceMotion || value <= 0) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setDisplay(value);
-      return;
+      const frame = requestAnimationFrame(() => setDisplay(value));
+      return () => cancelAnimationFrame(frame);
     }
 
     const duration = Math.min(720, 260 + value * 14);
     const startedAt = performance.now();
     let frame = 0;
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setDisplay(0);
 
     const step = (now: number) => {
       const progress = Math.min(1, (now - startedAt) / duration);
@@ -56,7 +52,10 @@ export function HomeCountValue({
       }
     };
 
-    frame = requestAnimationFrame(step);
+    frame = requestAnimationFrame(() => {
+      setDisplay(0);
+      frame = requestAnimationFrame(step);
+    });
 
     return () => cancelAnimationFrame(frame);
   }, [reduceMotion, value]);
