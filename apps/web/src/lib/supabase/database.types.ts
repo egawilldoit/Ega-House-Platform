@@ -577,6 +577,62 @@ export type Database = {
           },
         ]
       }
+      task_attachments: {
+        Row: {
+          id: string
+          owner_user_id: string
+          task_id: string
+          file_name: string
+          storage_path: string
+          mime_type: string
+          size_bytes: number
+          status: string
+          idempotency_key: string
+          upload_expires_at: string
+          finalized_at: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          owner_user_id?: string
+          task_id: string
+          file_name: string
+          storage_path: string
+          mime_type: string
+          size_bytes: number
+          status?: string
+          idempotency_key: string
+          upload_expires_at: string
+          finalized_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          owner_user_id?: string
+          task_id?: string
+          file_name?: string
+          storage_path?: string
+          mime_type?: string
+          size_bytes?: number
+          status?: string
+          idempotency_key?: string
+          upload_expires_at?: string
+          finalized_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "task_attachments_task_id_tasks_id_fk"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       task_subtasks: {
         Row: {
           id: string
@@ -1112,6 +1168,27 @@ export type Database = {
       }
       list_task_comment_mentions: {
         Args: { p_owner_user_id?: string | null }
+      create_task_attachment_upload: {
+        Args: {
+          p_task_id: string
+          p_file_name: string
+          p_mime_type: string
+          p_size_bytes: number
+          p_extension: string
+          p_idempotency_key: string
+        }
+        Returns: Json
+      }
+      finalize_task_attachment: {
+        Args: { p_attachment_id: string; p_size_bytes: number }
+        Returns: Json
+      }
+      fail_task_attachment: {
+        Args: { p_attachment_id: string; p_reason: string }
+        Returns: boolean
+      }
+      delete_task_attachment: {
+        Args: { p_attachment_id: string }
         Returns: Json
       }
     }
