@@ -41,6 +41,8 @@ export const TASK_ACTIVITY_EVENT_KINDS = [
   "reminder_updated",
   "reminder_cancelled",
   "comment",
+  "attachment_added",
+  "attachment_removed",
 ] as const;
 
 export type TaskActivityEventKind = (typeof TASK_ACTIVITY_EVENT_KINDS)[number];
