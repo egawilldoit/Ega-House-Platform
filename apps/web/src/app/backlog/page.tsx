@@ -91,6 +91,18 @@ function getBacklogViewHref(
   return query ? `/backlog?${query}` : "/backlog";
 }
 
+function getBacklogClearSearchHref(params: Awaited<BacklogPageProps["searchParams"]>) {
+  const nextParams = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (key === "q" || key === "search") continue;
+    if (typeof value === "string" && value.trim()) {
+      nextParams.set(key, value);
+    }
+  }
+  const query = nextParams.toString();
+  return query ? `/backlog?${query}` : "/backlog";
+}
+
 function getBacklogViewCopy(view: (typeof BACKLOG_VIEWS)[number]) {
   if (view === "archived") {
     return {
@@ -254,7 +266,7 @@ export default async function BacklogPage({ searchParams }: BacklogPageProps) {
                 title={hasSearch ? "No items match your search" : copy.emptyTitle}
                 description={hasSearch ? "Try a different search term." : copy.emptyDescription}
                 actionLabel={hasSearch ? "Clear search" : undefined}
-                actionHref={hasSearch ? "/backlog" : undefined}
+                actionHref={hasSearch ? getBacklogClearSearchHref(resolvedSearchParams) : undefined}
               />
             ) : (
               <ul className="rows">

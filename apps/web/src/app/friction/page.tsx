@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { AppShell } from "@/components/layout/app-shell";
 import { formatDisplayDate, formatDisplayDateTime } from "@/lib/presentation-format";
 import { Badge } from "@/components/ui/badge";
@@ -55,11 +56,7 @@ function EmptyPanelRow({ children }: { children: string }) {
 export default async function FrictionRadarPage() {
   const user = await getCurrentUser();
   if (!user) {
-    return (
-      <AppShell title="Workflow Friction" description="Where work is stalling.">
-        <p className="feedback-block" role="status">Please log in to view friction signals.</p>
-      </AppShell>
-    );
+    redirect("/login?next=/friction");
   }
 
   const now = new Date();
@@ -73,7 +70,7 @@ export default async function FrictionRadarPage() {
     return (
       <AppShell title="Workflow Friction" description="Where work is stalling.">
         <p className="feedback-block feedback-block-error" role="alert">
-          Failed to load friction signals: {result.errorMessage}
+          Failed to load friction signals. Your tasks and sessions are unaffected.
         </p>
       </AppShell>
     );

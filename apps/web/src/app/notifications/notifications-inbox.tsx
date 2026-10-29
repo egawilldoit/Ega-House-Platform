@@ -34,7 +34,7 @@ function NotificationRow({
   return (
     <li
       className={cn(
-        "row items-start transition-colors hover:bg-[var(--ega-surface-hover)]",
+        "row items-start transition-colors [@media(hover:hover)]:hover:bg-[var(--ega-surface-hover)]",
         row.isUnread && "bg-[var(--ega-surface-subtle)]",
       )}
     >
@@ -64,14 +64,14 @@ function NotificationRow({
                 type="submit"
                 className={cn(
                   "row-title text-left hover:underline",
-                  row.isUnread && "font-semibold",
+                  row.isUnread && "font-bold",
                 )}
               >
                 {row.title}
               </button>
             </form>
           ) : (
-            <span className={cn("row-title", row.isUnread && "font-semibold")}>
+            <span className={cn("row-title", row.isUnread && "font-bold")}>
               {row.title}
             </span>
           )}
