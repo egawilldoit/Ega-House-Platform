@@ -27,6 +27,11 @@ import {
   mcpOperationIdentity,
   sanitizeSupabaseError,
 } from "../supabase/errors";
+import {
+  excludeArchivedAncestry,
+  loadArchivedAncestorScope,
+  type ArchivedAncestorScope,
+} from "./archived-ancestry";
 
 /**
  * Hard ceiling on rows fetched for one list request. The adapter pages up to
@@ -166,6 +171,7 @@ type TaskQueryBuilder = {
   neq(column: string, value: unknown): TaskQueryBuilder;
   in(column: string, values: readonly unknown[]): TaskQueryBuilder;
   not(column: string, operator: string, value: unknown): TaskQueryBuilder;
+  or(filters: string): TaskQueryBuilder;
   gte(column: string, value: unknown): TaskQueryBuilder;
   lte(column: string, value: unknown): TaskQueryBuilder;
   lt(column: string, value: unknown): TaskQueryBuilder;
@@ -174,6 +180,8 @@ type TaskQueryBuilder = {
   order(column: string, options?: { ascending?: boolean }): TaskQueryBuilder;
   range(from: number, to: number): TaskQueryBuilder;
 };
+
+const EMPTY_ANCESTRY: ArchivedAncestorScope = { projectIds: [], goalIds: [] };
 
 function shiftDateOnly(value: string, days: number) {
   const parsed = new Date(`${value}T00:00:00.000Z`);
@@ -271,9 +279,16 @@ function resolveTaskView(query: TaskQuery): TaskViewDefinition {
 function applyTaskQuery(
   builder: TaskQueryBuilder,
   query: TaskQuery,
+  archivedAncestry: ArchivedAncestorScope = EMPTY_ANCESTRY,
 ): TaskQueryBuilder {
   let next = builder;
-  if (!query.includeArchived) next = next.is("archived_at", null);
+  if (!query.includeArchived) {
+    next = next.is("archived_at", null);
+    // Active visibility through parent ancestry: a task under an archived
+    // project or goal is out of the active workspace even though the task
+    // itself was never archived.
+    next = excludeArchivedAncestry(next, archivedAncestry);
+  }
   if (query.projectId) next = next.eq("project_id", query.projectId);
   if (query.goalId) next = next.eq("goal_id", query.goalId);
   if (query.plannedForDate) next = next.eq("planned_for_date", query.plannedForDate);
@@ -291,6 +306,18 @@ function applyTaskQuery(
 
 export class SupabaseTasksRepository implements TasksRepository {
   constructor(private readonly supabase: SupabaseClient) {}
+
+  /**
+   * Archived-parent ids are only needed for active reads; archived/all views
+   * keep their own semantics.
+   */
+  private async loadArchivedAncestry(
+    actor: AuthenticatedActor,
+    query: TaskQuery,
+  ): Promise<RepositoryResult<ArchivedAncestorScope>> {
+    if (query.includeArchived) return { ok: true, value: EMPTY_ANCESTRY };
+    return loadArchivedAncestorScope(this.supabase, actor.userId);
+  }
 
   async getScope(actor: AuthenticatedActor): Promise<RepositoryResult<TaskScopeRecord>> {
     const projects = await this.supabase
@@ -319,6 +346,8 @@ export class SupabaseTasksRepository implements TasksRepository {
 
   async listTasks(actor: AuthenticatedActor, query: TaskQuery = {}): Promise<RepositoryResult<TaskRecord[]>> {
     const rows: Row[] = [];
+    const ancestry = await this.loadArchivedAncestry(actor, query);
+    if (!ancestry.ok) return { ok: false, error: ancestry.error };
 
     for (let from = 0; from < TASK_LIST_ROW_CAP; from += TASK_LIST_PAGE_SIZE) {
       const to = Math.min(from + TASK_LIST_PAGE_SIZE, TASK_LIST_ROW_CAP) - 1;
@@ -327,7 +356,7 @@ export class SupabaseTasksRepository implements TasksRepository {
         .select(TASK_SELECT)
         .eq("owner_user_id", actor.userId) as unknown as TaskQueryBuilder;
 
-      request = applyTaskQuery(request, query);
+      request = applyTaskQuery(request, query, ancestry.value);
       // Stable paging order; the application read model owns display ordering.
       request = request
         .order("id", { ascending: true })
@@ -350,7 +379,9 @@ export class SupabaseTasksRepository implements TasksRepository {
       .select("id", { count: "exact", head: true })
       .eq("owner_user_id", actor.userId) as unknown as TaskQueryBuilder;
 
-    request = applyTaskQuery(request, query);
+    const ancestry = await this.loadArchivedAncestry(actor, query);
+    if (!ancestry.ok) return { ok: false, error: ancestry.error };
+    request = applyTaskQuery(request, query, ancestry.value);
 
     const result = (await request) as unknown as {
       count: number | null;

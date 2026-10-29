@@ -22,6 +22,7 @@ export const WORKSPACE_COMMANDS: readonly WorkspaceCommand[] = [
   { id: "nav-review", label: "Review", group: "navigate", href: SHORTCUT_ROUTE_MAP.review, event: null, hint: null },
   { id: "nav-analytics", label: "Analytics", group: "navigate", href: "/work-analytics", event: null, hint: null },
   { id: "nav-backlog", label: "Backlog", group: "navigate", href: "/backlog", event: null, hint: null },
+  { id: "nav-archive", label: "Archive", group: "navigate", href: "/archive", event: null, hint: null },
   {
     id: "nav-notifications",
     label: "Notifications",

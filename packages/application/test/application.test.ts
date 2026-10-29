@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { GOAL_ARCHIVE_STATUS, PROJECT_ARCHIVE_STATUS } from "@ega/domain";
+import { PROJECT_ARCHIVE_STATUS } from "@ega/domain";
 import type { GoalViewFilter, ProjectViewFilter } from "@ega/domain";
 
 import {
@@ -59,6 +59,7 @@ class FakeProjectsRepository implements ProjectsRepository {
   idResult: RepositoryResult<ProjectRecord | null> = okResult(null);
   goalsResult: RepositoryResult<ProjectGoalRecord[]> = okResult([]);
   updateResult: RepositoryResult<null> = okResult(null);
+  activeTimerResult: RepositoryResult<boolean> = okResult(false);
   deleteResult: RepositoryResult<DeleteArchivedProjectResult> = okResult({ deleted: true });
   previewResult: RepositoryResult<ProjectPurgePreview | null> = okResult(null);
   purgeResult: RepositoryResult<PurgeArchivedProjectResult> = okResult({
@@ -114,6 +115,17 @@ class FakeProjectsRepository implements ProjectsRepository {
     this.record("updateProjectStatus", actor.userId, input);
     return this.updateResult;
   }
+  async updateProjectArchiveState(
+    actor: AuthenticatedActor,
+    input: { projectId: string; archivedAt: string | null; updatedAt: string },
+  ) {
+    this.record("updateProjectArchiveState", actor.userId, input);
+    return this.updateResult;
+  }
+  async hasOpenTaskSessionForProject(actor: AuthenticatedActor, projectId: string) {
+    this.record("hasOpenTaskSessionForProject", actor.userId, { projectId });
+    return this.activeTimerResult;
+  }
   async deleteArchivedProject(
     actor: AuthenticatedActor,
     input: { projectId: string },
@@ -138,6 +150,7 @@ class FakeGoalsRepository implements GoalsRepository {
   calls: Array<{ method: string; actorUserId: string; args: Record<string, unknown> }> = [];
   createResult: RepositoryResult<GoalRecord | null> = okResult(null);
   updateResult: RepositoryResult<null> = okResult(null);
+  activeTimerResult: RepositoryResult<boolean> = okResult(false);
   projectOptionsResult: RepositoryResult<{ id: string; name: string }[]> = okResult([]);
   listResult: RepositoryResult<GoalRecord[]> = okResult([]);
   tasksResult: RepositoryResult<GoalTaskContextRecord[]> = okResult([]);
@@ -173,6 +186,17 @@ class FakeGoalsRepository implements GoalsRepository {
   ) {
     this.record("updateGoalStatus", actor.userId, input);
     return this.updateResult;
+  }
+  async updateGoalArchiveState(
+    actor: AuthenticatedActor,
+    input: { goalId: string; archivedAt: string | null; updatedAt: string },
+  ) {
+    this.record("updateGoalArchiveState", actor.userId, input);
+    return this.updateResult;
+  }
+  async hasOpenTaskSessionForGoal(actor: AuthenticatedActor, goalId: string) {
+    this.record("hasOpenTaskSessionForGoal", actor.userId, { goalId });
+    return this.activeTimerResult;
   }
   async updateGoalHealth(
     actor: AuthenticatedActor,
@@ -340,15 +364,53 @@ test("project update failure is sanitized", async () => {
   assert.equal(result.ok || result.errorMessage, "Unable to update project right now.");
 });
 
-test("project archive and unarchive use canonical domain statuses", async () => {
+test("project archive and unarchive write the archive marker and its metadata", async () => {
+  const repository = new FakeProjectsRepository();
+  const now = new Date("2026-05-01T09:00:00.000Z");
+
+  await archiveProject(ACTOR, repository, { projectId: "project-1", now });
+  await unarchiveProject(ACTOR, repository, { projectId: "project-1", now });
+
+  assert.deepEqual(
+    repository.calls.map((call) => call.method),
+    [
+      "hasOpenTaskSessionForProject",
+      "updateProjectArchiveState",
+      "updateProjectArchiveState",
+    ],
+  );
+  assert.equal(repository.calls[1].args.archivedAt, "2026-05-01T09:00:00.000Z");
+  assert.equal(repository.calls[2].args.archivedAt, null);
+});
+
+test("project archive refuses while a task timer is running", async () => {
+  const repository = new FakeProjectsRepository();
+  repository.activeTimerResult = okResult(true);
+
+  const result = await archiveProject(ACTOR, repository, { projectId: "project-1" });
+
+  assert.equal(result.ok, false);
+  assert.equal(
+    result.ok || result.errorMessage,
+    "Stop the active timer before archiving this project.",
+  );
+  assert.equal(
+    repository.calls.some((call) => call.method === "updateProjectArchiveState"),
+    false,
+  );
+});
+
+test("project status updates cannot use the archive marker", async () => {
   const repository = new FakeProjectsRepository();
 
-  await archiveProject(ACTOR, repository, { projectId: "project-1" });
-  await unarchiveProject(ACTOR, repository, { projectId: "project-1" });
+  const result = await updateProjectStatus(ACTOR, repository, {
+    projectId: "project-1",
+    status: PROJECT_ARCHIVE_STATUS,
+  });
 
-  assert.equal(repository.calls.length, 2);
-  assert.equal(repository.calls[0].args.status, PROJECT_ARCHIVE_STATUS);
-  assert.equal(repository.calls[1].args.status, "active");
+  assert.equal(result.ok, false);
+  assert.equal(result.ok || result.errorMessage, "Project update request is invalid.");
+  assert.equal(repository.calls.length, 0);
 });
 
 const ARCHIVED_PROJECT_ROW: ProjectRecord = { ...PROJECT_ROW, status: "archived" };
@@ -1115,16 +1177,36 @@ test("goal health and next step updates pass the actor and normalized values", a
   });
 });
 
-test("goal archive and unarchive use canonical domain statuses", async () => {
+test("goal archive and unarchive write the archive marker and its metadata", async () => {
   const repository = new FakeGoalsRepository();
+  const now = new Date("2026-05-01T09:00:00.000Z");
 
-  await archiveGoal(ACTOR, repository, { goalId: "goal-1" });
-  await unarchiveGoal(ACTOR, repository, { goalId: "goal-1" });
+  await archiveGoal(ACTOR, repository, { goalId: "goal-1", now });
+  await unarchiveGoal(ACTOR, repository, { goalId: "goal-1", now });
 
-  assert.equal(repository.calls.length, 2);
-  assert.equal(repository.calls[0].method, "updateGoalStatus");
-  assert.equal(repository.calls[0].args.status, GOAL_ARCHIVE_STATUS);
-  assert.equal(repository.calls[1].args.status, "active");
+  assert.deepEqual(
+    repository.calls.map((call) => call.method),
+    ["hasOpenTaskSessionForGoal", "updateGoalArchiveState", "updateGoalArchiveState"],
+  );
+  assert.equal(repository.calls[1].args.archivedAt, "2026-05-01T09:00:00.000Z");
+  assert.equal(repository.calls[2].args.archivedAt, null);
+});
+
+test("goal archive refuses while a task timer is running", async () => {
+  const repository = new FakeGoalsRepository();
+  repository.activeTimerResult = okResult(true);
+
+  const result = await archiveGoal(ACTOR, repository, { goalId: "goal-1" });
+
+  assert.equal(result.ok, false);
+  assert.equal(
+    result.ok || result.errorMessage,
+    "Stop the active timer before archiving this goal.",
+  );
+  assert.equal(
+    repository.calls.some((call) => call.method === "updateGoalArchiveState"),
+    false,
+  );
 });
 
 test("goals read model preserves project names, progress, and summary", async () => {

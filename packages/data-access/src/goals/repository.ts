@@ -9,6 +9,7 @@ import {
   type GoalViewFilter,
   type RepositoryResult,
 } from "@ega/application";
+import { GOAL_ARCHIVE_STATUS } from "@ega/domain";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import {
@@ -16,6 +17,8 @@ import {
   mcpOperationIdentity,
   sanitizeSupabaseError,
 } from "../supabase/errors";
+import { loadArchivedAncestorScope } from "../tasks/archived-ancestry";
+import { hasOpenTaskSessionForScope } from "../tasks/open-session";
 
 const GOAL_SELECT =
   "id, project_id, title, slug, description, next_step, health, status, created_at, updated_at";
@@ -101,6 +104,20 @@ export class SupabaseGoalsRepository implements GoalsRepository {
 
     if (view === "active") {
       query = query.neq("status", "archived");
+
+      // Active visibility through parent ancestry: a goal inside an archived
+      // project is not active work, even when the goal itself was never
+      // archived. Restoring the project makes it visible again without
+      // touching the goal's own archive state.
+      const ancestorScope = await loadArchivedAncestorScope(this.supabase, actor.userId);
+      if (!ancestorScope.ok) return { ok: false, error: ancestorScope.error };
+      if (ancestorScope.value.projectIds.length > 0) {
+        query = query.not(
+          "project_id",
+          "in",
+          `(${ancestorScope.value.projectIds.join(",")})`,
+        );
+      }
     } else if (view === "archived") {
       query = query.eq("status", "archived");
     }
@@ -216,7 +233,7 @@ export class SupabaseGoalsRepository implements GoalsRepository {
 
   async updateGoalStatus(
     actor: AuthenticatedActor,
-    input: { goalId: string; status: GoalStatus | "archived"; updatedAt: string },
+    input: { goalId: string; status: GoalStatus; updatedAt: string },
   ): Promise<RepositoryResult<null>> {
     const { error } = await this.supabase
       .from("goals")
@@ -232,6 +249,40 @@ export class SupabaseGoalsRepository implements GoalsRepository {
     }
 
     return { ok: true, value: null };
+  }
+
+  /**
+   * Archive/restore in one statement. `goals_archive_state_check` (migration
+   * 0073) ties `archived_at` to `status = 'archived'`, so the pair is written
+   * together and can never half-apply.
+   */
+  async updateGoalArchiveState(
+    actor: AuthenticatedActor,
+    input: { goalId: string; archivedAt: string | null; updatedAt: string },
+  ): Promise<RepositoryResult<null>> {
+    const { error } = await this.supabase
+      .from("goals")
+      .update({
+        status: input.archivedAt ? GOAL_ARCHIVE_STATUS : "active",
+        archived_at: input.archivedAt,
+        archived_by: input.archivedAt ? actor.userId : null,
+        updated_at: input.updatedAt,
+      })
+      .eq("id", input.goalId)
+      .eq("owner_user_id", actor.userId);
+
+    if (error) {
+      return { ok: false, error: sanitizeSupabaseError(error) };
+    }
+
+    return { ok: true, value: null };
+  }
+
+  hasOpenTaskSessionForGoal(
+    actor: AuthenticatedActor,
+    goalId: string,
+  ): Promise<RepositoryResult<boolean>> {
+    return hasOpenTaskSessionForScope(this.supabase, actor.userId, { goalId });
   }
 
   async updateGoalHealth(

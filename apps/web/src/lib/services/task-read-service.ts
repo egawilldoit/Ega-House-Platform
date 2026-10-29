@@ -1,3 +1,5 @@
+import { excludeArchivedAncestry, loadArchivedAncestorScope } from "@ega/data-access";
+
 import { createClient } from "@/lib/supabase/server";
 import {
   isMissingSupabaseColumn,
@@ -270,9 +272,17 @@ function applyArchiveFilter(
   query: TaskReadQuery,
   archiveFilter: "active" | "archived" | "all",
   variant: TaskReadSelectVariant,
+  archivedAncestry: { projectIds: string[]; goalIds: string[] },
 ) {
   if (!variant.archive) return query;
-  if (archiveFilter === "active") return query.is("archived_at", null);
+  if (archiveFilter === "active") {
+    // Active lists hide work whose project or goal is archived, without
+    // touching the child's own archive state.
+    return excludeArchivedAncestry(
+      query.is("archived_at", null),
+      archivedAncestry,
+    );
+  }
   if (archiveFilter === "archived") return query.not("archived_at", "is", null);
   return query;
 }
@@ -293,6 +303,20 @@ export async function getActiveTasksForOwner(options?: {
   let variant = MODERN_TASK_SELECT_VARIANT;
   const archiveFilter = options?.archiveFilter ?? (options?.includeArchived ? "all" : "active");
 
+  // Active lists, Today and pickers must not surface work that belongs to an
+  // archived project or goal. Loaded once per call, not once per select
+  // fallback attempt.
+  const ancestorScope =
+    archiveFilter === "active" ? await loadArchivedAncestorScope(supabase) : null;
+
+  if (ancestorScope && !ancestorScope.ok) {
+    return { data: [], errorMessage: "Unable to load active tasks right now." };
+  }
+
+  const activeAncestry = ancestorScope?.ok
+    ? ancestorScope.value
+    : { projectIds: [], goalIds: [] };
+
   for (;;) {
     if (!variant.archive && archiveFilter === "archived") {
       return { data: [], errorMessage: null };
@@ -304,7 +328,7 @@ export async function getActiveTasksForOwner(options?: {
     for (let from = 0; from < TASK_READ_MAX_ROWS; from += TASK_READ_PAGE_SIZE) {
       const to = Math.min(from + TASK_READ_PAGE_SIZE, TASK_READ_MAX_ROWS) - 1;
       let query = supabase.from("tasks").select(getTaskSelect(variant)) as unknown as TaskReadQuery;
-      query = applyArchiveFilter(query, archiveFilter, variant);
+      query = applyArchiveFilter(query, archiveFilter, variant, activeAncestry);
 
       if (options?.applyQuery) {
         query = options.applyQuery(query);
@@ -365,10 +389,20 @@ export async function getTaskCountForOwner(options?: {
   const archiveFilter = options?.archiveFilter ?? (options?.includeArchived ? "all" : "active");
   const variant = MODERN_TASK_SELECT_VARIANT;
 
+  // Counts must agree with the active list, so the same ancestry rule applies.
+  const ancestorScope =
+    archiveFilter === "active" ? await loadArchivedAncestorScope(supabase) : null;
+  if (ancestorScope && !ancestorScope.ok) {
+    return { count: null, errorMessage: "Unable to load active tasks right now." };
+  }
+  const activeAncestry = ancestorScope?.ok
+    ? ancestorScope.value
+    : { projectIds: [], goalIds: [] };
+
   let query = supabase
     .from("tasks")
     .select("id", { count: "exact", head: true }) as unknown as TaskReadQuery;
-  query = applyArchiveFilter(query, archiveFilter, variant);
+  query = applyArchiveFilter(query, archiveFilter, variant, activeAncestry);
   if (options?.applyQuery) query = options.applyQuery(query);
 
   const result = (await query) as unknown as {
