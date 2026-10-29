@@ -20,10 +20,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Star } from "lucide-react";
 import type { TaskActivityItem } from "@/lib/task-activity";
 import type {
+  TaskAttachmentDto,
   TaskCommentDto,
   TaskCommentMentionCandidateDto,
   SubtaskDto,
 } from "@ega/contracts";
+import { TaskAttachmentsSection } from "./task-attachments-section";
 import { useTaskDrawerParam } from "./use-task-drawer-param";
 import { useWorkspacePreferences } from "@/components/layout/workspace-preferences-provider";
 
@@ -134,6 +136,10 @@ type TaskDrawerHostProps = {
   ownerId?: string | null;
   /** Ordered checklist items for the selected task. */
   subtasks?: SubtaskDto[];
+  /** Owner-scoped attachments for the selected task. */
+  attachments?: TaskAttachmentDto[];
+  /** Attachment lookup failure, distinct from an empty list. */
+  attachmentsError?: string | null;
   /** Durable activity rows for the selected task. */
   activity?: TaskActivityItem[];
   /** Owner-scoped comment thread and composer. */
@@ -180,6 +186,8 @@ export function TaskDrawerHost({
   updateDraftAction,
   ownerId = null,
   subtasks = [],
+  attachments = [],
+  attachmentsError = null,
   activity = [],
   comments = [],
   commentMentions = [],
@@ -498,6 +506,13 @@ export function TaskDrawerHost({
           actions={subtaskActions}
         />
       ) : null}
+
+      <TaskAttachmentsSection
+        key={`attachments-${task.id}`}
+        taskId={task.id}
+        attachments={attachments}
+        loadError={attachmentsError}
+      />
 
       {commentActions ? (
         <Tabs
