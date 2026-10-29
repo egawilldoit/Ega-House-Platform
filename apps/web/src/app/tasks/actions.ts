@@ -36,11 +36,15 @@ import {
   pinTaskInFocusQueue,
   unpinTaskInFocusQueue,
 } from "@/lib/services/focus-queue-service";
-import { updateTaskFieldForOwner } from "@/lib/services/task-service";
+import { updateTaskFieldForOwner, updateTaskTimelineSchedule } from "@/lib/services/task-service";
 import {
   isTaskTableCellEditableField,
   type TaskTableCellEditableField,
 } from "@/lib/task-table-columns";
+import {
+  addTaskDependency,
+  removeTaskDependency,
+} from "@/lib/services/task-dependency-service";
 import type { TaskFieldDraftState } from "@/lib/task-field-draft";
 import { getWebTimeContext } from "@/lib/services/time-context-service";
 import {
@@ -732,6 +736,20 @@ export async function updateTaskFieldDraftAction(
   return { errorMessage: null, successMessage: "Saved.", savedValue: value };
 }
 
+export type UpdateTaskTimelineScheduleState = {
+  errorMessage: string | null;
+  successMessage: string | null;
+  taskId: string | null;
+};
+
+/**
+ * Timeline move/resize and the non-drag date editor.
+ *
+ * Returns state instead of redirecting so an optimistic bar can keep its draft
+ * and show a field-level error when a concurrent write wins. The service owns
+ * date validation, `due >= start`, owner scope and the version check; the
+ * domain/DB dependency rules are untouched by date edits.
+ */
 export type TaskTableCellUpdateResult = {
   errorMessage: string | null;
   savedValue: string | null;
@@ -750,10 +768,9 @@ export type TaskTableCellUpdateInput = {
 /**
  * Persist one table-cell edit without navigating away from the table.
  *
- * The cell diameter owns its draft until the server accepts the change, and the
- * row's rendered `updated_at` is a required precondition so a stale table can
- * never overwrite another editor's work. Unrelated fields are carried from the
- * server row by `updateTaskFieldForOwner`, never from the client.
+ * The cell owns its draft until the server accepts the change, and the row's
+ * rendered `updated_at` is a required precondition so a stale table can never
+ * overwrite another editor's work.
  */
 export async function updateTaskTableCellAction(
   input: TaskTableCellUpdateInput,
@@ -792,11 +809,7 @@ export async function updateTaskTableCellAction(
   );
 
   if (result.errorMessage) {
-    return {
-      errorMessage: result.errorMessage,
-      savedValue: null,
-      updatedAt: null,
-    };
+    return { errorMessage: result.errorMessage, savedValue: null, updatedAt: null };
   }
 
   revalidateWorkspaceFor("task", { returnTo: returnPath });
@@ -805,6 +818,67 @@ export async function updateTaskTableCellAction(
     savedValue: result.savedValue ?? value,
     updatedAt: result.updatedAt ?? null,
   };
+}
+
+export async function updateTaskTimelineScheduleAction(
+  _previous: UpdateTaskTimelineScheduleState,
+  formData: FormData,
+): Promise<UpdateTaskTimelineScheduleState> {
+  const taskId = String(formData.get("taskId") ?? "").trim();
+  const returnPath = getTasksReturnPath(formData.get("returnTo"));
+  const accountTimezoneResult = await resolveAccountTimezone();
+  const result = await updateTaskTimelineSchedule(
+    {
+      taskId,
+      startDate: formData.get("startDate"),
+      dueDate: formData.get("dueDate"),
+      expectedUpdatedAt: String(formData.get("expectedUpdatedAt") ?? "").trim() || undefined,
+    },
+    { accountTimezone: accountTimezoneResult.timezone ?? undefined },
+  );
+
+  if (result.errorMessage) {
+    return { errorMessage: result.errorMessage, successMessage: null, taskId };
+  }
+
+  revalidateWorkspaceFor("task", { returnTo: returnPath });
+  return { errorMessage: null, successMessage: "Dates updated.", taskId };
+}
+
+export async function addTaskDependencyAction(formData: FormData) {
+  const returnPath = getTasksReturnPath(formData.get("returnTo"));
+  const taskId = String(formData.get("taskId") ?? "").trim();
+  const blockedByTaskId = String(formData.get("blockedByTaskId") ?? "").trim();
+
+  const result = await addTaskDependency({ taskId, blockedByTaskId });
+  if (result.errorMessage) {
+    redirectWithTasksError(returnPath, result.errorMessage, taskId || undefined);
+  }
+
+  revalidateWorkspaceFor("task", { returnTo: returnPath });
+  redirectWithWorkspaceFeedback(returnPath, {
+    anchor: taskId ? `task-${taskId}` : undefined,
+    taskSuccessMessage: result.successMessage ?? "Dependency added.",
+    taskId,
+  });
+}
+
+export async function removeTaskDependencyAction(formData: FormData) {
+  const returnPath = getTasksReturnPath(formData.get("returnTo"));
+  const taskId = String(formData.get("taskId") ?? "").trim();
+  const blockedByTaskId = String(formData.get("blockedByTaskId") ?? "").trim();
+
+  const result = await removeTaskDependency({ taskId, blockedByTaskId });
+  if (result.errorMessage) {
+    redirectWithTasksError(returnPath, result.errorMessage, taskId || undefined);
+  }
+
+  revalidateWorkspaceFor("task", { returnTo: returnPath });
+  redirectWithWorkspaceFeedback(returnPath, {
+    anchor: taskId ? `task-${taskId}` : undefined,
+    taskSuccessMessage: result.successMessage ?? "Dependency removed.",
+    taskId,
+  });
 }
 
 export type UpdateTaskEditorFormState = {

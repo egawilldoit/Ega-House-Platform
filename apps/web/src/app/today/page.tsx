@@ -2,7 +2,12 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { clearCompletedFromTodayAction } from "@/app/today/actions";
-import { updateTaskFieldAction, updateTaskFieldDraftAction } from "@/app/tasks/actions";
+import {
+  addTaskDependencyAction,
+  removeTaskDependencyAction,
+  updateTaskFieldAction,
+  updateTaskFieldDraftAction,
+} from "@/app/tasks/actions";
 import { TaskDrawerHost } from "@/components/tasks/drawer/task-drawer-host";
 import { AppShell } from "@/components/layout/app-shell";
 import { OwnerScopedRealtimeRefresh } from "@/components/realtime/owner-scoped-realtime-refresh";
@@ -290,6 +295,8 @@ export default async function TodayPage({
           subtaskActions={TASK_SUBTASK_ACTIONS}
           updateError={taskUpdateTaskId === selectedTaskId ? taskUpdateError : null}
           updateSuccess={taskUpdateTaskId === selectedTaskId ? taskUpdateSuccess : null}
+          addDependencyAction={addTaskDependencyAction}
+          removeDependencyAction={removeTaskDependencyAction}
         />
       ) : null}
 
