@@ -96,7 +96,12 @@ export function WorkspaceShell({
             </header>
           ) : null}
 
-          <div className={cn("app-content", contentClassName)}>{children}</div>
+          <div
+            key={pathname}
+            className={cn("app-content motion-rise", contentClassName)}
+          >
+            {children}
+          </div>
         </div>
       </main>
     </div>
