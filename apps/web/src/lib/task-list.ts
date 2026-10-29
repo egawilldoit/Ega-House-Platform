@@ -40,7 +40,7 @@ export type {
   TaskViewSearchParams,
 };
 
-export const TASK_LAYOUT_VALUES = ["list", "kanban"] as const;
+export const TASK_LAYOUT_VALUES = ["list", "kanban", "timeline"] as const;
 export const DEFAULT_TASK_LAYOUT = "list" as const;
 
 export const TASK_DENSITY_VALUES = ["comfortable", "compact"] as const;
@@ -136,7 +136,9 @@ export function sortTasksForBoard<T extends BoardSortableTask>(
 }
 
 export function normalizeTaskLayout(value: string | null | undefined): TaskLayoutMode {
-  return value === "kanban" ? "kanban" : DEFAULT_TASK_LAYOUT;
+  if (value === "kanban") return "kanban";
+  if (value === "timeline") return "timeline";
+  return DEFAULT_TASK_LAYOUT;
 }
 
 /** True only for a layout the web workspace can render today. */
@@ -188,6 +190,9 @@ export type TaskListUrlFilters = {
   sortKey?: TaskViewDefinition["sort"]["key"];
   sortDirection?: TaskViewDefinition["sort"]["direction"];
   boardOrder?: TaskBoardOrder | null;
+  /** Timeline window anchor (YYYY-MM-DD) and week/month zoom. */
+  timelineStart?: string | null;
+  timelineZoom?: string | null;
   /** Project detail section, when the list is embedded in a tabbed route. */
   tab?: string | null;
 };
@@ -236,6 +241,11 @@ export function buildTaskListUrl(
 
   if (filters.view && filters.view !== "active") searchParams.set("archive", filters.view);
   if (filters.layout === "kanban") searchParams.set("layout", "kanban");
+  if (filters.layout === "timeline") {
+    searchParams.set("layout", "timeline");
+    if (filters.timelineStart) searchParams.set("tlStart", filters.timelineStart);
+    if (filters.timelineZoom === "month") searchParams.set("tlZoom", "month");
+  }
   if (filters.density === "compact") searchParams.set("density", "compact");
   if (filters.boardOrder) searchParams.set("boardOrder", filters.boardOrder);
   if (filters.tab && filters.tab !== "overview") searchParams.set("tab", filters.tab);

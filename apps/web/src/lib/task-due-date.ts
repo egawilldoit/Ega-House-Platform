@@ -37,6 +37,23 @@ export function shiftDateOnlyValue(value: string, days: number) {
   return parsed.toISOString().slice(0, 10);
 }
 
+export function normalizeTaskStartDateInput(rawValue: unknown) {
+  const value = String(rawValue ?? "").trim();
+
+  if (!value) {
+    return { value: null, error: null };
+  }
+
+  if (!isDateOnlyValue(value)) {
+    return {
+      value: null,
+      error: "Start date must be a valid date in YYYY-MM-DD format.",
+    };
+  }
+
+  return { value, error: null };
+}
+
 export function normalizeTaskDueDateInput(rawValue: unknown) {
   const value = String(rawValue ?? "").trim();
 

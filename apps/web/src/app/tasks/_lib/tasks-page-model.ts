@@ -25,15 +25,20 @@ import {
   normalizeTaskSavedViewFilters,
 } from "@/lib/task-saved-views";
 import { groupTaskViewRecords } from "@ega/application/tasks/view";
-import { getTodayLocalIsoDate } from "@/lib/task-due-date";
-import { getTaskDrawerDetail, type TaskDrawerDetail } from "@/lib/services/task-service";
+import { getTaskDrawerDetail } from "@/lib/services/task-service";
 import { getSubtaskCountsForTasks, listTaskSubtasks } from "@/lib/services/subtask-service";
 import { getTaskActivity } from "@/lib/services/task-activity-service";
 import { getTaskCommentThread } from "@/lib/services/task-comment-service";
 import { isFavorite } from "@/lib/services/favorite-service";
 import { getTasksWorkspaceData } from "@/lib/services/task-service";
+import { getTaskTimelineData } from "@/lib/services/task-timeline-service";
 import { getWebTimeContext } from "@/lib/services/time-context-service";
-import { isTaskDueSoon, isTaskOverdue } from "@/lib/task-due-date";
+import {
+  getTodayLocalIsoDate,
+  isTaskDueSoon,
+  isTaskOverdue,
+} from "@/lib/task-due-date";
+import { normalizeTimelineZoom, resolveTimelineRange } from "@/lib/task-timeline";
 
 export type TasksSearchParams = {
   status?: string;
@@ -66,6 +71,9 @@ export type TasksSearchParams = {
   task?: string;
   /** `?taskMode=full` renders the detail full page instead of a side panel. */
   taskMode?: string;
+  /** Timeline window anchor (YYYY-MM-DD) and week/month zoom. */
+  tlStart?: string;
+  tlZoom?: string;
 };
 
 export type ParsedTasksFilters = {
@@ -166,6 +174,9 @@ export async function getTasksPageModel(
   // Due-within-N-days windows use the owner's canonical local date from Time
   // Context so the Tasks workspace agrees with Today/Timer on the calendar day.
   const accountLocalDate = (await getWebTimeContext().catch(() => null))?.localDate;
+  const ownerToday = accountLocalDate ?? getTodayLocalIsoDate();
+  const timelineZoom = normalizeTimelineZoom(searchParams.tlZoom);
+  const timelineRange = resolveTimelineRange(ownerToday, searchParams.tlStart);
   const workspaceData = await getTasksWorkspaceData(
     {
       activeStatus: parsed.activeStatus,
@@ -214,6 +225,8 @@ export async function getTasksPageModel(
     layout: parsed.activeLayout,
     density: parsed.activeDensity,
     boardOrder: parsed.activeBoardOrder,
+    timelineStart: parsed.activeLayout === "timeline" ? timelineRange.start : null,
+    timelineZoom: parsed.activeLayout === "timeline" ? timelineZoom : null,
   });
 
   const taskUrlFilters = {
@@ -271,36 +284,20 @@ export async function getTasksPageModel(
   ).length;
 
   // The selected task may be outside the current list filters (archived tab,
-  // project filter), so fall back to a narrow owner-scoped load. A missing or
-  // other-owner id yields null and the drawer shows an unavailable state.
+  // project filter, timeline window), so always load the drawer projection by
+  // id. A missing or other-owner id yields null and the drawer shows an
+  // unavailable state. The projection also carries dependency detail.
   const selectedTaskId = searchParams.task?.trim() || null;
   const selectedTaskMode = searchParams.taskMode === "full" ? "full" : "panel";
-  const selectedTaskFromList = selectedTaskId
-    ? (tasks.find((task) => task.id === selectedTaskId) ?? null)
-    : null;
-  const drawerResult = selectedTaskFromList
-    ? ({
-        kind: "found" as const,
-        task: {
-          id: selectedTaskFromList.id,
-          title: selectedTaskFromList.title,
-          description: selectedTaskFromList.description ?? null,
-          status: selectedTaskFromList.status,
-          priority: selectedTaskFromList.priority,
-          due_date: selectedTaskFromList.due_date,
-          estimate_minutes: selectedTaskFromList.estimate_minutes ?? null,
-          blocked_reason: selectedTaskFromList.blocked_reason,
-          project_id: selectedTaskFromList.project_id,
-          goal_id: selectedTaskFromList.goal_id,
-          archived_at: selectedTaskFromList.archived_at,
-        },
-      } satisfies { kind: "found"; task: TaskDrawerDetail })
-    : selectedTaskId
-      ? await getTaskDrawerDetail(selectedTaskId)
-      : ({ kind: "unavailable" as const } as const);
-  const selectedTask: TaskDrawerDetail | null =
-    drawerResult.kind === "found" ? drawerResult.task : null;
+  const drawerResult = selectedTaskId
+    ? await getTaskDrawerDetail(selectedTaskId)
+    : ({ kind: "unavailable" as const } as const);
+  const selectedTask = drawerResult.kind === "found" ? drawerResult.task : null;
   const selectedTaskError = drawerResult.kind === "error";
+  const timeline =
+    parsed.activeLayout === "timeline"
+      ? await getTaskTimelineData({ range: timelineRange })
+      : null;
   const selectedTaskSubtasks = selectedTaskId
     ? (await listTaskSubtasks(selectedTaskId)).data ?? []
     : [];
@@ -354,6 +351,10 @@ export async function getTasksPageModel(
     filteredTotal,
     loadedCount,
     truncated,
+    timeline,
+    timelineRange,
+    timelineZoom,
+    ownerToday,
   };
 }
 

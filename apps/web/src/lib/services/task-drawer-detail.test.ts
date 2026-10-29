@@ -6,32 +6,59 @@ import { getTaskDrawerDetail } from "./task-service";
 type StubResult = { data: unknown; error: unknown };
 
 /**
- * Minimal stub of the chain `getTaskDrawerDetail` uses, recording the filters so
- * the owner-scoping assertion is executable rather than prose.
+ * Minimal stub of the chains `getTaskDrawerDetail` uses, recording the task
+ * filters so the owner-scoping assertion is executable rather than prose.
+ * Dependency detail is empty here; its own service coverage lives separately.
  */
 function stubSupabase(result: StubResult, options: { userId?: string | null } = {}) {
   const filters: Array<{ column: string; value: unknown }> = [];
   const userId = options.userId === undefined ? "owner-1" : options.userId;
+
+  function makeQuery(table: string) {
+    const query = {
+      eq(column: string, value: unknown) {
+        if (table === "tasks") filters.push({ column, value });
+        return query;
+      },
+      is() {
+        return query;
+      },
+      neq() {
+        return query;
+      },
+      in() {
+        return query;
+      },
+      or() {
+        return query;
+      },
+      order() {
+        return query;
+      },
+      limit() {
+        return query;
+      },
+      async maybeSingle() {
+        return result;
+      },
+      then(resolve: (value: StubResult) => unknown, reject?: (reason: unknown) => unknown) {
+        return Promise.resolve({ data: [], error: null }).then(resolve, reject);
+      },
+    };
+    return query;
+  }
 
   const client = {
     auth: {
       getUser: async () => ({ data: { user: userId ? { id: userId } : null }, error: null }),
     },
     from(table: string) {
-      assert.equal(table, "tasks");
       return {
         select(columns: string) {
-          assert.ok(columns.includes("title"), "selects the drawer projection");
-          const query = {
-            eq(column: string, value: unknown) {
-              filters.push({ column, value });
-              return query;
-            },
-            async maybeSingle() {
-              return result;
-            },
-          };
-          return query;
+          if (table === "tasks" && columns.includes("description")) {
+            assert.ok(columns.includes("start_date"), "selects the drawer projection");
+          }
+          return makeQuery(table);
         },
       };
     },
@@ -46,6 +73,7 @@ test("returns the task and filters by id and owner", async () => {
     title: "Draft review",
     status: "in_progress",
     priority: "high",
+    start_date: null,
     due_date: null,
     project_id: null,
     goal_id: null,
@@ -56,8 +84,12 @@ test("returns the task and filters by id and owner", async () => {
   const detail = await getTaskDrawerDetail("task-1", { supabase: client as never });
 
   assert.equal(detail.kind, "found");
-  assert.deepEqual(detail.kind === "found" ? detail.task : null, row);
-  assert.deepEqual(filters, [
+  assert.deepEqual(detail.kind === "found" ? detail.task : null, {
+    ...row,
+    dependencies: { blockedBy: [], blocking: [], options: [] },
+    dependencyError: null,
+  });
+  assert.deepEqual(filters.slice(0, 2), [
     { column: "id", value: "task-1" },
     { column: "owner_user_id", value: "owner-1" },
   ]);

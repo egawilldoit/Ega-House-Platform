@@ -807,6 +807,45 @@ export type Database = {
           },
         ]
       }
+      task_dependencies: {
+        Row: {
+          blocked_by_task_id: string
+          created_at: string
+          id: string
+          owner_user_id: string
+          task_id: string
+        }
+        Insert: {
+          blocked_by_task_id: string
+          created_at?: string
+          id?: string
+          owner_user_id?: string
+          task_id: string
+        }
+        Update: {
+          blocked_by_task_id?: string
+          created_at?: string
+          id?: string
+          owner_user_id?: string
+          task_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "task_dependencies_blocked_by_task_id_tasks_id_fk"
+            columns: ["blocked_by_task_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "task_dependencies_task_id_tasks_id_fk"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tasks: {
         Row: {
           archived_at: string | null
@@ -832,6 +871,7 @@ export type Database = {
           project_id: string
           scheduled_end_at: string | null
           scheduled_start_at: string | null
+          start_date: string | null
           status: string
           title: string
           updated_at: string
@@ -860,6 +900,7 @@ export type Database = {
           project_id: string
           scheduled_end_at?: string | null
           scheduled_start_at?: string | null
+          start_date?: string | null
           status?: string
           title: string
           updated_at?: string
@@ -888,6 +929,7 @@ export type Database = {
           project_id?: string
           scheduled_end_at?: string | null
           scheduled_start_at?: string | null
+          start_date?: string | null
           status?: string
           title?: string
           updated_at?: string
