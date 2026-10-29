@@ -272,9 +272,22 @@ function createStartupSupabaseMock(input?: {
         };
       }
 
+      if (table === "projects") {
+        // Archived-ancestry scope read: no archived projects in this fixture.
+        return {
+          select(columns: string) {
+            return createQueryChain([], () => ({} as never), columns);
+          },
+        };
+      }
+
       if (table === "goals") {
         return {
           select(columns: string) {
+            if (columns === "id") {
+              // Archived-ancestry scope read: no archived goals in this fixture.
+              return createQueryChain([], () => ({} as never), columns);
+            }
             return createQueryChain(
               goals,
               (goal) => ({

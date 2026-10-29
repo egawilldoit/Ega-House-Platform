@@ -185,6 +185,6 @@ test("goal and project restores use their canonical application services", async
 });
 
 test("the archive action module exposes restore only", async () => {
-  const module = await import("./actions");
-  assert.deepEqual(Object.keys(module), ["restoreArchivedEntityAction"]);
+  const actionsModule = await import("./actions");
+  assert.deepEqual(Object.keys(actionsModule), ["restoreArchivedEntityAction"]);
 });

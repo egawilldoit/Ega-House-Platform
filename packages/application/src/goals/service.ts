@@ -4,7 +4,6 @@ import {
   normalizeGoalHealthInput,
   normalizeGoalNextStepInput,
   type GoalHealth,
-  type GoalStatus,
 } from "@ega/domain";
 
 import type { AuthenticatedActor } from "../auth/actor";

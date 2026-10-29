@@ -44,10 +44,32 @@ function createShutdownDataSupabaseMock(options?: {
 
   return {
     from(table: string) {
+      if (table === "projects" || table === "goals") {
+        // Archived-ancestry scope read: no archived parents in this fixture.
+        const scopeChain = {
+          select() {
+            return scopeChain;
+          },
+          eq() {
+            return scopeChain;
+          },
+          not() {
+            return scopeChain;
+          },
+          then<TResult>(onFulfilled?: ((value: unknown) => TResult) | null) {
+            return Promise.resolve({ data: [], error: null }).then(onFulfilled ?? undefined);
+          },
+        };
+        return scopeChain;
+      }
+
       if (table === "tasks") {
         return {
           select() {
             const chain = {
+              eq() {
+                return chain;
+              },
               neq() {
                 return chain;
               },
@@ -58,6 +80,12 @@ function createShutdownDataSupabaseMock(options?: {
                 return chain;
               },
               is() {
+                return chain;
+              },
+              not() {
+                return chain;
+              },
+              or() {
                 return chain;
               },
               order() {
