@@ -8,6 +8,10 @@ import {
   compareEstimateToTracked,
   type TrackedTaskSessionRow,
 } from "../src/timer/tracked-time";
+import {
+  calculateTotalTrackedSeconds,
+  type ExecutionEvidenceSessionRow,
+} from "../src/shared/execution-evidence";
 
 const NOW_ISO = "2026-04-20T12:00:00.000Z";
 
@@ -56,6 +60,34 @@ test("sums canonical session durations per task, including a running session up 
   assert.equal(summary.hasOpenSessions, true);
 });
 
+test("reports the same total as the canonical timer total helper for the same sessions", () => {
+  const rows = [
+    session({ taskId: "task-a" }),
+    session({ taskId: "task-b", startedAt: "2026-04-20T10:00:00.000Z", endedAt: "2026-04-20T10:45:00.000Z" }),
+    session({ taskId: "task-b", startedAt: "2026-04-20T11:00:00.000Z", endedAt: "2026-04-20T11:20:00.000Z" }),
+    session({ taskId: "task-c", startedAt: "2026-04-20T11:30:00.000Z", endedAt: null }),
+  ];
+
+  const summary = calculateTrackedTimeByTask(rows, { nowIso: NOW_ISO });
+  const timerRows: ExecutionEvidenceSessionRow[] = rows.map((row) => ({
+    task_id: row.taskId,
+    started_at: row.startedAt,
+    ended_at: row.endedAt,
+    duration_seconds: row.durationSeconds,
+  }));
+
+  // Timer page "tracked total" uses this helper; the estimate comparison must
+  // not fork session-duration semantics.
+  assert.equal(
+    summary.totalTrackedSeconds,
+    calculateTotalTrackedSeconds(timerRows, NOW_ISO),
+  );
+  assert.equal(
+    [...summary.trackedSecondsByTask.values()].reduce((sum, seconds) => sum + seconds, 0),
+    summary.totalTrackedSeconds,
+  );
+});
+
 test("malformed or inverted intervals use the canonical duration_seconds fallback", () => {
   const summary = calculateTrackedTimeByTask(
     [
@@ -87,8 +119,7 @@ test("malformed or inverted intervals use the canonical duration_seconds fallbac
   assert.equal(summary.totalTrackedSeconds, 720);
 });
 
-test("ignores blank task ids and returns an empty summary for no sessions", () => {
-  const summary = calculateTrackedTimeByTask(
+test("ignores blank task ids and returns an empty summary for no sessions", () => {  const summary = calculateTrackedTimeByTask(
     [session({ taskId: "   " }), session({ taskId: "task-a" })],
     { nowIso: NOW_ISO },
   );
