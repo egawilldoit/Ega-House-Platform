@@ -35,6 +35,18 @@
   background-size: 100% 1.5px;
 }
 
+/* A running-state dot. It is solid by default and only pulses when motion is
+   allowed, so the state still reads without animation. */
+.live-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--status-healthy);
+  vertical-align: middle;
+}
+
 /* ── Task interaction accents ──────────────────────────────
    Small, purposeful feedback for completing, deferring and adding work.
    Declared only when the user has not asked for reduced motion; the global
@@ -76,6 +88,15 @@
 
   .motion-rise-late {
     --motion-delay: 120ms;
+  }
+
+  @keyframes ega-live-pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.4; transform: scale(0.75); }
+  }
+
+  .live-dot {
+    animation: ega-live-pulse 1.8s var(--ease-default) infinite;
   }
 
   .motion-check {
@@ -124,6 +145,7 @@ html[data-reduce-motion="true"] .motion-check,
 html[data-reduce-motion="true"] .motion-strike,
 html[data-reduce-motion="true"] .motion-land,
 html[data-reduce-motion="true"] .motion-add-wash,
-html[data-reduce-motion="true"] .motion-rise {
+html[data-reduce-motion="true"] .motion-rise,
+html[data-reduce-motion="true"] .live-dot {
   animation: none;
 }
