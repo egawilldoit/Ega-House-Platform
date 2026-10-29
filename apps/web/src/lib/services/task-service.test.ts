@@ -188,6 +188,7 @@ type MockTask = {
   description?: string | null;
   status: string;
   priority?: string;
+  start_date?: string | null;
   due_date?: string | null;
   scheduled_start_at?: string | null;
   scheduled_end_at?: string | null;
@@ -221,7 +222,7 @@ function createTaskInlineSupabaseMock(options?: {
   failTaskUpdate?: boolean;
   taskUpdateReturnsNoRow?: boolean;
 }) {
-  const tasks = (options?.tasks ?? [
+  const tasks: MockTask[] = (options?.tasks ?? [
       {
         id: "task-1",
         owner_user_id: "user-1",
@@ -232,6 +233,7 @@ function createTaskInlineSupabaseMock(options?: {
         status: "todo",
         priority: "medium",
         due_date: null,
+        start_date: null,
         scheduled_start_at: null,
         scheduled_end_at: null,
         planned_for_date: null,
@@ -249,6 +251,7 @@ function createTaskInlineSupabaseMock(options?: {
       description: null,
       priority: "medium",
       due_date: null,
+      start_date: null,
       scheduled_start_at: null,
       scheduled_end_at: null,
       planned_for_date: null,
@@ -516,6 +519,7 @@ function createTaskInlineSupabaseMock(options?: {
               description: (row.description as string | null) ?? null,
               status: String(row.status ?? "todo"),
               priority: String(row.priority ?? "medium"),
+              start_date: (row.start_date as string | null) ?? null,
               due_date: (row.due_date as string | null) ?? null,
               scheduled_start_at: (row.scheduled_start_at as string | null) ?? null,
               scheduled_end_at: (row.scheduled_end_at as string | null) ?? null,
@@ -1162,6 +1166,7 @@ test("completing a recurring task creates exactly one next task with carried met
     due_date: "2026-05-05",
     planned_for_date: null,
     estimate_minutes: 30,
+    start_date: null,
     scheduled_start_at: null,
     scheduled_end_at: null,
     focus_rank: null,

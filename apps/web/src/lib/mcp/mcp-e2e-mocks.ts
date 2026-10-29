@@ -125,6 +125,7 @@ const TABLE_DEFAULTS: Record<string, () => StoreRow> = {
     focus_rank: null,
     due_date: null,
     planned_for_date: null,
+    start_date: null,
     scheduled_start_at: null,
     scheduled_end_at: null,
     completed_at: null,

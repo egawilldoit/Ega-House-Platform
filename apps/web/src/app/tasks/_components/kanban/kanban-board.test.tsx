@@ -43,6 +43,7 @@ function task(id: string, status: string, rank: string): TaskRecord {
     blocked_reason: null,
     status,
     priority: "medium",
+    start_date: null,
     due_date: null,
     planned_for_date: null,
     scheduled_start_at: null,

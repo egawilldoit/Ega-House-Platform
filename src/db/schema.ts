@@ -83,6 +83,7 @@ export const tasks = pgTable(
     estimateMinutes: integer("estimate_minutes"),
     focusRank: integer("focus_rank"),
     boardRank: text("board_rank"),
+    startDate: date("start_date"),
     dueDate: date("due_date"),
     plannedForDate: date("planned_for_date"),
     scheduledStartAt: timestamp("scheduled_start_at", { withTimezone: true }),
@@ -111,6 +112,7 @@ export const tasks = pgTable(
       table.boardRank,
     ),
     index("tasks_owner_user_id_planned_for_date_idx").on(table.ownerUserId, table.plannedForDate),
+    index("tasks_owner_user_id_start_date_idx").on(table.ownerUserId, table.startDate),
     index("tasks_owner_user_id_scheduled_start_at_idx").on(table.ownerUserId, table.scheduledStartAt),
     index("tasks_owner_active_updated_idx")
       .on(table.ownerUserId, table.updatedAt.desc())
@@ -133,6 +135,41 @@ export const tasks = pgTable(
     check(
       "tasks_board_rank_format_check",
       sql`${table.boardRank} is null or (length(${table.boardRank}) between 1 and 512 and ${table.boardRank} ~ '^[0-9A-Z]+$')`,
+    ),
+    check(
+      "tasks_date_window_check",
+      sql`${table.startDate} is null or ${table.dueDate} is null or ${table.dueDate} >= ${table.startDate}`,
+    ),
+  ],
+);
+
+export const taskDependencies = pgTable(
+  "task_dependencies",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    ownerUserId: uuid("owner_user_id").default(sql`auth.uid()`).notNull(),
+    taskId: uuid("task_id")
+      .notNull()
+      .references(() => tasks.id, { onDelete: "cascade" }),
+    blockedByTaskId: uuid("blocked_by_task_id")
+      .notNull()
+      .references(() => tasks.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("task_dependencies_owner_edge_unique").on(
+      table.ownerUserId,
+      table.taskId,
+      table.blockedByTaskId,
+    ),
+    index("task_dependencies_owner_task_idx").on(table.ownerUserId, table.taskId),
+    index("task_dependencies_owner_blocked_by_idx").on(
+      table.ownerUserId,
+      table.blockedByTaskId,
+    ),
+    check(
+      "task_dependencies_no_self_check",
+      sql`${table.taskId} <> ${table.blockedByTaskId}`,
     ),
   ],
 );
