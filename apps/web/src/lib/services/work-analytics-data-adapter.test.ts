@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { getWorkAnalyticsTaskCounts } from "./work-analytics-data-adapter";
+import { getCompletedTaskCountForWindow, getWorkAnalyticsTaskCounts } from "./work-analytics-data-adapter";
 
 type QueryResult = {
   data: unknown[] | null;
@@ -323,4 +323,32 @@ test("regression: head:true with empty array data still returns count", async ()
 
   // Empty array length is 0 but count is 9 – correct is 9
   assert.equal(result.data?.createdCount, 9);
+});
+
+test("EGA-805: completed-in-window count is the authoritative head count", async () => {
+  const supabase = createSupabaseMock([{ data: null, count: 14, error: null }]);
+
+  const result = await getCompletedTaskCountForWindow({
+    ownerUserId: "user-1",
+    window,
+    supabase: supabase as never,
+  });
+
+  assert.equal(result.errorMessage, null);
+  assert.equal(result.data, 14);
+});
+
+test("EGA-805: completed-in-window count fails closed", async () => {
+  const supabase = createSupabaseMock([
+    { data: null, count: null, error: { message: "permission denied" } },
+  ]);
+
+  const result = await getCompletedTaskCountForWindow({
+    ownerUserId: "user-1",
+    window,
+    supabase: supabase as never,
+  });
+
+  assert.equal(result.data, null);
+  assert.match(result.errorMessage ?? "", /permission denied/);
 });

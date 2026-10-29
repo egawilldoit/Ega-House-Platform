@@ -10,11 +10,13 @@ import {
   getLocalMonthWindow,
   getLocalQuarterWindow,
   getRollingLocalWindow,
+  getWeekWindow,
 } from "@ega/domain/time-context";
 
 export type AnalyticsRange =
   | "today"
   | "7d"
+  | "this-week"
   | "30d"
   | "mtm"
   | "prev-month"
@@ -34,6 +36,7 @@ export type AnalyticsFilterValues = {
 const VALID_RANGES: readonly string[] = [
   "today",
   "7d",
+  "this-week",
   "30d",
   "mtm",
   "prev-month",
@@ -138,6 +141,20 @@ export function computeWindowForRange(
             return start.toISOString();
           })();
       return { startIso: start, endIso };
+    }
+    case "this-week": {
+      // Calendar week to date in the owner's local calendar. The same window is
+      // used by Home's "completed / tracked this week" stats and their deep link,
+      // so the destination total and the Home total cannot diverge by window.
+      if (localDate) {
+        const week = getWeekWindow(timezone, localDate);
+        return { startIso: week.weekStartUtcIso, endIso };
+      }
+      const weekday = now.getUTCDay();
+      const start = new Date(now);
+      start.setUTCDate(start.getUTCDate() - (weekday === 0 ? 6 : weekday - 1));
+      start.setUTCHours(0, 0, 0, 0);
+      return { startIso: start.toISOString(), endIso };
     }
     case "30d": {
       const start = localDate
@@ -287,6 +304,7 @@ export function buildFilterHref(
 export const RANGE_LABELS: Record<AnalyticsRange, string> = {
   today: "Today",
   "7d": "Last 7 days",
+  "this-week": "This week",
   "30d": "Last 30 days",
   mtm: "Month to date",
   "prev-month": "Previous month",

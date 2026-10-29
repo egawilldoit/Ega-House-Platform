@@ -583,3 +583,278 @@ export function getFocusQueueTaskRows(options: {
       .limit(options.limit ?? 8),
   });
 }
+
+/* ── Home dashboard aggregates ───────────────────────────────────────────── */
+
+/**
+ * Compact task projection for Home deadline/My-tasks previews.
+ *
+ * Previews are bounded, but every group also carries an exact `count` from the
+ * same filtered scope, so Home never treats the preview length as the total.
+ */
+export type HomeTaskPreviewRow = {
+  id: string;
+  title: string;
+  status: string;
+  priority: string;
+  due_date: string | null;
+  completed_at: string | null;
+  project_id: string;
+  projects: { name: string; slug: string | null } | null;
+};
+
+export type HomeTaskPreviewGroup = {
+  rows: HomeTaskPreviewRow[];
+  /** Exact count for the whole filtered group, before the preview limit. */
+  count: number;
+};
+
+export type HomeTaskPreviewResult =
+  | { data: HomeTaskPreviewGroup; errorMessage: null }
+  | { data: null; errorMessage: string };
+
+type TaskPreviewQueryResult = {
+  data: unknown[] | null;
+  count: number | null;
+  error: { message: string } | null;
+};
+
+type TaskPreviewQuery = PromiseLike<TaskPreviewQueryResult> & {
+  eq(column: string, value: unknown): TaskPreviewQuery;
+  neq(column: string, value: unknown): TaskPreviewQuery;
+  gte(column: string, value: unknown): TaskPreviewQuery;
+  lt(column: string, value: unknown): TaskPreviewQuery;
+  lte(column: string, value: unknown): TaskPreviewQuery;
+  is(column: string, value: null): TaskPreviewQuery;
+  in(column: string, values: unknown[]): TaskPreviewQuery;
+  or(filters: string): TaskPreviewQuery;
+  order(
+    column: string,
+    options?: { ascending?: boolean; nullsFirst?: boolean },
+  ): TaskPreviewQuery;
+  limit(count: number): TaskPreviewQuery;
+};
+
+const HOME_TASK_PREVIEW_SELECT =
+  "id, title, status, priority, due_date, completed_at, project_id, projects(name, slug)";
+
+function normalizeHomeTaskPreviewRow(row: unknown): HomeTaskPreviewRow {
+  const record = row as Partial<HomeTaskPreviewRow> & {
+    projects?: { name?: string | null; slug?: string | null } | null;
+  };
+
+  return {
+    id: String(record.id ?? ""),
+    title: String(record.title ?? ""),
+    status: String(record.status ?? ""),
+    priority: String(record.priority ?? "medium"),
+    due_date: record.due_date ? String(record.due_date) : null,
+    completed_at: record.completed_at ? String(record.completed_at) : null,
+    project_id: String(record.project_id ?? ""),
+    projects: record.projects?.name
+      ? { name: record.projects.name, slug: record.projects.slug ?? null }
+      : null,
+  };
+}
+
+async function runHomeTaskPreviewQuery(options: {
+  supabase: SupabaseServerClient;
+  ownerUserId: string;
+  build: (query: TaskPreviewQuery) => TaskPreviewQuery;
+  order: "due_asc" | "completed_desc";
+  limit: number;
+}): Promise<HomeTaskPreviewResult> {
+  let query = options.supabase
+    .from("tasks")
+    .select(HOME_TASK_PREVIEW_SELECT, { count: "exact" }) as unknown as TaskPreviewQuery;
+
+  query = query.eq("owner_user_id", options.ownerUserId);
+  query = options.build(query);
+
+  if (options.order === "due_asc") {
+    query = query
+      .order("due_date", { ascending: true, nullsFirst: false })
+      .order("updated_at", { ascending: false });
+  } else {
+    query = query
+      .order("completed_at", { ascending: false, nullsFirst: false })
+      .order("updated_at", { ascending: false });
+  }
+
+  const { data, count, error } = await query.limit(options.limit);
+
+  if (error) {
+    return { data: null, errorMessage: "Unable to load task previews right now." };
+  }
+
+  return {
+    data: {
+      rows: (data ?? []).map(normalizeHomeTaskPreviewRow),
+      count: count ?? 0,
+    },
+    errorMessage: null,
+  };
+}
+
+/** Exact count of open (not done) tasks in the active/not-archived scope. */
+export async function getOpenTaskCount(options: {
+  ownerUserId: string;
+  supabase?: SupabaseServerClient;
+}): Promise<{ count: number | null; errorMessage: string | null }> {
+  const supabase = await resolveSupabaseClient(options.supabase);
+  const { count, error } = await supabase
+    .from("tasks")
+    .select("id", { count: "exact", head: true })
+    .eq("owner_user_id", options.ownerUserId)
+    .neq("status", "done")
+    .is("archived_at", null);
+
+  if (error) {
+    return { count: null, errorMessage: "Unable to load the open task count right now." };
+  }
+
+  return { count: count ?? 0, errorMessage: null };
+}
+
+/**
+ * Open tasks due inside an inclusive date-only window.
+ *
+ * A window where `dueFrom > dueTo` (for example Sunday for the post-tomorrow
+ * remainder of the week) is a verified empty bucket, not a failure.
+ */
+export async function getHomeDeadlinePreview(options: {
+  ownerUserId: string;
+  dueFrom: string;
+  dueTo: string;
+  limit: number;
+  supabase?: SupabaseServerClient;
+}): Promise<HomeTaskPreviewResult> {
+  if (options.dueFrom > options.dueTo) {
+    return { data: { rows: [], count: 0 }, errorMessage: null };
+  }
+
+  const supabase = await resolveSupabaseClient(options.supabase);
+
+  return runHomeTaskPreviewQuery({
+    supabase,
+    ownerUserId: options.ownerUserId,
+    order: "due_asc",
+    limit: options.limit,
+    build: (query) =>
+      query
+        .neq("status", "done")
+        .is("archived_at", null)
+        .gte("due_date", options.dueFrom)
+        .lte("due_date", options.dueTo),
+  });
+}
+
+/** Open, not-archived tasks that are not overdue (missing due date included). */
+export async function getHomeUpcomingTaskPreview(options: {
+  ownerUserId: string;
+  today: string;
+  limit: number;
+  supabase?: SupabaseServerClient;
+}): Promise<HomeTaskPreviewResult> {
+  const supabase = await resolveSupabaseClient(options.supabase);
+
+  return runHomeTaskPreviewQuery({
+    supabase,
+    ownerUserId: options.ownerUserId,
+    order: "due_asc",
+    limit: options.limit,
+    build: (query) =>
+      query
+        .neq("status", "done")
+        .is("archived_at", null)
+        .or(`due_date.is.null,due_date.gte.${options.today}`),
+  });
+}
+
+/** Open, not-archived tasks with a due date before today. */
+export async function getHomeOverdueTaskPreview(options: {
+  ownerUserId: string;
+  today: string;
+  limit: number;
+  supabase?: SupabaseServerClient;
+}): Promise<HomeTaskPreviewResult> {
+  const supabase = await resolveSupabaseClient(options.supabase);
+
+  return runHomeTaskPreviewQuery({
+    supabase,
+    ownerUserId: options.ownerUserId,
+    order: "due_asc",
+    limit: options.limit,
+    build: (query) =>
+      query.neq("status", "done").is("archived_at", null).lt("due_date", options.today),
+  });
+}
+
+/**
+ * Completed tasks, newest completion first. Archived completed tasks stay in
+ * scope so historical totals survive archiving.
+ */
+export async function getHomeCompletedTaskPreview(options: {
+  ownerUserId: string;
+  limit: number;
+  supabase?: SupabaseServerClient;
+}): Promise<HomeTaskPreviewResult> {
+  const supabase = await resolveSupabaseClient(options.supabase);
+
+  return runHomeTaskPreviewQuery({
+    supabase,
+    ownerUserId: options.ownerUserId,
+    order: "completed_desc",
+    limit: options.limit,
+    build: (query) => query.eq("status", "done"),
+  });
+}
+
+/**
+ * Active-project scope counts for Home.
+ *
+ * "Active projects" is the same non-archived scope as `/tasks/projects?view=active`.
+ * "At risk" is derived from the canonical Goal health signal (`at_risk` /
+ * `off_track`): a project is at risk when at least one of its goals carries an
+ * at-risk health value. It is never a fabricated per-project score.
+ */
+export async function getProjectDashboardCounts(options: {
+  ownerUserId: string;
+  supabase?: SupabaseServerClient;
+}): Promise<{
+  data: { activeCount: number; atRiskCount: number } | null;
+  errorMessage: string | null;
+}> {
+  const supabase = await resolveSupabaseClient(options.supabase);
+  const [projectsResult, atRiskGoalsResult] = await Promise.all([
+    supabase
+      .from("projects")
+      .select("id, status", { count: "exact" })
+      .eq("owner_user_id", options.ownerUserId)
+      .neq("status", "archived"),
+    supabase
+      .from("goals")
+      .select("project_id")
+      .eq("owner_user_id", options.ownerUserId)
+      .in("health", ["at_risk", "off_track"]),
+  ]);
+
+  if (projectsResult.error || atRiskGoalsResult.error) {
+    return { data: null, errorMessage: "Unable to load project counts right now." };
+  }
+
+  const activeProjectIds = new Set((projectsResult.data ?? []).map((project) => project.id));
+  const atRiskProjectIds = new Set(
+    (atRiskGoalsResult.data ?? [])
+      .map((goal) => goal.project_id)
+      .filter((projectId): projectId is string => Boolean(projectId) && activeProjectIds.has(projectId)),
+  );
+
+  return {
+    data: {
+      activeCount: projectsResult.count ?? activeProjectIds.size,
+      atRiskCount: atRiskProjectIds.size,
+    },
+    errorMessage: null,
+  };
+}

@@ -17,6 +17,12 @@ vi.mock("@/components/timer/live-duration", () => ({
   ),
 }));
 
+// Keep stat values at their final value in jsdom; the count-up itself is a
+// client-only progressive enhancement and is covered by its reduced-motion path.
+vi.mock("motion/react", () => ({
+  useReducedMotion: () => true,
+}));
+
 vi.mock("../_lib/home-activity-pulse", () => ({
   getHomeActivityPulseData: vi.fn(),
 }));
@@ -103,6 +109,30 @@ async function render(
 
 type HomeModel = Parameters<typeof AuthenticatedHomePage>[0]["model"];
 
+function previewTask(id: string, overrides: Partial<HomeModel["myTasks"]["tabs"][number]["tasks"][number]> = {}) {
+  return {
+    id,
+    title: `Task ${id}`,
+    status: "todo",
+    priority: "medium",
+    dueDate: "2026-09-27",
+    projectName: "EGA House",
+    projectSlug: "ega-house",
+    href: `/tasks/projects/ega-house#task-${id}`,
+    ...overrides,
+  };
+}
+
+function defaultStats(): HomeModel["stats"] {
+  return {
+    activeProjects: { count: 2, atRiskCount: 1, href: "/tasks/projects?view=active" },
+    openTasks: { count: 5, href: "/tasks?tasks=active" },
+    completedThisWeek: { count: 3, href: "/work-analytics?range=this-week" },
+    overdue: { count: 1, href: "/tasks?due=overdue&sort=due" },
+    trackedThisWeek: { minutes: 120, href: "/work-analytics?range=this-week" },
+  };
+}
+
 function emptyModel(overrides: Partial<HomeModel> = {}): HomeModel {
   return {
     date: "2026-09-27",
@@ -113,6 +143,59 @@ function emptyModel(overrides: Partial<HomeModel> = {}): HomeModel {
     todayProgress: null,
     attention: { overdue: 0, dueToday: 0, reviewMissing: false },
     availability: { operator: "available", attention: "available" },
+    stats: defaultStats(),
+    deadlines: [
+      {
+        key: "today",
+        label: "Today",
+        href: "/tasks?due=today&sort=due&tasks=active",
+        count: 1,
+        tasks: [previewTask("today-1")],
+      },
+      {
+        key: "tomorrow",
+        label: "Tomorrow",
+        href: "/tasks?dueWithin=1&filter=due_bucket%3Ais_not%3Atoday&sort=due&tasks=active",
+        count: 0,
+        tasks: [],
+      },
+      {
+        key: "thisWeek",
+        label: "This week",
+        href: "/tasks?due=next_7_days&sort=due&tasks=active",
+        count: 0,
+        tasks: [],
+      },
+    ],
+    myTasks: {
+      activeTab: "upcoming",
+      tabs: [
+        {
+          key: "upcoming",
+          label: "Upcoming",
+          href: "/home?myTasks=upcoming",
+          viewAllHref: "/tasks?filter=due_bucket%3Ais_not%3Aoverdue&sort=due&tasks=active",
+          count: 1,
+          tasks: [previewTask("up-1")],
+        },
+        {
+          key: "overdue",
+          label: "Overdue",
+          href: "/home?myTasks=overdue",
+          viewAllHref: "/tasks?due=overdue&sort=due",
+          count: 0,
+          tasks: [],
+        },
+        {
+          key: "completed",
+          label: "Completed",
+          href: "/home?myTasks=completed",
+          viewAllHref: "/tasks?status=done&archive=all",
+          count: 0,
+          tasks: [],
+        },
+      ],
+    },
     ...overrides,
   };
 }
@@ -380,5 +463,145 @@ describe("AuthenticatedHomePage (EGA-663)", () => {
     // The primary surfaces remain intact.
     expect(container.querySelector('[data-testid="home-workspace"]')).not.toBeNull();
     expect(container.querySelector('[data-testid="home-today"]')).not.toBeNull();
+  });
+
+  it("renders clickable stat cards with canonical destinations and exact values", async () => {
+    await render(emptyModel());
+
+    const stats = container.querySelector('[data-testid="home-stats"]');
+    expect(stats).not.toBeNull();
+    expect(stats?.textContent).toContain("Active projects");
+    expect(stats?.textContent).toContain("2");
+    expect(stats?.textContent).toContain("1 at risk");
+    expect(stats?.textContent).toContain("2h");
+
+    const linkFor = (testId: string) =>
+      container.querySelector(`[data-testid="${testId}"]`);
+    expect(linkFor("home-stat-projects")?.getAttribute("href")).toBe(
+      "/tasks/projects?view=active",
+    );
+    expect(linkFor("home-stat-open-tasks")?.getAttribute("href")).toBe("/tasks?tasks=active");
+    expect(linkFor("home-stat-completed")?.getAttribute("href")).toBe(
+      "/work-analytics?range=this-week",
+    );
+    expect(linkFor("home-stat-overdue")?.getAttribute("href")).toBe(
+      "/tasks?due=overdue&sort=due",
+    );
+    expect(linkFor("home-stat-tracked")?.getAttribute("href")).toBe(
+      "/work-analytics?range=this-week",
+    );
+    // Whole cards are links with an explicit accessible name.
+    expect(linkFor("home-stat-open-tasks")?.tagName).toBe("A");
+    expect(linkFor("home-stat-open-tasks")?.getAttribute("aria-label")).toContain("Open tasks: 5");
+  });
+
+  it("renders unavailable stat panels without inventing a zero", async () => {
+    const stats = defaultStats();
+    await render(
+      emptyModel({
+        stats: {
+          ...stats,
+          openTasks: { ...stats.openTasks, count: null },
+          trackedThisWeek: { ...stats.trackedThisWeek, minutes: null },
+        },
+      }),
+    );
+
+    const open = container.querySelector('[data-testid="home-stat-open-tasks"]');
+    const tracked = container.querySelector('[data-testid="home-stat-tracked"]');
+    expect(open?.textContent).toContain("Unavailable right now");
+    expect(open?.textContent).not.toContain("0");
+    expect(tracked?.textContent).toContain("Unavailable right now");
+    expect(tracked?.textContent).not.toContain("0m");
+  });
+
+  it("keeps deadline totals beyond the preview and links the full canonical scope", async () => {
+    const base = emptyModel();
+    await render(
+      emptyModel({
+        deadlines: [
+          {
+            key: "today",
+            label: "Today",
+            href: "/tasks?due=today&sort=due&tasks=active",
+            count: 12,
+            tasks: [previewTask("today-1"), previewTask("today-2")],
+          },
+          base.deadlines[1]!,
+          base.deadlines[2]!,
+        ],
+      }),
+    );
+
+    const today = container.querySelector('[data-testid="home-deadline-today"]');
+    expect(today?.textContent).toContain("12");
+    expect(today?.textContent).toContain("View all 12");
+    expect(today?.querySelector('a[href="/tasks?due=today&sort=due&tasks=active"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="home-deadline-tomorrow"]')?.textContent).toContain(
+      "Nothing due",
+    );
+  });
+
+  it("shows unavailable deadline buckets instead of a false empty state", async () => {
+    const base = emptyModel();
+    await render(
+      emptyModel({
+        deadlines: [
+          { ...base.deadlines[0]!, count: null, tasks: [] },
+          base.deadlines[1]!,
+          base.deadlines[2]!,
+        ],
+      }),
+    );
+
+    const today = container.querySelector('[data-testid="home-deadline-today"]');
+    expect(today?.textContent).toContain("Unavailable right now");
+    expect(today?.textContent).not.toContain("Nothing due");
+  });
+
+  it("renders URL-backed My tasks tabs with the active tab and its exact destination", async () => {
+    const base = emptyModel();
+    await render(
+      emptyModel({
+        myTasks: {
+          activeTab: "overdue",
+          tabs: base.myTasks.tabs.map((tab) =>
+            tab.key === "overdue"
+              ? {
+                  ...tab,
+                  count: 9,
+                  tasks: [previewTask("over-1"), previewTask("over-2")],
+                }
+              : tab,
+          ),
+        },
+      }),
+    );
+
+    const panel = container.querySelector('[data-testid="home-my-tasks"]');
+    expect(panel?.textContent).toContain("Overdue 9");
+    expect(panel?.textContent).toContain("View all 9 tasks");
+    const activeTab = panel?.querySelector('a[aria-current="page"]');
+    expect(activeTab?.getAttribute("href")).toBe("/home?myTasks=overdue");
+    expect(panel?.querySelector('a[href="/home?myTasks=completed"]')).not.toBeNull();
+    expect(panel?.querySelector('a[href="/tasks?due=overdue&sort=due"]')).not.toBeNull();
+  });
+
+  it("distinguishes an unavailable My tasks read from an empty tab", async () => {
+    const base = emptyModel();
+    await render(
+      emptyModel({
+        myTasks: {
+          activeTab: "completed",
+          tabs: base.myTasks.tabs.map((tab) =>
+            tab.key === "completed" ? { ...tab, count: null, tasks: [] } : tab,
+          ),
+        },
+      }),
+    );
+
+    const panel = container.querySelector('[data-testid="home-my-tasks"]');
+    expect(panel?.textContent).toContain("Tasks are unavailable right now");
+    expect(panel?.textContent).not.toContain("No completed tasks yet");
   });
 });
