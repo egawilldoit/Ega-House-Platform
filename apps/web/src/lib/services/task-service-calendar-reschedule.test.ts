@@ -180,11 +180,13 @@ test("a stale calendar render is rejected instead of overwriting a newer edit", 
   const stub = stubSupabase(BASE_ROW);
 
   const result = await rescheduleTaskDateForOwner(
-    { taskId: "task-1", field: "due", date: "2026-05-04" },
     {
-      supabase: stub.client as never,
+      taskId: "task-1",
+      field: "due",
+      date: "2026-05-04",
       expectedUpdatedAt: "2026-04-30T09:00:00.000Z",
     },
+    { supabase: stub.client as never },
   );
 
   assert.equal(
