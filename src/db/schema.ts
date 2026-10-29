@@ -27,6 +27,7 @@ export const projects = pgTable(
     status: varchar("status", { length: 64 }).notNull().default("planned"),
     archivedAt: timestamp("archived_at", { withTimezone: true }),
     archivedBy: uuid("archived_by"),
+    templateOperationId: uuid("template_operation_id"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
@@ -47,6 +48,9 @@ export const projects = pgTable(
       "projects_archive_state_check",
       sql`(${table.archivedAt} is not null) = (${table.status} = 'archived')`,
     ),
+    uniqueIndex("projects_template_operation_unique")
+      .on(table.ownerUserId, table.templateOperationId)
+      .where(sql`${table.templateOperationId} is not null`),
   ],
 );
 
@@ -242,6 +246,12 @@ export const agentIntegrationEvents = pgTable("agent_integration_events", {
   id: uuid("id").defaultRandom().primaryKey(),
   ownerUserId: uuid("owner_user_id").notNull(),
   tokenId: uuid("token_id").notNull(),
+  /** Stable registry identity; null for legacy/unassigned agent credentials. */
+  agentId: uuid("agent_id").references(() => agentActors.id, {
+    onDelete: "set null",
+  }),
+  /** Snapshot of the identity display name at write time. */
+  agentLabel: text("agent_label"),
   action: varchar("action", { length: 64 }).notNull(),
   resourceType: varchar("resource_type", { length: 32 }),
   resourceId: uuid("resource_id"),
@@ -924,11 +934,61 @@ export const weekReviews = pgTable(
   ],
 );
 
+/**
+ * Stable agent identity (EGA-800).
+ *
+ * Credentials are revocable capabilities linked to this identity. Historical
+ * activity stores the identity id plus a display-name snapshot, so rotating or
+ * revoking a token never rewrites attribution. `kind` and `role` are
+ * owner-declared presentation only; neither grants access.
+ */
+export const agentActors = pgTable(
+  "agent_actors",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    ownerUserId: uuid("owner_user_id").default(sql`auth.uid()`).notNull(),
+    displayName: varchar("display_name", { length: 80 }).notNull(),
+    kind: varchar("kind", { length: 24 }).notNull(),
+    role: varchar("role", { length: 64 }),
+    avatarColor: varchar("avatar_color", { length: 16 }).notNull().default("slate"),
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("agent_actors_owner_name_unique").on(
+      table.ownerUserId,
+      sql`lower(${table.displayName})`,
+    ),
+    index("agent_actors_owner_created_idx").on(table.ownerUserId, table.createdAt.desc()),
+    check(
+      "agent_actors_kind_check",
+      sql`${table.kind} in ('t3', 'opencode', 'codex', 'runner', 'custom')`,
+    ),
+    check(
+      "agent_actors_avatar_color_check",
+      sql`${table.avatarColor} in ('blue', 'violet', 'green', 'amber', 'slate', 'rose')`,
+    ),
+    check(
+      "agent_actors_display_name_check",
+      sql`length(btrim(${table.displayName})) between 1 and 80`,
+    ),
+    check(
+      "agent_actors_role_check",
+      sql`${table.role} is null or length(btrim(${table.role})) between 1 and 64`,
+    ),
+  ],
+);
+
 export const agentIntegrationTokens = pgTable(
   "agent_integration_tokens",
   {
     id: uuid("id").defaultRandom().primaryKey(),
     ownerUserId: uuid("owner_user_id").notNull(),
+    /** Nullable for legacy credentials issued before the registry existed. */
+    agentId: uuid("agent_id").references(() => agentActors.id, {
+      onDelete: "set null",
+    }),
     name: varchar("name", { length: 256 }).notNull(),
     tokenPrefix: varchar("token_prefix", { length: 16 }).notNull(),
     tokenHash: text("token_hash").notNull(),
@@ -945,6 +1005,7 @@ export const agentIntegrationTokens = pgTable(
   (table) => [
     uniqueIndex("agent_token_prefix_unique").on(table.tokenPrefix),
     index("agent_tokens_owner_idx").on(table.ownerUserId),
+    index("agent_tokens_owner_agent_idx").on(table.ownerUserId, table.agentId),
   ],
 );
 

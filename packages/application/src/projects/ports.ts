@@ -1,7 +1,14 @@
-import type { GoalHealth, ProjectStatus, ProjectViewFilter } from "@ega/domain";
+import type {
+  GoalHealth,
+  GoalStatus,
+  ProjectStatus,
+  ProjectViewFilter,
+  TaskPriority,
+} from "@ega/domain";
 
 import type { AuthenticatedActor } from "../auth/actor";
 import type { RepositoryResult } from "../shared/result";
+import type { ProjectTemplateId } from "./templates";
 
 export type ProjectRecord = {
   id: string;
@@ -38,6 +45,43 @@ export type CreateProjectRecordInput = {
   description: string | null;
   mcpOperationId?: string;
   mcpClientId?: string;
+};
+
+export type CreateProjectFromTemplateGoalInput = {
+  title: string;
+  description: string | null;
+  status: GoalStatus;
+};
+
+export type CreateProjectFromTemplateTaskInput = {
+  /** Zero-based index into `goals`, or null for a project-level task. */
+  goalIndex: number | null;
+  title: string;
+  description: string | null;
+  priority: TaskPriority;
+  estimateMinutes: number | null;
+  /** Owner-local date-only due date (YYYY-MM-DD). */
+  dueDate: string | null;
+};
+
+export type CreateProjectFromTemplateRecordInput = {
+  /** Server-issued retry token; identical submits resolve to one project. */
+  operationId: string;
+  templateId: ProjectTemplateId;
+  name: string;
+  slug: string;
+  description: string | null;
+  goals: CreateProjectFromTemplateGoalInput[];
+  tasks: CreateProjectFromTemplateTaskInput[];
+};
+
+export type CreateProjectFromTemplateRecordResult = {
+  projectId: string;
+  slug: string;
+  goalCount: number;
+  taskCount: number;
+  /** True when the operation id already owned a project (retry/double-submit). */
+  replayed: boolean;
 };
 
 export type DeleteArchivedProjectInput = {
@@ -111,6 +155,10 @@ export interface ProjectsRepository {
     actor: AuthenticatedActor,
     input: CreateProjectRecordInput,
   ): Promise<RepositoryResult<null>>;
+  createProjectFromTemplate(
+    actor: AuthenticatedActor,
+    input: CreateProjectFromTemplateRecordInput,
+  ): Promise<RepositoryResult<CreateProjectFromTemplateRecordResult>>;
   updateProjectStatus(
     actor: AuthenticatedActor,
     input: { projectId: string; status: ProjectStatus; updatedAt: string },
