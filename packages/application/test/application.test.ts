@@ -32,6 +32,8 @@ import {
   type AreaWriteInput,
   type AuthenticatedActor,
   type CreateGoalRecordInput,
+  type CreateProjectFromTemplateRecordInput,
+  type CreateProjectFromTemplateRecordResult,
   type CreateProjectRecordInput,
   type DeleteArchivedProjectResult,
   type GoalRecord,
@@ -59,6 +61,13 @@ function unknownFailure<T = never>(): RepositoryResult<T> {
 class FakeProjectsRepository implements ProjectsRepository {
   calls: Array<{ method: string; actorUserId: string; args: Record<string, unknown> }> = [];
   createResult: RepositoryResult<null> = okResult(null);
+  createFromTemplateResult: RepositoryResult<CreateProjectFromTemplateRecordResult> = okResult({
+    projectId: "project-1",
+    slug: "project-1",
+    goalCount: 0,
+    taskCount: 0,
+    replayed: false,
+  });
   listResult: RepositoryResult<ProjectRecord[]> = okResult([]);
   statusesResult: RepositoryResult<string[]> = okResult([]);
   tasksResult: RepositoryResult<ProjectTaskContextRecord[]> = okResult([]);
@@ -158,6 +167,13 @@ class FakeProjectsRepository implements ProjectsRepository {
   async createProject(actor: AuthenticatedActor, input: CreateProjectRecordInput) {
     this.record("createProject", actor.userId, input);
     return this.createResult;
+  }
+  async createProjectFromTemplate(
+    actor: AuthenticatedActor,
+    input: CreateProjectFromTemplateRecordInput,
+  ) {
+    this.record("createProjectFromTemplate", actor.userId, input);
+    return this.createFromTemplateResult;
   }
   async updateProjectStatus(
     actor: AuthenticatedActor,

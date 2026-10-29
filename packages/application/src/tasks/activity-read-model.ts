@@ -150,9 +150,22 @@ export function describeTaskActivity(item: {
       return "Reminder cancelled";
     case "comment":
       return "Comment added";
+    case "attachment_added":
+      return `Attached ${formatDeltaValue(item.delta, "file_name") ?? "a file"}`;
+    case "attachment_removed":
+      return `Removed attachment ${formatDeltaValue(item.delta, "file_name") ?? ""}`.trim();
     default:
       return describeFieldDelta(item.delta, "Task updated");
   }
+}
+
+function formatDeltaValue(
+  delta: TaskActivityDelta | null | undefined,
+  key: string,
+): string | null {
+  const entry = delta?.[key];
+  const value = entry?.to ?? entry?.from ?? null;
+  return value === null || value === undefined ? null : formatValue(value);
 }
 
 function describeReminderScheduled(delta: TaskActivityDelta | null | undefined): string {

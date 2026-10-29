@@ -111,3 +111,68 @@ CREATE TRIGGER "projects_area_owner_guard"
   BEFORE INSERT OR UPDATE OF "area_id", "owner_user_id" ON "public"."projects"
   FOR EACH ROW
   EXECUTE FUNCTION public.enforce_project_area_owner();
+--> statement-breakpoint
+-- Template creation supports the same optional Area as blank creation. The
+-- existing template function owns the atomic project/goal/task transaction;
+-- this upgrade keeps that body as a private core and adds an Area step inside
+-- the same outer transaction, so a foreign area aborts the whole creation.
+ALTER FUNCTION public.create_project_from_template(uuid, text, text, text, text, jsonb, jsonb)
+  RENAME TO create_project_from_template_core;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION public.create_project_from_template_core(uuid, text, text, text, text, jsonb, jsonb)
+  FROM PUBLIC, anon, authenticated;
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION public.create_project_from_template(
+  p_operation_id uuid,
+  p_template_id text,
+  p_name text,
+  p_slug text,
+  p_description text,
+  p_area_id uuid,
+  p_goals jsonb,
+  p_tasks jsonb
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_result jsonb;
+  v_project_id uuid;
+BEGIN
+  v_result := public.create_project_from_template_core(
+    p_operation_id,
+    p_template_id,
+    p_name,
+    p_slug,
+    p_description,
+    p_goals,
+    p_tasks
+  );
+
+  IF p_area_id IS NOT NULL AND (v_result ? 'project_id') THEN
+    v_project_id := (v_result->>'project_id')::uuid;
+
+    UPDATE public.projects
+    SET area_id = p_area_id
+    WHERE id = v_project_id
+      AND owner_user_id = (SELECT auth.uid());
+
+    IF NOT FOUND THEN
+      RAISE EXCEPTION 'Project not found.' USING ERRCODE = '42501';
+    END IF;
+
+    v_result := jsonb_set(v_result, '{area_id}', to_jsonb(p_area_id), true);
+  END IF;
+
+  RETURN v_result;
+END;
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION public.create_project_from_template(uuid, text, text, text, text, uuid, jsonb, jsonb) FROM PUBLIC;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION public.create_project_from_template(uuid, text, text, text, text, uuid, jsonb, jsonb) FROM anon;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION public.create_project_from_template(uuid, text, text, text, text, uuid, jsonb, jsonb) TO authenticated;

@@ -6,7 +6,22 @@ import {
 
 import type { AuthenticatedActor } from "../auth/actor";
 import { applicationFailure, applicationSuccess, type ApplicationResult } from "../shared/result";
-import type { ProjectPurgePreview, ProjectsRepository } from "./ports";
+import {
+  resolveTimeContext,
+  type TimeContextRepository,
+} from "../shared/time-context";
+import type {
+  CreateProjectFromTemplateRecordInput,
+  CreateProjectFromTemplateTaskInput,
+  ProjectPurgePreview,
+  ProjectsRepository,
+} from "./ports";
+import {
+  PROJECT_TEMPLATE_GOAL_STATUS,
+  isProjectTemplateId,
+  resolveProjectTemplatePreview,
+  type ProjectTemplatePreview,
+} from "./templates";
 
 export type ProjectFormValues = {
   name: string;
@@ -28,6 +43,35 @@ export function normalizeProjectSlug(value: string) {
     .replace(/^-|-$/g, "");
 }
 
+/**
+ * Canonical project form validation. `createProject` and
+ * `createProjectFromTemplate` both read untrusted project fields through this
+ * one function, so the two creation paths cannot drift on name/slug rules.
+ */
+export function readProjectFormValues(input: {
+  name: unknown;
+  slug: unknown;
+  description: unknown;
+  areaId?: unknown;
+}): { values: ProjectFormValues; errorMessage: string | null } {
+  const name = String(input.name ?? "").trim();
+  const slug = normalizeProjectSlug(String(input.slug ?? ""));
+  const description = String(input.description ?? "").trim();
+  const areaId = String(input.areaId ?? "").trim();
+  const values = { name, slug, description, areaId };
+
+  if (!name) return { values, errorMessage: "Project name is required." };
+  if (!slug) return { values, errorMessage: "Slug is required." };
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) {
+    return {
+      values,
+      errorMessage: "Slug can only contain lowercase letters, numbers, and hyphens.",
+    };
+  }
+
+  return { values, errorMessage: null };
+}
+
 export async function createProject(
   actor: AuthenticatedActor,
   repository: ProjectsRepository,
@@ -40,21 +84,11 @@ export async function createProject(
     mcpClientId?: string;
   },
 ): Promise<CreateProjectResult> {
-  const name = String(input.name ?? "").trim();
-  const slug = normalizeProjectSlug(String(input.slug ?? ""));
-  const description = String(input.description ?? "").trim();
-  const areaId = String(input.areaId ?? "").trim();
-  const values = { name, slug, description, areaId };
+  const { values, errorMessage } = readProjectFormValues(input);
 
-  if (!name) return { ok: false, errorMessage: "Project name is required.", values };
-  if (!slug) return { ok: false, errorMessage: "Slug is required.", values };
-  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) {
-    return {
-      ok: false,
-      errorMessage: "Slug can only contain lowercase letters, numbers, and hyphens.",
-      values,
-    };
-  }
+  if (errorMessage) return { ok: false, errorMessage, values };
+
+  const { name, slug, description, areaId = "" } = values;
 
   if (areaId) {
     if (!PROJECT_ID_PATTERN.test(areaId)) {
@@ -97,6 +131,199 @@ export async function createProject(
   }
 
   return { ok: true, data: null, values };
+}
+
+export type CreateProjectFromTemplateFormValues = ProjectFormValues & {
+  templateId: string;
+};
+
+export type CreateProjectFromTemplateSummary = Readonly<{
+  projectId: string;
+  slug: string;
+  goalCount: number;
+  taskCount: number;
+  replayed: boolean;
+}>;
+
+export type CreateProjectFromTemplateResult =
+  | Readonly<{
+      ok: true;
+      data: CreateProjectFromTemplateSummary;
+      values: CreateProjectFromTemplateFormValues;
+    }>
+  | Readonly<{
+      ok: false;
+      errorMessage: string;
+      values: CreateProjectFromTemplateFormValues;
+    }>;
+
+const OPERATION_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Build the repository payload from an already-resolved preview.
+ *
+ * The preview and the insert payload come from the same resolution, so every
+ * due date the owner reviewed is the due date that is persisted. No repository
+ * or template-specific task store is introduced: the payload lands in the
+ * canonical projects/goals/tasks tables inside one database transaction.
+ */
+export function toCreateProjectFromTemplateRecord(input: {
+  preview: ProjectTemplatePreview;
+  operationId: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  areaId: string | null;
+}): CreateProjectFromTemplateRecordInput {
+  const goals = input.preview.goals.map((goal) => ({
+    title: goal.title,
+    description: goal.description,
+    status: PROJECT_TEMPLATE_GOAL_STATUS,
+  }));
+
+  const tasks: CreateProjectFromTemplateTaskInput[] = [];
+
+  input.preview.goals.forEach((goal, goalIndex) => {
+    for (const task of goal.tasks) {
+      tasks.push({
+        goalIndex,
+        title: task.title,
+        description: task.description,
+        priority: task.priority,
+        estimateMinutes: task.estimateMinutes,
+        dueDate: task.dueDate,
+      });
+    }
+  });
+
+  return {
+    operationId: input.operationId,
+    templateId: input.preview.templateId,
+    name: input.name,
+    slug: input.slug,
+    description: input.description,
+    areaId: input.areaId,
+    goals,
+    tasks,
+  };
+}
+
+/**
+ * Create a project from a typed template in one bounded repository operation.
+ *
+ * Business rules owned here: template selection, canonical project field
+ * validation, server-issued operation identity, the owner's local-date
+ * resolution, and the resolved preview itself. Atomicity and idempotency are
+ * owned by the database function (`create_project_from_template`): a failure
+ * anywhere inside it leaves no project, goal or task row, and repeating the
+ * same operation id returns the project created by the first attempt.
+ */
+export async function createProjectFromTemplate(
+  actor: AuthenticatedActor,
+  repository: ProjectsRepository,
+  timeContextRepository: TimeContextRepository,
+  input: {
+    templateId: unknown;
+    operationId: unknown;
+    name: unknown;
+    slug: unknown;
+    description: unknown;
+    areaId?: unknown;
+    now?: Date;
+  },
+): Promise<CreateProjectFromTemplateResult> {
+  const templateIdRaw = String(input.templateId ?? "").trim();
+  const operationId = String(input.operationId ?? "").trim();
+  const { values, errorMessage } = readProjectFormValues(input);
+  const formValues: CreateProjectFromTemplateFormValues = {
+    ...values,
+    templateId: templateIdRaw,
+  };
+
+  if (!isProjectTemplateId(templateIdRaw)) {
+    return {
+      ok: false,
+      errorMessage: "Choose a project template.",
+      values: formValues,
+    };
+  }
+
+  if (errorMessage) {
+    return { ok: false, errorMessage, values: formValues };
+  }
+
+  if (!OPERATION_ID_PATTERN.test(operationId)) {
+    return {
+      ok: false,
+      errorMessage: "This form is no longer valid. Reload the page and try again.",
+      values: formValues,
+    };
+  }
+
+  const areaId = values.areaId ?? "";
+
+  if (areaId) {
+    if (!PROJECT_ID_PATTERN.test(areaId)) {
+      return { ok: false, errorMessage: "Choose a valid area.", values: formValues };
+    }
+
+    const areaResult = await repository.getAreaById(actor, areaId);
+    if (!areaResult.ok) {
+      return {
+        ok: false,
+        errorMessage: "Unable to verify the area right now.",
+        values: formValues,
+      };
+    }
+    if (!areaResult.value) {
+      return { ok: false, errorMessage: "Area not found.", values: formValues };
+    }
+  }
+
+  const timeContext = await resolveTimeContext(actor, timeContextRepository, {
+    now: input.now ?? new Date(),
+  });
+
+  if (!timeContext.ok) {
+    return {
+      ok: false,
+      errorMessage: "Unable to load your time zone right now. Please try again.",
+      values: formValues,
+    };
+  }
+
+  const previewResult = resolveProjectTemplatePreview({
+    templateId: templateIdRaw,
+    localDate: timeContext.data.localDate,
+  });
+
+  if (!previewResult.ok) {
+    return { ok: false, errorMessage: previewResult.errorMessage, values: formValues };
+  }
+
+  const record = toCreateProjectFromTemplateRecord({
+    preview: previewResult.data,
+    operationId,
+    name: values.name,
+    slug: values.slug,
+    description: values.description || null,
+    areaId: areaId || null,
+  });
+
+  const result = await repository.createProjectFromTemplate(actor, record);
+
+  if (!result.ok) {
+    return {
+      ok: false,
+      errorMessage:
+        result.error.code === "conflict"
+          ? "That slug is already in use. Choose a different slug."
+          : "Unable to create the project from this template right now. Please try again.",
+      values: formValues,
+    };
+  }
+
+  return { ok: true, data: result.value, values: formValues };
 }
 
 export async function updateProjectStatus(

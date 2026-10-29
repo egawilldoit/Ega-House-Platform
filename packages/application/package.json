@@ -9,6 +9,7 @@
     "./projects/ports": "./src/projects/ports.ts",
     "./projects/areas": "./src/projects/areas.ts",
     "./projects/service": "./src/projects/service.ts",
+    "./projects/templates": "./src/projects/templates.ts",
     "./projects/read-model": "./src/projects/read-model.ts",
     "./goals/ports": "./src/goals/ports.ts",
     "./goals/service": "./src/goals/service.ts",

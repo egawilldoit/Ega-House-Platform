@@ -10,6 +10,7 @@ export const PROJECT_TABS = [
   { value: "overview", label: "Overview" },
   { value: "board", label: "Board" },
   { value: "list", label: "List" },
+  { value: "files", label: "Files" },
 ] as const;
 
 export type ProjectTab = (typeof PROJECT_TABS)[number]["value"];
@@ -17,6 +18,7 @@ export type ProjectTab = (typeof PROJECT_TABS)[number]["value"];
 export function normalizeProjectTab(value: string | null | undefined): ProjectTab {
   if (value === "board") return "board";
   if (value === "list") return "list";
+  if (value === "files") return "files";
   return "overview";
 }
 
@@ -99,7 +101,7 @@ export function ProjectTabNav({
           role="tablist"
           aria-label="Project sections"
           onKeyDown={onKeyDown}
-          className="grid w-full grid-cols-3 gap-1 sm:w-auto"
+          className="grid w-full grid-cols-4 gap-1 sm:w-auto"
         >
           {PROJECT_TABS.map((tab) => {
             const isActive = activeTab === tab.value;

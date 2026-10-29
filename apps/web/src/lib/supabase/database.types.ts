@@ -42,6 +42,163 @@ export type Database = {
         }
         Relationships: []
       }
+      agent_actors: {
+        Row: {
+          archived_at: string | null
+          avatar_color: string
+          created_at: string
+          display_name: string
+          id: string
+          kind: string
+          owner_user_id: string
+          role: string | null
+          updated_at: string
+        }
+        Insert: {
+          archived_at?: string | null
+          avatar_color?: string
+          created_at?: string
+          display_name: string
+          id?: string
+          kind: string
+          owner_user_id?: string
+          role?: string | null
+          updated_at?: string
+        }
+        Update: {
+          archived_at?: string | null
+          avatar_color?: string
+          created_at?: string
+          display_name?: string
+          id?: string
+          kind?: string
+          owner_user_id?: string
+          role?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      agent_integration_events: {
+        Row: {
+          action: string
+          agent_id: string | null
+          agent_label: string | null
+          created_at: string
+          duration_ms: number | null
+          error_code: string | null
+          grant_id: string | null
+          id: string
+          ip_address: string | null
+          metadata: Json
+          oauth_client_id: string | null
+          outcome: string
+          owner_user_id: string
+          request_id: string | null
+          resource_id: string | null
+          resource_type: string | null
+          token_id: string | null
+          tool_name: string | null
+        }
+        Insert: {
+          action: string
+          agent_id?: string | null
+          agent_label?: string | null
+          created_at?: string
+          duration_ms?: number | null
+          error_code?: string | null
+          grant_id?: string | null
+          id?: string
+          ip_address?: string | null
+          metadata?: Json
+          oauth_client_id?: string | null
+          outcome: string
+          owner_user_id: string
+          request_id?: string | null
+          resource_id?: string | null
+          resource_type?: string | null
+          token_id?: string | null
+          tool_name?: string | null
+        }
+        Update: {
+          action?: string
+          agent_id?: string | null
+          agent_label?: string | null
+          created_at?: string
+          duration_ms?: number | null
+          error_code?: string | null
+          grant_id?: string | null
+          id?: string
+          ip_address?: string | null
+          metadata?: Json
+          oauth_client_id?: string | null
+          outcome?: string
+          owner_user_id?: string
+          request_id?: string | null
+          resource_id?: string | null
+          resource_type?: string | null
+          token_id?: string | null
+          tool_name?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_integration_events_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: false
+            referencedRelation: "agent_actors"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      agent_integration_tokens: {
+        Row: {
+          agent_id: string | null
+          created_at: string
+          id: string
+          last_used_at: string | null
+          name: string
+          owner_user_id: string
+          revoked_at: string | null
+          scopes: Json
+          token_hash: string
+          token_prefix: string
+          updated_at: string
+        }
+        Insert: {
+          agent_id?: string | null
+          created_at?: string
+          id?: string
+          last_used_at?: string | null
+          name: string
+          owner_user_id: string
+          revoked_at?: string | null
+          scopes?: Json
+          token_hash: string
+          token_prefix: string
+          updated_at?: string
+        }
+        Update: {
+          agent_id?: string | null
+          created_at?: string
+          id?: string
+          last_used_at?: string | null
+          name?: string
+          owner_user_id?: string
+          revoked_at?: string | null
+          scopes?: Json
+          token_hash?: string
+          token_prefix?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_integration_tokens_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: false
+            referencedRelation: "agent_actors"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       calendar_integration_settings: {
         Row: {
           access_token_encrypted: string | null
@@ -253,6 +410,7 @@ export type Database = {
           owner_user_id: string | null
           slug: string
           status: string
+          template_operation_id: string | null
           updated_at: string
         }
         Insert: {
@@ -266,6 +424,7 @@ export type Database = {
           owner_user_id?: string | null
           slug: string
           status?: string
+          template_operation_id?: string | null
           updated_at?: string
         }
         Update: {
@@ -279,6 +438,7 @@ export type Database = {
           owner_user_id?: string | null
           slug?: string
           status?: string
+          template_operation_id?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -614,6 +774,62 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "task_activity_events_task_id_tasks_id_fk"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      task_attachments: {
+        Row: {
+          id: string
+          owner_user_id: string
+          task_id: string
+          file_name: string
+          storage_path: string
+          mime_type: string
+          size_bytes: number
+          status: string
+          idempotency_key: string
+          upload_expires_at: string
+          finalized_at: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          owner_user_id?: string
+          task_id: string
+          file_name: string
+          storage_path: string
+          mime_type: string
+          size_bytes: number
+          status?: string
+          idempotency_key: string
+          upload_expires_at: string
+          finalized_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          owner_user_id?: string
+          task_id?: string
+          file_name?: string
+          storage_path?: string
+          mime_type?: string
+          size_bytes?: number
+          status?: string
+          idempotency_key?: string
+          upload_expires_at?: string
+          finalized_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "task_attachments_task_id_tasks_id_fk"
             columns: ["task_id"]
             isOneToOne: false
             referencedRelation: "tasks"
@@ -1105,6 +1321,19 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      create_project_from_template: {
+        Args: {
+          p_operation_id: string
+          p_template_id: string
+          p_name: string
+          p_slug: string
+          p_description: string | null
+          p_area_id: string | null
+          p_goals: Json
+          p_tasks: Json
+        }
+        Returns: Json
+      }
       promote_task_subtask: {
         Args: { p_subtask_id: string; p_new_task_id: string }
         Returns: boolean
@@ -1156,6 +1385,29 @@ export type Database = {
       }
       list_task_comment_mentions: {
         Args: { p_owner_user_id?: string | null }
+        Returns: Json
+      }
+      create_task_attachment_upload: {
+        Args: {
+          p_task_id: string
+          p_file_name: string
+          p_mime_type: string
+          p_size_bytes: number
+          p_extension: string
+          p_idempotency_key: string
+        }
+        Returns: Json
+      }
+      finalize_task_attachment: {
+        Args: { p_attachment_id: string; p_size_bytes: number }
+        Returns: Json
+      }
+      fail_task_attachment: {
+        Args: { p_attachment_id: string; p_reason: string }
+        Returns: boolean
+      }
+      delete_task_attachment: {
+        Args: { p_attachment_id: string }
         Returns: Json
       }
     }

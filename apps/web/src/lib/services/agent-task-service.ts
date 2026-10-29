@@ -466,12 +466,14 @@ export async function createTasks(
   ownerUserId: string,
   tokenId: string,
   taskPayloads: AgentCreateTaskPayload[],
+  agentId: string | null = null,
 ): Promise<AgentTaskCreateBulkResponse> {
-  // Activity attribution is derived from the verified token id; the database
-  // snapshots its name. Never from a request body field.
+  // Activity attribution is derived from the verified identity (or the token id
+  // for legacy credentials); the database snapshots its name. Never from a
+  // request body field.
   const supabase = createActorScopedServiceClient({
     kind: "agent",
-    agentId: tokenId,
+    agentId: agentId ?? tokenId,
   });
 
   // 1. Idempotency: bulk-query task_external_refs for (ownerUserId, source, sourceId) tuples
@@ -565,6 +567,7 @@ export async function createTasks(
     const auditRows = created.map((task) => ({
       owner_user_id: ownerUserId,
       token_id: tokenId,
+      agent_id: agentId,
       action: "task.created",
       resource_type: "task",
       resource_id: task.id,
@@ -625,10 +628,11 @@ export async function updateTasks(
   ownerUserId: string,
   tokenId: string,
   updates: AgentTaskUpdatePayload[],
+  agentId: string | null = null,
 ): Promise<AgentTaskUpdateBulkResponse> {
   const supabase = createActorScopedServiceClient({
     kind: "agent",
-    agentId: tokenId,
+    agentId: agentId ?? tokenId,
   });
   const updated: AgentTaskResponse[] = [];
   const errors: { index: number; error: string }[] = [];
@@ -756,6 +760,7 @@ export async function updateTasks(
     await (supabase as any).from("agent_integration_events").insert({
       owner_user_id: ownerUserId,
       token_id: tokenId,
+      agent_id: agentId,
       action: "task.updated",
       resource_type: "task",
       resource_id: resolved.id,
@@ -774,6 +779,7 @@ export async function archiveTasks(
   ownerUserId: string,
   tokenId: string,
   archivePayloads: Pick<AgentTaskArchivePayload, "taskId" | "source" | "sourceId" | "archived">[],
+  agentId: string | null = null,
 ): Promise<{
   ok: true;
   archived: AgentTaskResponse[];
@@ -782,7 +788,7 @@ export async function archiveTasks(
 }> {
   const supabase = createActorScopedServiceClient({
     kind: "agent",
-    agentId: tokenId,
+    agentId: agentId ?? tokenId,
   });
   const archived: AgentTaskResponse[] = [];
   const unarchived: AgentTaskResponse[] = [];
@@ -870,6 +876,7 @@ export async function archiveTasks(
       await (supabase as any).from("agent_integration_events").insert({
         owner_user_id: ownerUserId,
         token_id: tokenId,
+        agent_id: agentId,
         action: p.archived ? "archive" : "unarchive",
         resource_type: "task",
         resource_id: resolved.id,

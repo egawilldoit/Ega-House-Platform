@@ -26,6 +26,7 @@ const SCOPES = {
 const CONTEXT = {
   tokenId: "token-1",
   tokenName: "Codex",
+  agentId: null,
   ownerUserId: "owner-1",
   scopes: SCOPES,
 };

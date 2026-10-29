@@ -38,6 +38,12 @@ export const SYSTEM_ROUTES = [
   { href: "/startup", label: "Startup", group: "system", description: "Start the day" },
   { href: "/shutdown", label: "Shutdown", group: "system", description: "Close the day" },
   { href: "/apps", label: "Apps", group: "system", description: "Connected surfaces" },
+  {
+    href: "/agents",
+    label: "Agents",
+    group: "system",
+    description: "Agent identities and credentials",
+  },
   { href: "/help", label: "Help", group: "system", description: "Support and shortcuts" },
   {
     href: "/settings/account",
