@@ -78,9 +78,9 @@ export function AppsLauncherGrid({ items }: AppsLauncherGridProps) {
                   tileRefs.current[index] = node;
                 }}
                 onKeyDown={(event) => handleTileKeyDown(event, index)}
-                className="row"
+                className="row group transition-colors hover:bg-[var(--ega-surface-hover)]"
               >
-                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius-sm)] border border-ega-border bg-ega-surface-subtle text-ega-text-secondary">
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius-sm)] border border-ega-border bg-ega-surface-subtle text-ega-text-secondary transition-colors group-hover:border-[var(--ega-border-strong)] group-hover:text-ega-text">
                   <Icon className="h-4 w-4" strokeWidth={1.7} aria-hidden="true" />
                 </span>
                 <span className="row-main">
@@ -96,7 +96,10 @@ export function AppsLauncherGrid({ items }: AppsLauncherGridProps) {
                 <span className="row-actions">
                   <span className="flex h-7 shrink-0 items-center gap-1 rounded-[var(--radius-sm)] border border-ega-border bg-ega-surface px-2.5 text-[length:var(--text-meta)] font-medium text-ega-text">
                     Open
-                    <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+                    <ArrowRight
+                      className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5 group-focus-visible:translate-x-0.5"
+                      aria-hidden="true"
+                    />
                   </span>
                 </span>
               </Link>
