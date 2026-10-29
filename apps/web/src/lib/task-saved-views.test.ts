@@ -321,8 +321,8 @@ test("EGA-792: v2 saved-view definitions round-trip the per-view column layout",
     { id: "task", width: 420, visible: true },
     { id: "project", width: 240, visible: true },
     { id: "priority", width: 112, visible: true },
-    { id: "due", width: 152, visible: false },
     { id: "status", width: 144, visible: true },
+    { id: "due", width: 152, visible: false },
     { id: "estimate", width: 112, visible: false },
   ];
   const normalized = normalizeTaskSavedViewDefinition({
