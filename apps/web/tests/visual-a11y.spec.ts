@@ -10,6 +10,7 @@ const authenticatedRoutes = [
   "/tasks",
   "/settings/appearance",
   "/settings/preferences",
+  "/agents",
 ] as const;
 
 test.describe("visual and a11y — desktop and 390px", () => {

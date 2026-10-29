@@ -62,6 +62,7 @@ describe("light workspace shell", () => {
       ["Startup", "/startup"],
       ["Shutdown", "/shutdown"],
       ["Apps", "/apps"],
+      ["Agents", "/agents"],
       ["Help", "/help"],
       ["Settings", "/settings/account"],
     ]) {

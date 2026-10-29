@@ -39,6 +39,7 @@ function makeAuthContext(overrides?: Partial<AgentAuthContext>): AgentAuthContex
   return {
     tokenId: "token-1",
     tokenName: "Codex",
+    agentId: null,
     ownerUserId: "00000000-0000-0000-0000-000000000001",
     scopes: {
       projects: { read: true },
@@ -403,6 +404,23 @@ describe("POST_TASKS", () => {
     expect(body.created[0]!.title).toBe("New Task");
     expect(body.existing).toHaveLength(0);
     expect(body.errors).toHaveLength(0);
+  });
+
+  it("forwards the linked registry identity into task attribution", async () => {
+    const context = authContext({ agentId: "agent-actor-1" });
+    mockResolveAgentAuth.mockResolvedValue({ ok: true, context });
+
+    const { POST_TASKS } = createCreateHandlers(mockRepo);
+    await POST_TASKS(
+      makeCreateRequest({ tasks: [{ title: "New Task", projectId: "proj-1" }] }),
+    );
+
+    expect(mockCreateTasks).toHaveBeenCalledWith(
+      context.ownerUserId,
+      context.tokenId,
+      expect.any(Array),
+      "agent-actor-1",
+    );
   });
 
   it("returns 200 with existing tasks from idempotency", async () => {
