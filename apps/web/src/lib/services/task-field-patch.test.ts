@@ -13,6 +13,7 @@ const CURRENT = {
   description: "Existing body",
   status: "in_progress",
   priority: "high",
+  project_id: "project-1",
   start_date: null,
   due_date: "2026-05-01",
   estimate_minutes: 75,
@@ -25,6 +26,7 @@ test("accepts exactly the whitelisted fields", () => {
     "description",
     "status",
     "priority",
+    "project",
     "startDate",
     "dueDate",
     "estimateMinutes",
@@ -96,6 +98,19 @@ test("rejects a non-whitelisted field without building an input", () => {
   const result = buildTaskFieldPatchInput("task-1", CURRENT, "projectId", "project-2");
   assert.ok(!("input" in result));
   assert.equal(result.errorMessage, "Unsupported task field update.");
+});
+
+test("a project patch clears the goal only when the project changes", () => {
+  const changed = buildTaskFieldPatchInput("task-1", CURRENT, "project", "project-2");
+  assert.ok("input" in changed);
+  assert.equal(changed.input.projectId, "project-2");
+  assert.equal(changed.input.goalId, "");
+  assert.equal(changed.input.status, "in_progress");
+
+  const same = buildTaskFieldPatchInput("task-1", CURRENT, "project", "project-1");
+  assert.ok("input" in same);
+  assert.equal(same.input.projectId, "project-1");
+  assert.equal(same.input.goalId, undefined);
 });
 
 // ---------------------------------------------------------------------------
@@ -282,4 +297,64 @@ test("a concurrent change is reported instead of silently reverting fields", asy
   );
 
   assert.equal(result.errorMessage, "This task changed since you opened it. Reload and try again.");
+});
+
+test("a rendered revision that no longer matches is rejected before writing", async () => {
+  const { client, writeFilters } = stubClient({
+    title: "Draft review",
+    description: null,
+    status: "in_progress",
+    priority: "high",
+    project_id: "project-1",
+    start_date: null,
+    due_date: null,
+    estimate_minutes: null,
+    blocked_reason: null,
+    updated_at: "2026-05-01T10:00:00.000Z",
+  });
+
+  const result = await updateTaskFieldForOwner(
+    {
+      taskId: "task-1",
+      field: "dueDate",
+      value: "2026-05-10",
+      expectedUpdatedAt: "2026-04-30T09:00:00.000Z",
+    },
+    { supabase: client as never },
+  );
+
+  assert.equal(result.errorMessage, "This task changed since you opened it. Reload and try again.");
+  assert.deepEqual(writeFilters, []);
+});
+
+test("a matching rendered revision writes and returns the next revision", async () => {
+  const { client } = stubClient(
+    {
+      title: "Draft review",
+      description: null,
+      status: "in_progress",
+      priority: "high",
+      project_id: "project-1",
+      start_date: null,
+      due_date: null,
+      estimate_minutes: null,
+      blocked_reason: null,
+      updated_at: "2026-05-01T10:00:00.000Z",
+    },
+    { writeRow: { id: "task-1" } },
+  );
+
+  const result = await updateTaskFieldForOwner(
+    {
+      taskId: "task-1",
+      field: "dueDate",
+      value: "2026-05-10",
+      expectedUpdatedAt: "2026-05-01T10:00:00.000Z",
+    },
+    { supabase: client as never },
+  );
+
+  assert.equal(result.errorMessage, null);
+  assert.equal(result.savedValue, "2026-05-10");
+  assert.ok(result.updatedAt);
 });

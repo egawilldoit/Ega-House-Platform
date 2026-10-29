@@ -2520,6 +2520,7 @@ export const TASK_FIELD_PATCH_FIELDS = [
   "description",
   "status",
   "priority",
+  "project",
   "startDate",
   "dueDate",
   "estimateMinutes",
@@ -2538,6 +2539,7 @@ export type TaskFieldPatchCurrent = {
   description: string | null;
   status: string;
   priority: string;
+  project_id: string;
   start_date: string | null;
   due_date: string | null;
   estimate_minutes: number | null;
@@ -2580,6 +2582,12 @@ export function buildTaskFieldPatchInput(
 
   if (field === "status") input.status = value;
   if (field === "priority") input.priority = value;
+  if (field === "project") {
+    input.projectId = value;
+    // The goal must belong to the selected project. Match the bulk path by
+    // clearing it only when the project actually changes.
+    if (value !== current.project_id) input.goalId = "";
+  }
   if (field === "startDate") input.startDate = value;
   if (field === "dueDate") input.dueDate = value;
   if (field === "estimateMinutes") input.estimateMinutes = value;
@@ -2656,6 +2664,12 @@ export async function updateTaskTimelineSchedule(
   });
 }
 
+export type TaskFieldPatchResult = {
+  errorMessage: string | null;
+  savedValue?: string;
+  updatedAt?: string;
+};
+
 /**
  * Apply one whitelisted field change to a task the caller owns.
  *
@@ -2663,15 +2677,24 @@ export async function updateTaskTimelineSchedule(
  * single-field patch can never write back a stale value the browser happened to
  * hold. Unknown ids, another owner's ids and a missing session all return the
  * same message.
+ *
+ * When the caller supplies `expectedUpdatedAt` (the revision it rendered), a
+ * changed row is rejected before any write. The write itself is always guarded
+ * by the revision read here.
  */
 export async function updateTaskFieldForOwner(
-  input: { taskId: string; field: string; value: string },
+  input: {
+    taskId: string;
+    field: string;
+    value: string;
+    expectedUpdatedAt?: string;
+  },
   options?: {
     supabase?: SupabaseServerClient;
     accountTimezone?: string;
     fallbackAnchorDate?: string;
   },
-): Promise<{ errorMessage: string | null }> {
+): Promise<TaskFieldPatchResult> {
   const taskId = input.taskId.trim();
   if (!taskId) return { errorMessage: "Task update request is invalid." };
   if (!isTaskFieldPatchField(input.field)) {
@@ -2684,7 +2707,9 @@ export async function updateTaskFieldForOwner(
 
   const { data: current, error: loadError } = await supabase
     .from("tasks")
-    .select("title, description, status, priority, start_date, due_date, estimate_minutes, blocked_reason, updated_at")
+    .select(
+      "title, description, status, priority, project_id, start_date, due_date, estimate_minutes, blocked_reason, updated_at",
+    )
     .eq("id", taskId)
     .eq("owner_user_id", userId)
     .maybeSingle();
@@ -2692,6 +2717,22 @@ export async function updateTaskFieldForOwner(
   if (loadError) return { errorMessage: "Unable to load task right now." };
   if (!current) {
     return { errorMessage: "Task was not found or is no longer available." };
+  }
+
+  const currentUpdatedAt = String((current as { updated_at?: string }).updated_at ?? "");
+  const expectedUpdatedAt = String(input.expectedUpdatedAt ?? "").trim();
+  if (expectedUpdatedAt) {
+    const expectedTime = Date.parse(expectedUpdatedAt);
+    const currentTime = Date.parse(currentUpdatedAt);
+    const matches =
+      Number.isFinite(expectedTime) && Number.isFinite(currentTime)
+        ? expectedTime === currentTime
+        : expectedUpdatedAt === currentUpdatedAt;
+    if (!matches) {
+      return {
+        errorMessage: "This task changed since you opened it. Reload and try again.",
+      };
+    }
   }
 
   const built = buildTaskFieldPatchInput(
@@ -2710,9 +2751,19 @@ export async function updateTaskFieldForOwner(
     return { errorMessage: validation.errorMessage ?? "Task update request is invalid." };
   }
 
-  return updateTaskInline(validation.data, {
+  const updatedAtIso = new Date().toISOString();
+  const result = await updateTaskInline(validation.data, {
     supabase,
+    updatedAtIso,
     fallbackAnchorDate: options?.fallbackAnchorDate,
-    expectedUpdatedAt: String((current as { updated_at?: string }).updated_at ?? ""),
+    expectedUpdatedAt: currentUpdatedAt,
   });
+
+  if (result.errorMessage) return { errorMessage: result.errorMessage };
+
+  return {
+    errorMessage: null,
+    savedValue: input.value,
+    updatedAt: updatedAtIso,
+  };
 }

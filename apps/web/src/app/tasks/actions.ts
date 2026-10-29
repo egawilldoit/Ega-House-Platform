@@ -38,6 +38,10 @@ import {
 } from "@/lib/services/focus-queue-service";
 import { updateTaskFieldForOwner, updateTaskTimelineSchedule } from "@/lib/services/task-service";
 import {
+  isTaskTableCellEditableField,
+  type TaskTableCellEditableField,
+} from "@/lib/task-table-columns";
+import {
   addTaskDependency,
   removeTaskDependency,
 } from "@/lib/services/task-dependency-service";
@@ -746,6 +750,76 @@ export type UpdateTaskTimelineScheduleState = {
  * date validation, `due >= start`, owner scope and the version check; the
  * domain/DB dependency rules are untouched by date edits.
  */
+export type TaskTableCellUpdateResult = {
+  errorMessage: string | null;
+  savedValue: string | null;
+  updatedAt: string | null;
+};
+
+export type TaskTableCellUpdateInput = {
+  taskId: string;
+  field: TaskTableCellEditableField | string;
+  value: string;
+  /** The row revision the table rendered; a changed row is a conflict. */
+  expectedUpdatedAt: string;
+  returnTo?: string;
+};
+
+/**
+ * Persist one table-cell edit without navigating away from the table.
+ *
+ * The cell owns its draft until the server accepts the change, and the row's
+ * rendered `updated_at` is a required precondition so a stale table can never
+ * overwrite another editor's work.
+ */
+export async function updateTaskTableCellAction(
+  input: TaskTableCellUpdateInput,
+): Promise<TaskTableCellUpdateResult> {
+  const payload = input && typeof input === "object" ? input : null;
+  const taskId = typeof payload?.taskId === "string" ? payload.taskId.trim() : "";
+  const field = typeof payload?.field === "string" ? payload.field : "";
+  const value = typeof payload?.value === "string" ? payload.value : null;
+  const expectedUpdatedAt =
+    typeof payload?.expectedUpdatedAt === "string"
+      ? payload.expectedUpdatedAt.trim()
+      : "";
+
+  if (
+    !taskId ||
+    !isTaskTableCellEditableField(field) ||
+    value === null ||
+    !expectedUpdatedAt ||
+    value.length > 2_000
+  ) {
+    return {
+      errorMessage: "Task update request is invalid.",
+      savedValue: null,
+      updatedAt: null,
+    };
+  }
+
+  const returnPath = getTasksReturnPath(payload?.returnTo);
+  const accountTimezoneResult = await resolveAccountTimezone();
+  const result = await updateTaskFieldForOwner(
+    { taskId, field, value, expectedUpdatedAt },
+    {
+      accountTimezone: accountTimezoneResult.timezone ?? undefined,
+      fallbackAnchorDate: accountTimezoneResult.localDate ?? undefined,
+    },
+  );
+
+  if (result.errorMessage) {
+    return { errorMessage: result.errorMessage, savedValue: null, updatedAt: null };
+  }
+
+  revalidateWorkspaceFor("task", { returnTo: returnPath });
+  return {
+    errorMessage: null,
+    savedValue: result.savedValue ?? value,
+    updatedAt: result.updatedAt ?? null,
+  };
+}
+
 export async function updateTaskTimelineScheduleAction(
   _previous: UpdateTaskTimelineScheduleState,
   formData: FormData,

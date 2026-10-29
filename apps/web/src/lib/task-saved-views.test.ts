@@ -15,6 +15,7 @@ import {
   validateTaskSavedViewScope,
   type TaskSavedViewFilters,
 } from "./task-saved-views";
+import type { TaskTableColumnConfig } from "@ega/contracts/common/task-list";
 
 const BASE_FILTERS: TaskSavedViewFilters = {
   status: null,
@@ -314,4 +315,75 @@ test("validates saved-view names", () => {
   assert.equal(getTaskSavedViewNameError(""), "Saved view name is required.");
   assert.match(getTaskSavedViewNameError("x".repeat(81)) ?? "", /80 characters or fewer/);
   assert.equal(getTaskSavedViewNameError("Today"), null);
+});
+
+test("EGA-792: v2 saved-view definitions round-trip the per-view column layout", () => {
+  const columns: TaskTableColumnConfig[] = [
+    { id: "task", width: 420, visible: true },
+    { id: "project", width: 240, visible: true },
+    { id: "priority", width: 112, visible: true },
+    { id: "status", width: 144, visible: true },
+    { id: "due", width: 152, visible: false },
+    { id: "estimate", width: 112, visible: false },
+  ];
+  const normalized = normalizeTaskSavedViewDefinition({
+    version: 2,
+    filters: [
+      { field: "status", operator: "is", values: ["in_progress"] },
+      { field: "priority", operator: "is_any_of", values: ["high", "urgent"] },
+      { field: "estimate", operator: "between", values: ["30", ""] },
+      { field: "due_within_days", operator: "is", values: ["7"] },
+    ],
+    groupBy: "none",
+    sort: { key: "updated", direction: "desc" },
+    search: "",
+    activeOnly: true,
+    columns,
+  });
+
+  assert.equal(normalized?.version, 2);
+  const normalizedById = new Map(
+    (normalized?.columns ?? []).map((column) => [column.id, column]),
+  );
+  for (const column of columns) {
+    assert.deepEqual(normalizedById.get(column.id), column);
+  }
+  assert.deepEqual(getTaskSavedViewFiltersFromDefinition(normalized), {
+    activeTasks: true,
+    status: "in_progress",
+    projectId: null,
+    goalId: null,
+    dueFilter: "all",
+    sortValue: "updated_desc",
+    priorityValues: ["high", "urgent"],
+    estimateMinMinutes: 30,
+    estimateMaxMinutes: null,
+    dueWithinDays: 7,
+  });
+});
+
+test("EGA-792: v1 views read without an explicit column layout", () => {
+  const definition = normalizeTaskSavedViewDefinition(BLOCKED_SAVED_VIEW_DEFINITION);
+  assert.ok(definition);
+  assert.equal(definition!.columns, undefined);
+});
+
+test("EGA-792: malformed v2 columns fall back to validated defaults", () => {
+  const definition = normalizeTaskSavedViewDefinition({
+    version: 2,
+    filters: [],
+    groupBy: "none",
+    sort: { key: "updated", direction: "desc" },
+    search: "",
+    activeOnly: false,
+    columns: [
+      { id: "task", width: 10_000, visible: false },
+      { id: "not-a-column", width: 100, visible: true },
+    ],
+  });
+
+  const columns = definition?.columns ?? [];
+  assert.equal(columns[0]?.id, "task");
+  assert.equal(columns[0]?.visible, true);
+  assert.equal(columns[0]?.width, 480);
 });

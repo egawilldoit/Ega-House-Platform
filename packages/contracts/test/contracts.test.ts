@@ -16,6 +16,12 @@ import {
   type GoalsReadModel,
   TASK_DUE_FILTER_VALUES,
   TASK_SORT_VALUES,
+  TASK_TABLE_COLUMN_MAX_WIDTH,
+  TASK_TABLE_COLUMN_MIN_WIDTH,
+  normalizeTaskTableColumns,
+  normalizeTaskViewDefinition,
+  parseTaskViewSearchParams,
+  toTaskViewSearchPairs,
   isTaskDueFilter,
   isTaskSortValue,
   type MobileTaskCounters,
@@ -37,6 +43,30 @@ test("mobile task list query wire values remain stable", () => {
   assert.equal(isTaskDueFilter("due_today"), true);
   assert.equal(isTaskDueFilter("today"), false);
   assert.equal(isTaskSortValue("updated_desc"), true);
+  assert.equal(isTaskSortValue("priority_desc"), false);
+  assert.equal(isTaskSortValue("unknown"), false);
+});
+
+test("table column defaults preserve the old inventory and validate untrusted config", () => {
+  const defaults = normalizeTaskTableColumns(null);
+  assert.deepEqual(
+    defaults.filter((column) => column.visible).map((column) => column.id),
+    ["task", "priority", "due", "status"],
+  );
+  assert.equal(defaults[0]?.id, "task");
+  assert.equal(defaults[0]?.visible, true);
+
+  const normalized = normalizeTaskTableColumns([
+    { id: "task", width: 9999, visible: false },
+    { id: "project", width: 1, visible: true },
+    { id: "unknown", width: 200, visible: true },
+    { id: "project", width: 300, visible: false },
+  ]);
+  assert.equal(normalized[0]?.id, "task");
+  assert.equal(normalized[0]?.width, TASK_TABLE_COLUMN_MAX_WIDTH);
+  assert.equal(normalized[0]?.visible, true);
+  assert.equal(normalized.find((column) => column.id === "project")?.width, TASK_TABLE_COLUMN_MIN_WIDTH);
+  assert.equal(normalized.find((column) => column.id === "project")?.visible, true);
 });
 
 test("enriched mobile task list item exposes canonical project and goal projections", () => {
@@ -233,4 +263,70 @@ test("Today response uses the complete Operator snapshot contract", () => {
     inbox: null,
     weeklyObjective: null,
   });
+});
+
+test("EGA-792 table columns normalize, bound and default safely", () => {
+  const defaults = normalizeTaskTableColumns(null);
+  assert.deepEqual(
+    defaults.filter((column) => column.visible).map((column) => column.id),
+    ["task", "priority", "due", "status"],
+  );
+  assert.equal(defaults[0]?.id, "task");
+
+  const normalized = normalizeTaskTableColumns([
+    { id: "task", width: 9_999, visible: false },
+    { id: "project", width: 1, visible: true },
+    { id: "unknown", width: 200, visible: true },
+    { id: "project", width: 300, visible: false },
+  ]);
+  assert.equal(normalized[0]?.id, "task");
+  assert.equal(normalized[0]?.width, TASK_TABLE_COLUMN_MAX_WIDTH);
+  assert.equal(normalized[0]?.visible, true);
+  assert.equal(normalized.find((column) => column.id === "project")?.width, TASK_TABLE_COLUMN_MIN_WIDTH);
+  assert.equal(normalized.find((column) => column.id === "project")?.visible, true);
+});
+
+test("EGA-792 view definitions carry the column layout through URL and JSON", () => {
+  const definition = normalizeTaskViewDefinition({
+    version: 2,
+    filters: [],
+    groupBy: "none",
+    sort: { key: "priority", direction: "desc" },
+    search: "",
+    activeOnly: false,
+    columns: [
+      { id: "task", width: 420, visible: true },
+      { id: "project", width: 240, visible: true },
+      { id: "priority", width: 112, visible: true },
+      { id: "due", width: 152, visible: false },
+      { id: "status", width: 144, visible: true },
+      { id: "estimate", width: 112, visible: false },
+    ],
+  });
+  assert.ok(definition);
+  assert.deepEqual(
+    definition!.columns?.filter((column) => column.visible).map((column) => column.id),
+    ["task", "project", "priority", "status"],
+  );
+
+  const pairs = toTaskViewSearchPairs(definition!);
+  const cols = pairs.find(([key]) => key === "cols")?.[1];
+  const widths = pairs.find(([key]) => key === "widths")?.[1];
+  assert.equal(cols, "task,project,priority,status");
+  assert.equal(widths, "task:420,project:240");
+
+  const parsed = parseTaskViewSearchParams(Object.fromEntries(pairs));
+  assert.deepEqual(parsed.columns, definition!.columns);
+
+  // Old v2 definitions without columns still load; the table falls back to the
+  // safe default layout.
+  const old = normalizeTaskViewDefinition({
+    version: 2,
+    filters: [],
+    groupBy: "none",
+    sort: { key: "updated", direction: "desc" },
+    search: "",
+    activeOnly: false,
+  });
+  assert.equal(old?.columns, undefined);
 });
