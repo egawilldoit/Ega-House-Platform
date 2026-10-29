@@ -1,4 +1,7 @@
 import {
+  type AreaFilter,
+  type AreaRecord,
+  type AreaWriteInput,
   type AuthenticatedActor,
   type CreateProjectFromTemplateRecordInput,
   type CreateProjectFromTemplateRecordResult,
@@ -28,7 +31,17 @@ import {
 } from "../supabase/errors";
 import { hasOpenTaskSessionForScope } from "../tasks/open-session";
 
-const PROJECT_SELECT = "id, name, slug, description, status, created_at, updated_at";
+const PROJECT_SELECT =
+  "id, name, slug, description, status, area_id, created_at, updated_at, areas(id, name, color, icon)";
+
+const AREA_SELECT = "id, name, icon, color, description, created_at, updated_at";
+
+type AreaRelationRow = {
+  id: string;
+  name: string;
+  color: string;
+  icon: string;
+};
 
 type ProjectRow = {
   id: string;
@@ -36,6 +49,18 @@ type ProjectRow = {
   slug: string;
   description: string | null;
   status: string;
+  area_id: string | null;
+  created_at: string;
+  updated_at: string;
+  areas: AreaRelationRow | AreaRelationRow[] | null;
+};
+
+type AreaRow = {
+  id: string;
+  name: string;
+  icon: string;
+  color: string;
+  description: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -60,12 +85,31 @@ type GoalRow = {
 };
 
 function mapProjectRow(row: ProjectRow): ProjectRecord {
+  const area = Array.isArray(row.areas) ? (row.areas[0] ?? null) : row.areas;
+  const areaId = row.area_id ?? area?.id ?? null;
+
   return {
     id: row.id,
     name: row.name,
     slug: row.slug,
     description: row.description,
     status: row.status,
+    areaId,
+    areaName: area?.name ?? null,
+    areaColor: area?.color ?? null,
+    areaIcon: area?.icon ?? null,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function mapAreaRow(row: AreaRow): AreaRecord {
+  return {
+    id: row.id,
+    name: row.name,
+    icon: row.icon,
+    color: row.color,
+    description: row.description,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -191,6 +235,7 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
   async listProjects(
     actor: AuthenticatedActor,
     view: ProjectViewFilter,
+    areaFilter: AreaFilter = null,
   ): Promise<RepositoryResult<ProjectRecord[]>> {
     let query = this.supabase
       .from("projects")
@@ -204,13 +249,150 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
       query = query.eq("status", "archived");
     }
 
+    if (areaFilter?.kind === "area") {
+      query = query.eq("area_id", areaFilter.areaId);
+    } else if (areaFilter?.kind === "unassigned") {
+      query = query.is("area_id", null);
+    }
+
     const { data, error } = await query;
 
     if (error) {
       return { ok: false, error: sanitizeSupabaseError(error) };
     }
 
-    return { ok: true, value: (data ?? []).map(mapProjectRow) };
+    return { ok: true, value: (data ?? []).map((row) => mapProjectRow(row as ProjectRow)) };
+  }
+
+  async listAreas(actor: AuthenticatedActor): Promise<RepositoryResult<AreaRecord[]>> {
+    const { data, error } = await this.supabase
+      .from("areas")
+      .select(AREA_SELECT)
+      .eq("owner_user_id", actor.userId)
+      .order("name", { ascending: true });
+
+    if (error) {
+      return { ok: false, error: sanitizeSupabaseError(error) };
+    }
+
+    return { ok: true, value: (data ?? []).map((row) => mapAreaRow(row as AreaRow)) };
+  }
+
+  async getAreaById(
+    actor: AuthenticatedActor,
+    areaId: string,
+  ): Promise<RepositoryResult<AreaRecord | null>> {
+    const { data, error } = await this.supabase
+      .from("areas")
+      .select(AREA_SELECT)
+      .eq("id", areaId)
+      .eq("owner_user_id", actor.userId)
+      .maybeSingle();
+
+    if (error) {
+      return { ok: false, error: sanitizeSupabaseError(error) };
+    }
+
+    return { ok: true, value: data ? mapAreaRow(data as AreaRow) : null };
+  }
+
+  async createArea(
+    actor: AuthenticatedActor,
+    input: AreaWriteInput,
+  ): Promise<RepositoryResult<AreaRecord>> {
+    const { data, error } = await this.supabase
+      .from("areas")
+      .insert({
+        name: input.name,
+        icon: input.icon,
+        color: input.color,
+        description: input.description,
+        owner_user_id: actor.userId,
+      })
+      .select(AREA_SELECT)
+      .single();
+
+    if (error) {
+      return {
+        ok: false,
+        error: sanitizeSupabaseError(error, {
+          conflictMessageHint: "areas_owner_user_id_name_unique",
+        }),
+      };
+    }
+
+    return { ok: true, value: mapAreaRow(data as AreaRow) };
+  }
+
+  async updateArea(
+    actor: AuthenticatedActor,
+    input: AreaWriteInput & { areaId: string; updatedAt: string },
+  ): Promise<RepositoryResult<AreaRecord | null>> {
+    const { data, error } = await this.supabase
+      .from("areas")
+      .update({
+        name: input.name,
+        icon: input.icon,
+        color: input.color,
+        description: input.description,
+        updated_at: input.updatedAt,
+      })
+      .eq("id", input.areaId)
+      .eq("owner_user_id", actor.userId)
+      .select(AREA_SELECT)
+      .maybeSingle();
+
+    if (error) {
+      return {
+        ok: false,
+        error: sanitizeSupabaseError(error, {
+          conflictMessageHint: "areas_owner_user_id_name_unique",
+        }),
+      };
+    }
+
+    return { ok: true, value: data ? mapAreaRow(data as AreaRow) : null };
+  }
+
+  /**
+   * Delete one owner-scoped Area. The projects.area_id foreign key detaches
+   * projects in the same database statement; no project-owned rows are
+   * touched. A zero-row result is reported as `deleted: false`.
+   */
+  async deleteArea(
+    actor: AuthenticatedActor,
+    input: { areaId: string },
+  ): Promise<RepositoryResult<{ deleted: boolean }>> {
+    const { data, error } = await this.supabase
+      .from("areas")
+      .delete()
+      .eq("id", input.areaId)
+      .eq("owner_user_id", actor.userId)
+      .select("id");
+
+    if (error) {
+      return { ok: false, error: sanitizeSupabaseError(error) };
+    }
+
+    return { ok: true, value: { deleted: (data ?? []).length > 0 } };
+  }
+
+  async assignProjectArea(
+    actor: AuthenticatedActor,
+    input: { projectId: string; areaId: string | null; updatedAt: string },
+  ): Promise<RepositoryResult<{ updated: boolean }>> {
+    const { data, error } = await this.supabase
+      .from("projects")
+      .update({ area_id: input.areaId, updated_at: input.updatedAt })
+      .eq("id", input.projectId)
+      .eq("owner_user_id", actor.userId)
+      .select("id");
+
+    if (error) {
+      return { ok: false, error: sanitizeSupabaseError(error) };
+    }
+
+    return { ok: true, value: { updated: (data ?? []).length > 0 } };
   }
 
   async listProjectStatuses(actor: AuthenticatedActor): Promise<RepositoryResult<string[]>> {
@@ -329,6 +511,7 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
       name: input.name,
       slug: input.slug,
       description: input.description,
+      area_id: input.areaId ?? null,
       owner_user_id: actor.userId,
       ...(identity
         ? {
@@ -400,6 +583,7 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
       p_name: input.name,
       p_slug: input.slug,
       p_description: input.description,
+      p_area_id: input.areaId ?? null,
       p_goals: input.goals,
       p_tasks: input.tasks,
     });

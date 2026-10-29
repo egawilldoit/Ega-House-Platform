@@ -9,6 +9,7 @@ import {
   createAuthenticatedActor,
   aggregateEstimateVsActual,
   getProjectIdentityReadModel,
+  type AreaRecord,
   type ProjectGoalRecord,
   type ProjectIdentityReadModel,
   type ProjectRecord,
@@ -111,7 +112,16 @@ const getProjectIdentity = cache(async (slug: string) => {
     throw new Error(identityResult.errorMessage);
   }
 
-  return identityResult.data;
+  if (!identityResult.data) {
+    return null;
+  }
+
+  const areasResult = await repository.listAreas(actor);
+  if (!areasResult.ok) {
+    throw new Error("Unable to load areas right now.");
+  }
+
+  return { ...identityResult.data, areas: areasResult.value };
 });
 
 function resolveWeekWindow(timeContext: WebTimeContext | null) {
@@ -138,7 +148,7 @@ function resolveWeekWindow(timeContext: WebTimeContext | null) {
 }
 
 async function getProjectDetail(
-  projectIdentity: ProjectIdentityReadModel,
+  projectIdentity: ProjectIdentityReadModel & { areas: AreaRecord[] },
   timeContext: WebTimeContext | null,
 ) {
   const supabase = await createClient();
@@ -195,6 +205,7 @@ async function getProjectDetail(
   return {
     project: project as ProjectRecord,
     goals: projectIdentity.goals as ProjectGoalRecord[],
+    areas: projectIdentity.areas,
     tasks: allTasks,
     activeTasks,
     archivedTaskCount,
@@ -245,6 +256,7 @@ export default async function ProjectDetailPage({
   const {
     project,
     goals,
+    areas,
     tasks: allTasks,
     activeTasks,
     archivedTaskCount,
@@ -416,6 +428,10 @@ export default async function ProjectDetailPage({
     projectUpdateProjectId === project.id && projectUpdateField === "archive"
       ? projectUpdateError
       : null;
+  const areaError =
+    projectUpdateProjectId === project.id && projectUpdateField === "area"
+      ? projectUpdateError
+      : null;
 
   return (
     <TasksWorkspaceShell
@@ -473,6 +489,7 @@ export default async function ProjectDetailPage({
             <ProjectOverview
               project={project}
               goals={goals}
+              areas={areas}
               progress={progress}
               comingUp={comingUp}
               timeSummary={timeSummary}
@@ -486,6 +503,7 @@ export default async function ProjectDetailPage({
               deleteHref={deleteHref}
               statusError={statusError}
               archiveError={archiveError}
+              areaError={areaError}
             />
           </section>
         ) : null}

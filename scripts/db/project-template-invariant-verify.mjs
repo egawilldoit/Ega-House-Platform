@@ -162,6 +162,8 @@ const OPERATION_OTHER_OWNER = "0f000000-0000-4000-8000-000000000002";
 const OPERATION_SLUG = "0f000000-0000-4000-8000-000000000003";
 const OPERATION_ROLLBACK = "0f000000-0000-4000-8000-000000000004";
 const OPERATION_INVALID = "0f000000-0000-4000-8000-000000000005";
+const OPERATION_AREA = "0f000000-0000-4000-8000-000000000006";
+const OPERATION_AREA_CROSS = "0f000000-0000-4000-8000-000000000007";
 
 const GOALS = [
   { title: "Pipeline", description: "Get applications out.", status: "active" },
@@ -244,13 +246,14 @@ function callCreate(tx, overrides = {}) {
   };
   return tx
     .unsafe(
-      `SELECT public.create_project_from_template($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb) AS result`,
+      `SELECT public.create_project_from_template($1, $2, $3, $4, $5, $6::uuid, $7::jsonb, $8::jsonb) AS result`,
       [
         input.operationId,
         input.templateId,
         input.name,
         input.slug,
         input.description,
+        input.areaId ?? null,
         input.goals,
         input.tasks,
       ],
@@ -397,6 +400,47 @@ async function assertInvalidPayloads(sql) {
   log("INVALID", "bad priorities, indexes, titles and sizes fail closed with no rows");
 }
 
+async function assertAreaAssignment(sql) {
+  const areaA = "0a000000-0000-4000-8000-000000000001";
+  const areaB = "0a000000-0000-4000-8000-000000000002";
+  await sql.unsafe(
+    `INSERT INTO public.areas (id, owner_user_id, name)
+     VALUES ($1, $2, 'Job hunt'), ($3, $4, 'Foreign area')`,
+    [areaA, OWNER_A, areaB, OWNER_B],
+  );
+
+  const created = await directSession(sql).run((tx) =>
+    callCreate(tx, {
+      operationId: OPERATION_AREA,
+      slug: "area-project",
+      areaId: areaA,
+    }),
+  );
+  assert(created?.status === "created", `expected created with area, got ${JSON.stringify(created)}`);
+
+  const [project] = await sql.unsafe(
+    `SELECT area_id FROM public.projects WHERE template_operation_id = $1`,
+    [OPERATION_AREA],
+  );
+  assert(project?.area_id === areaA, "template project must carry the same owner's area");
+
+  const crossCode = await capturePostgresCode(() =>
+    directSession(sql).run((tx) =>
+      callCreate(tx, {
+        operationId: OPERATION_AREA_CROSS,
+        slug: "area-cross-project",
+        areaId: areaB,
+      }),
+    ),
+  );
+  assert(crossCode === "23514", `cross-owner area must raise 23514, got ${crossCode}`);
+  assert(
+    (await countWhere(sql, "projects", "template_operation_id", OPERATION_AREA_CROSS)) === 0,
+    "cross-owner area assignment must roll back the whole template project",
+  );
+  log("AREA", "template creation carries a same-owner area and rolls back a cross-owner one");
+}
+
 async function assertRollback(sql) {
   const blocker = `template_proof_blocker`;
   const [before] = await sql.unsafe(
@@ -509,6 +553,7 @@ async function main() {
     await assertOwnerScopedReceipt(sql);
     await assertSlugConflict(sql);
     await assertInvalidPayloads(sql);
+    await assertAreaAssignment(sql);
     await assertRollback(sql);
     await assertAuthGuards(sql);
     await assertRlsIsolation(sql);

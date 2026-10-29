@@ -34,6 +34,23 @@ class FakeProjectsRepository implements ProjectsRepository {
     taskCount: 7,
     replayed: false,
   });
+  areaResult: RepositoryResult<{
+    id: string;
+    name: string;
+    icon: string;
+    color: string;
+    description: string | null;
+    createdAt: string;
+    updatedAt: string;
+  } | null> = ok({
+    id: "11111111-1111-4111-8111-111111111111",
+    name: "Job hunt",
+    icon: "briefcase",
+    color: "blue",
+    description: null,
+    createdAt: "2027-01-01T00:00:00.000Z",
+    updatedAt: "2027-01-01T00:00:00.000Z",
+  });
 
   listProjects(): never {
     throw new Error("not used");
@@ -72,6 +89,25 @@ class FakeProjectsRepository implements ProjectsRepository {
     throw new Error("not used");
   }
   purgeArchivedProject(): never {
+    throw new Error("not used");
+  }
+  listAreas(): never {
+    throw new Error("not used");
+  }
+  getAreaById(actor: AuthenticatedActor, areaId: string) {
+    this.calls.push({ method: "getAreaById", actorUserId: actor.userId, input: { areaId } });
+    return Promise.resolve(this.areaResult);
+  }
+  createArea(): never {
+    throw new Error("not used");
+  }
+  updateArea(): never {
+    throw new Error("not used");
+  }
+  deleteArea(): never {
+    throw new Error("not used");
+  }
+  assignProjectArea(): never {
     throw new Error("not used");
   }
 
@@ -389,9 +425,51 @@ test("record mapping keeps goal indexes aligned with the goals it sends", () => 
     name: "Weekly review",
     slug: "weekly-review",
     description: null,
+    areaId: null,
   });
 
   assert.equal(record.goals.length, 1);
   assert.equal(record.tasks.length, preview.data.taskCount);
   assert.ok(record.tasks.every((task) => task.goalIndex === 0));
+});
+
+test("template creation resolves and carries the optional area into the atomic record", async () => {
+  const repository = new FakeProjectsRepository();
+
+  const result = await createProjectFromTemplate(
+    ACTOR,
+    repository,
+    fakeTimeContext(),
+    createInput({ areaId: "11111111-1111-4111-8111-111111111111" }),
+  );
+
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+
+  assert.deepEqual(
+    repository.calls.map((call) => call.method),
+    ["getAreaById", "createProjectFromTemplate"],
+  );
+  const record = repository.calls[1]?.input as CreateProjectFromTemplateRecordInput;
+  assert.equal(record.areaId, "11111111-1111-4111-8111-111111111111");
+});
+
+test("template creation rejects an area the actor does not own before writing", async () => {
+  const repository = new FakeProjectsRepository();
+  repository.areaResult = ok(null);
+
+  const result = await createProjectFromTemplate(
+    ACTOR,
+    repository,
+    fakeTimeContext(),
+    createInput({ areaId: "11111111-1111-4111-8111-111111111111" }),
+  );
+
+  assert.equal(result.ok, false);
+  if (result.ok) return;
+  assert.equal(result.errorMessage, "Area not found.");
+  assert.deepEqual(
+    repository.calls.map((call) => call.method),
+    ["getAreaById"],
+  );
 });
