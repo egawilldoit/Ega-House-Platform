@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Ephemeral-database proof for Areas (drizzle/0074_areas.sql).
+ * Ephemeral-database proof for Areas (drizzle/0075_areas.sql).
  *
  * Applies the full drizzle migration journal (plus the standard minimal
  * Supabase shim) to a disposable Postgres, then proves:
@@ -186,7 +186,7 @@ async function main() {
     await applySupabaseShim(sql);
 
     const tags = await readJournal();
-    assert(tags.includes("0074_areas"), "journal must include the areas migration");
+    assert(tags.includes("0075_areas"), "journal must include the areas migration");
 
     let applied = 0;
     for (const tag of tags) {

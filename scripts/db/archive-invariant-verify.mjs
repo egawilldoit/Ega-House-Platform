@@ -410,20 +410,23 @@ async function main() {
     await applySupabaseShim(sql);
 
     const tags = await readJournal();
-    assert(tags.includes(ARCHIVE_TAG), `journal includes ${ARCHIVE_TAG}`);
+    const archiveIndex = tags.indexOf(ARCHIVE_TAG);
+    assert(archiveIndex > 0, `journal includes ${ARCHIVE_TAG} after a base migration`);
 
-    for (const tag of tags) {
-      if (tag === ARCHIVE_TAG) break;
+    for (const tag of tags.slice(0, archiveIndex)) {
       await applyFile(sql, tag);
     }
     log("MIGRATE", `journal applied up to the tag before ${ARCHIVE_TAG}`);
 
     await seedLegacyRows(sql);
     await applyFile(sql, ARCHIVE_TAG);
-    // The journal grows past this tag; the archive proof exercises its own
-    // migration over legacy data and must not assume it is the newest entry.
-    assert(tags.includes(ARCHIVE_TAG), `journal includes ${ARCHIVE_TAG}`);
-    log("MIGRATE", `${ARCHIVE_TAG} applied over legacy data`);
+    // Newer migrations may exist after this one; this proof owns the upgrade
+    // path INTO the archive migration, not the repository head. Any later tag
+    // is covered by its own journal proof.
+    log(
+      "MIGRATE",
+      `${ARCHIVE_TAG} (position ${archiveIndex + 1}/${tags.length}) applied over legacy data`,
+    );
 
     await grantProofRolePrivileges(sql);
 
