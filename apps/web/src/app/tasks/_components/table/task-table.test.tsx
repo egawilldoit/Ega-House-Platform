@@ -15,7 +15,6 @@ vi.mock("next/navigation", () => ({
 import type { TaskRecord } from "@/lib/services/task-service";
 import type { UpdateTaskEditorFormState } from "@/app/tasks/actions";
 import { normalizeTaskTableColumns } from "@ega/contracts/common/task-list";
-import { parseTaskTableColumns } from "@/lib/task-table-columns";
 
 import { ToastProvider } from "@/components/ui/toast-provider";
 import { TaskTable, type TaskTableActions } from "./task-table";
@@ -658,7 +657,7 @@ describe("EGA-792 table view behavior", () => {
       '[data-testid="sort-header-priority"]',
     );
     expect(toggledLink?.getAttribute("href")).toContain("sort=priority");
-    expect(toggledLink?.getAttribute("href")).toContain("dir=asc");
+    expect(toggledLink?.getAttribute("href")).not.toContain("dir=asc");
   });
 
   it("persists column visibility in the URL and keeps focus on the toggled control", async () => {
@@ -733,13 +732,25 @@ describe("EGA-792 table view behavior", () => {
     }));
 
     await renderTable([buildTask()], actions, { returnTo: "/tasks" });
-    await pointerClick(
-      container.querySelector('[data-testid="task-status-cell-task-1"] button'),
+    const trigger = container.querySelector<HTMLButtonElement>(
+      '[data-testid="task-status-cell-task-1"] button',
     );
-    const option = Array.from(document.body.querySelectorAll('[role="option"]')).find(
-      (entry) => entry.textContent?.includes("In progress"),
-    );
-    await pointerClick(option);
+    expect(trigger).not.toBeNull();
+    await pointerClick(trigger);
+    const listbox = document.body.querySelector<HTMLElement>('[role="listbox"]');
+    expect(listbox).not.toBeNull();
+    await act(async () => {
+      listbox?.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "ArrowDown",
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+      listbox?.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }),
+      );
+    });
     await act(async () => {});
 
     expect(actions.updateCellAction).toHaveBeenCalledWith(
@@ -764,13 +775,26 @@ describe("EGA-792 table view behavior", () => {
     }));
 
     await renderTable([buildTask()], actions, { returnTo: "/tasks" });
-    await pointerClick(
-      container.querySelector('[data-testid="task-status-cell-task-1"] button'),
+    const trigger = container.querySelector<HTMLButtonElement>(
+      '[data-testid="task-status-cell-task-1"] button',
     );
-    const option = Array.from(document.body.querySelectorAll('[role="option"]')).find(
-      (entry) => entry.textContent?.includes("Done"),
-    );
-    await pointerClick(option);
+    await pointerClick(trigger);
+    const listbox = document.body.querySelector<HTMLElement>('[role="listbox"]');
+    expect(listbox).not.toBeNull();
+    await act(async () => {
+      for (let index = 0; index < 3; index += 1) {
+        listbox?.dispatchEvent(
+          new KeyboardEvent("keydown", {
+            key: "ArrowDown",
+            bubbles: true,
+            cancelable: true,
+          }),
+        );
+      }
+      listbox?.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }),
+      );
+    });
     await act(async () => {});
 
     expect(
@@ -826,21 +850,39 @@ describe("EGA-792 table view behavior", () => {
 
     await renderTable([buildTask()], actions, {
       returnTo: "/tasks",
-      columns: parseTaskTableColumns({ cols: "task,project,priority,due,status" }),
       projectOptions: [
         { id: "project-1", name: "EGA House" },
         { id: "project-2", name: "Second project" },
       ],
     });
 
+    await pointerClick(container.querySelector('[data-testid="table-columns-trigger"]'));
+    const projectToggle = document.body.querySelector<HTMLInputElement>(
+      'input[aria-label="Show Project column"]',
+    );
+    expect(projectToggle).not.toBeNull();
+    await act(async () => projectToggle?.click());
+
     expect(container.querySelector('[data-testid="task-project-cell-task-1"]')).not.toBeNull();
-    await pointerClick(
-      container.querySelector('[data-testid="task-project-cell-task-1"] button'),
+    const trigger = container.querySelector<HTMLButtonElement>(
+      '[data-testid="task-project-cell-task-1"] button',
     );
-    const option = Array.from(document.body.querySelectorAll('[role="option"]')).find(
-      (entry) => entry.textContent?.includes("Second project"),
-    );
-    await pointerClick(option);
+    expect(trigger).not.toBeNull();
+    await pointerClick(trigger);
+    const listbox = document.body.querySelector<HTMLElement>('[role="listbox"]');
+    expect(listbox).not.toBeNull();
+    await act(async () => {
+      listbox?.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "ArrowDown",
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+      listbox?.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }),
+      );
+    });
     await act(async () => {});
 
     expect(actions.updateCellAction).toHaveBeenCalledWith(

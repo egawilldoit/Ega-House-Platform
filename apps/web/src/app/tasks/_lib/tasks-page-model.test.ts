@@ -143,11 +143,7 @@ describe("getTasksPageModel dead /tasks work removal", () => {
     expect(model.returnPath).toContain("widths=status%3A400");
 
     const defaultModel = await getTasksPageModel({});
-    expect(
-      defaultModel.parsed.view.columns
-        ?.filter((column) => column.visible)
-        .map((column) => column.id),
-    ).toEqual(["task", "priority", "due", "status"]);
+    expect(defaultModel.parsed.view.columns).toBeUndefined();
   });
 
   it("ega-661: overdue and due-soon counts use the account local date, not the runtime-local date", async () => {

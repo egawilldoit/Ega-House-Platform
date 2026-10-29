@@ -842,9 +842,9 @@ function TaskTableRow({
       : task.estimate_minutes;
   const projectId = overrideFor("project") ?? task.project_id;
   const projectName =
-    projectOptions.find((project) => project.id === projectId)?.name ??
-    (projectId === task.project_id ? task.projects?.name : null) ??
-    null;
+    projectId !== task.project_id
+      ? (projectOptions.find((project) => project.id === projectId)?.name ?? null)
+      : (task.projects?.name ?? null);
   const goalTitle = task.goals?.title ?? null;
   const estimateLabel = estimateMinutes ? formatDisplayEstimate(estimateMinutes) : null;
   const trackedLabel = typeof trackedSeconds === "number" ? trackedSeconds : null;
