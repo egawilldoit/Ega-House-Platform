@@ -171,6 +171,7 @@ export function WorkAnalyticsPageView({ model }: { model: WorkAnalyticsPageModel
         breakdownBy={report.breakdownBy}
         breakdownTitle={report.breakdownTitle}
         projectBreakdown={report.projectBreakdown}
+        areaBreakdown={report.areaBreakdown}
         goalBreakdown={report.goalBreakdown}
         taskBreakdown={report.taskBreakdown}
         selectedRangeLabel={report.selectedRangeLabel}
