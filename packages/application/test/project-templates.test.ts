@@ -62,6 +62,12 @@ class FakeProjectsRepository implements ProjectsRepository {
   deleteArchivedProject(): never {
     throw new Error("not used");
   }
+  updateProjectArchiveState(): never {
+    throw new Error("not used");
+  }
+  hasOpenTaskSessionForProject(): never {
+    throw new Error("not used");
+  }
   getProjectPurgePreview(): never {
     throw new Error("not used");
   }
