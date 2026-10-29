@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 import { AppShell } from "@/components/layout/app-shell";
 import { AnalyticsFilters } from "./analytics-filters";
 import { getWorkAnalyticsPageModel } from "./_lib/work-analytics-page-model";
@@ -14,6 +15,9 @@ export const metadata: Metadata = {
 export default async function WorkAnalyticsPage({ searchParams }: { searchParams: Promise<{ range?: string; groupBy?: string; breakdownBy?: string; includeOpen?: string }> }) {
   const resolvedSearchParams = await searchParams;
   const model = await getWorkAnalyticsPageModel(resolvedSearchParams as unknown as Record<string, string | undefined>);
+  if (!model.user) {
+    redirect("/login?next=/work-analytics");
+  }
   return (
     <AppShell
       title="Analytics"

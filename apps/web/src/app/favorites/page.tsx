@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowDown, ArrowUp, Star } from "lucide-react";
+import { Star } from "lucide-react";
 
 import { AppShell } from "@/components/layout/app-shell";
+import { MoveButton, RemoveButton } from "./favourite-row-actions";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { listFavorites, type FavoriteItem } from "@/lib/services/favorite-service";
@@ -33,39 +34,19 @@ function FavouriteRow({ item, index, count }: { item: FavoriteItem; index: numbe
           <input type="hidden" name="kind" value={item.kind} />
           <input type="hidden" name="entityId" value={item.entityId} />
           <input type="hidden" name="direction" value="up" />
-          <button
-            type="submit"
-            disabled={index === 0}
-            aria-label={`Move ${item.label} up`}
-            className="inline-flex h-7 w-7 items-center justify-center rounded-[var(--radius-xs)] text-[color:var(--ega-text-secondary)] transition-colors hover:bg-[var(--ega-surface-hover)] hover:text-[color:var(--ega-text)] focus-visible:outline-none focus-visible:shadow-[var(--ega-focus-ring)] disabled:opacity-40 disabled:hover:bg-transparent"
-          >
-            <ArrowUp className="h-3.5 w-3.5" aria-hidden="true" />
-          </button>
+          <MoveButton direction="up" disabled={index === 0} label={`Move ${item.label} up`} />
         </form>
         <form action={moveFavoriteAction}>
           <input type="hidden" name="kind" value={item.kind} />
           <input type="hidden" name="entityId" value={item.entityId} />
           <input type="hidden" name="direction" value="down" />
-          <button
-            type="submit"
-            disabled={index === count - 1}
-            aria-label={`Move ${item.label} down`}
-            className="inline-flex h-7 w-7 items-center justify-center rounded-[var(--radius-xs)] text-[color:var(--ega-text-secondary)] transition-colors hover:bg-[var(--ega-surface-hover)] hover:text-[color:var(--ega-text)] focus-visible:outline-none focus-visible:shadow-[var(--ega-focus-ring)] disabled:opacity-40 disabled:hover:bg-transparent"
-          >
-            <ArrowDown className="h-3.5 w-3.5" aria-hidden="true" />
-          </button>
+          <MoveButton direction="down" disabled={index === count - 1} label={`Move ${item.label} down`} />
         </form>
         <form action={toggleFavoriteAction}>
           <input type="hidden" name="kind" value={item.kind} />
           <input type="hidden" name="entityId" value={item.entityId} />
           <input type="hidden" name="returnTo" value="/favorites" />
-          <button
-            type="submit"
-            aria-label={`Remove ${item.label} from favourites`}
-            className="inline-flex h-7 w-7 items-center justify-center rounded-[var(--radius-xs)] text-[color:var(--status-risk)] transition-colors hover:bg-[var(--status-risk-bg)] focus-visible:outline-none focus-visible:shadow-[var(--ega-focus-ring)]"
-          >
-            <Star className="h-3.5 w-3.5 fill-current" aria-hidden="true" />
-          </button>
+          <RemoveButton label={`Remove ${item.label} from favourites`} />
         </form>
       </span>
     </li>

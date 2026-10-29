@@ -78,7 +78,7 @@ export function AppsLauncherGrid({ items }: AppsLauncherGridProps) {
                   tileRefs.current[index] = node;
                 }}
                 onKeyDown={(event) => handleTileKeyDown(event, index)}
-                className="row group transition-colors hover:bg-[var(--ega-surface-hover)]"
+                className="row group transition-colors [@media(hover:hover)]:hover:bg-[var(--ega-surface-hover)]"
               >
                 <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius-sm)] border border-ega-border bg-ega-surface-subtle text-ega-text-secondary transition-colors group-hover:border-[var(--ega-border-strong)] group-hover:text-ega-text">
                   <Icon className="h-4 w-4" strokeWidth={1.7} aria-hidden="true" />

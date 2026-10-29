@@ -50,8 +50,7 @@ export function WorkAnalyticsPageView({ model }: { model: WorkAnalyticsPageModel
               Analytics could not be loaded
             </h2>
             <p className="mt-1 text-[length:var(--text-body)] leading-[var(--leading-relaxed)] text-[color:var(--ega-text-secondary)]">
-              {model.error ??
-                "The analytics report did not come back. Your tasks and sessions are unaffected."}
+              The analytics report did not come back. Your tasks and sessions are unaffected.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
