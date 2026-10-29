@@ -27,11 +27,7 @@ import { FocusPinToggleForm } from "@/components/tasks/focus-pin-toggle-form";
 import { TaskDueDateLabel } from "@/components/tasks/task-due-date-label";
 import { Badge } from "@/components/ui/badge";
 import { buildTaskDrawerHref } from "@/components/tasks/drawer/use-task-drawer-param";
-import { PriorityIcon } from "@/components/ui/priority-icon";
 import { StatusBadge } from "@/components/ui/status-badge";
-import { StatusIcon } from "@/components/ui/status-icon";
-import { PropertyPill } from "@/components/ui/property-pill";
-import type { MenuListItem } from "@/components/ui/menu-list";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useTaskEditorOpenState } from "@/components/tasks/use-task-editor-open-state";
 import { getLocalDateInTimezone } from "@ega/domain/time-context";
@@ -43,8 +39,6 @@ import {
   TASK_STATUS_VALUES,
   formatTaskToken,
   isTaskCompletedStatus,
-  isTaskPriority,
-  isTaskStatus,
 } from "@/lib/task-domain";
 import {
   formatDisplayDate,
@@ -649,23 +643,6 @@ const DUE_STATE_LABEL: Record<ReturnType<typeof getTaskDueDateState>, string | n
   none: null,
 };
 
-const PRIORITY_TEXT_CLASS: Record<string, string> = {
-  urgent: "text-[color:var(--priority-high)] font-medium",
-  high: "text-[color:var(--priority-high)]",
-  medium: "text-[color:var(--priority-medium)]",
-  low: "text-[color:var(--ega-text-tertiary)]",
-};
-
-function TaskPriorityCell({ priority }: { priority: string }) {
-  return (
-    <span
-      className={`text-[length:var(--text-meta-lg)] ${PRIORITY_TEXT_CLASS[priority] ?? "text-[color:var(--ega-text-tertiary)]"}`}
-    >
-      {formatTaskToken(priority)}
-    </span>
-  );
-}
-
 function TaskDueCell({ dueDate, status }: { dueDate: string | null; status: string }) {
   const todayIsoDate = getLocalDateInTimezone(new Date(), useDisplayTimezone());
 
@@ -923,23 +900,21 @@ function TaskTableRow({
     </Link>
   );
 
-  const statusItems: MenuListItem[] = TASK_STATUS_VALUES.filter(
+  const statusOptions = TASK_STATUS_VALUES.filter(
     (statusValue) =>
       statusValue !== "blocked" || Boolean(task.blocked_reason) || status === "blocked",
   ).map((statusValue) => ({
-    id: statusValue,
+    value: statusValue,
     label: formatDisplayStatus(statusValue),
-    icon: <StatusIcon status={statusValue} decorative />,
   }));
 
-  const priorityItems: MenuListItem[] = TASK_PRIORITY_VALUES.map((priorityValue) => ({
-    id: priorityValue,
+  const priorityOptions = TASK_PRIORITY_VALUES.map((priorityValue) => ({
+    value: priorityValue,
     label: formatTaskToken(priorityValue),
-    icon: <PriorityIcon priority={priorityValue} decorative />,
   }));
 
-  const projectItems: MenuListItem[] = projectOptions.map((project) => ({
-    id: project.id,
+  const projectOptionsForCell = projectOptions.map((project) => ({
+    value: project.id,
     label: project.name,
   }));
 
@@ -1008,34 +983,29 @@ function TaskTableRow({
       </div>
     ),
     project: (
-      <PickerCell
+      <SelectCell
         label="Project"
         value={projectId}
-        items={projectItems}
-        displayValue={projectName ?? "—"}
+        options={projectOptionsForCell}
+        fallbackLabel={projectName ?? "—"}
         taskTitle={task.title}
         testId={`task-project-cell-${task.id}`}
         pending={pendingField === "project"}
         error={fieldErrors.project}
-        onSelect={(value) => {
-          void saveField("project", value);
-        }}
+        onSave={(value) => saveField("project", value)}
       />
     ),
     priority: (
-      <PickerCell
+      <SelectCell
         label="Priority"
         value={priority}
-        items={priorityItems}
-        displayValue={<TaskPriorityCell priority={priority} />}
-        icon={isTaskPriority(priority) ? <PriorityIcon priority={priority} decorative /> : null}
+        options={priorityOptions}
+        fallbackLabel={formatTaskToken(priority)}
         taskTitle={task.title}
         testId={`task-priority-cell-${task.id}`}
         pending={pendingField === "priority"}
         error={fieldErrors.priority}
-        onSelect={(value) => {
-          void saveField("priority", value);
-        }}
+        onSave={(value) => saveField("priority", value)}
       />
     ),
     due: (
@@ -1052,19 +1022,16 @@ function TaskTableRow({
       />
     ),
     status: (
-      <PickerCell
+      <SelectCell
         label="Status"
         value={status}
-        items={statusItems}
-        displayValue={<StatusBadge status={status} label={formatDisplayStatus(status)} />}
-        icon={isTaskStatus(status) ? <StatusIcon status={status} decorative /> : null}
+        options={statusOptions}
+        fallbackLabel={formatDisplayStatus(status)}
         taskTitle={task.title}
         testId={`task-status-cell-${task.id}`}
         pending={pendingField === "status"}
         error={fieldErrors.status}
-        onSelect={(value) => {
-          void saveField("status", value);
-        }}
+        onSave={(value) => saveField("status", value)}
       />
     ),
     estimate: (
@@ -1186,43 +1153,54 @@ function TaskTableRow({
   );
 }
 
-function PickerCell({
+function SelectCell({
   label,
   value,
-  items,
-  displayValue,
-  icon,
+  options,
+  fallbackLabel,
   taskTitle,
   testId,
   pending,
   error,
-  onSelect,
+  onSave,
 }: {
   label: string;
   value: string;
-  items: MenuListItem[];
-  displayValue: ReactNode;
-  icon?: ReactNode;
+  options: Array<{ value: string; label: string }>;
+  fallbackLabel: string;
   taskTitle: string;
   testId: string;
   pending: boolean;
   error?: string;
-  onSelect: (value: string) => void;
+  onSave: (value: string) => Promise<RowSaveResult>;
 }) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const shown = draft ?? value;
+  const hasValue = options.some((option) => option.value === value);
+
   return (
     <div className="flex min-w-0 flex-col gap-1">
-      <PropertyPill
-        label={label}
-        value={value}
-        items={items}
-        onSelect={(item) => onSelect(item.id)}
-        displayValue={displayValue}
-        icon={icon}
+      <select
+        data-testid={testId}
+        aria-label={`Edit ${label} for ${taskTitle}`}
+        value={shown}
         disabled={pending}
-        triggerLabel={`Edit ${label} for ${taskTitle}`}
-        className="h-7 w-full justify-between px-1.5"
-        contentClassName="min-w-[12rem]"
-      />
+        onChange={(event) => {
+          const next = event.target.value;
+          setDraft(next);
+          void onSave(next).then((result) => {
+            if (!result.errorMessage) setDraft(null);
+          });
+        }}
+        className="input-instrument h-7 w-full px-1.5 text-[length:var(--text-meta)]"
+      >
+        {hasValue ? null : <option value={value}>{fallbackLabel}</option>}
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
       {pending ? (
         <span role="status" className="text-[length:var(--text-meta)] text-[color:var(--ega-text-tertiary)]">
           Saving…

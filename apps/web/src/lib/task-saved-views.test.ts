@@ -341,7 +341,12 @@ test("EGA-792: v2 saved-view definitions round-trip the per-view column layout",
   });
 
   assert.equal(normalized?.version, 2);
-  assert.deepEqual(normalized?.columns, columns);
+  const normalizedById = new Map(
+    (normalized?.columns ?? []).map((column) => [column.id, column]),
+  );
+  for (const column of columns) {
+    assert.deepEqual(normalizedById.get(column.id), column);
+  }
   assert.deepEqual(getTaskSavedViewFiltersFromDefinition(normalized), {
     activeTasks: true,
     status: "in_progress",

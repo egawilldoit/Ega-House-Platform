@@ -732,24 +732,13 @@ describe("EGA-792 table view behavior", () => {
     }));
 
     await renderTable([buildTask()], actions, { returnTo: "/tasks" });
-    const trigger = container.querySelector<HTMLButtonElement>(
-      '[data-testid="task-status-cell-task-1"] button',
+    const select = container.querySelector<HTMLSelectElement>(
+      '[data-testid="task-status-cell-task-1"]',
     );
-    expect(trigger).not.toBeNull();
-    await pointerClick(trigger);
-    const listbox = document.body.querySelector<HTMLElement>('[role="listbox"]');
-    expect(listbox).not.toBeNull();
+    expect(select).not.toBeNull();
     await act(async () => {
-      listbox?.dispatchEvent(
-        new KeyboardEvent("keydown", {
-          key: "ArrowDown",
-          bubbles: true,
-          cancelable: true,
-        }),
-      );
-      listbox?.dispatchEvent(
-        new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }),
-      );
+      select!.value = "in_progress";
+      select!.dispatchEvent(new Event("change", { bubbles: true }));
     });
     await act(async () => {});
 
@@ -775,25 +764,13 @@ describe("EGA-792 table view behavior", () => {
     }));
 
     await renderTable([buildTask()], actions, { returnTo: "/tasks" });
-    const trigger = container.querySelector<HTMLButtonElement>(
-      '[data-testid="task-status-cell-task-1"] button',
+    const select = container.querySelector<HTMLSelectElement>(
+      '[data-testid="task-status-cell-task-1"]',
     );
-    await pointerClick(trigger);
-    const listbox = document.body.querySelector<HTMLElement>('[role="listbox"]');
-    expect(listbox).not.toBeNull();
+    expect(select).not.toBeNull();
     await act(async () => {
-      for (let index = 0; index < 3; index += 1) {
-        listbox?.dispatchEvent(
-          new KeyboardEvent("keydown", {
-            key: "ArrowDown",
-            bubbles: true,
-            cancelable: true,
-          }),
-        );
-      }
-      listbox?.dispatchEvent(
-        new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }),
-      );
+      select!.value = "done";
+      select!.dispatchEvent(new Event("change", { bubbles: true }));
     });
     await act(async () => {});
 
@@ -864,24 +841,13 @@ describe("EGA-792 table view behavior", () => {
     await act(async () => projectToggle?.click());
 
     expect(container.querySelector('[data-testid="task-project-cell-task-1"]')).not.toBeNull();
-    const trigger = container.querySelector<HTMLButtonElement>(
-      '[data-testid="task-project-cell-task-1"] button',
+    const select = container.querySelector<HTMLSelectElement>(
+      '[data-testid="task-project-cell-task-1"]',
     );
-    expect(trigger).not.toBeNull();
-    await pointerClick(trigger);
-    const listbox = document.body.querySelector<HTMLElement>('[role="listbox"]');
-    expect(listbox).not.toBeNull();
+    expect(select).not.toBeNull();
     await act(async () => {
-      listbox?.dispatchEvent(
-        new KeyboardEvent("keydown", {
-          key: "ArrowDown",
-          bubbles: true,
-          cancelable: true,
-        }),
-      );
-      listbox?.dispatchEvent(
-        new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }),
-      );
+      select!.value = "project-2";
+      select!.dispatchEvent(new Event("change", { bubbles: true }));
     });
     await act(async () => {});
 
