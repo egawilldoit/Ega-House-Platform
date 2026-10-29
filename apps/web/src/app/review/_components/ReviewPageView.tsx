@@ -16,7 +16,7 @@ import { ReviewForm } from "../review-form";
 import { WeekSelector } from "../week-selector";
 import { WeeklyIntelligenceSummary } from "@/components/review/weekly-intelligence-summary";
 import { EstimateVsActualBadge } from "@/components/tasks/estimate-vs-actual-badge";
-import { ESTIMATE_ACCURACY_TOLERANCE_PERCENT } from "@ega/application";
+import { ESTIMATE_ACCURACY_TOLERANCE_PERCENT } from "@ega/application/timer/tracked-time";
 import type { HealthSnapshotServiceResult } from "@/lib/services/health-snapshot-service";
 import type { FrictionRadarResponse } from "@ega/contracts/friction";
 import type { ReviewPageModel } from "../_lib/review-page-model";

@@ -1,4 +1,4 @@
-import { compareEstimateToTracked } from "@ega/application";
+import { compareEstimateToTracked } from "@ega/application/timer/tracked-time";
 
 import { Badge } from "@/components/ui/badge";
 import { formatDisplayDuration, formatDisplayEstimate } from "@/lib/presentation-format";
