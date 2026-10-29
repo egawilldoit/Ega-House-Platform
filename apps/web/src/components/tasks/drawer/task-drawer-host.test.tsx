@@ -113,6 +113,8 @@ describe("TaskDrawerHost", () => {
           task={TASK}
           updateFieldAction={updateFieldAction}
           updateDraftAction={updateDraftAction}
+          addDependencyAction={dependencyAction}
+          removeDependencyAction={dependencyAction}
           ownerId="owner-1"
           activity={[]}
           comments={[
@@ -476,6 +478,8 @@ describe("TaskDrawer subtasks", () => {
           task={TASK}
           updateFieldAction={updateFieldAction}
           updateDraftAction={updateDraftAction}
+          addDependencyAction={dependencyAction}
+          removeDependencyAction={dependencyAction}
           subtasks={[
             {
               id: "s1",
@@ -531,6 +535,8 @@ describe("TaskDrawer activity", () => {
           task={TASK}
           updateFieldAction={updateFieldAction}
           updateDraftAction={updateDraftAction}
+          addDependencyAction={dependencyAction}
+          removeDependencyAction={dependencyAction}
           activity={[
             {
               id: "a1",
