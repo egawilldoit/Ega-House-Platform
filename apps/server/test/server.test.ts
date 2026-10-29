@@ -254,6 +254,7 @@ test("POST /api/projects creates a project scoped to the verified actor", async 
     name: "Home Renovation",
     slug: "home-renovation",
     description: "Kitchen",
+    areaId: "",
   });
 
   const insert = insertStep(fake, "projects");
@@ -262,6 +263,7 @@ test("POST /api/projects creates a project scoped to the verified actor", async 
     name: "Home Renovation",
     slug: "home-renovation",
     description: "Kitchen",
+    area_id: null,
     owner_user_id: "user-123",
   });
 });
