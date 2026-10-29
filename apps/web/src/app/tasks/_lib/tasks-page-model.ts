@@ -56,6 +56,9 @@ export type TasksSearchParams = {
   density?: string;
   boardOrder?: string;
   view?: string;
+  /** Table column layout (EGA-792). */
+  cols?: string;
+  widths?: string;
   /** Canonical toolbar parameters (EGA-791). */
   q?: string;
   group?: string;
@@ -227,6 +230,7 @@ export async function getTasksPageModel(
     boardOrder: parsed.activeBoardOrder,
     timelineStart: parsed.activeLayout === "timeline" ? timelineRange.start : null,
     timelineZoom: parsed.activeLayout === "timeline" ? timelineZoom : null,
+    columns: view.columns,
   });
 
   const taskUrlFilters = {
@@ -238,6 +242,7 @@ export async function getTasksPageModel(
     activeTasks: view.activeOnly,
     density: parsed.activeDensity === "compact" ? "compact" : null,
     boardOrder: parsed.activeBoardOrder,
+    columns: view.columns,
   };
   const today = accountLocalDate ?? getTodayLocalIsoDate();
   const tasksById = new Map(tasks.map((task) => [task.id, task]));

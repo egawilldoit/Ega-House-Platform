@@ -128,6 +128,24 @@ describe("getTasksPageModel dead /tasks work removal", () => {
     expect(model).not.toHaveProperty("resolvedSavedViewFeedback");
   });
 
+  it("EGA-792: parses bounded column state and carries it in the view URL", async () => {
+    const model = await getTasksPageModel({
+      cols: "task,project,status",
+      widths: "status:400",
+    });
+
+    expect(
+      model.parsed.view.columns
+        ?.filter((column) => column.visible)
+        .map((column) => column.id),
+    ).toEqual(["task", "project", "status"]);
+    expect(model.returnPath).toContain("cols=task%2Cproject%2Cstatus");
+    expect(model.returnPath).toContain("widths=status%3A400");
+
+    const defaultModel = await getTasksPageModel({});
+    expect(defaultModel.parsed.view.columns).toBeUndefined();
+  });
+
   it("ega-661: overdue and due-soon counts use the account local date, not the runtime-local date", async () => {
     const model = await getTasksPageModel({});
 

@@ -62,6 +62,7 @@ export function buildTaskSavedViewCurrentReturnPath(
       sortDirection: currentView.sort.direction,
       activeTasks: currentView.activeOnly,
       layout: activeLayout,
+      columns: currentView.columns,
     });
   }
 
@@ -119,6 +120,7 @@ export function getTaskSavedViewHref(view: TaskSavedViewRow, activeLayout?: Task
     sortDirection: definition.sort.direction,
     activeTasks: definition.activeOnly,
     layout: activeLayout,
+    columns: definition.columns,
   });
 }
 
