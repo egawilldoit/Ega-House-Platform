@@ -126,4 +126,3 @@ This log persists material **current-behavior vs normative-authority conflicts**
 - **Resolution / required decision:** the owner must decide session/status-history retention, attachment object cleanup, restore limits, and task/goal reference handling (saved views, notifications, external refs, calendar jobs) before any archive-centre hard delete is enabled. Typed-name confirmation is UI friction, not authorization.
 - **Status:** `OPEN` — explicit blocker; EGA-797 must not be marked complete while this is unresolved.
 - **Follow-up / evidence:** archive centre ships restore only and states the blocker in-product; no new destructive action, RPC or cascade rule is introduced by this change.
-
