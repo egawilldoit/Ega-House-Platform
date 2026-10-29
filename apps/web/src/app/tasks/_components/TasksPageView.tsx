@@ -99,6 +99,7 @@ export function TasksPageView({
     selectedTaskId,
     selectedTaskError,
     selectedTaskSubtasks,
+    selectedTaskAttachments,
     subtaskCounts,
     selectedTaskActivity,
     selectedTaskActivityHasMore,
@@ -582,6 +583,8 @@ export function TasksPageView({
           updateDraftAction={updateTaskFieldDraftAction}
           ownerId={ownerId}
           subtasks={selectedTaskSubtasks}
+          attachments={selectedTaskAttachments.data}
+          attachmentsError={selectedTaskAttachments.errorMessage}
           activity={selectedTaskActivity}
           activityHasMore={selectedTaskActivityHasMore}
           comments={selectedTaskComments.comments}

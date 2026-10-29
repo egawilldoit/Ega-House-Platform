@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { cache } from "react";
+import { Suspense, cache } from "react";
 import { CalendarDays } from "lucide-react";
 
 import {
@@ -52,6 +52,7 @@ import { buildTaskDrawerLink } from "@/lib/task-drawer-url";
 import { listTaskSubtasks } from "@/lib/services/subtask-service";
 import { getProjectTaskActivity, getTaskActivity } from "@/lib/services/task-activity-service";
 import { getTaskCommentThread } from "@/lib/services/task-comment-service";
+import { listTaskAttachments } from "@/lib/services/attachment-service";
 import { isFavorite } from "@/lib/services/favorite-service";
 import { toggleFavoriteAction } from "@/app/favorites/actions";
 import { TASK_SUBTASK_ACTIONS } from "@/lib/task-subtask-actions";
@@ -66,6 +67,10 @@ import { isTaskPriority, isTaskStatus } from "@/lib/task-domain";
 import { getTodayIsoDateForTimezone, getWeekWindowViaTimeContext } from "@/lib/review-week";
 
 import { ProjectBoard } from "./_components/project-board";
+import {
+  ProjectFilesPanel,
+  ProjectFilesPanelSkeleton,
+} from "./_components/project-files-panel";
 import { ProjectOverview } from "./_components/project-overview";
 import { ProjectTabNav, normalizeProjectTab } from "./_components/project-tab-nav";
 import { ProjectTaskHashLink } from "./_components/project-task-hash-link";
@@ -88,6 +93,9 @@ type ProjectDetailPageProps = {
     projectUpdateField?: string;
     task?: string;
     taskMode?: string;
+    fileKind?: string;
+    fileQuery?: string;
+    fileSort?: string;
   }>;
 };
 
@@ -298,6 +306,12 @@ export default async function ProjectDetailPage({
   if (activeTab !== "overview") {
     const target = new URL(returnTo, "https://egawilldoit.online");
     target.searchParams.set("tab", activeTab);
+    if (activeTab === "files") {
+      for (const key of ["fileKind", "fileQuery", "fileSort"] as const) {
+        const value = resolvedSearchParams[key];
+        if (value) target.searchParams.set(key, value);
+      }
+    }
     returnTo = `${target.pathname}${target.search}`;
   }
   if (selectedTaskId) {
@@ -307,7 +321,18 @@ export default async function ProjectDetailPage({
   }
 
   const tabSearchParams = new URLSearchParams();
-  for (const key of ["view", "status", "priority", "due", "sort", "task", "taskMode"] as const) {
+  for (const key of [
+    "view",
+    "status",
+    "priority",
+    "due",
+    "sort",
+    "task",
+    "taskMode",
+    "fileKind",
+    "fileQuery",
+    "fileSort",
+  ] as const) {
     const value = resolvedSearchParams[key];
     if (value) tabSearchParams.set(key, value);
   }
@@ -324,6 +349,9 @@ export default async function ProjectDetailPage({
   const selectedTaskComments = selectedTaskId
     ? await getTaskCommentThread(selectedTaskId)
     : { comments: [], mentionCandidates: [], errorMessage: null };
+  const selectedTaskAttachments = selectedTaskId
+    ? await listTaskAttachments(selectedTaskId)
+    : { data: [], errorMessage: null };
   const projectIsFavourite = await isFavorite("project", project.id);
   const selectedTaskIsFavourite = selectedTaskId
     ? await isFavorite("task", selectedTaskId)
@@ -471,6 +499,26 @@ export default async function ProjectDetailPage({
           </section>
         ) : null}
 
+        {activeTab === "files" ? (
+          <section
+            role="tabpanel"
+            id="project-panel-files"
+            aria-labelledby="project-tab-files"
+            tabIndex={-1}
+          >
+            <Suspense fallback={<ProjectFilesPanelSkeleton />}>
+              <ProjectFilesPanel
+                projectId={project.id}
+                projectSlug={project.slug}
+                view={activeView}
+                kindParam={resolvedSearchParams.fileKind}
+                queryParam={resolvedSearchParams.fileQuery}
+                sortParam={resolvedSearchParams.fileSort}
+              />
+            </Suspense>
+          </section>
+        ) : null}
+
         {activeTab === "list" ? (
           <section
             role="tabpanel"
@@ -509,6 +557,8 @@ export default async function ProjectDetailPage({
           updateDraftAction={updateTaskFieldDraftAction}
           ownerId={currentUser?.id ?? null}
           subtasks={selectedTaskSubtasks}
+          attachments={selectedTaskAttachments.data}
+          attachmentsError={selectedTaskAttachments.errorMessage}
           activity={selectedTaskActivity}
           activityHasMore={selectedTaskActivityPage.hasMore}
           comments={selectedTaskComments.comments}

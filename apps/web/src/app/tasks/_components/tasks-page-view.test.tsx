@@ -160,6 +160,7 @@ function buildModel(overrides: Partial<TasksPageViewModel> = {}): TasksPageViewM
     selectedTask: null,
     selectedTaskError: false,
     selectedTaskSubtasks: [],
+    selectedTaskAttachments: { data: [], errorMessage: null },
     selectedTaskActivity: [],
     selectedTaskActivityHasMore: false,
     selectedTaskComments: {
