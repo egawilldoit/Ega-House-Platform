@@ -300,7 +300,7 @@ export function TasksPageView({
   );
 
   return (
-    <div className="flex min-w-0 flex-col gap-4">
+    <div className="motion-rise flex min-w-0 flex-col gap-4">
       <div className="flex min-w-0 flex-col gap-4">
         <Card clip>
           <div className="flex flex-col gap-3 border-b border-[var(--ega-divider)] px-[18px] py-3">
