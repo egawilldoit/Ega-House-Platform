@@ -76,6 +76,7 @@ export type TaskReadQuery = PromiseLike<TaskReadQueryResult> & {
 };
 
 type TaskReadSelectVariant = {
+  startDate: boolean;
   blockedReason: boolean;
   completedAt: boolean;
   archive: boolean;
@@ -84,6 +85,7 @@ type TaskReadSelectVariant = {
 };
 
 const MODERN_TASK_SELECT_VARIANT: TaskReadSelectVariant = {
+  startDate: true,
   blockedReason: true,
   completedAt: true,
   archive: true,
@@ -137,7 +139,9 @@ function isMissingTasksCalendarColumn(
 
 function getTaskSelect(variant: TaskReadSelectVariant) {
   return [
-    ...TASK_BASE_SELECT_COLUMNS.slice(0, 8),
+    ...TASK_BASE_SELECT_COLUMNS.slice(0, 5),
+    ...(variant.startDate ? TASK_BASE_SELECT_COLUMNS.slice(5, 6) : []),
+    ...TASK_BASE_SELECT_COLUMNS.slice(6, 8),
     ...(variant.calendar ? TASK_BASE_SELECT_COLUMNS.slice(8, 10) : []),
     ...TASK_BASE_SELECT_COLUMNS.slice(10, 11),
     ...(variant.blockedReason ? ["blocked_reason"] : []),
@@ -154,6 +158,10 @@ function getFallbackSelectVariant(
   error: { code?: string | null; message?: string | null; details?: string | null; hint?: string | null } | null,
   current: TaskReadSelectVariant,
 ) {
+  if (current.startDate && isMissingSupabaseColumn(error, "public.tasks", "start_date")) {
+    return { ...current, startDate: false };
+  }
+
   if (current.blockedReason && isMissingTasksBlockedReasonColumn(error)) {
     return { ...current, blockedReason: false };
   }
@@ -183,6 +191,7 @@ function getFallbackSelectVariant(
 function withVariantFallbacks(row: RawTaskRow, variant: TaskReadSelectVariant): RawTaskRow {
   return {
     ...row,
+    start_date: variant.startDate ? row.start_date ?? null : null,
     blocked_reason: variant.blockedReason ? row.blocked_reason ?? null : null,
     completed_at: variant.completedAt ? row.completed_at ?? null : null,
     archived_at: variant.archive ? row.archived_at ?? null : null,

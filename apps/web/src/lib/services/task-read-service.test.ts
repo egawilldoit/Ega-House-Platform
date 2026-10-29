@@ -389,6 +389,21 @@ test("getTaskForOwner falls back when blocked reason is unavailable", async () =
   assert.equal(result.data?.archived_by, null);
 });
 
+test("getActiveTasksForOwner falls back when start_date is unavailable", async () => {
+  const supabase = createTaskReadSupabaseMock(
+    [createMockTask({ id: "task-1", title: "Active" })],
+    { missingColumns: ["start_date"] },
+  );
+
+  const result = await getActiveTasksForOwner({
+    supabase: supabase as unknown as never,
+  });
+
+  assert.equal(result.errorMessage, null);
+  assert.equal(result.data[0]?.id, "task-1");
+  assert.equal(result.data[0]?.start_date, null);
+});
+
 test("getActiveTasksForOwner excludes archived tasks by default", async () => {
   const supabase = createTaskReadSupabaseMock([
     {
