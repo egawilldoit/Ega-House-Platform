@@ -180,8 +180,6 @@ export function TaskTable({
   const columnResize = useColumnResize(commitWidth);
   const { clearPreview, preview: resizePreview, resizingId } = columnResize;
   const serverColumnSignature = columnSignature(initialColumns);
-  const serverColumnsRef = useRef(initialColumns);
-  serverColumnsRef.current = initialColumns;
 
   // Adopt a new server/URL column state (saved view, Back/Forward, explicit
   // link). Local edits update state immediately; the signature guard prevents
@@ -189,11 +187,11 @@ export function TaskTable({
   useEffect(() => {
     if (serverColumnSignature === lastServerSignatureRef.current) return;
     lastServerSignatureRef.current = serverColumnSignature;
-    const next = serverColumnsRef.current.map((column) => ({ ...column }));
+    const next = initialColumns.map((column) => ({ ...column }));
     columnsRef.current = next;
     setColumns(next);
     clearPreview();
-  }, [serverColumnSignature, clearPreview]);
+  }, [serverColumnSignature, initialColumns, clearPreview]);
 
   useEffect(() => {
     const focusTarget = pendingFocusRef.current;
@@ -254,7 +252,7 @@ export function TaskTable({
     );
     const isDefaultSort = next.key === "updated" && next.direction === "desc";
     const omitDirection = next.direction === getDefaultTaskViewSortDirection(next.key);
-    let nextUrl = buildTaskTableColumnsUrl(returnTo, columnsRef.current);
+    let nextUrl = buildTaskTableColumnsUrl(returnTo, columns);
     nextUrl = setTaskTableUrlParam(nextUrl, "sort", isDefaultSort ? null : next.key);
     nextUrl = setTaskTableUrlParam(
       nextUrl,
@@ -760,7 +758,9 @@ function TaskTableRow({
 }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
-  const [overrides, setOverrides] = useState<Record<string, string>>({});
+  const [overrides, setOverrides] = useState<
+    Record<string, { value: string; updatedAt: string }>
+  >({});
   const [pendingField, setPendingField] = useState<string | null>(null);
   const pendingRef = useRef<string | null>(null);
   const versionRef = useRef(task.updated_at);
@@ -772,13 +772,20 @@ function TaskTableRow({
     error: inlineError,
   });
 
-  useEffect(() => {
-    const nextTime = Date.parse(task.updated_at);
-    if (nextTime > Date.parse(versionRef.current)) {
-      versionRef.current = task.updated_at;
-    }
-    setOverrides({});
-  }, [task.updated_at]);
+  // A successful write may render before the server refresh arrives. Keep its
+  // value only while the rendered row is still older than the write; a newer
+  // callers' refresh wins without a state-resetting effect.
+  const overrideFor = (field: string) => {
+    const entry = overrides[field];
+    if (!entry) return undefined;
+    return Date.parse(task.updated_at) < Date.parse(entry.updatedAt)
+      ? entry.value
+      : undefined;
+  };
+  const expectedUpdatedAt = () =>
+    Date.parse(task.updated_at) >= Date.parse(versionRef.current)
+      ? task.updated_at
+      : versionRef.current;
 
   const saveField = async (field: string, value: string): Promise<RowSaveResult> => {
     if (pendingRef.current) {
@@ -793,19 +800,19 @@ function TaskTableRow({
         taskId: task.id,
         field,
         value,
-        expectedUpdatedAt: versionRef.current,
+        expectedUpdatedAt: expectedUpdatedAt(),
         returnTo,
       });
       if (result.errorMessage) {
-        setFieldErrors((current) => ({ ...current, [field]: result.errorMessage }));
-        return { errorMessage: result.errorMessage };
+        const message = result.errorMessage;
+        setFieldErrors((current) => ({ ...current, [field]: message }));
+        return { errorMessage: message };
       }
-      if (result.updatedAt) {
-        versionRef.current = result.updatedAt;
-      }
+      const updatedAt = result.updatedAt ?? versionRef.current;
+      versionRef.current = updatedAt;
       setOverrides((current) => ({
         ...current,
-        [field]: result.savedValue ?? value,
+        [field]: { value: result.savedValue ?? value, updatedAt },
       }));
       startTransition(() => router.refresh());
       return { errorMessage: null };
@@ -820,18 +827,20 @@ function TaskTableRow({
   };
 
   const archived = isTaskArchived(task.archived_at);
-  const done = isTaskCompletedStatus(overrides.status ?? task.status);
+  const status = overrideFor("status") ?? task.status;
+  const done = isTaskCompletedStatus(status);
   const isPinned = task.focus_rank !== null;
-  const status = overrides.status ?? task.status;
-  const priority = overrides.priority ?? task.priority;
-  const dueDate = overrides.dueDate !== undefined ? overrides.dueDate : task.due_date;
+  const priority = overrideFor("priority") ?? task.priority;
+  const dueOverride = overrideFor("dueDate");
+  const dueDate = dueOverride !== undefined ? dueOverride : task.due_date;
+  const estimateOverride = overrideFor("estimateMinutes");
   const estimateMinutes =
-    overrides.estimateMinutes !== undefined
-      ? overrides.estimateMinutes
-        ? Number(overrides.estimateMinutes)
+    estimateOverride !== undefined
+      ? estimateOverride
+        ? Number(estimateOverride)
         : null
       : task.estimate_minutes;
-  const projectId = overrides.project ?? task.project_id;
+  const projectId = overrideFor("project") ?? task.project_id;
   const projectName =
     projectOptions.find((project) => project.id === projectId)?.name ??
     (projectId === task.project_id ? task.projects?.name : null) ??
@@ -1032,7 +1041,6 @@ function TaskTableRow({
     due: (
       <InlineValueCell
         label="Due date"
-        field="dueDate"
         type="date"
         value={dueDate ?? ""}
         display={<TaskDueCell dueDate={dueDate} status={status} />}
@@ -1062,7 +1070,6 @@ function TaskTableRow({
     estimate: (
       <InlineValueCell
         label="Estimate minutes"
-        field="estimateMinutes"
         type="number"
         inputMode="numeric"
         min={0}
@@ -1236,7 +1243,6 @@ function PickerCell({
 
 function InlineValueCell({
   label,
-  field,
   type,
   value,
   display,
@@ -1250,7 +1256,6 @@ function InlineValueCell({
   onSave,
 }: {
   label: string;
-  field: string;
   type: "date" | "number";
   value: string;
   display: ReactNode;
@@ -1267,12 +1272,14 @@ function InlineValueCell({
   const [draft, setDraft] = useState(value);
   const errorId = `${testId}-editor-error`;
 
-  useEffect(() => {
-    if (open) setDraft(value);
-  }, [open, value]);
-
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover
+      open={open}
+      onOpenChange={(next) => {
+        if (next) setDraft(value);
+        setOpen(next);
+      }}
+    >
       <PopoverTrigger asChild>
         <button
           type="button"

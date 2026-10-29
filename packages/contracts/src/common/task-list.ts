@@ -747,9 +747,9 @@ function migrateVersionOneDefinition(raw: Record<string, unknown>): TaskViewDefi
     sort: DEFAULT_TASK_VIEW_SORT,
     search: "",
     activeOnly: legacy.activeTasks === true,
-    ...(candidate.columns === undefined
+    ...(raw.columns === undefined
       ? {}
-      : { columns: normalizeTaskTableColumns(candidate.columns) }),
+      : { columns: normalizeTaskTableColumns(raw.columns) }),
   };
 }
 
