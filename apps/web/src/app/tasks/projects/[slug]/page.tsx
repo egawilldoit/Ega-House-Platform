@@ -384,6 +384,7 @@ export default async function ProjectDetailPage({
     projectUpdateProjectId === project.id && projectUpdateField === "status"
       ? projectUpdateError
       : null;
+  const archiveError =
     projectUpdateProjectId === project.id && projectUpdateField === "archive"
       ? projectUpdateError
       : null;
