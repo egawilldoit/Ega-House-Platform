@@ -80,7 +80,7 @@ export default async function ReviewDetailPage({ params }: ReviewDetailPageProps
         </Link>
       }
     >
-      <div className="motion-rise workspace-main-rail-grid">
+      <div className="workspace-main-rail-grid">
         <Card>
           <CardHeader>
             <CardTitle>Weekly review</CardTitle>

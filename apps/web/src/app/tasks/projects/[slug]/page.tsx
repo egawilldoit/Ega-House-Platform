@@ -470,7 +470,7 @@ export default async function ProjectDetailPage({
         </div>
       }
     >
-      <div className="motion-rise flex flex-col gap-6">
+      <div className="flex flex-col gap-6">
         <ProjectTaskHashLink activeTab={activeTab} />
         <ProjectTabNav
           activeTab={activeTab}

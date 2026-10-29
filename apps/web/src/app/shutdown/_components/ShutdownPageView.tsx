@@ -18,7 +18,7 @@ export function ShutdownPageView({ model }: { model: ShutdownPageModel }) {
   const data = shutdownResult.data;
 
   return (
-    <div className="motion-rise flex flex-col gap-8">
+    <div className="flex flex-col gap-8">
       {actionSuccess ? <p className="feedback-block">{actionSuccess}</p> : null}
       {actionError ? <p className="feedback-block feedback-block-error">{actionError}</p> : null}
 

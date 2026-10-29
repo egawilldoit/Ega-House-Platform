@@ -127,7 +127,7 @@ export function StartupPlanner({
     .join(",");
 
   return (
-    <div className="motion-rise flex flex-col gap-8">
+    <div className="flex flex-col gap-8">
       <DashboardSection
         title="Attention"
         description="Blocked and due-soon work to clear or consciously carry into the week."

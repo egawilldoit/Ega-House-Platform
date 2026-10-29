@@ -199,7 +199,7 @@ export function GoalsPageView({ model }: { model: GoalsPageModel }) {
   );
 
   return (
-    <div className="motion-rise flex flex-col gap-6">
+    <div className="flex flex-col gap-6">
       <div className="kpi-grid">
         <div className="kpi-card">
           <Metric

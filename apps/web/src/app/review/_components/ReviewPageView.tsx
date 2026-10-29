@@ -121,7 +121,7 @@ export function ReviewPageView({
   const weekBarData = sessionHeatmap.slice(-7);
 
   return (
-    <div className="motion-rise flex flex-col gap-6" data-testid="review-workspace">
+    <div className="flex flex-col gap-6" data-testid="review-workspace">
       <WeekSelector
         selectedWeekOf={selectedWeekOf}
         weekStart={bounds.weekStart}
