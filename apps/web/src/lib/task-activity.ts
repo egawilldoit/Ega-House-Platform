@@ -18,11 +18,3 @@ export {
   isTaskActivityEventKind,
   taskActivityActorLabel,
 } from "@ega/domain";
-
-export {
-  TASK_ACTIVITY_EVENT_KINDS,
-  TASK_ACTIVITY_READ_KINDS,
-  isTaskActivityActorKind,
-  isTaskActivityEventKind,
-  taskActivityActorLabel,
-} from "@ega/domain";
