@@ -1,4 +1,5 @@
 import type {
+  AreaRecord,
   ProjectGoalRecord,
   ProjectProgressSummary,
   ProjectRecord,
@@ -17,6 +18,7 @@ import { ProjectTimeCard } from "./project-time-card";
 type ProjectOverviewProps<T extends ProjectComingUpTask> = {
   project: ProjectRecord;
   goals: ProjectGoalRecord[];
+  areas: AreaRecord[];
   progress: ProjectProgressSummary;
   comingUp: ProjectComingUpItem<T>[];
   timeSummary: ProjectTimeSummary;
@@ -29,11 +31,13 @@ type ProjectOverviewProps<T extends ProjectComingUpTask> = {
   deleteHref: string;
   statusError: string | null;
   archiveError: string | null;
+  areaError: string | null;
 };
 
 export function ProjectOverview<T extends ProjectComingUpTask>({
   project,
   goals,
+  areas,
   progress,
   comingUp,
   timeSummary,
@@ -46,12 +50,14 @@ export function ProjectOverview<T extends ProjectComingUpTask>({
   deleteHref,
   statusError,
   archiveError,
+  areaError,
 }: ProjectOverviewProps<T>) {
   return (
     <div className="grid gap-4 lg:grid-cols-2">
       <ProjectAboutCard
         project={project}
         goalsCount={goals.length}
+        areas={areas}
         activeTaskCount={progress.totalTaskCount}
         completedTaskCount={progress.completedTaskCount}
         archivedTaskCount={archivedTaskCount}
@@ -60,6 +66,7 @@ export function ProjectOverview<T extends ProjectComingUpTask>({
         deleteHref={deleteHref}
         statusError={statusError}
         archiveError={archiveError}
+        areaError={areaError}
       />
       <ProjectProgressCard
         projectId={project.id}

@@ -27,7 +27,7 @@ const getSidebarProjects = cache(async (): Promise<SidebarProject[]> => {
     const supabase = await createClient();
     const { data: projectRows, error: projectsError } = await supabase
       .from("projects")
-      .select("id, name, slug, status, updated_at")
+      .select("id, name, slug, status, updated_at, area_id, areas(name, color, icon)")
       .order("updated_at", { ascending: false })
       .limit(24);
 
@@ -59,6 +59,16 @@ const getSidebarProjects = cache(async (): Promise<SidebarProject[]> => {
         status: project.status,
         activeTaskCount: activeTaskCounts.get(project.id) ?? 0,
         isPinned: index < 6 && project.status !== "archived",
+        areaId: project.area_id ?? null,
+        areaName:
+          (Array.isArray(project.areas) ? project.areas[0]?.name : project.areas?.name) ??
+          null,
+        areaColor:
+          (Array.isArray(project.areas) ? project.areas[0]?.color : project.areas?.color) ??
+          null,
+        areaIcon:
+          (Array.isArray(project.areas) ? project.areas[0]?.icon : project.areas?.icon) ??
+          null,
       }))
       .sort((left, right) => {
         if (left.isPinned !== right.isPinned) {

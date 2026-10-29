@@ -15,6 +15,7 @@ export type CreateProjectFormState = {
     name: string;
     slug: string;
     description: string;
+    areaId: string;
   };
 };
 
@@ -31,15 +32,22 @@ export async function createProjectAction(
     name: formData.get("name"),
     slug: formData.get("slug"),
     description: formData.get("description"),
+    areaId: formData.get("areaId"),
   });
 
   if (!result.ok) {
     return {
       error: result.errorMessage,
-      values: result.values,
+      values: {
+        name: result.values.name,
+        slug: result.values.slug,
+        description: result.values.description,
+        areaId: result.values.areaId ?? "",
+      },
     };
   }
 
   revalidatePath("/tasks/projects");
+  revalidatePath("/settings/areas");
   redirect("/tasks/projects");
 }
