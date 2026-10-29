@@ -7,26 +7,24 @@ import {
   toHomeDashboardGroup,
 } from "./home-dashboard-data";
 
-test("EGA-805: deadline windows are non-overlapping calendar buckets", () => {
-  // Thursday 2026-09-24: tomorrow is Friday, This week covers Sat–Sun.
+test("EGA-805: deadline windows match the canonical due buckets", () => {
+  // Thursday 2026-09-24: tomorrow is Friday; This week is the canonical
+  // next-seven-days bucket (today through +7).
   const windows = getHomeDeadlineWindows("2026-09-24");
 
   assert.equal(windows.todayFrom, "2026-09-24");
   assert.equal(windows.todayTo, "2026-09-24");
   assert.equal(windows.tomorrowFrom, "2026-09-25");
   assert.equal(windows.tomorrowTo, "2026-09-25");
-  assert.equal(windows.thisWeekFrom, "2026-09-26");
-  assert.equal(windows.thisWeekTo, "2026-09-27");
-  assert.equal(windows.weekEnd, "2026-09-27");
+  assert.equal(windows.thisWeekFrom, "2026-09-24");
+  assert.equal(windows.thisWeekTo, "2026-10-01");
 });
 
-test("EGA-805: This week is a verified empty window on Sunday", () => {
-  const windows = getHomeDeadlineWindows("2026-09-27");
+test("EGA-805: This week remains the same canonical window near a month edge", () => {
+  const windows = getHomeDeadlineWindows("2026-09-30");
 
-  assert.equal(windows.tomorrowFrom, "2026-09-28");
-  assert.equal(windows.thisWeekFrom, "2026-09-29");
-  assert.equal(windows.thisWeekTo, "2026-09-27");
-  assert.equal(windows.thisWeekFrom > windows.thisWeekTo, true);
+  assert.equal(windows.tomorrowFrom, "2026-10-01");
+  assert.equal(windows.thisWeekTo, "2026-10-07");
 });
 
 test("EGA-805: a failed preview group is unavailable rather than an empty zero", () => {

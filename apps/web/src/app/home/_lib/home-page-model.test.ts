@@ -302,7 +302,8 @@ test("EGA-805: stats keep exact aggregated totals and canonical destinations", (
     href: "/work-analytics?range=this-week",
   });
   // Shell attention and the overdue destination share one canonical scope.
-  assert.deepEqual(model.stats.overdue, { count: 1, href: "/tasks?due=overdue" });
+  assert.equal(model.stats.overdue.count, 1);
+  assert.equal(new URLSearchParams(model.stats.overdue.href.split("?")[1] ?? "").get("due"), "overdue");
   assert.deepEqual(model.stats.trackedThisWeek, {
     minutes: 185,
     href: "/work-analytics?range=this-week",
@@ -357,11 +358,23 @@ test("EGA-805: deadline buckets keep totals beyond the preview and use canonical
   assert.equal(today?.key, "today");
   assert.equal(today?.count, 12);
   assert.equal(today?.tasks.length, 2);
-  assert.equal(today?.href, "/tasks?due=due_today&sort=due_date_asc");
-  assert.equal(tomorrow?.href, "/tasks?due=tomorrow&sort=due_date_asc");
-  assert.equal(thisWeek?.href, "/tasks?due=this_week&sort=due_date_asc");
-  assert.equal(thisWeek?.count, 0);
   assert.equal(today?.tasks[0]?.href, "/tasks/projects/ega-house#task-t1");
+
+  const todayParams = new URLSearchParams(today?.href.split("?")[1] ?? "");
+  assert.equal(todayParams.get("due"), "today");
+  assert.equal(todayParams.get("sort"), "due");
+  assert.equal(todayParams.get("tasks"), "active");
+
+  const tomorrowParams = new URLSearchParams(tomorrow?.href.split("?")[1] ?? "");
+  assert.equal(tomorrowParams.get("dueWithin"), "1");
+  assert.deepEqual(tomorrowParams.getAll("filter"), ["due_bucket:is_not:today"]);
+  assert.equal(tomorrowParams.get("sort"), "due");
+  assert.equal(tomorrowParams.get("tasks"), "active");
+
+  const thisWeekParams = new URLSearchParams(thisWeek?.href.split("?")[1] ?? "");
+  assert.equal(thisWeekParams.get("due"), "next_7_days");
+  assert.equal(thisWeekParams.get("tasks"), "active");
+  assert.equal(thisWeek?.count, 0);
 });
 
 test("EGA-805: My tasks tabs link to URL state and to the matching Tasks scope", () => {
@@ -375,13 +388,20 @@ test("EGA-805: My tasks tabs link to URL state and to the matching Tasks scope",
   assert.equal(model.myTasks.activeTab, "overdue");
   const [upcoming, overdue, completed] = model.myTasks.tabs;
   assert.equal(upcoming?.href, "/home?myTasks=upcoming");
-  assert.equal(
-    upcoming?.viewAllHref,
-    "/tasks?tasks=active&due=upcoming&sort=due_date_asc",
-  );
+
+  const upcomingParams = new URLSearchParams(upcoming?.viewAllHref.split("?")[1] ?? "");
+  assert.equal(upcomingParams.get("tasks"), "active");
+  assert.deepEqual(upcomingParams.getAll("filter"), ["due_bucket:is_not:overdue"]);
+  assert.equal(upcomingParams.get("sort"), "due");
+
+  const overdueParams = new URLSearchParams(overdue?.viewAllHref.split("?")[1] ?? "");
+  assert.equal(overdueParams.get("due"), "overdue");
+  assert.equal(overdueParams.get("sort"), "due");
   assert.equal(overdue?.count, 4);
-  assert.equal(overdue?.viewAllHref, "/tasks?due=overdue&sort=due_date_asc");
-  assert.equal(completed?.viewAllHref, "/tasks?status=done&archive=all");
+
+  const completedParams = new URLSearchParams(completed?.viewAllHref.split("?")[1] ?? "");
+  assert.equal(completedParams.get("status"), "done");
+  assert.equal(completedParams.get("archive"), "all");
 });
 
 test("EGA-805: an unknown My tasks tab falls back to Upcoming", () => {

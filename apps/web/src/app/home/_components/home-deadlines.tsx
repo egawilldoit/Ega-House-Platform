@@ -8,9 +8,12 @@ import type { HomeDeadlineBucket } from "../_lib/home-page-model";
 import { HomeTaskPreviewRow } from "./home-task-row";
 
 function bucketLabel(bucket: HomeDeadlineBucket) {
+  const scope =
+    bucket.key === "thisWeek" ? "This week (next 7 days)" : bucket.label;
+
   return bucket.count === null
-    ? `${bucket.label} deadlines unavailable. Open the filtered task list.`
-    : `${bucket.label} deadlines: ${bucket.count} task${bucket.count === 1 ? "" : "s"}. Open the filtered task list.`;
+    ? `${scope} deadlines unavailable. Open the filtered task list.`
+    : `${scope} deadlines: ${bucket.count} task${bucket.count === 1 ? "" : "s"}. Open the filtered task list.`;
 }
 
 function DeadlineBucket({ bucket }: { bucket: HomeDeadlineBucket }) {

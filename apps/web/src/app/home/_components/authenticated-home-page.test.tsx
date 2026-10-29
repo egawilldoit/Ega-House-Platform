@@ -128,7 +128,7 @@ function defaultStats(): HomeModel["stats"] {
     activeProjects: { count: 2, atRiskCount: 1, href: "/tasks/projects?view=active" },
     openTasks: { count: 5, href: "/tasks?tasks=active" },
     completedThisWeek: { count: 3, href: "/work-analytics?range=this-week" },
-    overdue: { count: 1, href: "/tasks?due=overdue" },
+    overdue: { count: 1, href: "/tasks?due=overdue&sort=due" },
     trackedThisWeek: { minutes: 120, href: "/work-analytics?range=this-week" },
   };
 }
@@ -148,21 +148,21 @@ function emptyModel(overrides: Partial<HomeModel> = {}): HomeModel {
       {
         key: "today",
         label: "Today",
-        href: "/tasks?due=due_today&sort=due_date_asc",
+        href: "/tasks?due=today&sort=due&tasks=active",
         count: 1,
         tasks: [previewTask("today-1")],
       },
       {
         key: "tomorrow",
         label: "Tomorrow",
-        href: "/tasks?due=tomorrow&sort=due_date_asc",
+        href: "/tasks?dueWithin=1&filter=due_bucket%3Ais_not%3Atoday&sort=due&tasks=active",
         count: 0,
         tasks: [],
       },
       {
         key: "thisWeek",
         label: "This week",
-        href: "/tasks?due=this_week&sort=due_date_asc",
+        href: "/tasks?due=next_7_days&sort=due&tasks=active",
         count: 0,
         tasks: [],
       },
@@ -174,7 +174,7 @@ function emptyModel(overrides: Partial<HomeModel> = {}): HomeModel {
           key: "upcoming",
           label: "Upcoming",
           href: "/home?myTasks=upcoming",
-          viewAllHref: "/tasks?tasks=active&due=upcoming&sort=due_date_asc",
+          viewAllHref: "/tasks?filter=due_bucket%3Ais_not%3Aoverdue&sort=due&tasks=active",
           count: 1,
           tasks: [previewTask("up-1")],
         },
@@ -182,7 +182,7 @@ function emptyModel(overrides: Partial<HomeModel> = {}): HomeModel {
           key: "overdue",
           label: "Overdue",
           href: "/home?myTasks=overdue",
-          viewAllHref: "/tasks?due=overdue&sort=due_date_asc",
+          viewAllHref: "/tasks?due=overdue&sort=due",
           count: 0,
           tasks: [],
         },
@@ -484,7 +484,9 @@ describe("AuthenticatedHomePage (EGA-663)", () => {
     expect(linkFor("home-stat-completed")?.getAttribute("href")).toBe(
       "/work-analytics?range=this-week",
     );
-    expect(linkFor("home-stat-overdue")?.getAttribute("href")).toBe("/tasks?due=overdue");
+    expect(linkFor("home-stat-overdue")?.getAttribute("href")).toBe(
+      "/tasks?due=overdue&sort=due",
+    );
     expect(linkFor("home-stat-tracked")?.getAttribute("href")).toBe(
       "/work-analytics?range=this-week",
     );
@@ -521,7 +523,7 @@ describe("AuthenticatedHomePage (EGA-663)", () => {
           {
             key: "today",
             label: "Today",
-            href: "/tasks?due=due_today&sort=due_date_asc",
+            href: "/tasks?due=today&sort=due&tasks=active",
             count: 12,
             tasks: [previewTask("today-1"), previewTask("today-2")],
           },
@@ -534,7 +536,7 @@ describe("AuthenticatedHomePage (EGA-663)", () => {
     const today = container.querySelector('[data-testid="home-deadline-today"]');
     expect(today?.textContent).toContain("12");
     expect(today?.textContent).toContain("View all 12");
-    expect(today?.querySelector('a[href="/tasks?due=due_today&sort=due_date_asc"]')).not.toBeNull();
+    expect(today?.querySelector('a[href="/tasks?due=today&sort=due&tasks=active"]')).not.toBeNull();
     expect(container.querySelector('[data-testid="home-deadline-tomorrow"]')?.textContent).toContain(
       "Nothing due",
     );
@@ -582,7 +584,7 @@ describe("AuthenticatedHomePage (EGA-663)", () => {
     const activeTab = panel?.querySelector('a[aria-current="page"]');
     expect(activeTab?.getAttribute("href")).toBe("/home?myTasks=overdue");
     expect(panel?.querySelector('a[href="/home?myTasks=completed"]')).not.toBeNull();
-    expect(panel?.querySelector('a[href="/tasks?due=overdue&sort=due_date_asc"]')).not.toBeNull();
+    expect(panel?.querySelector('a[href="/tasks?due=overdue&sort=due"]')).not.toBeNull();
   });
 
   it("distinguishes an unavailable My tasks read from an empty tab", async () => {

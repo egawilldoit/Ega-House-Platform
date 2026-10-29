@@ -1,6 +1,8 @@
 import type { OperatorSnapshot, OperatorTask } from "@ega/application";
 
-import { buildTaskListUrl } from "@/lib/task-list";
+import type { TaskDueBucket } from "@ega/domain";
+
+import { buildTaskListUrl, type TaskViewFilter } from "@/lib/task-list";
 import { getTaskContextHref } from "@/lib/task-navigation";
 import { isTaskCompletedStatus } from "@/lib/task-domain";
 
@@ -152,21 +154,50 @@ function mapPreviewTasks(group: HomeDashboardGroup | undefined | null): HomeTask
   return (group?.tasks ?? []).map(toHomeTaskPreview);
 }
 
+const dueBucketFilter = (
+  bucket: TaskDueBucket,
+  operator: "is" | "is_not" = "is",
+): TaskViewFilter => ({ field: "due_bucket", operator, values: [bucket] });
+
+/** Canonical Tasks URL for a due scope, ordered by due date. */
+function buildDueScopeHref(filters: readonly TaskViewFilter[], activeOnly = false) {
+  return buildTaskListUrl("/tasks", {
+    filters,
+    activeTasks: activeOnly,
+    sortKey: "due",
+    sortDirection: "asc",
+  });
+}
+
 function buildDeadlines(dashboard: HomeDashboardData | null): HomeDeadlineBucket[] {
   const windows: Array<{
     key: HomeDeadlineBucketKey;
     group: HomeDashboardGroup | undefined;
-    due: "due_today" | "tomorrow" | "this_week";
+    filters: readonly TaskViewFilter[];
   }> = [
-    { key: "today", group: dashboard?.deadlines.today, due: "due_today" },
-    { key: "tomorrow", group: dashboard?.deadlines.tomorrow, due: "tomorrow" },
-    { key: "thisWeek", group: dashboard?.deadlines.thisWeek, due: "this_week" },
+    { key: "today", group: dashboard?.deadlines.today, filters: [dueBucketFilter("today")] },
+    {
+      key: "tomorrow",
+      group: dashboard?.deadlines.tomorrow,
+      // within the next day, excluding today, is exactly tomorrow
+      filters: [
+        { field: "due_within_days", operator: "is", values: ["1"] },
+        dueBucketFilter("today", "is_not"),
+      ],
+    },
+    {
+      key: "thisWeek",
+      // The canonical EGA bucket is the next seven days; Home labels it This week
+      // and states the real window in its accessible name.
+      group: dashboard?.deadlines.thisWeek,
+      filters: [dueBucketFilter("next_7_days")],
+    },
   ];
 
-  return windows.map(({ key, group, due }) => ({
+  return windows.map(({ key, group, filters }) => ({
     key,
     label: HOME_DEADLINE_LABELS[key],
-    href: buildTaskListUrl("/tasks", { due, sort: "due_date_asc" }),
+    href: buildDueScopeHref(filters, true),
     count: group?.count ?? null,
     tasks: mapPreviewTasks(group),
   }));
@@ -181,11 +212,7 @@ function buildMyTasks(
       key: "upcoming",
       label: HOME_MY_TASKS_LABELS.upcoming,
       href: "/home?myTasks=upcoming",
-      viewAllHref: buildTaskListUrl("/tasks", {
-        activeTasks: true,
-        due: "upcoming",
-        sort: "due_date_asc",
-      }),
+      viewAllHref: buildDueScopeHref([dueBucketFilter("overdue", "is_not")], true),
       count: dashboard?.myTasks.upcoming.count ?? null,
       tasks: mapPreviewTasks(dashboard?.myTasks.upcoming),
     },
@@ -193,7 +220,7 @@ function buildMyTasks(
       key: "overdue",
       label: HOME_MY_TASKS_LABELS.overdue,
       href: "/home?myTasks=overdue",
-      viewAllHref: buildTaskListUrl("/tasks", { due: "overdue", sort: "due_date_asc" }),
+      viewAllHref: buildDueScopeHref([dueBucketFilter("overdue")]),
       count: dashboard?.myTasks.overdue.count ?? null,
       tasks: mapPreviewTasks(dashboard?.myTasks.overdue),
     },
@@ -203,7 +230,10 @@ function buildMyTasks(
       href: "/home?myTasks=completed",
       // Completed is all-time in the list; Home's completed-this-week stat is a
       // separate weekly analytics scope and never masquerades as this tab.
-      viewAllHref: buildTaskListUrl("/tasks", { status: "done", view: "all" }),
+      viewAllHref: buildTaskListUrl("/tasks", {
+        filters: [{ field: "status", operator: "is", values: ["done"] }],
+        view: "all",
+      }),
       count: dashboard?.myTasks.completed.count ?? null,
       tasks: mapPreviewTasks(dashboard?.myTasks.completed),
     },
@@ -236,7 +266,7 @@ function buildStats(
     // day window and status/archive scope.
     overdue: {
       count: attention?.overdue ?? null,
-      href: buildTaskListUrl("/tasks", { due: "overdue" }),
+      href: buildDueScopeHref([dueBucketFilter("overdue")]),
     },
     trackedThisWeek: {
       minutes: dashboard?.stats.trackedThisWeekMinutes ?? null,

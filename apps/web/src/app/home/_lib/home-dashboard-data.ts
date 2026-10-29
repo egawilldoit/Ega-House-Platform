@@ -17,8 +17,6 @@ import {
 import { getWebTimeContext } from "@/lib/services/time-context-service";
 import { createClient } from "@/lib/supabase/server";
 import {
-  getTaskDueTomorrowIsoDate,
-  getTaskDueWeekEndIsoDate,
   shiftDateOnlyValue,
 } from "@/lib/task-due-date";
 
@@ -74,19 +72,17 @@ export const HOME_MY_TASKS_PREVIEW_LIMIT = 5;
 const HOME_WEEK_RANGE: AnalyticsRange = "this-week";
 
 export function getHomeDeadlineWindows(today: string) {
-  const tomorrow = getTaskDueTomorrowIsoDate(today);
-  const weekEnd = getTaskDueWeekEndIsoDate(today);
+  const tomorrow = shiftDateOnlyValue(today, 1);
 
   return {
     todayFrom: today,
     todayTo: today,
     tomorrowFrom: tomorrow,
     tomorrowTo: tomorrow,
-    // The remainder of the calendar week after tomorrow. On Saturday/Sunday the
-    // range is empty, which is a verified zero rather than a failed read.
-    thisWeekFrom: shiftDateOnlyValue(tomorrow, 1),
-    thisWeekTo: weekEnd,
-    weekEnd,
+    // Mirrors the canonical `next_7_days` due bucket: today through +7. Home
+    // labels it "This week" and states the real window in its accessible name.
+    thisWeekFrom: today,
+    thisWeekTo: shiftDateOnlyValue(today, 7),
   };
 }
 
