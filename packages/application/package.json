@@ -46,6 +46,7 @@
     "./operator/snapshot": "./src/operator/snapshot.ts",
     "./operator/proposal": "./src/operator/proposal.ts",
     "./operator/lifecycle": "./src/operator/lifecycle.ts",
+    "./timer/tracked-time": "./src/timer/tracked-time.ts",
     "./shared/time-context": "./src/shared/time-context.ts",
     "./shared/duration": "./src/shared/duration.ts",
     "./shared/execution-evidence": "./src/shared/execution-evidence.ts",

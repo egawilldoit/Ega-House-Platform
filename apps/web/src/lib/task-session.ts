@@ -39,40 +39,12 @@ export async function getTaskTotalDurationMap(
   taskIds: string[],
   nowIso = new Date().toISOString(),
 ) {
-  const uniqueTaskIds = Array.from(new Set(taskIds.filter(Boolean)));
-
-  if (uniqueTaskIds.length === 0) {
-    return {} as Record<string, number>;
+  const result = await getTaskTrackedTimeSummary(supabase, taskIds, nowIso);
+  if (!result.data) {
+    throw new Error(result.errorMessage ?? "Failed to load task session totals.");
   }
-
-  const totals: Record<string, number> = {};
-  const chunkSize = 200;
-
-  for (let index = 0; index < uniqueTaskIds.length; index += chunkSize) {
-    const chunk = uniqueTaskIds.slice(index, index + chunkSize);
-    const { data, error } = await supabase
-      .from("task_sessions")
-      .select("task_id, started_at, ended_at, duration_seconds")
-      .in("task_id", chunk);
-
-    if (error) {
-      throw new Error(`Failed to load task session totals: ${error.message}`);
-    }
-
-    for (const session of data ?? []) {
-      const sessionDuration = getTaskSessionDurationSeconds(session, nowIso);
-      totals[session.task_id] = (totals[session.task_id] ?? 0) + sessionDuration;
-    }
-  }
-
-  return totals;
+  return result.data.trackedSecondsByTask;
 }
-
-export type TaskSessionSummary = {
-  totalSeconds: number;
-  weekSeconds: number;
-  weekSessionCount: number;
-};
 
 const TASK_ID_QUERY_CHUNK = 200;
 const SESSION_PAGE_SIZE = 1000;
@@ -84,6 +56,83 @@ function chunkTaskIds(taskIds: string[]) {
   }
   return chunks;
 }
+
+/**
+ * Lifetime tracked seconds per Task plus the Tasks with a running session.
+ *
+ * Ids are chunked so PostgREST URLs stay bounded, and every chunk is paged so
+ * the implicit row cap never silently under-reports. Session duration comes
+ * from the canonical Timer helper, so these totals are the same numbers the
+ * Timer surface shows.
+ */
+export async function getTaskTrackedTimeSummary(
+  supabase: SupabaseServerClient,
+  taskIds: string[],
+  nowIso = new Date().toISOString(),
+): Promise<{
+  data: {
+    trackedSecondsByTask: Record<string, number>;
+    /** Tasks with a running session; their total is still moving. */
+    openSessionTaskIds: string[];
+  } | null;
+  errorMessage: string | null;
+}> {
+  const uniqueTaskIds = Array.from(new Set(taskIds.filter(Boolean)));
+
+  if (uniqueTaskIds.length === 0) {
+    return {
+      data: { trackedSecondsByTask: {}, openSessionTaskIds: [] },
+      errorMessage: null,
+    };
+  }
+
+  const totals: Record<string, number> = {};
+  const openSessionTaskIds = new Set<string>();
+
+  for (const chunk of chunkTaskIds(uniqueTaskIds)) {
+    let from = 0;
+
+    for (;;) {
+      const { data, error } = await supabase
+        .from("task_sessions")
+        .select("task_id, started_at, ended_at, duration_seconds")
+        .in("task_id", chunk)
+        .order("started_at", { ascending: true })
+        .order("id", { ascending: true })
+        .range(from, from + SESSION_PAGE_SIZE - 1);
+
+      if (error) {
+        return { data: null, errorMessage: "Failed to load task session totals." };
+      }
+
+      const page = (data ?? []) as TaskSessionDurationRow[];
+      for (const session of page) {
+        totals[session.task_id] =
+          (totals[session.task_id] ?? 0) + getTaskSessionDurationSeconds(session, nowIso);
+        if (session.ended_at === null) {
+          openSessionTaskIds.add(session.task_id);
+        }
+      }
+
+      if (page.length < SESSION_PAGE_SIZE) break;
+      from += SESSION_PAGE_SIZE;
+    }
+  }
+
+  return {
+    data: {
+      trackedSecondsByTask: totals,
+      openSessionTaskIds: Array.from(openSessionTaskIds),
+    },
+    errorMessage: null,
+  };
+}
+
+export type TaskSessionSummary = {
+  totalSeconds: number;
+  weekSeconds: number;
+  weekSessionCount: number;
+};
 
 /**
  * Session rows for a Task scope, summarized for both lifetime tracked time and

@@ -14,6 +14,10 @@ import {
   type ExecutionEvidenceRepository,
 } from "../shared/execution-evidence";
 import { resolveEffectiveTimezone, type TimeContextRepository } from "../shared/time-context";
+import {
+  aggregateEstimateVsActual,
+  type EstimateVsActualAggregate,
+} from "../timer/tracked-time";
 
 import { generateWeeklyReviewDraft, type WeeklyReviewDraft, type WeeklyReviewTaskActivity } from "./draft";
 import type {
@@ -89,6 +93,8 @@ export type WeeklyReviewReadModel = Readonly<{
   stats: WeeklyReviewStats;
   evidence: ReturnType<typeof calculateExecutionEvidenceForWindow>;
   mostTracked: WeeklyReviewMostTracked;
+  /** Estimate accuracy inside the same window as the tracked totals. */
+  estimateAccuracy: EstimateVsActualAggregate;
   generatedDraft: WeeklyReviewDraft;
   comparison: WeeklyReviewComparison;
 }>;
@@ -205,6 +211,56 @@ function buildMostTracked(
     projects: sortAndFormat(projectBuckets.values()),
     goals: sortAndFormat(goalBuckets.values()),
   };
+}
+
+/**
+ * Estimate accuracy inside the weekly window.
+ *
+ * Tracked seconds come from the canonical execution evidence map (already
+ * window-clipped, closed sessions only) so this never re-sums time. Task
+ * estimates come from the same session rows' task relation; a task with no
+ * estimate is counted as tracked work but excluded from the ratio.
+ */
+function buildWeeklyEstimateAccuracy(
+  sessions: ExecutionEvidenceSessionRow[],
+  trackedSecondsByTask: Map<string, number>,
+  window: ExecutionEvidenceWindow,
+  nowIso: string,
+): EstimateVsActualAggregate {
+  type TaskMeta = { title: string; estimateMinutes: number | null };
+  const metaByTask = new Map<string, TaskMeta>();
+
+  for (const session of sessions) {
+    const overlap = getExecutionEvidenceSessionOverlapSeconds(session, window, {
+      nowIso,
+      includeOpenSessions: false,
+    });
+    if (overlap <= 0) continue;
+
+    const existing = metaByTask.get(session.task_id);
+    const task = session.tasks;
+    const estimateMinutes =
+      typeof task?.estimate_minutes === "number" ? task.estimate_minutes : null;
+    if (!existing) {
+      metaByTask.set(session.task_id, {
+        title: task?.title?.trim() || "Untitled task",
+        estimateMinutes,
+      });
+    } else if (existing.estimateMinutes === null && estimateMinutes !== null) {
+      existing.estimateMinutes = estimateMinutes;
+    }
+  }
+
+  const tasks = Array.from(trackedSecondsByTask.entries()).map(
+    ([taskId, trackedSeconds]) => ({
+      taskId,
+      title: metaByTask.get(taskId)?.title ?? "Untitled task",
+      estimateMinutes: metaByTask.get(taskId)?.estimateMinutes ?? null,
+      trackedSeconds,
+    }),
+  );
+
+  return aggregateEstimateVsActual(tasks, { topOverRunLimit: 5 });
 }
 
 function mapActivity(
@@ -395,6 +451,14 @@ async function buildModel(
   // Most tracked derived from same sessions (canonical)
   const mostTracked = buildMostTracked(sessionsRes.value, execWindow, nowIso, 5);
 
+  // Estimate accuracy uses the same window and clipped totals, never a second sum.
+  const estimateAccuracy = buildWeeklyEstimateAccuracy(
+    sessionsRes.value,
+    evidence.trackedSecondsByTask,
+    execWindow,
+    nowIso,
+  );
+
   // Stats
   const goalStatusCounts = Array.from(
     (goalsTouchedRes.value ?? []).reduce<Map<string, number>>((counts, goal) => {
@@ -523,6 +587,7 @@ async function buildModel(
     stats,
     evidence,
     mostTracked,
+    estimateAccuracy,
     generatedDraft,
     comparison,
   });

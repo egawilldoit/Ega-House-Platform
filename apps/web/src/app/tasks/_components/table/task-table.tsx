@@ -25,6 +25,7 @@ import { TaskCardActions } from "@/components/tasks/task-card-actions";
 import type { UpdateTaskEditorAction } from "@/components/tasks/edit-task-modal";
 import { FocusPinToggleForm } from "@/components/tasks/focus-pin-toggle-form";
 import { TaskDueDateLabel } from "@/components/tasks/task-due-date-label";
+import { EstimateVsActualBadge } from "@/components/tasks/estimate-vs-actual-badge";
 import { Badge } from "@/components/ui/badge";
 import { buildTaskDrawerHref } from "@/components/tasks/drawer/use-task-drawer-param";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -42,7 +43,6 @@ import {
 } from "@/lib/task-domain";
 import {
   formatDisplayDate,
-  formatDisplayDuration,
   formatDisplayEstimate,
   formatDisplayStatus,
 } from "@/lib/presentation-format";
@@ -823,8 +823,11 @@ function TaskTableRow({
       ? (projectOptions.find((project) => project.id === projectId)?.name ?? null)
       : (task.projects?.name ?? null);
   const goalTitle = task.goals?.title ?? null;
-  const estimateLabel = estimateMinutes ? formatDisplayEstimate(estimateMinutes) : null;
-  const trackedLabel = typeof trackedSeconds === "number" ? trackedSeconds : null;
+  const hasEstimate =
+    estimateMinutes !== null &&
+    estimateMinutes !== undefined &&
+    Number.isFinite(estimateMinutes);
+  const trackedValue = typeof trackedSeconds === "number" ? trackedSeconds : null;
 
   const rowActions = (
     <TaskCardActions
@@ -935,10 +938,12 @@ function TaskTableRow({
               {task.description}
             </span>
           ) : null}
-          {estimateLabel ? (
-            <Badge tone="muted" className="max-[761px]:hidden shrink-0">
-              Est. {estimateLabel}
-            </Badge>
+          {hasEstimate ? (
+            <EstimateVsActualBadge
+              estimateMinutes={estimateMinutes}
+              trackedSeconds={trackedValue ?? 0}
+              className="max-[761px]:hidden"
+            />
           ) : null}
           {subtaskCount && subtaskCount.total > 0 ? (
             <Badge
@@ -968,9 +973,11 @@ function TaskTableRow({
             <Badge tone={priority === "urgent" || priority === "high" ? "warn" : "muted"}>
               {formatTaskToken(priority)}
             </Badge>
-            {estimateLabel ? <Badge tone="muted">Est. {estimateLabel}</Badge> : null}
-            {trackedLabel !== null ? (
-              <Badge tone="muted">Tracked {formatDisplayDuration(trackedLabel, "second")}</Badge>
+            {hasEstimate ? (
+              <EstimateVsActualBadge
+                estimateMinutes={estimateMinutes}
+                trackedSeconds={trackedValue ?? 0}
+              />
             ) : null}
             <TaskDueDateLabel dueDate={dueDate} status={status} />
           </div>
