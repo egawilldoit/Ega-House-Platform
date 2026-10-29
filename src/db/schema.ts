@@ -24,6 +24,8 @@ export const projects = pgTable(
     slug: varchar("slug", { length: 256 }).notNull(),
     description: text("description"),
     status: varchar("status", { length: 64 }).notNull().default("planned"),
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
+    archivedBy: uuid("archived_by"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
@@ -36,6 +38,13 @@ export const projects = pgTable(
     uniqueIndex("projects_owner_user_id_slug_unique").on(
       table.ownerUserId,
       table.slug,
+    ),
+    index("projects_owner_user_id_archived_at_idx")
+      .on(table.ownerUserId, table.archivedAt.desc())
+      .where(sql`${table.archivedAt} is not null`),
+    check(
+      "projects_archive_state_check",
+      sql`(${table.archivedAt} is not null) = (${table.status} = 'archived')`,
     ),
   ],
 );
@@ -56,6 +65,8 @@ export const goals = pgTable(
     nextStep: text("next_step"),
     health: varchar("health", { length: 32 }),
     status: varchar("status", { length: 64 }).notNull().default("draft"),
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
+    archivedBy: uuid("archived_by"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
@@ -63,7 +74,16 @@ export const goals = pgTable(
       .defaultNow()
       .notNull(),
   },
-  (table) => [index("goals_owner_user_id_idx").on(table.ownerUserId)],
+  (table) => [
+    index("goals_owner_user_id_idx").on(table.ownerUserId),
+    index("goals_owner_user_id_archived_at_idx")
+      .on(table.ownerUserId, table.archivedAt.desc())
+      .where(sql`${table.archivedAt} is not null`),
+    check(
+      "goals_archive_state_check",
+      sql`(${table.archivedAt} is not null) = (${table.status} = 'archived')`,
+    ),
+  ],
 );
 
 export const tasks = pgTable(
