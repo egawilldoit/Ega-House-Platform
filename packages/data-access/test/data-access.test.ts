@@ -1008,6 +1008,61 @@ test("archived ancestor scope is owner-scoped and only accepts uuid ids", async 
   assert.ok(stepsFor(fake, 0).some((step) => step.method === "eq" && step.args[1] === "user-123"));
 });
 
+test("archived ancestor scope falls back to the status marker before 0073", async () => {
+  const fake = fakeSupabase();
+  const missingColumn = {
+    code: "42703",
+    message: 'column "archived_at" does not exist',
+  };
+  fake.pushResult("projects", { data: null, error: missingColumn });
+  fake.pushResult("goals", { data: null, error: missingColumn });
+  fake.pushResult("projects", { data: [{ id: ARCHIVE_PROJECT_ID }], error: null });
+  fake.pushResult("goals", { data: [{ id: ARCHIVE_GOAL_ID }, { id: "not-a-uuid" }], error: null });
+
+  const result = await loadArchivedAncestorScope(
+    fake as unknown as SupabaseClient,
+    "user-123",
+  );
+
+  assert.deepEqual(result, {
+    ok: true,
+    value: { projectIds: [ARCHIVE_PROJECT_ID], goalIds: [ARCHIVE_GOAL_ID] },
+  });
+  const projectReads = fake.calls.filter((call) => call.table === "projects");
+  assert.ok(
+    projectReads[0]?.steps.some(
+      (step) => step.method === "not" && step.args[0] === "archived_at",
+    ),
+  );
+  assert.ok(
+    projectReads[1]?.steps.some(
+      (step) => step.method === "eq" && step.args[0] === "status" && step.args[1] === "archived",
+    ),
+  );
+  assert.ok(
+    projectReads[1]?.steps.some(
+      (step) => step.method === "eq" && step.args[0] === "owner_user_id" && step.args[1] === "user-123",
+    ),
+  );
+});
+
+test("archived ancestor scope does not hide unrelated query failures", async () => {
+  const fake = fakeSupabase();
+  fake.pushResult("projects", {
+    data: null,
+    error: { code: "42501", message: "permission denied for table projects" },
+  });
+  fake.pushResult("goals", { data: [], error: null });
+
+  const result = await loadArchivedAncestorScope(
+    fake as unknown as SupabaseClient,
+    "user-123",
+  );
+
+  assert.deepEqual(result, { ok: false, error: { code: "unknown" } });
+  assert.equal(fake.calls.filter((call) => call.table === "projects").length, 1);
+});
+
 test("ancestry exclusion keeps goal-less tasks and drops archived parents", async () => {
   const fake = fakeSupabase();
   fake.pushResult("tasks", { data: [], error: null });
