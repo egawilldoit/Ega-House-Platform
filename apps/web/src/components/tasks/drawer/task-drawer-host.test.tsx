@@ -29,6 +29,8 @@ const TASK = {
   project_id: "p1",
   goal_id: "g1",
   archived_at: null as string | null,
+  tracked_seconds: 5400 as number | null,
+  has_open_session: false,
   dependencies: {
     blockedBy: [],
     blocking: [],

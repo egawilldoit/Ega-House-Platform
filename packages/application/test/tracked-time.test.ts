@@ -88,6 +88,36 @@ test("reports the same total as the canonical timer total helper for the same se
   );
 });
 
+test("overlapping sessions add up exactly like the Timer total (no second dedupe policy)", () => {
+  const rows = [
+    session({
+      taskId: "task-overlap",
+      startedAt: "2026-04-20T09:00:00.000Z",
+      endedAt: "2026-04-20T10:00:00.000Z",
+    }),
+    session({
+      taskId: "task-overlap",
+      startedAt: "2026-04-20T09:30:00.000Z",
+      endedAt: "2026-04-20T10:30:00.000Z",
+    }),
+  ];
+
+  const summary = calculateTrackedTimeByTask(rows, { nowIso: NOW_ISO });
+  assert.equal(summary.trackedSecondsByTask.get("task-overlap"), 7200);
+  assert.equal(
+    summary.totalTrackedSeconds,
+    calculateTotalTrackedSeconds(
+      rows.map((row) => ({
+        task_id: row.taskId,
+        started_at: row.startedAt,
+        ended_at: row.endedAt,
+        duration_seconds: row.durationSeconds,
+      })),
+      NOW_ISO,
+    ),
+  );
+});
+
 test("malformed or inverted intervals use the canonical duration_seconds fallback", () => {
   const summary = calculateTrackedTimeByTask(
     [
