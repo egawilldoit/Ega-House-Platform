@@ -122,8 +122,11 @@ test("activity actor labels never invent an identity", () => {
     "reminder_updated",
     "reminder_cancelled",
     "comment",
+    "attachment_added",
+    "attachment_removed",
   ]);
   assert.equal(isTaskActivityEventKind("comment"), true);
+  assert.equal(isTaskActivityEventKind("attachment_added"), true);
   assert.equal(isTaskActivityEventKind("status"), false);
   assert.equal(taskActivityActorLabel({ kind: "owner", userId: "u1" }), "You");
   assert.equal(

@@ -221,9 +221,7 @@ export default async function TodayPage({
   const selectedTaskAttachments = selectedTaskId
     ? await listTaskAttachments(selectedTaskId)
     : { data: [], errorMessage: null };
-  const selectedTaskActivity = selectedTaskId
-    ? (await getTaskActivity(selectedTaskId, { limit: 8 })).items
-    : [];  const selectedTaskIsFavourite = selectedTaskId
+  const selectedTaskIsFavourite = selectedTaskId
     ? await isFavorite("task", selectedTaskId)
     : false;
   const activeTimerSessionId = todayData.activeTimer?.sessionId ?? null;

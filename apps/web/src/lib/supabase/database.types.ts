@@ -1168,6 +1168,8 @@ export type Database = {
       }
       list_task_comment_mentions: {
         Args: { p_owner_user_id?: string | null }
+        Returns: Json
+      }
       create_task_attachment_upload: {
         Args: {
           p_task_id: string
