@@ -994,6 +994,8 @@ export function parseTaskViewSearchParams(params: TaskViewSearchParams): TaskVie
   const groupRaw = readParam(params, "group");
   const search = normalizeSearch(readParam(params, "q") ?? readParam(params, "search")) ?? "";
 
+  const cols = readParam(params, "cols");
+  const widths = readParam(params, "widths");
   const definition: TaskViewDefinition = {
     version: TASK_VIEW_DEFINITION_VERSION,
     filters: filters
@@ -1003,10 +1005,14 @@ export function parseTaskViewSearchParams(params: TaskViewSearchParams): TaskVie
     sort,
     search,
     activeOnly: readParam(params, "tasks") === "active",
-    columns: parseTaskTableColumns({
-      cols: readParam(params, "cols"),
-      widths: readParam(params, "widths"),
-    }),
+    ...(cols || widths
+      ? {
+          columns: parseTaskTableColumns({
+            cols,
+            widths,
+          }),
+        }
+      : {}),
   };
 
   return definition;

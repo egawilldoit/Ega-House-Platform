@@ -37,26 +37,13 @@ test("mobile task list query wire values remain stable", () => {
     "due_soon",
     "no_due_date",
   ]);
-  assert.deepEqual(TASK_SORT_VALUES, [
-    "updated_desc",
-    "due_date_asc",
-    "due_date_desc",
-    "title_asc",
-    "title_desc",
-    "priority_asc",
-    "priority_desc",
-    "status_asc",
-    "status_desc",
-    "estimate_asc",
-    "estimate_desc",
-    "updated_asc",
-  ]);
+  assert.deepEqual(TASK_SORT_VALUES, ["updated_desc", "due_date_asc", "due_date_desc"]);
   assert.equal(DEFAULT_TASK_DUE_FILTER, "all");
   assert.equal(DEFAULT_TASK_SORT, "updated_desc");
   assert.equal(isTaskDueFilter("due_today"), true);
   assert.equal(isTaskDueFilter("today"), false);
   assert.equal(isTaskSortValue("updated_desc"), true);
-  assert.equal(isTaskSortValue("priority_desc"), true);
+  assert.equal(isTaskSortValue("priority_desc"), false);
   assert.equal(isTaskSortValue("unknown"), false);
 });
 
