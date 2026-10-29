@@ -3,7 +3,20 @@ import type {
   MobileTaskListResponse,
   MobileTaskMutationResponse,
 } from "@ega/contracts/mobile";
-import type { TaskDueFilter, TaskSortValue } from "@ega/contracts/common/task-list";
+import type {
+  TaskCommentCreateInput,
+  TaskCommentDeleteResponse,
+  TaskCommentListResponse,
+  TaskCommentMutationResponse,
+  TaskCommentReactionResponse,
+  TaskCommentUpdateInput,
+} from "@ega/contracts";
+import {
+  toTaskViewSearchPairs,
+  type TaskDueFilter,
+  type TaskSortValue,
+  type TaskViewDefinition,
+} from "@ega/contracts/common/task-list";
 import type { TaskPriority, TaskStatus } from "@ega/domain";
 
 import type { ApiResult } from "./errors";
@@ -19,6 +32,12 @@ export type TaskListQuery = Readonly<{
   sort?: TaskSortValue | null;
   includeArchived?: boolean;
   limit?: number | null;
+  /**
+   * Canonical view definition shared with the web toolbar and saved views.
+   * When present it supersedes the legacy scalar filters above; both surfaces
+   * then run the same application filter/sort/group engine.
+   */
+  view?: TaskViewDefinition | null;
 }>;
 
 export type SetTaskRecurrenceInput = Readonly<{
@@ -49,6 +68,25 @@ export type TasksApi = {
   cancelReminder(taskId: string, reminderId: string): Promise<ApiResult<MobileTaskMutationResponse>>;
   setRecurrence(taskId: string, input: SetTaskRecurrenceInput): Promise<ApiResult<MobileTaskMutationResponse>>;
   clearRecurrence(taskId: string): Promise<ApiResult<MobileTaskMutationResponse>>;
+  listComments(taskId: string): Promise<ApiResult<TaskCommentListResponse>>;
+  createComment(
+    taskId: string,
+    input: TaskCommentCreateInput,
+  ): Promise<ApiResult<TaskCommentMutationResponse>>;
+  updateComment(
+    taskId: string,
+    commentId: string,
+    input: TaskCommentUpdateInput,
+  ): Promise<ApiResult<TaskCommentMutationResponse>>;
+  deleteComment(
+    taskId: string,
+    commentId: string,
+  ): Promise<ApiResult<TaskCommentDeleteResponse>>;
+  toggleCommentReaction(
+    taskId: string,
+    commentId: string,
+    emoji: string,
+  ): Promise<ApiResult<TaskCommentReactionResponse>>;
 };
 
 function queryValue(value: string | number | boolean | null | undefined): string | undefined {
@@ -63,16 +101,36 @@ function idPath(taskId: string, suffix = "") {
 export function createTasksApi(http: HttpClient): TasksApi {
   return {
     list(query = {}) {
+      const viewPairs = query.view ? toTaskViewSearchPairs(query.view) : [];
+      const serialized: Record<string, string | string[] | undefined> = {};
+      for (const [key, value] of viewPairs) {
+        if (key === "filter") {
+          const existing = serialized.filter;
+          serialized.filter = Array.isArray(existing)
+            ? [...existing, value]
+            : existing
+              ? [existing, value]
+              : [value];
+        } else {
+          serialized[key] = value;
+        }
+      }
+
       return http.request<MobileTaskListResponse>({
         path: "/api/tasks",
         query: {
-          status: queryValue(query.status),
-          priority: queryValue(query.priority),
+          ...serialized,
+          ...(query.view
+            ? {}
+            : {
+                status: queryValue(query.status),
+                priority: queryValue(query.priority),
+                due: queryValue(query.due),
+                sort: queryValue(query.sort),
+              }),
           projectId: queryValue(query.projectId),
           goalId: queryValue(query.goalId),
           plannedForDate: queryValue(query.plannedForDate),
-          due: queryValue(query.due),
-          sort: queryValue(query.sort),
           includeArchived: queryValue(query.includeArchived),
           limit: queryValue(query.limit),
         },
@@ -124,6 +182,41 @@ export function createTasksApi(http: HttpClient): TasksApi {
       return http.request<MobileTaskMutationResponse>({
         path: idPath(taskId, "/recurrence"),
         method: "DELETE",
+      });
+    },
+    listComments(taskId) {
+      return http.request<TaskCommentListResponse>({
+        path: idPath(taskId, "/comments"),
+      });
+    },
+    createComment(taskId, input) {
+      return http.request<TaskCommentMutationResponse>({
+        path: idPath(taskId, "/comments"),
+        method: "POST",
+        body: input,
+      });
+    },
+    updateComment(taskId, commentId, input) {
+      return http.request<TaskCommentMutationResponse>({
+        path: idPath(taskId, `/comments/${encodeURIComponent(commentId)}`),
+        method: "PATCH",
+        body: input,
+      });
+    },
+    deleteComment(taskId, commentId) {
+      return http.request<TaskCommentDeleteResponse>({
+        path: idPath(taskId, `/comments/${encodeURIComponent(commentId)}`),
+        method: "DELETE",
+      });
+    },
+    toggleCommentReaction(taskId, commentId, emoji) {
+      return http.request<TaskCommentReactionResponse>({
+        path: idPath(
+          taskId,
+          `/comments/${encodeURIComponent(commentId)}/reactions`,
+        ),
+        method: "POST",
+        body: { emoji },
       });
     },
   };

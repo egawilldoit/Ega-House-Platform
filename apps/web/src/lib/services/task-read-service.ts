@@ -17,6 +17,7 @@ export type NormalizedTaskRow = {
   blocked_reason: string | null;
   status: string;
   priority: string;
+  start_date: string | null;
   due_date: string | null;
   estimate_minutes: number | null;
   scheduled_start_at: string | null;
@@ -28,7 +29,9 @@ export type NormalizedTaskRow = {
   project_id: string;
   goal_id: string | null;
   focus_rank: number | null;
+  board_rank: string | null;
   planned_for_date: string | null;
+  created_at?: string | null;
   archived_at: string | null;
   archived_by: string | null;
   projects: { name: string; slug?: string | null } | null;
@@ -56,7 +59,7 @@ type TaskReadQueryResult = {
   } | null;
 };
 
-type TaskReadQuery = PromiseLike<TaskReadQueryResult> & {
+export type TaskReadQuery = PromiseLike<TaskReadQueryResult> & {
   eq(column: string, value: unknown): TaskReadQuery;
   neq(column: string, value: unknown): TaskReadQuery;
   in(column: string, values: unknown[]): TaskReadQuery;
@@ -67,6 +70,9 @@ type TaskReadQuery = PromiseLike<TaskReadQueryResult> & {
   or(filters: string): TaskReadQuery;
   order(column: string, options?: { ascending?: boolean }): TaskReadQuery;
   limit(count: number): TaskReadQuery;
+  range(from: number, to: number): TaskReadQuery;
+  lt(column: string, value: unknown): TaskReadQuery;
+  ilike(column: string, pattern: string): TaskReadQuery;
 };
 
 type TaskReadSelectVariant = {
@@ -74,6 +80,7 @@ type TaskReadSelectVariant = {
   completedAt: boolean;
   archive: boolean;
   calendar: boolean;
+  boardRank: boolean;
 };
 
 const MODERN_TASK_SELECT_VARIANT: TaskReadSelectVariant = {
@@ -81,6 +88,7 @@ const MODERN_TASK_SELECT_VARIANT: TaskReadSelectVariant = {
   completedAt: true,
   archive: true,
   calendar: true,
+  boardRank: true,
 };
 
 const TASK_BASE_SELECT_COLUMNS = [
@@ -89,6 +97,7 @@ const TASK_BASE_SELECT_COLUMNS = [
   "description",
   "status",
   "priority",
+  "start_date",
   "due_date",
   "scheduled_start_at",
   "scheduled_end_at",
@@ -100,6 +109,7 @@ const TASK_BASE_SELECT_COLUMNS = [
   "goal_id",
   "focus_rank",
   "planned_for_date",
+  "created_at",
 ];
 
 async function resolveSupabaseClient(supabase?: SupabaseServerClient) {
@@ -134,6 +144,7 @@ function getTaskSelect(variant: TaskReadSelectVariant) {
     ...TASK_BASE_SELECT_COLUMNS.slice(11),
     ...(variant.completedAt ? ["completed_at"] : []),
     ...(variant.archive ? ["archived_at", "archived_by"] : []),
+    ...(variant.boardRank ? ["board_rank"] : []),
     "projects(name, slug)",
     "goals(title)",
   ].join(", ");
@@ -162,6 +173,10 @@ function getFallbackSelectVariant(
     return { ...current, calendar: false };
   }
 
+  if (current.boardRank && isMissingSupabaseColumn(error, "public.tasks", "board_rank")) {
+    return { ...current, boardRank: false };
+  }
+
   return null;
 }
 
@@ -172,6 +187,7 @@ function withVariantFallbacks(row: RawTaskRow, variant: TaskReadSelectVariant): 
     completed_at: variant.completedAt ? row.completed_at ?? null : null,
     archived_at: variant.archive ? row.archived_at ?? null : null,
     archived_by: variant.archive ? row.archived_by ?? null : null,
+    board_rank: variant.boardRank ? row.board_rank ?? null : null,
   };
 }
 
@@ -183,6 +199,7 @@ export function normalizeTaskRow(row: RawTaskRow): NormalizedTaskRow {
     blocked_reason: row.blocked_reason ?? null,
     status: row.status,
     priority: row.priority,
+    start_date: row.start_date ?? null,
     due_date: row.due_date ?? null,
     estimate_minutes: row.estimate_minutes ?? null,
     scheduled_start_at: row.scheduled_start_at ?? null,
@@ -194,7 +211,9 @@ export function normalizeTaskRow(row: RawTaskRow): NormalizedTaskRow {
     project_id: row.project_id,
     goal_id: row.goal_id ?? null,
     focus_rank: row.focus_rank ?? null,
+    board_rank: row.board_rank ?? null,
     planned_for_date: row.planned_for_date ?? null,
+    created_at: row.created_at ?? null,
     archived_at: row.archived_at ?? null,
     archived_by: row.archived_by ?? null,
     projects: row.projects ?? null,
@@ -240,6 +259,39 @@ export async function getTaskForOwner(
   }
 }
 
+/** Bounded page size for list reads; the loop stops at the hard row ceiling. */
+export const TASK_READ_PAGE_SIZE = 500;
+export const TASK_READ_MAX_ROWS = 5000;
+
+type TaskReadRowResult = {
+  data: unknown[] | null;
+  error: { code?: string | null; message: string; details?: string | null; hint?: string | null } | null;
+};
+
+function applyArchiveFilter(
+  query: TaskReadQuery,
+  archiveFilter: "active" | "archived" | "all",
+  variant: TaskReadSelectVariant,
+  archivedAncestry: { projectIds: string[]; goalIds: string[] },
+) {
+  if (!variant.archive) return query;
+  if (archiveFilter === "active") {
+    // Active lists hide work whose project or goal is archived, without
+    // touching the child's own archive state.
+    return excludeArchivedAncestry(
+      query.is("archived_at", null),
+      archivedAncestry,
+    );
+  }
+  if (archiveFilter === "archived") return query.not("archived_at", "is", null);
+  return query;
+}
+
+/**
+ * Load every page up to the hard ceiling instead of relying on PostgREST's
+ * implicit first-page cap. Display ordering still belongs to the application
+ * read model; each page is ordered deterministically for stable pagination.
+ */
 export async function getActiveTasksForOwner(options?: {
   supabase?: SupabaseServerClient;
   includeArchived?: boolean;
@@ -270,41 +322,97 @@ export async function getActiveTasksForOwner(options?: {
       return { data: [], errorMessage: null };
     }
 
-    let query = supabase.from("tasks").select(getTaskSelect(variant)) as unknown as TaskReadQuery;
+    const rows: unknown[] = [];
+    let failedError: TaskReadRowResult["error"] = null;
 
-    if (archiveFilter === "active" && variant.archive) {
-      query = query.is("archived_at", null);
-      query = excludeArchivedAncestry(query, activeAncestry);
-    } else if (archiveFilter === "archived" && variant.archive) {
-      query = query.not("archived_at", "is", null);
+    for (let from = 0; from < TASK_READ_MAX_ROWS; from += TASK_READ_PAGE_SIZE) {
+      const to = Math.min(from + TASK_READ_PAGE_SIZE, TASK_READ_MAX_ROWS) - 1;
+      let query = supabase.from("tasks").select(getTaskSelect(variant)) as unknown as TaskReadQuery;
+      query = applyArchiveFilter(query, archiveFilter, variant, activeAncestry);
+
+      if (options?.applyQuery) {
+        query = options.applyQuery(query);
+      }
+
+      if (options?.orderByUpdatedAt !== false) {
+        query = query.order("updated_at", { ascending: false });
+      }
+      // Deterministic paging tie-breaker. Lightweight test adapters may return
+      // a chain without these optional builder methods; degrade to `limit`.
+      const canOrderAgain =
+        typeof (query as { order?: unknown }).order === "function";
+      if (canOrderAgain) query = query.order("id", { ascending: true });
+      const canRange = typeof (query as { range?: unknown }).range === "function";
+      if (canRange) query = query.range(from, to);
+
+      const page = (await query) as unknown as TaskReadRowResult;
+      if (page.error) {
+        failedError = page.error;
+        break;
+      }
+
+      const data = page.data ?? [];
+      rows.push(...data);
+      if (data.length < TASK_READ_PAGE_SIZE) break;
     }
 
-    if (options?.applyQuery) {
-      query = options.applyQuery(query);
-    }
-
-    if (options?.orderByUpdatedAt !== false) {
-      query = query.order("updated_at", { ascending: false });
-    }
-
-    const { data, error } = await query;
-
-    if (!error) {
+    if (!failedError) {
       return {
-        data: (data ?? []).map((row) =>
+        data: rows.map((row) =>
           normalizeTaskRow(withVariantFallbacks(row as unknown as RawTaskRow, variant)),
         ),
         errorMessage: null,
       };
     }
 
-    const fallbackVariant = getFallbackSelectVariant(error, variant);
+    const fallbackVariant = getFallbackSelectVariant(failedError, variant);
     if (!fallbackVariant) {
-      return { data: [], errorMessage: error.message };
+      return { data: [], errorMessage: failedError.message };
     }
 
     variant = fallbackVariant;
   }
+}
+
+/**
+ * Exact owner-scoped count for the same archive/query predicates. Returns null
+ * when the projection cannot count (missing column), so the caller can fall
+ * back to the loaded count instead of inventing a total.
+ */
+export async function getTaskCountForOwner(options?: {
+  supabase?: SupabaseServerClient;
+  includeArchived?: boolean;
+  archiveFilter?: "active" | "archived" | "all";
+  applyQuery?: (query: TaskReadQuery) => TaskReadQuery;
+}): Promise<{ count: number | null; errorMessage: string | null }> {
+  const supabase = await resolveSupabaseClient(options?.supabase);
+  const archiveFilter = options?.archiveFilter ?? (options?.includeArchived ? "all" : "active");
+  const variant = MODERN_TASK_SELECT_VARIANT;
+
+  // Counts must agree with the active list, so the same ancestry rule applies.
+  const ancestorScope =
+    archiveFilter === "active" ? await loadArchivedAncestorScope(supabase) : null;
+  if (ancestorScope && !ancestorScope.ok) {
+    return { count: null, errorMessage: "Unable to load active tasks right now." };
+  }
+  const activeAncestry = ancestorScope?.ok
+    ? ancestorScope.value
+    : { projectIds: [], goalIds: [] };
+
+  let query = supabase
+    .from("tasks")
+    .select("id", { count: "exact", head: true }) as unknown as TaskReadQuery;
+  query = applyArchiveFilter(query, archiveFilter, variant, activeAncestry);
+  if (options?.applyQuery) query = options.applyQuery(query);
+
+  const result = (await query) as unknown as {
+    count: number | null;
+    error: { message: string } | null;
+  };
+  if (result.error) {
+    return { count: null, errorMessage: result.error.message };
+  }
+  return { count: result.count ?? 0, errorMessage: null };
 }
 
 export function getTasksForTodayPlanning(options: {

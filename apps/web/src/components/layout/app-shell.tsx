@@ -2,12 +2,14 @@ import { cache } from "react";
 import type { ReactNode } from "react";
 import { createClient } from "@/lib/supabase/server";
 import { getShellIdentity, getWorkspaceShellMetrics } from "@/lib/workspace-shell";
+import { listFavorites } from "@/lib/services/favorite-service";
 
 import { cn } from "@/lib/utils";
 import type { SidebarGoal, SidebarProject } from "./sidebar";
 import { WorkspaceShell } from "./workspace-shell";
 import { WorkspaceKeyboardShortcuts } from "./workspace-keyboard-shortcuts";
 import { GlobalQuickActionControllers } from "./global-quick-action-controllers";
+import { ToastProvider } from "@/components/ui/toast-provider";
 
 type AppShellProps = {
   children: ReactNode;
@@ -94,19 +96,27 @@ export async function AppShell({
   contentClassName,
   hideHeader = false,
 }: AppShellProps) {
-  const [projects, goals, metrics, identity] = await Promise.all([
+  const [projects, goals, metrics, identity, favoritesResult] = await Promise.all([
     getSidebarProjects(),
     getSidebarGoals(),
     getWorkspaceShellMetrics(),
     getShellIdentity(),
+    listFavorites().catch(() => ({ items: [], errorMessage: null })),
   ]);
+  const favorites = favoritesResult.items.map((item) => ({
+    id: item.favoriteId,
+    label: item.label,
+    href: item.href,
+    kind: item.kind,
+  }));
 
   return (
-    <>
-      <WorkspaceKeyboardShortcuts />
+    <ToastProvider>
+      <WorkspaceKeyboardShortcuts ownerId={identity.id} />
       <GlobalQuickActionControllers projects={projects} goals={goals} />
 
       <WorkspaceShell
+        favorites={favorites}
         projects={projects}
         metrics={metrics}
         identity={identity}
@@ -119,6 +129,6 @@ export async function AppShell({
       >
         {children}
       </WorkspaceShell>
-    </>
+    </ToastProvider>
   );
 }

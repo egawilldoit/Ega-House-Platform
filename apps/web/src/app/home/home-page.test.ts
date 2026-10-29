@@ -22,9 +22,9 @@ const surfaces = [homePage, hero, loop, closing, header, footer].join("\n");
 
 describe("public homepage", () => {
   it("keeps authentication server-owned", () => {
-    expect(page).toContain('redirect("/home")');
+    expect(page).toContain("getLaunchPagePath(preferences.launchPage)");
     expect(page).toContain("<HomePage />");
-    expect(page).toContain("const user = await getCurrentUser()");
+    expect(page).toContain("const [user, preferences] = await Promise.all");
   });
 
   it("composes the redesigned marketing tree", () => {

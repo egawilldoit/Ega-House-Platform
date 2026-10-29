@@ -14,7 +14,7 @@ import { sanitizeSupabaseError } from "../supabase/errors";
 
 /**
  * Archived-only select shapes. Projects and goals expose `archived_at` as the
- * canonical timestamp (added by migration 0064 and kept equal to
+ * canonical timestamp (added by migration 0073 and kept equal to
  * `status = 'archived'` by a CHECK constraint); tasks already owned it.
  */
 const TASK_ARCHIVE_SELECT = [

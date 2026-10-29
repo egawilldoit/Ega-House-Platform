@@ -15,6 +15,7 @@ import {
   type ProjectStatus,
 } from "@ega/application";
 import { PROJECT_ARCHIVE_STATUS } from "@ega/domain";
+import { toGoalHealthOrNull } from "@ega/domain/goals";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import {
@@ -52,6 +53,8 @@ type GoalRow = {
   id: string;
   title: string;
   project_id: string;
+  health: string | null;
+  next_step: string | null;
 };
 
 function mapProjectRow(row: ProjectRow): ProjectRecord {
@@ -191,17 +194,23 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
   async listTasksForProjects(
     actor: AuthenticatedActor,
     projectIds: string[],
+    options?: { includeArchived?: boolean },
   ): Promise<RepositoryResult<ProjectTaskContextRecord[]>> {
     if (projectIds.length === 0) {
       return { ok: true, value: [] };
     }
 
-    const { data, error } = await this.supabase
+    let query = this.supabase
       .from("tasks")
       .select("id, project_id, title, status, priority, updated_at")
       .in("project_id", projectIds)
-      .eq("owner_user_id", actor.userId)
-      .order("updated_at", { ascending: false });
+      .eq("owner_user_id", actor.userId);
+
+    if (!options?.includeArchived) {
+      query = query.is("archived_at", null);
+    }
+
+    const { data, error } = await query.order("updated_at", { ascending: false });
 
     if (error) {
       return { ok: false, error: sanitizeSupabaseError(error) };
@@ -252,7 +261,7 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
   ): Promise<RepositoryResult<ProjectGoalRecord[]>> {
     const { data, error } = await this.supabase
       .from("goals")
-      .select("id, title, project_id")
+      .select("id, title, project_id, health, next_step")
       .eq("project_id", projectId)
       .eq("owner_user_id", actor.userId)
       .order("created_at", { ascending: false });
@@ -267,6 +276,8 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
         id: row.id,
         title: row.title,
         projectId: row.project_id,
+        health: toGoalHealthOrNull(row.health),
+        nextStep: row.next_step,
       })),
     };
   }
@@ -346,7 +357,7 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
 
   /**
    * Archive/restore in one statement. `projects_archive_state_check` (migration
-   * 0064) ties `archived_at` to `status = 'archived'`, so the pair is written
+   * 0073) ties `archived_at` to `status = 'archived'`, so the pair is written
    * together and can never half-apply.
    */
   async updateProjectArchiveState(

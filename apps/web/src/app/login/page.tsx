@@ -2,14 +2,26 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
 
+import { getLaunchPagePath } from "@ega/domain/preferences";
+
 import { AuthFeedback } from "@/app/auth-ui/auth-feedback";
 import { AuthHeader } from "@/app/auth-ui/auth-header";
 import { AuthShell } from "@/app/auth-ui/auth-shell";
 import { createClient } from "@/lib/supabase/server";
+import { getWebUserPreferences } from "@/lib/services/user-preferences-service";
 
 import { LoginForm } from "./login-form";
 
 const PUBLIC_SIGNUP_PATH = "/signup";
+
+/** An already-signed-in visit goes to its requested internal path or the owner's launch page. */
+async function resolveAuthenticatedLanding(rawNext: unknown): Promise<string> {
+  if (typeof rawNext === "string" && rawNext.startsWith("/") && !rawNext.startsWith("//")) {
+    return rawNext;
+  }
+  const preferences = await getWebUserPreferences();
+  return getLaunchPagePath(preferences.launchPage);
+}
 
 export const metadata: Metadata = {
   title: "Login",
@@ -55,7 +67,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
   } = await supabase.auth.getUser();
 
   if (user) {
-    redirect("/dashboard");
+    redirect(await resolveAuthenticatedLanding(params.next));
   }
 
   const nextParam = typeof params.next === "string" ? params.next : null;

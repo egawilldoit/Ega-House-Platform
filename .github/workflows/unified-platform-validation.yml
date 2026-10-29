@@ -508,6 +508,18 @@ jobs:
         env:
           PROOF_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ega_proof
         run: node scripts/db/task-status-events-invariant-verify.mjs --url "$PROOF_DATABASE_URL"
+      - name: Prove task comment ownership, idempotency and reaction invariants through the migration journal
+        env:
+          PROOF_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ega_proof
+        run: node scripts/db/task-comments-invariant-verify.mjs --url "$PROOF_DATABASE_URL"
+      - name: Prove task activity attribution and producer coverage through the migration journal
+        env:
+          PROOF_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ega_proof
+        run: node scripts/db/task-activity-attribution-invariant-verify.mjs --url "$PROOF_DATABASE_URL"
+      - name: Prove task dependency ownership, cycle and date-window invariants through the migration journal
+        env:
+          PROOF_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ega_proof
+        run: node scripts/db/task-dependencies-invariant-verify.mjs --url "$PROOF_DATABASE_URL"
       - name: Prove MCP upgrade from the current-main 0049 baseline with legacy grants
         env:
           PROOF_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ega_proof
@@ -516,6 +528,10 @@ jobs:
         env:
           PROOF_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ega_proof
         run: node scripts/db/mcp-receipt-invariant-verify.mjs --url "$PROOF_DATABASE_URL" --upgrade-from 0049_operator_proposals --expect-unknown-shape-failure
+      - name: Prove user preference defaults, enum checks and owner RLS through the migration journal
+        env:
+          PROOF_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ega_proof
+        run: node scripts/db/user-preferences-invariant-verify.mjs --url "$PROOF_DATABASE_URL"
 
   hygiene:
     needs: [changes, workspace, contracts, domain, application, data-access, regressions, lint-changed, lint-report, web, mobile, server, api-client, db-invariants]

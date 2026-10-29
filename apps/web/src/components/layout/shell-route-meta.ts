@@ -47,7 +47,14 @@ export const SYSTEM_ROUTES = [
   },
 ] as const satisfies readonly ShellRouteMeta[];
 
-const ALL_ROUTES: readonly ShellRouteMeta[] = [...COMMAND_ROUTES, ...SYSTEM_ROUTES];
+const ALL_ROUTES: readonly ShellRouteMeta[] = [
+  ...COMMAND_ROUTES,
+  ...SYSTEM_ROUTES,
+  // Settings sub-pages are reachable from the in-page section navigation; they
+  // still need metadata so the top-bar context does not fall back to Workspace.
+  { href: "/settings/appearance", label: "Appearance", group: "system", description: "Theme and density" },
+  { href: "/settings/preferences", label: "Preferences", group: "system", description: "Launch and task defaults" },
+];
 
 const FALLBACK_ROUTE: ShellRouteMeta = {
   href: "/today",

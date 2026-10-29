@@ -12,6 +12,7 @@ function createSearchSupabaseMock(overrides?: {
   tasks?: unknown[];
   projects?: unknown[];
   goals?: unknown[];
+  ideas?: unknown[];
   errorTable?: string;
 }) {
   const calls: TableCall[] = [];
@@ -73,7 +74,9 @@ function createSearchSupabaseMock(overrides?: {
                 ? overrides?.tasks ?? []
                 : table === "projects"
                   ? overrides?.projects ?? []
-                  : overrides?.goals ?? []);
+                  : table === "goals"
+                    ? overrides?.goals ?? []
+                    : overrides?.ideas ?? []);
             return Promise.resolve(onFulfilled?.({ data: rows, error: failure?.error ?? null }));
           },
         };
@@ -88,7 +91,7 @@ function createSearchSupabaseMock(overrides?: {
     queryLog,
     client: {
       from(table: string) {
-        assert.ok(["tasks", "projects", "goals"].includes(table));
+        assert.ok(["tasks", "projects", "goals", "idea_notes"].includes(table));
         return buildBuilder(table);
       },
     },
@@ -106,7 +109,14 @@ test("returns empty results for queries shorter than the minimum", async () => {
 
   const results = await searchWorkspace("a", { supabase: mock.client as never });
 
-  assert.deepEqual(results, { query: "a", tasks: [], projects: [], goals: [] });
+  assert.deepEqual(results, {
+    query: "a",
+    scope: "all",
+    tasks: [],
+    projects: [],
+    goals: [],
+    ideas: [],
+  });
   assert.equal(mock.calls.length, 0);
 });
 
@@ -118,6 +128,7 @@ test("searches tasks, projects, and goals with escaped ilike patterns and limits
     ],
     projects: [{ id: "p1", name: "Landing", slug: "landing" }],
     goals: [{ id: "g1", title: "Launch landing page" }],
+    ideas: [{ id: "i1", title: "Landing page idea", status: "inbox" }],
   });
 
   const results = await searchWorkspace("landing_page", { supabase: mock.client as never });
@@ -129,6 +140,7 @@ test("searches tasks, projects, and goals with escaped ilike patterns and limits
   ]);
   assert.deepEqual(results.projects, [{ id: "p1", name: "Landing", slug: "landing" }]);
   assert.deepEqual(results.goals, [{ id: "g1", title: "Launch landing page" }]);
+  assert.deepEqual(results.ideas, [{ id: "i1", title: "Landing page idea", status: "inbox" }]);
 
   const escapedPattern = "%landing\\_page%";
   for (const entry of mock.queryLog) {
@@ -138,6 +150,36 @@ test("searches tasks, projects, and goals with escaped ilike patterns and limits
 
   const taskCall = mock.calls.find((call) => call.table === "tasks");
   assert.match(taskCall?.select ?? "", /id, title, status, projects\(name\)/);
+});
+
+test("scoped search queries only the requested table and reports its scope", async () => {
+  const mock = createSearchSupabaseMock({
+    tasks: [{ id: "t1", title: "Ship landing page", status: "todo", projects: null }],
+    ideas: [{ id: "i1", title: "Landing idea", status: "inbox" }],
+  });
+
+  const results = await searchWorkspace("landing", {
+    supabase: mock.client as never,
+    scope: "ideas",
+  });
+
+  assert.equal(results.scope, "ideas");
+  assert.equal(mock.calls.length, 1);
+  assert.equal(mock.calls[0].table, "idea_notes");
+  assert.deepEqual(results.tasks, []);
+  assert.deepEqual(results.ideas, [{ id: "i1", title: "Landing idea", status: "inbox" }]);
+});
+
+test("an unknown scope falls back to all instead of a partial search", async () => {
+  const mock = createSearchSupabaseMock();
+  const results = await searchWorkspace("landing", {
+    supabase: mock.client as never,
+    scope: "comments",
+  });
+
+  assert.equal(results.scope, "all");
+  // Four result queries plus the two archived-ancestry scope reads.
+  assert.equal(mock.calls.length, 6);
 });
 
 test("propagates a searchable error when a table query fails", async () => {

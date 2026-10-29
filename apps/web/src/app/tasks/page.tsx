@@ -3,6 +3,9 @@ import Link from "next/link";
 import { FolderKanban } from "lucide-react";
 
 import { TasksWorkspaceShell } from "@/components/tasks/tasks-workspace-shell";
+import { getCurrentUser } from "@/lib/services/auth-service";
+import { getWebUserPreferences } from "@/lib/services/user-preferences-service";
+import { toggleFavoriteAction } from "@/app/favorites/actions";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { getTasksPageModel } from "./_lib/tasks-page-model";
@@ -36,6 +39,9 @@ type TasksPageProps = {
     task?: string;
     /** `full` renders the detail full page instead of a side panel. */
     taskMode?: string;
+    /** Timeline window anchor and week/month zoom. */
+    tlStart?: string;
+    tlZoom?: string;
     statusUpdateError?: string;
     viewError?: string;
     viewSuccess?: string;
@@ -44,7 +50,13 @@ type TasksPageProps = {
 
 export default async function TasksPage({ searchParams }: TasksPageProps) {
   const resolvedSearchParams = await searchParams;
-  const model = await getTasksPageModel(resolvedSearchParams);
+  const [user, preferences] = await Promise.all([
+    getCurrentUser(),
+    getWebUserPreferences(),
+  ]);
+  const model = await getTasksPageModel(resolvedSearchParams, {
+    defaultLayout: preferences.taskLayout,
+  });
 
   return (
     <TasksWorkspaceShell
@@ -60,7 +72,7 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
         </Link>
       }
     >
-      <TasksPageView model={model} />
+      <TasksPageView model={model} ownerId={user?.id ?? null} favouriteAction={toggleFavoriteAction} />
     </TasksWorkspaceShell>
   );
 }

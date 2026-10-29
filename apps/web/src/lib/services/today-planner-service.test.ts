@@ -79,6 +79,15 @@ function createSupabaseMock(queryResults: QueryResult[], onOrClause?: (value: st
             order() {
               return chain;
             },
+            range() {
+              return chain;
+            },
+            lt() {
+              return chain;
+            },
+            ilike() {
+              return chain;
+            },
             limit() {
               const result = queryResults[index];
               index += 1;
@@ -245,6 +254,15 @@ test("uses the provided scoped client for active timer and summary reads", async
               order() {
                 return chain;
               },
+              range() {
+                return chain;
+              },
+              lt() {
+                return chain;
+              },
+              ilike() {
+                return chain;
+              },
               limit() {
                 const result = taskRows[taskQueryIndex];
                 taskQueryIndex += 1;
@@ -266,6 +284,15 @@ test("uses the provided scoped client for active timer and summary reads", async
               return chain;
             },
             order() {
+              return chain;
+            },
+            range() {
+              return chain;
+            },
+            lt() {
+              return chain;
+            },
+            ilike() {
               return chain;
             },
             limit() {

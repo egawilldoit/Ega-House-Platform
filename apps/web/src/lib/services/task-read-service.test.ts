@@ -19,6 +19,7 @@ type MockTask = {
   blocked_reason?: string | null;
   status: string;
   priority: string;
+  start_date?: string | null;
   due_date: string | null;
   scheduled_start_at?: string | null;
   scheduled_end_at?: string | null;
@@ -222,6 +223,15 @@ function createTaskReadSupabaseMock(
               state.orders.push({ column, ascending: options?.ascending ?? true });
               return this;
             },
+            range() {
+              return this;
+            },
+            lt() {
+              return this;
+            },
+            ilike() {
+              return this;
+            },
             limit(count: number) {
               state.limit = count;
               return this;
@@ -265,6 +275,7 @@ function createMockTask(overrides: Partial<MockTask> & Pick<MockTask, "id" | "ti
     status: "todo",
     priority: "medium",
     due_date: null,
+    start_date: null,
     scheduled_start_at: null,
     scheduled_end_at: null,
     estimate_minutes: null,
@@ -316,9 +327,11 @@ test("getTaskForOwner returns a normalized task row when modern task columns exi
     title: "Plan launch",
     description: "Draft checklist",
     blocked_reason: "Waiting on review",
+    board_rank: null,
     status: "blocked",
     priority: "high",
     due_date: "2026-05-01",
+    start_date: null,
     scheduled_start_at: null,
     scheduled_end_at: null,
     calendar_sync_enabled: false,
@@ -330,6 +343,7 @@ test("getTaskForOwner returns a normalized task row when modern task columns exi
     goal_id: "goal-1",
     focus_rank: 2,
     planned_for_date: "2026-04-29",
+    created_at: null,
     archived_at: "2026-04-29T11:00:00.000Z",
     archived_by: "user-1",
     projects: { name: "EGA House", slug: "ega-house" },

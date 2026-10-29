@@ -29,6 +29,9 @@ describe("EGA House workspace tokens — single authority", () => {
     expect(tokens).toContain("--status-healthy");
     expect(tokens).toContain("--status-risk");
     expect(tokens).toContain("--status-overdue");
+    expect(tokens).toContain("--status-review: #6d28d9");
+    expect(tokens).toContain("--status-review-bg: #f5f3ff");
+    expect(tokens).toContain("--status-review-border: #ddd6fe");
 
     // Shell geometry
     expect(tokens).toContain("--sidebar-width: 264px");
@@ -110,6 +113,33 @@ describe("EGA House workspace tokens — single authority", () => {
     const rootBlock = globals.split("@theme")[0];
     const violations = rootBlock.split("\n").filter((l) => selfRefPattern.test(l));
     expect(violations, `self-referential lines: ${violations.join("; ")}`).toEqual([]);
+  });
+
+  it("defines the accent and density preference variants without a second authority", () => {
+    const tokens = read("src/styles/tokens.css");
+
+    for (const accent of ["blue", "green", "violet", "amber"]) {
+      expect(tokens).toContain(`html[data-accent="${accent}"]:has([data-workspace-theme="workspace"])`);
+      expect(tokens).toContain(
+        `html[data-theme="dark"][data-accent="${accent}"]:has([data-workspace-theme="workspace"])`,
+      );
+    }
+
+    expect(tokens).toContain('html[data-density="compact"]:has([data-workspace-theme="workspace"])');
+    expect(tokens).toContain("--row-padding-block:");
+    expect(tokens).toContain("--data-table-cell-padding:");
+    expect(tokens).toContain("--nav-item-min-height:");
+    // Compact never removes the pointer-coarse touch minimum.
+    expect(tokens).toContain("@media (pointer: coarse)");
+  });
+
+  it("defines the explicit reduced-motion override for the app preference", () => {
+    const motion = read("src/styles/motion.css");
+
+    expect(motion).toContain('html[data-reduce-motion="true"] *');
+    expect(motion).toContain("transition-duration: 0.01ms !important");
+    expect(motion).toContain('html[data-reduce-motion="true"] .motion-check');
+    expect(motion).toContain("@media (prefers-reduced-motion: reduce)");
   });
 
   it("defines the drag shadow in both palettes", () => {

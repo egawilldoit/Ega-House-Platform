@@ -93,6 +93,7 @@ export function TaskDrawer({
             dialog (single onOpenChange -> onClose). */}
         <Dialog.Content
           ref={contentRef}
+          data-task-shortcut-scope
           aria-describedby={undefined}
           onEscapeKeyDown={(event) => {
             // Escape in a text field cancels that field's draft first; the

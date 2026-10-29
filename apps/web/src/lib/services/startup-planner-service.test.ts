@@ -61,6 +61,7 @@ function createTaskRow(overrides: Partial<NormalizedTaskRow> = {}): NormalizedTa
     status: "todo",
     priority: "medium",
     due_date: null,
+    start_date: null,
     scheduled_start_at: null,
     scheduled_end_at: null,
     calendar_sync_enabled: false,
@@ -71,6 +72,7 @@ function createTaskRow(overrides: Partial<NormalizedTaskRow> = {}): NormalizedTa
     project_id: "project-1",
     goal_id: null,
     focus_rank: null,
+    board_rank: null,
     planned_for_date: null,
     archived_at: null,
     archived_by: null,
@@ -115,7 +117,7 @@ function createStartupSupabaseMock(input?: {
   const reviews = [...(input?.reviews ?? [])];
 
   type Filter = {
-    op: "eq" | "neq" | "not" | "gte" | "lte" | "is";
+    op: "eq" | "neq" | "not" | "gte" | "lte" | "is" | "lt" | "ilike";
     column: string;
     value: unknown;
     comparator?: string;
@@ -209,6 +211,17 @@ function createStartupSupabaseMock(input?: {
         orderBy.push({ column, ascending: options?.ascending ?? true });
         return this;
       },
+      range() {
+        return this;
+      },
+      lt(column: string, value: unknown) {
+        filters.push({ op: "lt", column, value });
+        return this;
+      },
+      ilike(column: string, value: unknown) {
+        filters.push({ op: "ilike", column, value });
+        return this;
+      },
       limit(value: number) {
         limitValue = value;
         return this;
@@ -252,6 +265,7 @@ function createStartupSupabaseMock(input?: {
       status: task.status,
       priority: task.priority,
       due_date: task.due_date,
+      start_date: null,
       scheduled_start_at: null,
       scheduled_end_at: null,
       planned_for_date: task.planned_for_date,

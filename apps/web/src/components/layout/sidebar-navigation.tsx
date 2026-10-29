@@ -48,7 +48,15 @@ export type SidebarGoal = {
   project_id: string;
 };
 
+export type SidebarFavorite = {
+  id: string;
+  label: string;
+  href: `/${string}`;
+  kind: "project" | "task";
+};
+
 type SidebarNavigationProps = {
+  favorites?: SidebarFavorite[];
   projects?: SidebarProject[];
   metrics: WorkspaceShellMetrics;
   compact?: boolean;
@@ -148,6 +156,7 @@ function RouteLink({
 }
 
 export function SidebarNavigation({
+  favorites = [],
   projects = [],
   metrics,
   compact = false,
@@ -194,6 +203,32 @@ export function SidebarNavigation({
           })}
         </div>
       </section>
+
+      {favorites.length > 0 ? (
+        <section className="sidebar-section workspace-nav-section" aria-labelledby="workspace-favorites-label">
+          <div className="sidebar-section-heading">
+            <div id="workspace-favorites-label" className="sidebar-section-label">
+              Favourites
+            </div>
+          </div>
+          <div className="sidebar-project-list">
+            {favorites.slice(0, 6).map((favorite) => (
+              <Link
+                key={favorite.id}
+                href={canonicalUrl.resolve(favorite.href)}
+                className="sidebar-link"
+                onClick={onNavigate}
+                title={favorite.label}
+              >
+                <span className="workspace-nav-icon" aria-hidden="true">★</span>
+                <span className="workspace-nav-label min-w-0 flex-1 truncate">
+                  {favorite.label}
+                </span>
+              </Link>
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       <section
         className="sidebar-section sidebar-project-section workspace-nav-section"

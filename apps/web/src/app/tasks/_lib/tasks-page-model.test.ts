@@ -34,7 +34,31 @@ const mockTasks = vi.hoisted(() => [
   },
 ]);
 
-vi.mock("@/lib/services/task-service", () => ({ getTasksWorkspaceData }));
+vi.mock("@/lib/services/task-service", () => ({
+  getTasksWorkspaceData,
+  getTaskDrawerDetail: vi.fn(async () => ({ kind: "unavailable" })),
+}));
+
+vi.mock("@/lib/services/favorite-service", () => ({
+  isFavorite: vi.fn(async () => false),
+}));
+
+vi.mock("@/lib/services/task-activity-service", () => ({
+  getTaskActivity: vi.fn(async () => ({ items: [], hasMore: false, errorMessage: null })),
+}));
+
+vi.mock("@/lib/services/task-comment-service", () => ({
+  getTaskCommentThread: vi.fn(async () => ({
+    comments: [],
+    mentionCandidates: [],
+    errorMessage: null,
+  })),
+}));
+
+vi.mock("@/lib/services/subtask-service", () => ({
+  listTaskSubtasks: vi.fn(async () => ({ data: [], errorMessage: null })),
+  getSubtaskCountsForTasks: vi.fn(async () => ({})),
+}));
 
 const getWebTimeContext = vi.hoisted(() =>
   vi.fn(async () => ({
@@ -104,11 +128,44 @@ describe("getTasksPageModel dead /tasks work removal", () => {
     expect(model).not.toHaveProperty("resolvedSavedViewFeedback");
   });
 
+  it("EGA-792: parses bounded column state and carries it in the view URL", async () => {
+    const model = await getTasksPageModel({
+      cols: "task,project,status",
+      widths: "status:400",
+    });
+
+    expect(
+      model.parsed.view.columns
+        ?.filter((column) => column.visible)
+        .map((column) => column.id),
+    ).toEqual(["task", "project", "status"]);
+    expect(model.returnPath).toContain("cols=task%2Cproject%2Cstatus");
+    expect(model.returnPath).toContain("widths=status%3A400");
+
+    const defaultModel = await getTasksPageModel({});
+    expect(defaultModel.parsed.view.columns).toBeUndefined();
+  });
+
   it("ega-661: overdue and due-soon counts use the account local date, not the runtime-local date", async () => {
     const model = await getTasksPageModel({});
 
     expect(model.overdueCount).toBe(1);
     expect(model.dueSoonCount).toBe(1);
+  });
+
+  it("uses the durable default layout only when the view has no explicit layout", async () => {
+    const preferred = await getTasksPageModel({}, { defaultLayout: "kanban" });
+    expect(preferred.parsed.activeLayout).toBe("kanban");
+    expect(preferred.returnPath).toContain("layout=kanban");
+
+    const explicit = await getTasksPageModel({ layout: "list" }, { defaultLayout: "kanban" });
+    expect(explicit.parsed.activeLayout).toBe("list");
+
+    const unsupported = await getTasksPageModel(
+      { layout: "table" },
+      { defaultLayout: "kanban" },
+    );
+    expect(unsupported.parsed.activeLayout).toBe("kanban");
   });
 
   it("never requests calendar integration settings or sorts a focus queue in the model", () => {

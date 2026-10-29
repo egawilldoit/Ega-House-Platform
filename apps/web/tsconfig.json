@@ -17,7 +17,7 @@
     "isolatedModules": true,
     "allowImportingTsExtensions": true,
     "rewriteRelativeImportExtensions": false,
-    "jsx": "preserve",
+    "jsx": "react-jsx",
     "incremental": true,
     "plugins": [
       {
@@ -39,7 +39,8 @@
     "src/**/*.ts",
     "src/**/*.tsx",
     "tests/**/*.ts",
-    ".next/types/**/*.ts"
+    ".next/types/**/*.ts",
+    ".next/dev/types/**/*.ts"
   ],
   "exclude": [
     "node_modules",

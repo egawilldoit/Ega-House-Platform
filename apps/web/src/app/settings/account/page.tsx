@@ -23,6 +23,7 @@ import {
   getGoogleCalendarOAuthFailureMessage,
 } from "@/app/api/integrations/google-calendar/oauth";
 import { TimezoneCard } from "@/app/settings/account/timezone-card";
+import { SettingsNav } from "@/app/settings/_components/settings-nav";
 
 export const metadata: Metadata = {
   title: "Account Settings",
@@ -57,6 +58,8 @@ export default async function AccountSettingsPage({
       description="Account controls and integrations."
     >
       <div className="flex max-w-3xl flex-col gap-6">
+        <SettingsNav active="account" />
+
         <TimezoneCard
           timezone={timeContext.timezone}
           persistedTimezone={timeContext.persistedTimezone}

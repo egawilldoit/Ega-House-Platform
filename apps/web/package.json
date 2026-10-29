@@ -18,6 +18,9 @@
     "test:pwa:auth": "playwright test --config playwright.pwa-auth.config.ts"
   },
   "dependencies": {
+    "@dnd-kit/core": "^6.3.1",
+    "@dnd-kit/sortable": "^10.0.0",
+    "@dnd-kit/utilities": "^3.2.2",
     "@ega/application": "0.1.0",
     "@ega/contracts": "0.1.0",
     "@ega/data-access": "0.1.0",

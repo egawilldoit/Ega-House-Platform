@@ -454,7 +454,70 @@
       "idx": 64,
       "version": "7",
       "when": 1787880000014,
-      "tag": "0064_archive_centre",
+      "tag": "0064_task_operation_receipts",
+      "breakpoints": true
+    },
+    {
+      "idx": 65,
+      "version": "7",
+      "when": 1787880000015,
+      "tag": "0065_task_subtasks",
+      "breakpoints": true
+    },
+    {
+      "idx": 66,
+      "version": "7",
+      "when": 1787880000016,
+      "tag": "0066_task_activity_events",
+      "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1787880000017,
+      "tag": "0067_favorites",
+      "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "7",
+      "when": 1787880000018,
+      "tag": "0068_task_activity_attribution",
+      "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "7",
+      "when": 1787880000019,
+      "tag": "0069_task_board_rank",
+      "breakpoints": true
+    },
+    {
+      "idx": 70,
+      "version": "7",
+      "when": 1787880000020,
+      "tag": "0070_task_comments",
+      "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "7",
+      "when": 1787880000021,
+      "tag": "0071_task_start_date_dependencies",
+      "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "7",
+      "when": 1787880000022,
+      "tag": "0072_user_preferences",
+      "breakpoints": true
+    },
+    {
+      "idx": 73,
+      "version": "7",
+      "when": 1787880000023,
+      "tag": "0073_archive_centre",
       "breakpoints": true
     }
   ]
