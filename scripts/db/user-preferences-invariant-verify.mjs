@@ -26,7 +26,7 @@ import { argv, exit } from "node:process";
 import postgres from "postgres";
 
 const DRIZZLE_DIR = new URL("../../drizzle/", import.meta.url);
-const MIGRATION_TAG = "0071_user_preferences";
+const MIGRATION_TAG = "0072_user_preferences";
 
 function parseArgs() {
   const args = {};
