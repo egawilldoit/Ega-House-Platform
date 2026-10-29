@@ -16,3 +16,4 @@ export * from "./goals";
 
 export * from "./subtasks";
 export * from "./task-comments";
+export * from "./attachments";

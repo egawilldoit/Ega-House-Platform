@@ -32,6 +32,7 @@ import {
 import { groupTaskViewRecords } from "@ega/application/tasks/view";
 import { getTaskDrawerDetail } from "@/lib/services/task-service";
 import { getSubtaskCountsForTasks, listTaskSubtasks } from "@/lib/services/subtask-service";
+import { listTaskAttachments } from "@/lib/services/attachment-service";
 import { getTaskActivity } from "@/lib/services/task-activity-service";
 import { getTaskCommentThread } from "@/lib/services/task-comment-service";
 import { isFavorite } from "@/lib/services/favorite-service";
@@ -358,6 +359,9 @@ export async function getTasksPageModel(
   const selectedTaskSubtasks = selectedTaskId
     ? (await listTaskSubtasks(selectedTaskId)).data ?? []
     : [];
+  const selectedTaskAttachments = selectedTaskId
+    ? await listTaskAttachments(selectedTaskId)
+    : { data: [], errorMessage: null };
   const subtaskCounts = await getSubtaskCountsForTasks(tasks.map((task) => task.id));
   const selectedTaskActivityPage = selectedTaskId
     ? await getTaskActivity(selectedTaskId, { limit: 8 })
@@ -381,6 +385,7 @@ export async function getTasksPageModel(
     selectedTask,
     selectedTaskError,
     selectedTaskSubtasks,
+    selectedTaskAttachments,
     subtaskCounts,
     selectedTaskActivity,
     selectedTaskActivityHasMore,
