@@ -18,11 +18,15 @@ export type { TaskDrawerMode };
 /**
  * URL-backed task drawer state.
  *
+ * `defaultMode` is the owner's durable "open tasks in" preference. An explicit
+ * `?taskMode=panel|full` in the address still wins, so the drawer's own toggle
+ * works for the current selection without rewriting the stored default.
+ *
  * Opening pushes a history entry so Back closes the drawer; every in-drawer
  * change (mode switch, explicit close) replaces the current entry so editing a
  * task does not fill the history stack.
  */
-export function useTaskDrawerParam() {
+export function useTaskDrawerParam(defaultMode: TaskDrawerMode = "panel") {
   const pathname = usePathname();
   const router = useRouter();
   const rawSearchParams = useSearchParams();
@@ -32,17 +36,20 @@ export function useTaskDrawerParam() {
     () => new URLSearchParams(rawSearchParams.toString()),
     [rawSearchParams],
   );
-  const state = useMemo(() => readTaskDrawerParam(searchParams), [searchParams]);
+  const state = useMemo(
+    () => readTaskDrawerParam(searchParams, defaultMode),
+    [searchParams, defaultMode],
+  );
 
   const open = useCallback(
     (taskId: string, options?: { mode?: TaskDrawerMode }) => {
       const href = buildTaskDrawerHref(pathname, searchParams, {
         taskId,
-        mode: options?.mode ?? "panel",
+        mode: options?.mode ?? defaultMode,
       });
       startTransition(() => router.push(href, { scroll: false }));
     },
-    [pathname, router, searchParams],
+    [pathname, router, searchParams, defaultMode],
   );
 
   const setMode = useCallback(

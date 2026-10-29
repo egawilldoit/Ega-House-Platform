@@ -153,6 +153,21 @@ describe("getTasksPageModel dead /tasks work removal", () => {
     expect(model.dueSoonCount).toBe(1);
   });
 
+  it("uses the durable default layout only when the view has no explicit layout", async () => {
+    const preferred = await getTasksPageModel({}, { defaultLayout: "kanban" });
+    expect(preferred.parsed.activeLayout).toBe("kanban");
+    expect(preferred.returnPath).toContain("layout=kanban");
+
+    const explicit = await getTasksPageModel({ layout: "list" }, { defaultLayout: "kanban" });
+    expect(explicit.parsed.activeLayout).toBe("list");
+
+    const unsupported = await getTasksPageModel(
+      { layout: "table" },
+      { defaultLayout: "kanban" },
+    );
+    expect(unsupported.parsed.activeLayout).toBe("kanban");
+  });
+
   it("never requests calendar integration settings or sorts a focus queue in the model", () => {
     const source = readFileSync(
       resolve(process.cwd(), "src/app/tasks/_lib/tasks-page-model.ts"),
