@@ -36,20 +36,24 @@ const getSidebarProjects = cache(async (): Promise<SidebarProject[]> => {
     }
 
     const projectIds = projectRows.map((project) => project.id);
-    const { data: taskRows } = await supabase
-      .from("tasks")
-      .select("project_id, status")
-      .in("project_id", projectIds)
-      .neq("status", "done")
-      .limit(1000);
+
+    const countResults = await Promise.all(
+      projectIds.map((projectId) =>
+        supabase
+          .from("tasks")
+          .select("id", { count: "exact", head: true })
+          .eq("project_id", projectId)
+          .neq("status", "done"),
+      ),
+    );
 
     const activeTaskCounts = new Map<string, number>();
-    for (const task of taskRows ?? []) {
-      activeTaskCounts.set(
-        task.project_id,
-        (activeTaskCounts.get(task.project_id) ?? 0) + 1,
-      );
-    }
+    projectIds.forEach((projectId, index) => {
+      const count = countResults[index]?.count;
+      if (typeof count === "number") {
+        activeTaskCounts.set(projectId, count);
+      }
+    });
 
     return projectRows
       .map((project, index) => ({
