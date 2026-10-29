@@ -164,9 +164,9 @@ export function TemplatePicker({ options, value, onChange }: TemplatePickerProps
       {selected ? (
         <div className="flex flex-col gap-3 rounded-[var(--radius-md)] border border-[var(--ega-border)] bg-[color:var(--ega-surface-subtle)] p-3">
           <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <h3 className="text-[length:var(--text-meta-lg)] font-semibold text-[color:var(--ega-text)]">
+            <h4 className="text-[length:var(--text-meta-lg)] font-semibold text-[color:var(--ega-text)]">
               What will be created
-            </h3>
+            </h4>
             <p aria-live="polite" className="text-[length:var(--text-meta)] tabular-nums text-ega-text-secondary">
               {countLabel(selected.goalCount, "goal", "goals")} ·{" "}
               {countLabel(selected.taskCount, "task", "tasks")}
