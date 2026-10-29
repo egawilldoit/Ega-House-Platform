@@ -7,6 +7,7 @@ import { CalendarDays } from "lucide-react";
 import {
   buildProjectProgress,
   createAuthenticatedActor,
+  aggregateEstimateVsActual,
   getProjectIdentityReadModel,
   type ProjectGoalRecord,
   type ProjectIdentityReadModel,
@@ -173,6 +174,15 @@ async function getProjectDetail(
   const taskTotalDurations = Object.fromEntries(
     Object.entries(byTask).map(([taskId, summary]) => [taskId, summary.totalSeconds]),
   );
+  // Running sessions are part of the lifetime total, so the comparison can say
+  // that the number is still moving. Same rows as the totals above.
+  const taskOpenSessionIds = Array.from(
+    new Set(
+      sessions
+        .filter((session) => session.ended_at === null)
+        .map((session) => session.task_id),
+    ),
+  );
 
   return {
     project: project as ProjectRecord,
@@ -184,6 +194,7 @@ async function getProjectDetail(
     comingUp: selectProjectComingUpTasks(activeTasks, { today, timezone, limit: 6 }),
     timeSummary: buildProjectTimeSummary(allTasks, sessions, weekWindow, nowIso),
     taskTotalDurations,
+    taskOpenSessionIds,
     projectActivity,
   };
 }
@@ -233,6 +244,7 @@ export default async function ProjectDetailPage({
     comingUp,
     timeSummary,
     taskTotalDurations,
+    taskOpenSessionIds,
     projectActivity,
   } = projectDetail;
 
@@ -355,11 +367,23 @@ export default async function ProjectDetailPage({
     activeDueFilter !== DEFAULT_TASK_DUE_FILTER ||
     activeSort !== DEFAULT_TASK_SORT;
 
+  // Canonical estimate-vs-actual aggregate over every project Task (archived
+  // work keeps its historical time). Only estimated Tasks contribute to the
+  // comparison; the card states coverage separately.
+  const projectEstimateVsActual = aggregateEstimateVsActual(
+    allTasks.map((task) => ({
+      taskId: task.id,
+      title: task.title,
+      estimateMinutes: task.estimate_minutes,
+      trackedSeconds: taskTotalDurations[task.id] ?? 0,
+      hasOpenSession: taskOpenSessionIds.includes(task.id),
+    })),
+  );
+
   const statusError =
     projectUpdateProjectId === project.id && projectUpdateField === "status"
       ? projectUpdateError
       : null;
-  const archiveError =
     projectUpdateProjectId === project.id && projectUpdateField === "archive"
       ? projectUpdateError
       : null;
@@ -423,6 +447,7 @@ export default async function ProjectDetailPage({
               progress={progress}
               comingUp={comingUp}
               timeSummary={timeSummary}
+              estimateVsActual={projectEstimateVsActual}
               activities={projectActivity}
               taskTitles={taskTitles}
               archivedTaskCount={archivedTaskCount}
@@ -493,6 +518,8 @@ export default async function ProjectDetailPage({
               taskUpdateSuccess={taskUpdateSuccess}
               taskUpdateTaskId={taskUpdateTaskId}
               focusQueue={focusQueue}
+              taskTotalDurations={taskTotalDurations}
+              taskOpenSessionIds={taskOpenSessionIds}
               projectIsArchived={projectIsArchived}
               archivedTaskCount={archivedTaskCount}
               calendarFormDefaults={calendarFormDefaults}

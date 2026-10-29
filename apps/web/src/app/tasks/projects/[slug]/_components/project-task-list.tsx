@@ -10,6 +10,7 @@ import {
   updateTaskInlineAction,
 } from "@/app/tasks/actions";
 import { CreateTaskForm } from "@/app/tasks/create-task-form";
+import { EstimateVsActualBadge } from "@/components/tasks/estimate-vs-actual-badge";
 import { FocusPinToggleForm } from "@/components/tasks/focus-pin-toggle-form";
 import { InlineTaskUpdateForm } from "@/components/tasks/inline-task-update-form";
 import { TaskDueDateLabel } from "@/components/tasks/task-due-date-label";
@@ -20,7 +21,6 @@ import { Card, CardContent } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import type { ProjectGoalRecord, ProjectRecord } from "@ega/application";
 import { buildTaskDrawerLink } from "@/lib/task-drawer-url";
-import { formatTaskEstimate } from "@/lib/task-estimate";
 import { formatTaskRecurrenceRule } from "@/lib/task-recurrence";
 import {
   formatTaskToken,
@@ -48,6 +48,8 @@ type ProjectTaskListProps = {
   taskUpdateSuccess: string | null;
   taskUpdateTaskId: string | null;
   focusQueue: TaskRecord[];
+  taskTotalDurations: Record<string, number>;
+  taskOpenSessionIds: string[];
   projectIsArchived: boolean;
   archivedTaskCount: number;
   calendarFormDefaults: CalendarTaskFormDefaults;
@@ -68,6 +70,8 @@ export function ProjectTaskList({
   taskUpdateSuccess,
   taskUpdateTaskId,
   focusQueue,
+  taskTotalDurations,
+  taskOpenSessionIds,
   projectIsArchived,
   archivedTaskCount,
   calendarFormDefaults,
@@ -157,15 +161,17 @@ export function ProjectTaskList({
                       </summary>
 
                       <div className="flex flex-col gap-3 border-t border-[var(--ega-divider)] bg-[color:var(--ega-surface-subtle)] px-4 py-3">
-                        {task.due_date || task.estimate_minutes || task.task_recurrences[0] ? (
+                        {task.due_date || task.estimate_minutes !== null || task.task_recurrences[0] ? (
                           <div className="flex flex-wrap items-center gap-2">
                             {task.due_date ? (
                               <TaskDueDateLabel dueDate={task.due_date} status={task.status} />
                             ) : null}
-                            {task.estimate_minutes ? (
-                              <Badge tone="muted">
-                                Est. {formatTaskEstimate(task.estimate_minutes)}
-                              </Badge>
+                            {task.estimate_minutes !== null ? (
+                              <EstimateVsActualBadge
+                                estimateMinutes={task.estimate_minutes}
+                                trackedSeconds={taskTotalDurations[task.id] ?? 0}
+                                hasOpenSession={taskOpenSessionIds.includes(task.id)}
+                              />
                             ) : null}
                             {task.task_recurrences[0] ? (
                               <Badge tone="info">

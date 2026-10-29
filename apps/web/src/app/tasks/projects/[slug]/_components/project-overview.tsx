@@ -1,4 +1,5 @@
 import type {
+  EstimateVsActualAggregate,
   ProjectGoalRecord,
   ProjectProgressSummary,
   ProjectRecord,
@@ -20,6 +21,7 @@ type ProjectOverviewProps<T extends ProjectComingUpTask> = {
   progress: ProjectProgressSummary;
   comingUp: ProjectComingUpItem<T>[];
   timeSummary: ProjectTimeSummary;
+  estimateVsActual: EstimateVsActualAggregate;
   activities: TaskActivityItem[];
   taskTitles: Map<string, string>;
   archivedTaskCount: number;
@@ -37,6 +39,7 @@ export function ProjectOverview<T extends ProjectComingUpTask>({
   progress,
   comingUp,
   timeSummary,
+  estimateVsActual,
   activities,
   taskTitles,
   archivedTaskCount,
@@ -68,7 +71,11 @@ export function ProjectOverview<T extends ProjectComingUpTask>({
       />
       <ProjectGoalsMilestones goals={goals} />
       <ProjectComingUp items={comingUp} returnTo={returnTo} timezone={timezone} />
-      <ProjectTimeCard summary={timeSummary} archivedTaskCount={archivedTaskCount} />
+      <ProjectTimeCard
+        summary={timeSummary}
+        estimateVsActual={estimateVsActual}
+        archivedTaskCount={archivedTaskCount}
+      />
       <ProjectActivityCard items={activities} taskTitles={taskTitles} />
     </div>
   );
