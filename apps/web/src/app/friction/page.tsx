@@ -55,7 +55,11 @@ function EmptyPanelRow({ children }: { children: string }) {
 export default async function FrictionRadarPage() {
   const user = await getCurrentUser();
   if (!user) {
-    return <div className="p-6">Please log in to view friction signals.</div>;
+    return (
+      <AppShell title="Workflow Friction" description="Where work is stalling.">
+        <p className="feedback-block" role="status">Please log in to view friction signals.</p>
+      </AppShell>
+    );
   }
 
   const now = new Date();
@@ -66,7 +70,13 @@ export default async function FrictionRadarPage() {
   const displayTimezone = timeContext?.timezone;
 
   if (result.errorMessage || !result.data) {
-    return <div className="p-6">Failed to load friction signals: {result.errorMessage}</div>;
+    return (
+      <AppShell title="Workflow Friction" description="Where work is stalling.">
+        <p className="feedback-block feedback-block-error" role="alert">
+          Failed to load friction signals: {result.errorMessage}
+        </p>
+      </AppShell>
+    );
   }
 
   const { blocked, staleTasks, staleGoals, thresholdDays, generatedAt, estimateSignals, contextSwitch, neglectedGoals, workloadImbalance, evidenceWindow } = result.data;
