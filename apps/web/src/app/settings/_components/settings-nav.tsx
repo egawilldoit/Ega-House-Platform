@@ -4,6 +4,7 @@ const SECTIONS = [
   { key: "account", href: "/settings/account", label: "Account" },
   { key: "appearance", href: "/settings/appearance", label: "Appearance" },
   { key: "preferences", href: "/settings/preferences", label: "Preferences" },
+  { key: "areas", href: "/settings/areas", label: "Areas" },
 ] as const;
 
 export type SettingsSectionKey = (typeof SECTIONS)[number]["key"];

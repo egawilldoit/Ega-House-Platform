@@ -7,6 +7,7 @@
     ".": "./src/index.ts",
     "./tasks": "./src/tasks/index.ts",
     "./projects": "./src/projects/index.ts",
+    "./areas": "./src/areas/index.ts",
     "./goals": "./src/goals/index.ts",
     "./archive": "./src/archive/index.ts",
     "./friction": "./src/friction/index.ts",
