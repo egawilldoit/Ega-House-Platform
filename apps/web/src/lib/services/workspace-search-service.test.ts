@@ -22,7 +22,10 @@ function createSearchSupabaseMock(overrides?: {
     const state = { pattern: null as string | null, limit: null as number | null };
 
     const failIfNeeded = () => {
-      if (overrides?.errorTable === table) {
+      // Only the result queries (which apply a title/name pattern) can be made
+      // to fail; the archived-ancestry scope reads stay healthy so the test
+      // exercises the table error it names.
+      if (state.pattern !== null && overrides?.errorTable === table) {
         return { error: { message: `boom ${table}` }, data: null };
       }
       return null;
@@ -33,6 +36,20 @@ function createSearchSupabaseMock(overrides?: {
         calls.push({ table, select: columns });
 
         const builder = {
+          is(column: string, value: unknown) {
+            assert.equal(column, "archived_at");
+            assert.equal(value, null);
+            return builder;
+          },
+          not(column: string, operator: string, value: unknown) {
+            assert.equal(operator, "is");
+            assert.equal(value, null);
+            assert.ok(["archived_at", "project_id"].includes(column));
+            return builder;
+          },
+          or(_filters: string) {
+            return builder;
+          },
           ilike(column: string, pattern: string) {
             assert.equal(column, table === "projects" ? "name" : "title");
             state.pattern = pattern;
@@ -161,7 +178,8 @@ test("an unknown scope falls back to all instead of a partial search", async () 
   });
 
   assert.equal(results.scope, "all");
-  assert.equal(mock.calls.length, 4);
+  // Four result queries plus the two archived-ancestry scope reads.
+  assert.equal(mock.calls.length, 6);
 });
 
 test("propagates a searchable error when a table query fails", async () => {

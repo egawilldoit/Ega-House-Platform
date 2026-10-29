@@ -1,5 +1,4 @@
 import type { GoalHealth, GoalStatus, GoalViewFilter } from "@ega/domain";
-import { GOAL_ARCHIVE_STATUS } from "@ega/domain";
 
 import type { AuthenticatedActor } from "../auth/actor";
 import type { RepositoryResult } from "../shared/result";
@@ -55,8 +54,21 @@ export interface GoalsRepository {
   ): Promise<RepositoryResult<GoalRecord | null>>;
   updateGoalStatus(
     actor: AuthenticatedActor,
-    input: { goalId: string; status: GoalStatus | typeof GOAL_ARCHIVE_STATUS; updatedAt: string },
+    input: { goalId: string; status: GoalStatus; updatedAt: string },
   ): Promise<RepositoryResult<null>>;
+  /**
+   * Write the archive marker and its metadata in one statement. `archivedAt`
+   * is null for a restore; the repository derives `status` and `archived_by`
+   * so the pair can never diverge (DB CHECK enforces the same invariant).
+   */
+  updateGoalArchiveState(
+    actor: AuthenticatedActor,
+    input: { goalId: string; archivedAt: string | null; updatedAt: string },
+  ): Promise<RepositoryResult<null>>;
+  hasOpenTaskSessionForGoal(
+    actor: AuthenticatedActor,
+    goalId: string,
+  ): Promise<RepositoryResult<boolean>>;
   updateGoalHealth(
     actor: AuthenticatedActor,
     input: { goalId: string; health: GoalHealth | null; updatedAt: string },

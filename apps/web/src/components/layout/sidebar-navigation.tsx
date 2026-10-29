@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import {
+  Archive,
   BarChart3,
   Bell,
   CalendarCheck2,
@@ -81,6 +82,7 @@ const ROUTE_ICONS: Record<string, LucideIcon> = {
   "/review": FileText,
   "/work-analytics": BarChart3,
   "/backlog": Lightbulb,
+  "/archive": Archive,
   "/notifications": Bell,
   "/startup": Rocket,
   "/shutdown": Power,

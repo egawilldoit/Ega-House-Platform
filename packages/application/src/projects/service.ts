@@ -2,7 +2,6 @@ import {
   PROJECT_ARCHIVE_STATUS,
   isProjectArchivedStatus,
   isProjectStatus,
-  type ProjectStatus,
 } from "@ega/domain";
 
 import type { AuthenticatedActor } from "../auth/actor";
@@ -86,7 +85,14 @@ export async function updateProjectStatus(
   const projectId = String(input.projectId ?? "").trim();
   const status = String(input.status ?? "").trim();
 
-  if (!projectId || !isProjectStatus(status)) {
+  // Archived is not a lifecycle status: it is archival metadata owned by
+  // archiveProject/unarchiveProject, and the database ties `status =
+  // 'archived'` to `archived_at`. A status write must never be the way in.
+  if (
+    !projectId ||
+    !isProjectStatus(status) ||
+    status === PROJECT_ARCHIVE_STATUS
+  ) {
     return applicationFailure("Project update request is invalid.");
   }
 
@@ -104,15 +110,28 @@ export async function updateProjectStatus(
 async function setProjectArchiveState(
   actor: AuthenticatedActor,
   repository: ProjectsRepository,
-  input: { projectId: unknown; status: ProjectStatus; now?: Date },
+  input: { projectId: unknown; archived: boolean; now?: Date },
 ) {
   const projectId = String(input.projectId ?? "").trim();
   if (!projectId) return applicationFailure("Project update request is invalid.");
 
-  const result = await repository.updateProjectStatus(actor, {
+  // Archiving a project hides its active tasks from active surfaces, so it
+  // must not detach currently running work. Mirrors the task archive rule.
+  if (input.archived) {
+    const timerResult = await repository.hasOpenTaskSessionForProject(actor, projectId);
+    if (!timerResult.ok) {
+      return applicationFailure("Unable to validate timer sessions for this project right now.");
+    }
+    if (timerResult.value) {
+      return applicationFailure("Stop the active timer before archiving this project.");
+    }
+  }
+
+  const nowIso = (input.now ?? new Date()).toISOString();
+  const result = await repository.updateProjectArchiveState(actor, {
     projectId,
-    status: input.status,
-    updatedAt: (input.now ?? new Date()).toISOString(),
+    archivedAt: input.archived ? nowIso : null,
+    updatedAt: nowIso,
   });
 
   return result.ok
@@ -126,8 +145,9 @@ export function archiveProject(
   input: { projectId: unknown; now?: Date },
 ) {
   return setProjectArchiveState(actor, repository, {
-    ...input,
-    status: PROJECT_ARCHIVE_STATUS,
+    projectId: input.projectId,
+    archived: true,
+    now: input.now,
   });
 }
 
@@ -137,8 +157,9 @@ export function unarchiveProject(
   input: { projectId: unknown; now?: Date },
 ) {
   return setProjectArchiveState(actor, repository, {
-    ...input,
-    status: "active",
+    projectId: input.projectId,
+    archived: false,
+    now: input.now,
   });
 }
 

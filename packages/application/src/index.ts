@@ -7,6 +7,8 @@ export * from "./projects/service";
 export * from "./goals/ports";
 export * from "./goals/read-model";
 export * from "./goals/service";
+export * from "./archive/ports";
+export * from "./archive/read-model";
 export * from "./tasks/ports";
 export * from "./tasks/mutations-ports";
 export * from "./tasks/read-model";

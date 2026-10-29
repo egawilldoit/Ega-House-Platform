@@ -243,8 +243,10 @@ async function countWhere(sql, table, column, value) {
 
 async function seedMainFixture(sql) {
   await sql.unsafe(
-    `INSERT INTO public.projects (id, owner_user_id, name, slug, status)
-     VALUES ($1, $2, 'Stage CGI', 'stage-cgi', 'archived')`,
+    // Migration 0073 ties status='archived' to archived_at, so the archived
+    // fixture must carry the archive metadata the archive centre writes.
+    `INSERT INTO public.projects (id, owner_user_id, name, slug, status, archived_at, archived_by)
+     VALUES ($1, $2, 'Stage CGI', 'stage-cgi', 'archived', now(), $2)`,
     [P0.project, OWNER_A],
   );
   await sql.unsafe(
@@ -396,10 +398,20 @@ async function assertPurgeMain(sql) {
 
 async function seedGuardFixture(sql, suffix, name, status, taskCount) {
   const project = `20000000-0000-4000-8000-0000000000${suffix}`;
+  // Migration 0073 requires archived rows to carry their archive metadata.
+  const archived = status === "archived";
   await sql.unsafe(
-    `INSERT INTO public.projects (id, owner_user_id, name, slug, status)
-     VALUES ($1, $2, $3, $4, $5)`,
-    [project, OWNER_A, name, `guard-${suffix}`, status],
+    `INSERT INTO public.projects (id, owner_user_id, name, slug, status, archived_at, archived_by)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+    [
+      project,
+      OWNER_A,
+      name,
+      `guard-${suffix}`,
+      status,
+      archived ? new Date() : null,
+      archived ? OWNER_A : null,
+    ],
   );
   for (let index = 0; index < taskCount; index += 1) {
     await sql.unsafe(
