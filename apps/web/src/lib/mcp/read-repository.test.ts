@@ -123,6 +123,7 @@ describe("MCP read repository", () => {
           focus_rank: 1,
           due_date: "2026-07-30",
           planned_for_date: "2026-07-29",
+          start_date: null,
           scheduled_start_at: null,
           scheduled_end_at: null,
           completed_at: null,
