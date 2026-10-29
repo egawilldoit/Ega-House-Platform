@@ -71,6 +71,23 @@ export function normalizeTaskDueDateInput(rawValue: unknown) {
   return { value, error: null };
 }
 
+export function normalizeTaskPlannedDateInput(rawValue: unknown) {
+  const value = String(rawValue ?? "").trim();
+
+  if (!value) {
+    return { value: null, error: null };
+  }
+
+  if (!isDateOnlyValue(value)) {
+    return {
+      value: null,
+      error: "Planned date must be a valid date in YYYY-MM-DD format.",
+    };
+  }
+
+  return { value, error: null };
+}
+
 export function formatTaskDueDate(value: string) {
   return new Intl.DateTimeFormat("en-US", {
     month: "short",

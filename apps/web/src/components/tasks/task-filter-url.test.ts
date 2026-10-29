@@ -108,6 +108,43 @@ test("EGA-650: clear removes filter semantics but preserves view and layout", ()
   }
 });
 
+test("EGA-793: calendar range, anchor and date field survive a filter change", () => {
+  const calendarState: TaskFilterState = {
+    ...fullState,
+    layout: "calendar",
+    cal: "week",
+    date: "2026-05-06",
+    dateField: "planned",
+  };
+
+  const url = mergeTaskFilterUrl("/tasks", calendarState, { status: "todo" });
+  const search = params(url);
+
+  assert.equal(search.get("layout"), "calendar");
+  assert.equal(search.get("cal"), "week");
+  assert.equal(search.get("date"), "2026-05-06");
+  assert.equal(search.get("dateField"), "planned");
+  assert.equal(search.get("status"), "todo");
+});
+
+test("EGA-793: switching away from calendar drops stale calendar parameters", () => {
+  const calendarState: TaskFilterState = {
+    ...fullState,
+    layout: "calendar",
+    cal: "week",
+    date: "2026-05-06",
+    dateField: "planned",
+  };
+
+  const url = mergeTaskFilterUrl("/tasks", calendarState, { layout: "list" });
+  const search = params(url);
+
+  assert.equal(search.get("layout"), null);
+  assert.equal(search.get("cal"), null);
+  assert.equal(search.get("date"), null);
+  assert.equal(search.get("dateField"), null);
+});
+
 test("EGA-650: no chips when no filters are active", () => {
   const chips = buildActiveTaskFilterChips("/tasks", {
     status: null,
