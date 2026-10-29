@@ -3,8 +3,9 @@ import test from "node:test";
 
 import type { OperatorSnapshot, OperatorTask } from "@ega/application";
 
+import type { HomeDashboardData, HomeDashboardTask } from "./home-dashboard-data";
 import type { HomeAttention } from "./home-page-model";
-import { buildHomeModel } from "./home-page-model";
+import { buildHomeModel, resolveHomeMyTasksTab } from "./home-page-model";
 
 const TODAY = "2026-09-14";
 
@@ -246,4 +247,153 @@ test("EGA-663: Home contract does not contain a multi-task todayTasks queue", ()
   });
 
   assert.equal("todayTasks" in model, false);
+});
+
+function dashboardTask(id: string): HomeDashboardTask {
+  return {
+    id,
+    title: `Preview ${id}`,
+    status: "todo",
+    priority: "medium",
+    dueDate: TODAY,
+    projectName: "EGA House",
+    projectSlug: "ega-house",
+  };
+}
+
+function dashboard(overrides: Partial<HomeDashboardData> = {}): HomeDashboardData {
+  return {
+    today: TODAY,
+    stats: {
+      activeProjects: { count: 4, atRiskCount: 1 },
+      openTasks: 21,
+      completedThisWeek: 7,
+      trackedThisWeekMinutes: 185,
+    },
+    deadlines: {
+      today: { count: 12, tasks: [dashboardTask("t1"), dashboardTask("t2")] },
+      tomorrow: { count: 3, tasks: [dashboardTask("t3")] },
+      thisWeek: { count: 0, tasks: [] },
+    },
+    myTasks: {
+      upcoming: { count: 30, tasks: [dashboardTask("u1")] },
+      overdue: { count: 4, tasks: [dashboardTask("o1")] },
+      completed: { count: 18, tasks: [dashboardTask("c1")] },
+    },
+    ...overrides,
+  };
+}
+
+test("EGA-805: stats keep exact aggregated totals and canonical destinations", () => {
+  const model = buildHomeModel({
+    snapshot: snapshot(),
+    attention: ATTENTION,
+    dashboard: dashboard(),
+  });
+
+  assert.deepEqual(model.stats.activeProjects, {
+    count: 4,
+    atRiskCount: 1,
+    href: "/tasks/projects?view=active",
+  });
+  assert.deepEqual(model.stats.openTasks, { count: 21, href: "/tasks?tasks=active" });
+  assert.deepEqual(model.stats.completedThisWeek, {
+    count: 7,
+    href: "/work-analytics?range=this-week",
+  });
+  // Shell attention and the overdue destination share one canonical scope.
+  assert.deepEqual(model.stats.overdue, { count: 1, href: "/tasks?due=overdue" });
+  assert.deepEqual(model.stats.trackedThisWeek, {
+    minutes: 185,
+    href: "/work-analytics?range=this-week",
+  });
+});
+
+test("EGA-805: failed aggregate panels stay null instead of fabricating zero", () => {
+  const model = buildHomeModel({
+    snapshot: snapshot(),
+    attention: null,
+    dashboard: null,
+  });
+
+  assert.equal(model.stats.activeProjects.count, null);
+  assert.equal(model.stats.activeProjects.atRiskCount, null);
+  assert.equal(model.stats.openTasks.count, null);
+  assert.equal(model.stats.completedThisWeek.count, null);
+  assert.equal(model.stats.overdue.count, null);
+  assert.equal(model.stats.trackedThisWeek.minutes, null);
+  assert.equal(model.deadlines.every((bucket) => bucket.count === null), true);
+  assert.equal(model.myTasks.tabs.every((tab) => tab.count === null), true);
+});
+
+test("EGA-805: verified zero totals remain zero", () => {
+  const model = buildHomeModel({
+    snapshot: snapshot(),
+    attention: { overdue: 0, dueToday: 0, reviewMissing: false },
+    dashboard: dashboard({
+      stats: {
+        activeProjects: { count: 0, atRiskCount: 0 },
+        openTasks: 0,
+        completedThisWeek: 0,
+        trackedThisWeekMinutes: 0,
+      },
+    }),
+  });
+
+  assert.equal(model.stats.openTasks.count, 0);
+  assert.equal(model.stats.completedThisWeek.count, 0);
+  assert.equal(model.stats.trackedThisWeek.minutes, 0);
+  assert.equal(model.deadlines[2]?.count, 0);
+});
+
+test("EGA-805: deadline buckets keep totals beyond the preview and use canonical due filters", () => {
+  const model = buildHomeModel({
+    snapshot: snapshot(),
+    attention: ATTENTION,
+    dashboard: dashboard(),
+  });
+
+  const [today, tomorrow, thisWeek] = model.deadlines;
+  assert.equal(today?.key, "today");
+  assert.equal(today?.count, 12);
+  assert.equal(today?.tasks.length, 2);
+  assert.equal(today?.href, "/tasks?due=due_today&sort=due_date_asc");
+  assert.equal(tomorrow?.href, "/tasks?due=tomorrow&sort=due_date_asc");
+  assert.equal(thisWeek?.href, "/tasks?due=this_week&sort=due_date_asc");
+  assert.equal(thisWeek?.count, 0);
+  assert.equal(today?.tasks[0]?.href, "/tasks/projects/ega-house#task-t1");
+});
+
+test("EGA-805: My tasks tabs link to URL state and to the matching Tasks scope", () => {
+  const model = buildHomeModel({
+    snapshot: snapshot(),
+    attention: ATTENTION,
+    dashboard: dashboard(),
+    myTasksTab: "overdue",
+  });
+
+  assert.equal(model.myTasks.activeTab, "overdue");
+  const [upcoming, overdue, completed] = model.myTasks.tabs;
+  assert.equal(upcoming?.href, "/home?myTasks=upcoming");
+  assert.equal(
+    upcoming?.viewAllHref,
+    "/tasks?tasks=active&due=upcoming&sort=due_date_asc",
+  );
+  assert.equal(overdue?.count, 4);
+  assert.equal(overdue?.viewAllHref, "/tasks?due=overdue&sort=due_date_asc");
+  assert.equal(completed?.viewAllHref, "/tasks?status=done&archive=all");
+});
+
+test("EGA-805: an unknown My tasks tab falls back to Upcoming", () => {
+  assert.equal(resolveHomeMyTasksTab("completed"), "completed");
+  assert.equal(resolveHomeMyTasksTab("bogus"), "upcoming");
+  assert.equal(resolveHomeMyTasksTab(undefined), "upcoming");
+
+  const model = buildHomeModel({
+    snapshot: snapshot(),
+    attention: ATTENTION,
+    dashboard: dashboard(),
+    myTasksTab: "DROP TABLE",
+  });
+  assert.equal(model.myTasks.activeTab, "upcoming");
 });
