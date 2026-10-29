@@ -143,7 +143,21 @@ function wallTimeToUtc(
   return new Date(utcMs);
 }
 
-function addDaysToIsoDate(dateStr: string, days: number): string {
+/**
+ * True for a real calendar date in YYYY-MM-DD form (rejects 2027-02-30).
+ * Pure shape/calendar validation; timezone-free by design.
+ */
+export function isIsoDate(value: string): boolean {
+  return typeof value === "string" && parseIsoDate(value) !== null;
+}
+
+/**
+ * Shift a local calendar date (YYYY-MM-DD) by whole days. Date-only arithmetic
+ * stays on the calendar axis: no UTC instant is constructed, so a DST change
+ * cannot move the result to the previous/next day, and month/year boundaries
+ * are handled by the calendar itself. An unparseable input is returned as-is.
+ */
+export function addDaysToIsoDate(dateStr: string, days: number): string {
   const parsed = parseIsoDate(dateStr);
   if (!parsed) return dateStr;
   const baseMs = Date.UTC(parsed.year, parsed.month - 1, parsed.day);

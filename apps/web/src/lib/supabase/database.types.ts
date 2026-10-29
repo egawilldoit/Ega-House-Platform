@@ -376,6 +376,7 @@ export type Database = {
           owner_user_id: string | null
           slug: string
           status: string
+          template_operation_id: string | null
           updated_at: string
         }
         Insert: {
@@ -388,6 +389,7 @@ export type Database = {
           owner_user_id?: string | null
           slug: string
           status?: string
+          template_operation_id?: string | null
           updated_at?: string
         }
         Update: {
@@ -400,6 +402,7 @@ export type Database = {
           owner_user_id?: string | null
           slug?: string
           status?: string
+          template_operation_id?: string | null
           updated_at?: string
         }
         Relationships: []
@@ -1274,6 +1277,18 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      create_project_from_template: {
+        Args: {
+          p_operation_id: string
+          p_template_id: string
+          p_name: string
+          p_slug: string
+          p_description: string | null
+          p_goals: Json
+          p_tasks: Json
+        }
+        Returns: Json
+      }
       promote_task_subtask: {
         Args: { p_subtask_id: string; p_new_task_id: string }
         Returns: boolean
