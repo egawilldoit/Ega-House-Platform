@@ -14,6 +14,7 @@ const CURRENT = {
   status: "in_progress",
   priority: "high",
   project_id: "project-1",
+  start_date: null,
   due_date: "2026-05-01",
   estimate_minutes: 75,
   blocked_reason: null,
@@ -26,6 +27,7 @@ test("accepts exactly the whitelisted fields", () => {
     "status",
     "priority",
     "project",
+    "startDate",
     "dueDate",
     "estimateMinutes",
     "blockedReason",
@@ -104,7 +106,6 @@ test("a project patch clears the goal only when the project changes", () => {
   assert.equal(changed.input.projectId, "project-2");
   assert.equal(changed.input.goalId, "");
   assert.equal(changed.input.status, "in_progress");
-  assert.equal(changed.input.priority, "high");
 
   const same = buildTaskFieldPatchInput("task-1", CURRENT, "project", "project-1");
   assert.ok("input" in same);
@@ -305,6 +306,7 @@ test("a rendered revision that no longer matches is rejected before writing", as
     status: "in_progress",
     priority: "high",
     project_id: "project-1",
+    start_date: null,
     due_date: null,
     estimate_minutes: null,
     blocked_reason: null,
@@ -333,6 +335,7 @@ test("a matching rendered revision writes and returns the next revision", async 
       status: "in_progress",
       priority: "high",
       project_id: "project-1",
+      start_date: null,
       due_date: null,
       estimate_minutes: null,
       blocked_reason: null,

@@ -34,6 +34,11 @@ vi.mock("@/app/tasks/actions", () => ({
   undoTaskOperationAction: vi.fn(),
   createTaskReminderAction: vi.fn(),
   deleteTaskAction: vi.fn(),
+  addTaskDependencyAction: vi.fn(),
+  removeTaskDependencyAction: vi.fn(),
+  updateTaskFieldAction: vi.fn(),
+  updateTaskFieldDraftAction: vi.fn(),
+  updateTaskTimelineScheduleAction: vi.fn(),
   pinTaskAction: vi.fn(),
   unarchiveTaskAction: vi.fn(),
   unpinTaskAction: vi.fn(),
@@ -58,6 +63,7 @@ vi.mock("@/app/tasks/create-task-form", () => ({
 }));
 
 import { buildTaskKanbanBoard, buildTaskListUrl } from "@/lib/task-list";
+import { resolveTimelineRange } from "@/lib/task-timeline";
 import { QUICK_TASK_EVENT } from "@/lib/workspace-events";
 import type { TaskRecord } from "@/lib/services/task-service";
 // Imports the mocked factory above, so assertions observe what the server
@@ -79,6 +85,7 @@ function buildTask(overrides: Partial<TaskRecord> = {}): TaskRecord {
     priority: "high",
     due_date: "2026-05-01",
     planned_for_date: null,
+    start_date: null,
     scheduled_start_at: null,
     scheduled_end_at: null,
     calendar_sync_enabled: false,
@@ -203,6 +210,10 @@ function buildModel(overrides: Partial<TasksPageViewModel> = {}): TasksPageViewM
     blockedCount: 1,
     overdueCount: 1,
     dueSoonCount: 0,
+    timeline: null,
+    timelineRange: resolveTimelineRange("2026-05-01"),
+    timelineZoom: "week",
+    ownerToday: "2026-05-01",
     ...overrides,
   };
 }
