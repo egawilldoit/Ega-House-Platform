@@ -524,6 +524,10 @@ jobs:
         env:
           PROOF_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ega_proof
         run: node scripts/db/areas-invariant-verify.mjs --url "$PROOF_DATABASE_URL"
+      - name: Prove task attachment metadata and Storage ownership through the migration journal
+        env:
+          PROOF_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ega_proof
+        run: node scripts/db/task-attachments-rls-verify.mjs --url "$PROOF_DATABASE_URL"
       - name: Prove MCP upgrade from the current-main 0049 baseline with legacy grants
         env:
           PROOF_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ega_proof
