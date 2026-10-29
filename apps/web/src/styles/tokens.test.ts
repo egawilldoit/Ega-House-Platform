@@ -37,6 +37,12 @@ describe("EGA House workspace tokens — single authority", () => {
     expect(tokens).toContain("--sidebar-width: 264px");
     expect(tokens).toContain("--sidebar-collapsed-width: 72px");
     expect(tokens).toContain("--topbar-height: 56px");
+
+    // Motion tokens for new rules
+    expect(tokens).toContain("--dur-fast: 120ms");
+    expect(tokens).toContain("--dur-base: 220ms");
+    expect(tokens).toContain("--dur-slow: 340ms");
+    expect(tokens).toContain("--ease-out: cubic-bezier(0.22, 1, 0.36, 1)");
   });
 
   it("retires the cream, dark-sidebar, and gold editorial assumptions", () => {

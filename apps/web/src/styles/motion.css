@@ -114,6 +114,40 @@
   .motion-add-wash {
     animation: ega-add-wash var(--duration-slow) var(--ease-default) both;
   }
+
+  /* ── Shared stagger: children rise 8px, 340ms, --ease-out, 45ms per --i ── */
+  @keyframes ega-stagger-rise {
+    from { transform: translateY(8px); opacity: 0; }
+    to { transform: none; opacity: 1; }
+  }
+
+  .motion-stagger > * {
+    animation: ega-stagger-rise var(--dur-slow) var(--ease-out) both;
+    animation-delay: calc(var(--i, 0) * 45ms);
+  }
+
+  /* Cap at 8 children */
+  .motion-stagger > *:nth-child(n+9) {
+    animation-delay: calc(8 * 45ms);
+  }
+
+  /* ── :active press feedback ──────────────────────────────── */
+  button:active,
+  [role="button"]:active,
+  .row:active,
+  a:active {
+    transform: scale(0.98);
+  }
+
+  /* ── Saved-row flash: 600ms tint fade ────────────────────── */
+  @keyframes ega-row-flash {
+    0% { background-color: var(--ega-accent-soft); }
+    100% { background-color: transparent; }
+  }
+
+  .row-flash {
+    animation: ega-row-flash 600ms var(--ease-default) both;
+  }
 }
 
 /* Reduced motion */
@@ -125,6 +159,18 @@
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
+  }
+
+  button:active,
+  [role="button"]:active,
+  .row:active,
+  a:active {
+    transform: none;
+  }
+
+  .motion-stagger > *,
+  .row-flash {
+    animation: none;
   }
 }
 
@@ -146,6 +192,15 @@ html[data-reduce-motion="true"] .motion-strike,
 html[data-reduce-motion="true"] .motion-land,
 html[data-reduce-motion="true"] .motion-add-wash,
 html[data-reduce-motion="true"] .motion-rise,
-html[data-reduce-motion="true"] .live-dot {
+html[data-reduce-motion="true"] .live-dot,
+html[data-reduce-motion="true"] .motion-stagger > *,
+html[data-reduce-motion="true"] .row-flash {
   animation: none;
+}
+
+html[data-reduce-motion="true"] button:active,
+html[data-reduce-motion="true"] [role="button"]:active,
+html[data-reduce-motion="true"] .row:active,
+html[data-reduce-motion="true"] a:active {
+  transform: none;
 }
