@@ -115,4 +115,48 @@ describe("workspace sidebar refinement", () => {
     expect(projectListRule).toContain("overflow-y: auto;");
     expect(projectListRule).toContain("overscroll-behavior: contain;");
   });
+
+  it("groups sidebar projects by area and keeps unassigned projects reachable", async () => {
+    const groupedProjects: SidebarProject[] = [
+      {
+        id: "project-a",
+        name: "Applications",
+        slug: "applications",
+        status: "active",
+        activeTaskCount: 1,
+        isPinned: false,
+        areaId: "area-job-hunt",
+        areaName: "Job hunt",
+        areaColor: "blue",
+        areaIcon: "briefcase",
+      },
+      {
+        id: "project-b",
+        name: "Loose project",
+        slug: "loose-project",
+        status: "active",
+        activeTaskCount: 0,
+        isPinned: false,
+        areaId: null,
+      },
+    ];
+
+    await act(async () => {
+      root.render(<SidebarNavigation projects={groupedProjects} metrics={metrics} />);
+    });
+
+    expect(container.textContent).toContain("Job hunt");
+    expect(container.textContent).toContain("No area");
+    expect(
+      container.querySelector('a[href="/tasks?project=project-a"]'),
+    ).not.toBeNull();
+    expect(
+      container.querySelector('a[href="/tasks?project=project-b"]'),
+    ).not.toBeNull();
+
+    // The area heading precedes its project, and unassigned stays last.
+    const text = container.textContent ?? "";
+    expect(text.indexOf("Job hunt")).toBeLessThan(text.indexOf("No area"));
+    expect(text.indexOf("Applications")).toBeLessThan(text.indexOf("No area"));
+  });
 });

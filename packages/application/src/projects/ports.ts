@@ -16,9 +16,36 @@ export type ProjectRecord = {
   slug: string;
   description: string | null;
   status: string;
+  areaId: string | null;
+  areaName: string | null;
+  areaColor: string | null;
+  areaIcon: string | null;
   createdAt: string;
   updatedAt: string;
 };
+
+export type AreaRecord = {
+  id: string;
+  name: string;
+  icon: string;
+  color: string;
+  description: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+/** A validated Area write payload after presentation defaults are resolved. */
+export type AreaWriteInput = {
+  name: string;
+  icon: string;
+  color: string;
+  description: string | null;
+};
+
+export type AreaFilter =
+  | Readonly<{ kind: "area"; areaId: string }>
+  | Readonly<{ kind: "unassigned" }>
+  | null;
 
 export type ProjectTaskContextRecord = {
   id: string;
@@ -43,6 +70,7 @@ export type CreateProjectRecordInput = {
   name: string;
   slug: string;
   description: string | null;
+  areaId?: string | null;
   mcpOperationId?: string;
   mcpClientId?: string;
 };
@@ -71,6 +99,7 @@ export type CreateProjectFromTemplateRecordInput = {
   name: string;
   slug: string;
   description: string | null;
+  areaId?: string | null;
   goals: CreateProjectFromTemplateGoalInput[];
   tasks: CreateProjectFromTemplateTaskInput[];
 };
@@ -132,7 +161,29 @@ export interface ProjectsRepository {
   listProjects(
     actor: AuthenticatedActor,
     view: ProjectViewFilter,
+    areaFilter?: AreaFilter,
   ): Promise<RepositoryResult<ProjectRecord[]>>;
+  listAreas(actor: AuthenticatedActor): Promise<RepositoryResult<AreaRecord[]>>;
+  getAreaById(
+    actor: AuthenticatedActor,
+    areaId: string,
+  ): Promise<RepositoryResult<AreaRecord | null>>;
+  createArea(
+    actor: AuthenticatedActor,
+    input: AreaWriteInput,
+  ): Promise<RepositoryResult<AreaRecord>>;
+  updateArea(
+    actor: AuthenticatedActor,
+    input: AreaWriteInput & { areaId: string; updatedAt: string },
+  ): Promise<RepositoryResult<AreaRecord | null>>;
+  deleteArea(
+    actor: AuthenticatedActor,
+    input: { areaId: string },
+  ): Promise<RepositoryResult<{ deleted: boolean }>>;
+  assignProjectArea(
+    actor: AuthenticatedActor,
+    input: { projectId: string; areaId: string | null; updatedAt: string },
+  ): Promise<RepositoryResult<{ updated: boolean }>>;
   listProjectStatuses(actor: AuthenticatedActor): Promise<RepositoryResult<string[]>>;
   listTasksForProjects(
     actor: AuthenticatedActor,
