@@ -64,6 +64,10 @@ const FALLBACK_ROUTE: ShellRouteMeta = {
 };
 
 export function getShellRouteMeta(pathname: string): ShellRouteMeta {
+  if (pathname === "/settings" || pathname.startsWith("/settings/")) {
+    return ALL_ROUTES.find((route) => route.href === "/settings/account") ?? FALLBACK_ROUTE;
+  }
+
   return (
     ALL_ROUTES.filter(
       (route) => pathname === route.href || pathname.startsWith(`${route.href}/`),

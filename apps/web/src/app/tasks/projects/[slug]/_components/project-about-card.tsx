@@ -1,13 +1,16 @@
 import Link from "next/link";
 
-import type { ProjectRecord } from "@ega/application";
+import type { AreaRecord, ProjectRecord } from "@ega/application";
 
 import {
   archiveProjectAction,
+  assignProjectAreaAction,
   unarchiveProjectAction,
   updateProjectStatusAction,
 } from "@/app/tasks/projects/actions";
+import { AreaColorDot, AreaIconView } from "@/components/projects/area-icon";
 import { InlineProjectStatusForm } from "@/components/projects/inline-project-status-form";
+import { ProjectAreaForm } from "@/components/projects/project-area-form";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
@@ -19,6 +22,7 @@ import { cn } from "@/lib/utils";
 type ProjectAboutCardProps = {
   project: ProjectRecord;
   goalsCount: number;
+  areas: AreaRecord[];
   activeTaskCount: number;
   completedTaskCount: number;
   archivedTaskCount: number;
@@ -27,11 +31,13 @@ type ProjectAboutCardProps = {
   deleteHref: string;
   statusError: string | null;
   archiveError: string | null;
+  areaError: string | null;
 };
 
 export function ProjectAboutCard({
   project,
   goalsCount,
+  areas,
   activeTaskCount,
   completedTaskCount,
   archivedTaskCount,
@@ -40,6 +46,7 @@ export function ProjectAboutCard({
   deleteHref,
   statusError,
   archiveError,
+  areaError,
 }: ProjectAboutCardProps) {
   return (
     <Card
@@ -51,6 +58,14 @@ export function ProjectAboutCard({
             {formatTaskToken(project.status)}
           </Badge>
           {projectIsArchived ? <Badge tone="warn">Archived</Badge> : null}
+          {project.areaName ? (
+            <Badge tone="info">
+              <AreaColorDot color={project.areaColor} />
+              {project.areaName}
+            </Badge>
+          ) : (
+            <Badge tone="muted">No area</Badge>
+          )}
         </div>
       }
     >
@@ -59,6 +74,44 @@ export function ProjectAboutCard({
           {project.description?.trim() ||
             "No description has been added for this project yet."}
         </p>
+
+        <div className="flex flex-col gap-3 rounded-[var(--radius-md)] border border-[var(--ega-border)] bg-[color:var(--ega-surface-subtle)] p-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <p className="glass-label">Area</p>
+            <p className="mt-1 flex flex-wrap items-center gap-2 text-[length:var(--text-body)] font-medium text-ega-text">
+              {project.areaName ? (
+                <>
+                  <AreaColorDot color={project.areaColor} />
+                  <AreaIconView icon={project.areaIcon} />
+                  {project.areaName}
+                </>
+              ) : (
+                "No area"
+              )}
+              <Link
+                href={
+                  project.areaId
+                    ? `/tasks/projects?area=${project.areaId}`
+                    : "/tasks/projects?area=unassigned"
+                }
+                className="text-[length:var(--text-meta)] font-normal text-ega-text-secondary underline-offset-2 hover:underline"
+              >
+                View in directory
+              </Link>
+            </p>
+          </div>
+          <div className="w-full sm:w-56">
+            <ProjectAreaForm
+              action={assignProjectAreaAction}
+              projectId={project.id}
+              currentAreaId={project.areaId}
+              areas={areas}
+              returnTo={returnTo}
+              error={areaError}
+              compact
+            />
+          </div>
+        </div>
 
         <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <div>

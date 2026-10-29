@@ -376,6 +376,48 @@
   scrollbar-width: thin;
 }
 
+.sidebar-project-group {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.sidebar-project-group + .sidebar-project-group {
+  margin-top: 5px;
+}
+
+.sidebar-area-heading {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 6px 10px 3px;
+  color: var(--ega-text-tertiary);
+  font-size: var(--text-micro);
+  font-weight: 600;
+  letter-spacing: var(--tracking-widest);
+  text-transform: uppercase;
+}
+
+.sidebar-area-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-area-count {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+}
+
+.sidebar-project-group-unassigned .sidebar-area-heading {
+  color: var(--ega-text-tertiary);
+  opacity: 0.85;
+}
+
 .sidebar-link {
   display: flex;
   align-items: center;
@@ -527,6 +569,7 @@
 .app-shell[data-collapsed="true"] .workspace-brand-copy,
 .app-shell[data-collapsed="true"] .workspace-nav-label,
 .app-shell[data-collapsed="true"] .sidebar-section-label,
+.app-shell[data-collapsed="true"] .sidebar-area-heading,
 .app-shell[data-collapsed="true"] .sidebar-badge,
 .app-shell[data-collapsed="true"] .sidebar-project-count,
 .app-shell[data-collapsed="true"] .sidebar-project-status,
