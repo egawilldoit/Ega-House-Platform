@@ -371,7 +371,7 @@ export default async function TasksProjectsPage({ searchParams }: TasksProjectsP
         </div>
       }
     >
-      <div className="flex flex-col gap-6">
+      <div className="motion-rise flex flex-col gap-6">
         <div className="kpi-grid">
           <StatCard
             label="Projects"
