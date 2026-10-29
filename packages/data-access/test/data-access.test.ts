@@ -1044,3 +1044,127 @@ test("active goal list excludes archived project ancestry", async () => {
     ["project_id", "in", `(${ARCHIVE_PROJECT_ID})`],
   );
 });
+
+test("createProjectFromTemplate calls the template RPC with no owner id and parses a created receipt", async () => {
+  const fake = fakeSupabase();
+  fake.pushRpcResult("create_project_from_template", {
+    data: {
+      status: "created",
+      project_id: "project-1",
+      slug: "job-sprint",
+      goal_count: 2,
+      task_count: 7,
+    },
+    error: null,
+  });
+
+  const result = await projectsRepository(fake).createProjectFromTemplate(ACTOR, {
+    operationId: "123e4567-e89b-12d3-a456-426614174000",
+    templateId: "job-application-sprint",
+    name: "Job sprint",
+    slug: "job-sprint",
+    description: null,
+    goals: [{ title: "Pipeline", description: null, status: "active" }],
+    tasks: [
+      {
+        goalIndex: 0,
+        title: "List target roles",
+        description: null,
+        priority: "high",
+        estimateMinutes: 45,
+        dueDate: "2027-03-14",
+      },
+    ],
+  });
+
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.deepEqual(result.value, {
+    projectId: "project-1",
+    slug: "job-sprint",
+    goalCount: 2,
+    taskCount: 7,
+    replayed: false,
+  });
+
+  assert.equal(fake.rpcCalls.length, 1);
+  const call = fake.rpcCalls[0];
+  assert.equal(call?.name, "create_project_from_template");
+  assert.equal(call?.args.p_operation_id, "123e4567-e89b-12d3-a456-426614174000");
+  assert.equal(call?.args.p_template_id, "job-application-sprint");
+  assert.ok(!("p_owner_user_id" in (call?.args ?? {})));
+});
+
+test("createProjectFromTemplate treats a replay and a slug conflict as distinct outcomes", async () => {
+  const replayFake = fakeSupabase();
+  replayFake.pushRpcResult("create_project_from_template", {
+    data: {
+      status: "replayed",
+      project_id: "project-existing",
+      slug: "job-sprint",
+      goal_count: 2,
+      task_count: 7,
+    },
+    error: null,
+  });
+
+  const replay = await projectsRepository(replayFake).createProjectFromTemplate(ACTOR, {
+    operationId: "123e4567-e89b-12d3-a456-426614174000",
+    templateId: "blank",
+    name: "Job sprint",
+    slug: "job-sprint",
+    description: null,
+    goals: [],
+    tasks: [],
+  });
+  assert.equal(replay.ok, true);
+  if (!replay.ok) return;
+  assert.equal(replay.value.replayed, true);
+  assert.equal(replay.value.projectId, "project-existing");
+
+  const conflictFake = fakeSupabase();
+  conflictFake.pushRpcResult("create_project_from_template", {
+    data: { status: "slug_conflict" },
+    error: null,
+  });
+
+  const conflict = await projectsRepository(conflictFake).createProjectFromTemplate(ACTOR, {
+    operationId: "123e4567-e89b-12d3-a456-426614174000",
+    templateId: "blank",
+    name: "Job sprint",
+    slug: "job-sprint",
+    description: null,
+    goals: [],
+    tasks: [],
+  });
+  assert.equal(conflict.ok, false);
+  if (conflict.ok) return;
+  assert.deepEqual(conflict.error, { code: "conflict" });
+});
+
+test("createProjectFromTemplate fails closed on a malformed RPC receipt", async () => {
+  for (const data of [
+    null,
+    { status: "created" },
+    { status: "created", project_id: "project-1", slug: "x", goal_count: -1, task_count: 0 },
+    { status: "created", project_id: "project-1", slug: "x", goal_count: 1, task_count: "2" },
+    { status: "unexpected", project_id: "project-1", slug: "x", goal_count: 1, task_count: 2 },
+  ]) {
+    const fake = fakeSupabase();
+    fake.pushRpcResult("create_project_from_template", { data, error: null });
+
+    const result = await projectsRepository(fake).createProjectFromTemplate(ACTOR, {
+      operationId: "123e4567-e89b-12d3-a456-426614174000",
+      templateId: "blank",
+      name: "Job sprint",
+      slug: "job-sprint",
+      description: null,
+      goals: [],
+      tasks: [],
+    });
+
+    assert.equal(result.ok, false, `expected failure for ${JSON.stringify(data)}`);
+    if (result.ok) return;
+    assert.deepEqual(result.error, { code: "unknown" });
+  }
+});

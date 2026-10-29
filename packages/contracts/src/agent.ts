@@ -17,6 +17,8 @@ export type AgentAuthContext = {
   tokenId: string;
   /** Stable display name; author attribution must use this, not the token id. */
   tokenName: string;
+  /** Registry identity linked to this credential, or null for legacy tokens. */
+  agentId: string | null;
   ownerUserId: string;
   scopes: AgentTokenScopes;
 };
@@ -73,6 +75,10 @@ export const INTERNAL_ERROR_RESPONSE: AgentErrorResponse = {
 export type TokenRecord = {
   id: string;
   ownerUserId: string;
+  /** Registry identity linked to this credential, or null. */
+  agentId?: string | null;
+  /** Identity display name resolved at auth time, or null. */
+  agentName?: string | null;
   name: string;
   tokenPrefix: string;
   tokenHash: string;
@@ -85,6 +91,7 @@ export type TokenRecord = {
 
 export type NewTokenRecord = {
   ownerUserId: string;
+  agentId?: string | null;
   name: string;
   tokenPrefix: string;
   tokenHash: string;

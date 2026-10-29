@@ -504,10 +504,18 @@ jobs:
         env:
           PROOF_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ega_proof
         run: node scripts/db/archive-invariant-verify.mjs --url "$PROOF_DATABASE_URL"
+      - name: Prove project-template creation is atomic and idempotent through the migration journal
+        env:
+          PROOF_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ega_proof
+        run: node scripts/db/project-template-invariant-verify.mjs --url "$PROOF_DATABASE_URL"
       - name: Prove task_status_events ledger and completed_at invariant through the migration journal
         env:
           PROOF_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ega_proof
         run: node scripts/db/task-status-events-invariant-verify.mjs --url "$PROOF_DATABASE_URL"
+      - name: Prove agent identity and attribution invariants through the migration journal
+        env:
+          PROOF_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ega_proof
+        run: node scripts/db/agent-actor-invariant-verify.mjs --url "$PROOF_DATABASE_URL"
       - name: Prove task comment ownership, idempotency and reaction invariants through the migration journal
         env:
           PROOF_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ega_proof
@@ -520,6 +528,10 @@ jobs:
         env:
           PROOF_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ega_proof
         run: node scripts/db/task-dependencies-invariant-verify.mjs --url "$PROOF_DATABASE_URL"
+      - name: Prove task attachment metadata and Storage ownership through the migration journal
+        env:
+          PROOF_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ega_proof
+        run: node scripts/db/task-attachments-rls-verify.mjs --url "$PROOF_DATABASE_URL"
       - name: Prove Areas owner isolation and cross-owner assignment refusal through the migration journal
         env:
           PROOF_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ega_proof

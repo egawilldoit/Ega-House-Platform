@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  bigint,
   boolean,
   check,
   date,
@@ -54,6 +55,7 @@ export const projects = pgTable(
     status: varchar("status", { length: 64 }).notNull().default("planned"),
     archivedAt: timestamp("archived_at", { withTimezone: true }),
     archivedBy: uuid("archived_by"),
+    templateOperationId: uuid("template_operation_id"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
@@ -78,6 +80,9 @@ export const projects = pgTable(
       "projects_archive_state_check",
       sql`(${table.archivedAt} is not null) = (${table.status} = 'archived')`,
     ),
+    uniqueIndex("projects_template_operation_unique")
+      .on(table.ownerUserId, table.templateOperationId)
+      .where(sql`${table.templateOperationId} is not null`),
   ],
 );
 
@@ -273,6 +278,12 @@ export const agentIntegrationEvents = pgTable("agent_integration_events", {
   id: uuid("id").defaultRandom().primaryKey(),
   ownerUserId: uuid("owner_user_id").notNull(),
   tokenId: uuid("token_id").notNull(),
+  /** Stable registry identity; null for legacy/unassigned agent credentials. */
+  agentId: uuid("agent_id").references(() => agentActors.id, {
+    onDelete: "set null",
+  }),
+  /** Snapshot of the identity display name at write time. */
+  agentLabel: text("agent_label"),
   action: varchar("action", { length: 64 }).notNull(),
   resourceType: varchar("resource_type", { length: 32 }),
   resourceId: uuid("resource_id"),
@@ -742,14 +753,85 @@ export const taskSubtasks = pgTable(
 );
 
 /**
+ * Owner-scoped task attachments (EGA-802).
+ *
+ * Metadata and the private Storage object are separate resources. Rows start
+ * `pending`, become `finalized` only after the server has verified the stored
+ * bytes, and are written exclusively through SECURITY DEFINER functions; the
+ * only client grant is SELECT under owner + parent-task RLS. `storage_path` is
+ * built by the database as `<owner>/<task>/<attachment>.<ext>`.
+ */
+export const taskAttachments = pgTable(
+  "task_attachments",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    ownerUserId: uuid("owner_user_id").default(sql`auth.uid()`).notNull(),
+    taskId: uuid("task_id")
+      .notNull()
+      .references(() => tasks.id, { onDelete: "cascade" }),
+    fileName: text("file_name").notNull(),
+    storagePath: text("storage_path").notNull(),
+    mimeType: varchar("mime_type", { length: 128 }).notNull(),
+    sizeBytes: bigint("size_bytes", { mode: "number" }).notNull(),
+    status: varchar("status", { length: 16 }).notNull().default("pending"),
+    idempotencyKey: varchar("idempotency_key", { length: 128 }).notNull(),
+    uploadExpiresAt: timestamp("upload_expires_at", { withTimezone: true }).notNull(),
+    finalizedAt: timestamp("finalized_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("task_attachments_owner_idempotency_key_unique").on(
+      table.ownerUserId,
+      table.idempotencyKey,
+    ),
+    uniqueIndex("task_attachments_storage_path_unique").on(table.storagePath),
+    index("task_attachments_owner_task_created_idx").on(
+      table.ownerUserId,
+      table.taskId,
+      table.createdAt,
+    ),
+    index("task_attachments_owner_pending_idx")
+      .on(table.ownerUserId, table.uploadExpiresAt)
+      .where(sql`${table.status} = 'pending'`),
+    index("task_attachments_task_status_created_idx").on(
+      table.taskId,
+      table.status,
+      table.createdAt,
+    ),
+    check("task_attachments_file_name_not_blank", sql`length(btrim(${table.fileName})) > 0`),
+    check("task_attachments_file_name_length", sql`length(${table.fileName}) <= 180`),
+    check(
+      "task_attachments_size_check",
+      sql`${table.sizeBytes} > 0 and ${table.sizeBytes} <= 10485760`,
+    ),
+    check(
+      "task_attachments_status_check",
+      sql`${table.status} in ('pending', 'finalized', 'failed')`,
+    ),
+    check(
+      "task_attachments_mime_type_check",
+      sql`${table.mimeType} in ('image/png', 'image/jpeg', 'image/gif', 'image/webp', 'application/pdf', 'text/plain', 'text/markdown', 'text/csv')`,
+    ),
+    check(
+      "task_attachments_idempotency_key_not_blank",
+      sql`length(btrim(${table.idempotencyKey})) >= 8`,
+    ),
+    check(
+      "task_attachments_finalized_at_check",
+      sql`(${table.status} = 'finalized') = (${table.finalizedAt} is not null)`,
+    ),
+  ],
+);
+
+/**
  * Durable task activity ledger for observable field changes (EGA-784).
  *
  * Append-only for product clients: rows are written by a SECURITY DEFINER
  * trigger on `tasks`, so a client cannot forge history. Status transitions stay
  * in `task_status_events` (the analytics ledger); the activity read model unions
  * both plus timer session evidence.
- */
-export const taskActivityEvents = pgTable(
+ */export const taskActivityEvents = pgTable(
   "task_activity_events",
   {
     id: uuid("id").defaultRandom().primaryKey(),
@@ -780,7 +862,7 @@ export const taskActivityEvents = pgTable(
     ),
     check(
       "task_activity_events_event_kind_check",
-      sql`${table.eventKind} in ('created', 'field_change', 'archived', 'restored', 'reminder_scheduled', 'reminder_updated', 'reminder_cancelled', 'comment')`,
+      sql`${table.eventKind} in ('created', 'field_change', 'archived', 'restored', 'reminder_scheduled', 'reminder_updated', 'reminder_cancelled', 'comment', 'attachment_added', 'attachment_removed')`,
     ),
   ],
 );
@@ -884,11 +966,61 @@ export const weekReviews = pgTable(
   ],
 );
 
+/**
+ * Stable agent identity (EGA-800).
+ *
+ * Credentials are revocable capabilities linked to this identity. Historical
+ * activity stores the identity id plus a display-name snapshot, so rotating or
+ * revoking a token never rewrites attribution. `kind` and `role` are
+ * owner-declared presentation only; neither grants access.
+ */
+export const agentActors = pgTable(
+  "agent_actors",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    ownerUserId: uuid("owner_user_id").default(sql`auth.uid()`).notNull(),
+    displayName: varchar("display_name", { length: 80 }).notNull(),
+    kind: varchar("kind", { length: 24 }).notNull(),
+    role: varchar("role", { length: 64 }),
+    avatarColor: varchar("avatar_color", { length: 16 }).notNull().default("slate"),
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("agent_actors_owner_name_unique").on(
+      table.ownerUserId,
+      sql`lower(${table.displayName})`,
+    ),
+    index("agent_actors_owner_created_idx").on(table.ownerUserId, table.createdAt.desc()),
+    check(
+      "agent_actors_kind_check",
+      sql`${table.kind} in ('t3', 'opencode', 'codex', 'runner', 'custom')`,
+    ),
+    check(
+      "agent_actors_avatar_color_check",
+      sql`${table.avatarColor} in ('blue', 'violet', 'green', 'amber', 'slate', 'rose')`,
+    ),
+    check(
+      "agent_actors_display_name_check",
+      sql`length(btrim(${table.displayName})) between 1 and 80`,
+    ),
+    check(
+      "agent_actors_role_check",
+      sql`${table.role} is null or length(btrim(${table.role})) between 1 and 64`,
+    ),
+  ],
+);
+
 export const agentIntegrationTokens = pgTable(
   "agent_integration_tokens",
   {
     id: uuid("id").defaultRandom().primaryKey(),
     ownerUserId: uuid("owner_user_id").notNull(),
+    /** Nullable for legacy credentials issued before the registry existed. */
+    agentId: uuid("agent_id").references(() => agentActors.id, {
+      onDelete: "set null",
+    }),
     name: varchar("name", { length: 256 }).notNull(),
     tokenPrefix: varchar("token_prefix", { length: 16 }).notNull(),
     tokenHash: text("token_hash").notNull(),
@@ -905,6 +1037,7 @@ export const agentIntegrationTokens = pgTable(
   (table) => [
     uniqueIndex("agent_token_prefix_unique").on(table.tokenPrefix),
     index("agent_tokens_owner_idx").on(table.ownerUserId),
+    index("agent_tokens_owner_agent_idx").on(table.ownerUserId, table.agentId),
   ],
 );
 

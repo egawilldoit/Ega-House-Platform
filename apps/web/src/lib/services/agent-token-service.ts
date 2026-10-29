@@ -97,7 +97,10 @@ export async function resolveAgentAuth(
     ok: true,
     context: {
       tokenId: record.id,
-      tokenName: record.name,
+      // A linked identity owns attribution; the credential name is only a
+      // fallback for legacy/unassigned tokens.
+      tokenName: record.agentName?.trim() || record.name,
+      agentId: record.agentId ?? null,
       ownerUserId: record.ownerUserId,
       scopes: record.scopes,
     },
@@ -113,6 +116,7 @@ export async function generateAgentToken(
   name: string,
   scopes: AgentTokenScopes,
   repo: TokenRepository,
+  agentId: string | null = null,
 ): Promise<string> {
   // Collision retry loop
   for (let attempt = 0; attempt < MAX_PREFIX_RETRIES; attempt++) {
@@ -122,6 +126,7 @@ export async function generateAgentToken(
     try {
       await repo.insertToken({
         ownerUserId,
+        agentId,
         name,
         tokenPrefix: prefix,
         tokenHash: hash,

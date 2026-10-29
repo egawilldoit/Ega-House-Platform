@@ -35,6 +35,7 @@ import { getOperatorSnapshotData } from "@/lib/services/operator-service";
 import { getActiveTimerSession } from "@/lib/services/timer-service";
 import { getTaskDrawerDetail } from "@/lib/services/task-service";
 import { listTaskSubtasks } from "@/lib/services/subtask-service";
+import { listTaskAttachments } from "@/lib/services/attachment-service";
 import { getTaskActivity } from "@/lib/services/task-activity-service";
 import { getTaskCommentThread } from "@/lib/services/task-comment-service";
 import { isFavorite } from "@/lib/services/favorite-service";
@@ -217,6 +218,9 @@ export default async function TodayPage({
   const selectedTaskComments = selectedTaskId
     ? await getTaskCommentThread(selectedTaskId)
     : { comments: [], mentionCandidates: [], errorMessage: null };
+  const selectedTaskAttachments = selectedTaskId
+    ? await listTaskAttachments(selectedTaskId)
+    : { data: [], errorMessage: null };
   const selectedTaskIsFavourite = selectedTaskId
     ? await isFavorite("task", selectedTaskId)
     : false;
@@ -284,6 +288,8 @@ export default async function TodayPage({
           updateDraftAction={updateTaskFieldDraftAction}
           ownerId={user?.id ?? null}
           subtasks={selectedTaskSubtasks}
+          attachments={selectedTaskAttachments.data}
+          attachmentsError={selectedTaskAttachments.errorMessage}
           activity={selectedTaskActivity}
           activityHasMore={selectedTaskActivityPage.hasMore}
           comments={selectedTaskComments.comments}
