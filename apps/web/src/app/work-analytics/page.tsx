@@ -14,8 +14,6 @@ export const metadata: Metadata = {
 export default async function WorkAnalyticsPage({ searchParams }: { searchParams: Promise<{ range?: string; groupBy?: string; breakdownBy?: string; includeOpen?: string }> }) {
   const resolvedSearchParams = await searchParams;
   const model = await getWorkAnalyticsPageModel(resolvedSearchParams as unknown as Record<string, string | undefined>);
-  if (!model.user) return <div className="p-6">Please log in to view work analytics.</div>;
-  if (model.error) return <div className="p-6">{model.error}</div>;
   return (
     <AppShell
       title="Analytics"
