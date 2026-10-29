@@ -62,7 +62,7 @@ import {
   normalizeTaskViewDefinition,
 } from "@ega/contracts/common/task-list";
 import type { TaskViewFilter as TaskArchiveViewFilter } from "@/lib/task-archive";
-import { getTaskTotalDurationMap } from "@/lib/task-session";
+import { getTaskTrackedTimeSummary } from "@/lib/task-session";
 import { stopActiveTimerSessionsForTask } from "@/lib/services/timer-service";
 import {
   getActiveTasksForOwner,
@@ -222,6 +222,8 @@ export type TasksWorkspaceData = {
     archived: number;
   };
   taskTotalDurations: Record<string, number>;
+  /** Tasks with a running session; their tracked total still moves. */
+  taskOpenSessionIds: string[];
   savedViews: Array<{
     id: string;
     name: string;
@@ -1149,11 +1151,15 @@ export async function getTasksWorkspaceData(
     .filter((task): task is (typeof rawTasks)[number] => Boolean(task));
 
   const taskIds = tasks.map((task) => task.id);
-  const [taskTotalDurations, taskRemindersByTaskId, taskRecurrencesByTaskId] = await Promise.all([
-    getTaskTotalDurationMap(supabase, taskIds),
+  const [taskTrackedTime, taskRemindersByTaskId, taskRecurrencesByTaskId] = await Promise.all([
+    getTaskTrackedTimeSummary(supabase, taskIds),
     getTaskRemindersForTasks(supabase, taskIds),
     getTaskRecurrencesForTasks(supabase, taskIds),
   ]);
+  if (!taskTrackedTime.data) {
+    throw new Error(taskTrackedTime.errorMessage ?? "Failed to load task session totals.");
+  }
+  const taskTotalDurations = taskTrackedTime.data.trackedSecondsByTask;
   const tasksWithReminders = tasks.map((task) => ({
     ...task,
     task_reminders: taskRemindersByTaskId[task.id] ?? [],
@@ -1296,6 +1302,7 @@ export async function getTasksWorkspaceData(
     goals: visibleGoals,
     tasks: tasksWithReminders,
     taskTotalDurations,
+    taskOpenSessionIds: taskTrackedTime.data.openSessionTaskIds,
     summary: taskSummary.unavailable
       ? { total: tasks.length, active: tasks.length, archived: 0 }
       : {
@@ -2653,6 +2660,13 @@ export type TaskDrawerDetail = {
   /** Blocked-by dependency detail, loaded with the drawer row. */
   dependencies: TaskDependencyDetail | null;
   dependencyError: string | null;
+  /**
+   * Lifetime tracked seconds from the canonical timer total. `null` means the
+   * session query failed: the drawer must not present that as zero tracked.
+   */
+  tracked_seconds: number | null;
+  /** A running session is included, so the total is still moving. */
+  has_open_session: boolean;
 };
 
 /**
@@ -2696,13 +2710,26 @@ export async function getTaskDrawerDetail(
   if (!data) return { kind: "unavailable" };
 
   const dependencyResult = await getTaskDependencyDetail(normalizedId, { supabase });
+  // The task id was resolved from an owner-scoped row, and task_sessions is
+  // RLS-scoped too, so the session total cannot read another owner's history.
+  const trackedResult = await getTaskTrackedTimeSummary(supabase, [data.id]);
+  const trackedSeconds = trackedResult.data
+    ? trackedResult.data.trackedSecondsByTask[data.id] ?? 0
+    : null;
 
   return {
     kind: "found",
     task: {
-      ...(data as Omit<TaskDrawerDetail, "dependencies" | "dependencyError">),
+      ...(data as Omit<
+        TaskDrawerDetail,
+        "dependencies" | "dependencyError" | "tracked_seconds" | "has_open_session"
+      >),
       dependencies: dependencyResult.data,
       dependencyError: dependencyResult.errorMessage,
+      tracked_seconds: trackedSeconds,
+      has_open_session: trackedResult.data
+        ? trackedResult.data.openSessionTaskIds.includes(data.id)
+        : false,
     },
   };
 }

@@ -8,6 +8,7 @@ const getTasksWorkspaceData = vi.hoisted(() =>
     goals: [],
     tasks: mockTasks,
     taskTotalDurations: {},
+    taskOpenSessionIds: [],
     summary: { total: 0, active: 0, archived: 0 },
     savedViews: [],
     savedViewsUnavailable: false,
