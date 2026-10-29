@@ -5,6 +5,8 @@ import {
   cancelTaskReminderAction,
   createTaskReminderAction,
   deleteTaskAction,
+  addTaskDependencyAction,
+  removeTaskDependencyAction,
   pinTaskAction,
   unarchiveTaskAction,
   unpinTaskAction,
@@ -16,6 +18,7 @@ import {
   undoTaskOperationAction,
   updateTaskReminderAction,
   moveTaskOnBoardAction,
+  updateTaskTimelineScheduleAction,
 } from "@/app/tasks/actions";
 import { startTimerAction } from "@/app/timer/actions";
 import { BulkArchiveCompletedTasksForm } from "@/components/tasks/bulk-archive-completed-tasks-form";
@@ -27,6 +30,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { FilterPill } from "@/components/ui/filter-pill";
 import { buildTaskListUrl } from "@/lib/task-list";
 import { getTaskViewFromSavedView } from "@/lib/task-saved-views";
+import { buildTimelineModel } from "@/lib/task-timeline";
 import { isTaskCompletedStatus } from "@/lib/task-domain";
 import { formatDisplayCount } from "@/lib/presentation-format";
 import { ListChecks } from "lucide-react";
@@ -37,6 +41,7 @@ import { updateTaskFieldAction } from "@/app/tasks/actions";
 import { TASK_SUBTASK_ACTIONS } from "@/lib/task-subtask-actions";
 import { TASK_COMMENT_ACTIONS } from "@/lib/task-comment-actions";
 import { KanbanBoard, type KanbanBulkActions, type KanbanCardActions } from "./kanban/kanban-board";
+import { TaskTimeline } from "./timeline/task-timeline";
 
 /**
  * Bulk cleanup targets only completed tasks that are not yet archived, inside
@@ -97,6 +102,10 @@ export function TasksPageView({
     selectedTaskComments,
     selectedTaskCommentMentions,
     selectedTaskCommentError,
+    timeline,
+    timelineRange,
+    timelineZoom,
+    ownerToday,
   } = model;
   const { activeView, activeLayout } = parsed;
   const completedTaskIdsInScope = getArchivableCompletedTaskIds(tasks);  // Restore clears archived state only; it must never resurrect a completed
@@ -117,6 +126,23 @@ export function TasksPageView({
   if (inProgressCount > 0) summaryParts.push(`${formatDisplayCount(inProgressCount)} in progress`);
   if (blockedCount > 0) summaryParts.push(`${formatDisplayCount(blockedCount)} blocked`);
   if (dueSoonCount > 0) summaryParts.push(`${formatDisplayCount(dueSoonCount)} due soon`);
+
+  const timelineModel = timeline
+    ? buildTimelineModel(
+        timeline.tasks.map((task) => ({
+          id: task.id,
+          title: task.title,
+          status: task.status,
+          priority: task.priority,
+          start_date: task.start_date,
+          due_date: task.due_date,
+          projectName: task.projects?.name ?? null,
+          updatedAt: task.updated_at,
+        })),
+        timeline.dependencies,
+        timelineRange,
+      )
+    : null;
 
   const taskListActions: TaskListActions = {
     updateAction: updateTaskInlineAction,
@@ -255,6 +281,17 @@ export function TasksPageView({
                   active={activeLayout === "kanban"}
                   ariaCurrent={activeLayout === "kanban" ? "page" : undefined}
                 />
+                <FilterPill
+                  href={buildTaskListUrl("/tasks", {
+                    ...taskUrlFilters,
+                    view: activeView,
+                    layout: "timeline",
+                    density: parsed.activeDensity,
+                  })}
+                  label="Timeline"
+                  active={activeLayout === "timeline"}
+                  ariaCurrent={activeLayout === "timeline" ? "page" : undefined}
+                />
               </div>
 
               <p
@@ -316,7 +353,16 @@ export function TasksPageView({
             <p className="feedback-block m-[18px]">{taskUpdateSuccess}</p>
           ) : null}
 
-          {activeLayout === "kanban" ? (
+          {activeLayout === "timeline" && timelineModel ? (
+            <TaskTimeline
+              model={timelineModel}
+              range={timelineRange}
+              zoom={timelineZoom}
+              today={ownerToday}
+              returnTo={returnPath}
+              action={updateTaskTimelineScheduleAction}
+            />
+          ) : activeLayout === "kanban" ? (
             tasks.length === 0 ? (
               emptyState
             ) : (
@@ -429,6 +475,8 @@ export function TasksPageView({
           subtaskActions={TASK_SUBTASK_ACTIONS}
           updateError={taskUpdateTaskId === selectedTaskId ? taskUpdateError : null}
           updateSuccess={taskUpdateTaskId === selectedTaskId ? taskUpdateSuccess : null}
+          addDependencyAction={addTaskDependencyAction}
+          removeDependencyAction={removeTaskDependencyAction}
         />
       ) : null}
     </div>

@@ -18,6 +18,7 @@ function createTaskRow(overrides: Partial<NormalizedTaskRow> = {}): NormalizedTa
     status: "todo",
     priority: "medium",
     due_date: null,
+    start_date: null,
     scheduled_start_at: null,
     scheduled_end_at: null,
     calendar_sync_enabled: false,

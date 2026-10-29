@@ -38,6 +38,9 @@ type TasksPageProps = {
     task?: string;
     /** `full` renders the detail full page instead of a side panel. */
     taskMode?: string;
+    /** Timeline window anchor and week/month zoom. */
+    tlStart?: string;
+    tlZoom?: string;
     statusUpdateError?: string;
     viewError?: string;
     viewSuccess?: string;
