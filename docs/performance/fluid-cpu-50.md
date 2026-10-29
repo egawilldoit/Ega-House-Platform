@@ -14,3 +14,12 @@
 
 ## Waves
 Wave 0: Setup complete. Branch created from origin/main, docs initialized.
+
+## Wave 1 - Realtime correctness + catch-up
+- Fix: OwnerScopedRealtimeRefresh now tracks pending refreshes while hidden and triggers catch-up on visibilitychange. Preserves debounce/coalescing and unmount safety.
+- Tests: owner-scoped-realtime-refresh.test.tsx passed (14/14).
+
+## Wave 2 - App shell query optimization
+- Change: AppShell sidebar project active-task counts now use per-project head-count queries (count: "exact", head: true) instead of fetching up to 1000 task rows and counting in JS.
+- Rationale: reduces data transfer/serialization for shell; preserves counts and behavior.
+- Tests: workspace-shell.test.tsx passed (13/13); home-routing.test.ts passed (5/5); home-dashboard/task-read-home tests passed (12/12).
