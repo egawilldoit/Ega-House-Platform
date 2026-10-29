@@ -22,6 +22,7 @@ export type CreateProjectFormState = {
     name: string;
     slug: string;
     description: string;
+    areaId: string;
     templateId: string;
   };
 };
@@ -45,6 +46,7 @@ export async function createProjectAction(
     name: formData.get("name"),
     slug: formData.get("slug"),
     description: formData.get("description"),
+    areaId: formData.get("areaId"),
   };
 
   if (templateId === "blank") {
@@ -55,11 +57,18 @@ export async function createProjectAction(
     if (!result.ok) {
       return {
         error: result.errorMessage,
-        values: { ...result.values, templateId },
+        values: {
+          name: result.values.name,
+          slug: result.values.slug,
+          description: result.values.description,
+          areaId: result.values.areaId ?? "",
+          templateId,
+        },
       };
     }
 
     revalidatePath("/tasks/projects");
+    revalidatePath("/settings/areas");
     redirect("/tasks/projects");
   }
 
@@ -77,12 +86,19 @@ export async function createProjectAction(
   if (!result.ok) {
     return {
       error: result.errorMessage,
-      values: { ...result.values, templateId },
+      values: {
+        name: result.values.name,
+        slug: result.values.slug,
+        description: result.values.description,
+        areaId: result.values.areaId ?? "",
+        templateId,
+      },
     };
   }
 
   const projectPath = `/tasks/projects/${result.data.slug}`;
   revalidateWorkspaceFor("task", { returnTo: projectPath });
   revalidatePath("/goals");
+  revalidatePath("/settings/areas");
   redirect(projectPath);
 }

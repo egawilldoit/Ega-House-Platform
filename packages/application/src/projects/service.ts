@@ -27,6 +27,7 @@ export type ProjectFormValues = {
   name: string;
   slug: string;
   description: string;
+  areaId?: string;
 };
 
 export type CreateProjectResult =
@@ -51,11 +52,13 @@ export function readProjectFormValues(input: {
   name: unknown;
   slug: unknown;
   description: unknown;
+  areaId?: unknown;
 }): { values: ProjectFormValues; errorMessage: string | null } {
   const name = String(input.name ?? "").trim();
   const slug = normalizeProjectSlug(String(input.slug ?? ""));
   const description = String(input.description ?? "").trim();
-  const values = { name, slug, description };
+  const areaId = String(input.areaId ?? "").trim();
+  const values = { name, slug, description, areaId };
 
   if (!name) return { values, errorMessage: "Project name is required." };
   if (!slug) return { values, errorMessage: "Slug is required." };
@@ -76,6 +79,7 @@ export async function createProject(
     name: unknown;
     slug: unknown;
     description: unknown;
+    areaId?: unknown;
     mcpOperationId?: string;
     mcpClientId?: string;
   },
@@ -84,12 +88,31 @@ export async function createProject(
 
   if (errorMessage) return { ok: false, errorMessage, values };
 
-  const { name, slug, description } = values;
+  const { name, slug, description, areaId = "" } = values;
+
+  if (areaId) {
+    if (!PROJECT_ID_PATTERN.test(areaId)) {
+      return { ok: false, errorMessage: "Choose a valid area.", values };
+    }
+
+    const areaResult = await repository.getAreaById(actor, areaId);
+    if (!areaResult.ok) {
+      return {
+        ok: false,
+        errorMessage: "Unable to verify the area right now.",
+        values,
+      };
+    }
+    if (!areaResult.value) {
+      return { ok: false, errorMessage: "Area not found.", values };
+    }
+  }
 
   const createInput = {
     name,
     slug,
     description: description || null,
+    areaId: areaId || null,
     ...(input.mcpOperationId && input.mcpClientId
       ? { mcpOperationId: input.mcpOperationId, mcpClientId: input.mcpClientId }
       : {}),
@@ -150,6 +173,7 @@ export function toCreateProjectFromTemplateRecord(input: {
   name: string;
   slug: string;
   description: string | null;
+  areaId: string | null;
 }): CreateProjectFromTemplateRecordInput {
   const goals = input.preview.goals.map((goal) => ({
     title: goal.title,
@@ -178,6 +202,7 @@ export function toCreateProjectFromTemplateRecord(input: {
     name: input.name,
     slug: input.slug,
     description: input.description,
+    areaId: input.areaId,
     goals,
     tasks,
   };
@@ -203,6 +228,7 @@ export async function createProjectFromTemplate(
     name: unknown;
     slug: unknown;
     description: unknown;
+    areaId?: unknown;
     now?: Date;
   },
 ): Promise<CreateProjectFromTemplateResult> {
@@ -234,6 +260,26 @@ export async function createProjectFromTemplate(
     };
   }
 
+  const areaId = values.areaId ?? "";
+
+  if (areaId) {
+    if (!PROJECT_ID_PATTERN.test(areaId)) {
+      return { ok: false, errorMessage: "Choose a valid area.", values: formValues };
+    }
+
+    const areaResult = await repository.getAreaById(actor, areaId);
+    if (!areaResult.ok) {
+      return {
+        ok: false,
+        errorMessage: "Unable to verify the area right now.",
+        values: formValues,
+      };
+    }
+    if (!areaResult.value) {
+      return { ok: false, errorMessage: "Area not found.", values: formValues };
+    }
+  }
+
   const timeContext = await resolveTimeContext(actor, timeContextRepository, {
     now: input.now ?? new Date(),
   });
@@ -261,6 +307,7 @@ export async function createProjectFromTemplate(
     name: values.name,
     slug: values.slug,
     description: values.description || null,
+    areaId: areaId || null,
   });
 
   const result = await repository.createProjectFromTemplate(actor, record);

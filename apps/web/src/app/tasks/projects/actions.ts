@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 
 import {
   archiveProject,
+  assignProjectArea,
   createAuthenticatedActor,
   purgeArchivedProject,
   unarchiveProject,
@@ -30,7 +31,7 @@ function redirectWithProjectsError(
   returnPath: string,
   errorMessage: string,
   projectId?: string,
-  field?: "status" | "archive",
+  field?: "status" | "archive" | "area",
 ): never {
   const target = new URL(returnPath, "https://egawilldoit.online");
   target.searchParams.set("projectUpdateError", errorMessage);
@@ -121,6 +122,28 @@ export async function archiveProjectAction(formData: FormData) {
 
 export async function unarchiveProjectAction(formData: FormData) {
   await updateProjectArchiveState(formData, "active");
+}
+
+export async function assignProjectAreaAction(formData: FormData) {
+  const returnPath = getProjectsReturnPath(formData.get("returnTo"));
+  const projectId = String(formData.get("projectId") ?? "").trim();
+  const areaId = String(formData.get("areaId") ?? "").trim();
+
+  const { actor, repository } = await resolveProjectContext();
+  const result = await assignProjectArea(actor, repository, { projectId, areaId });
+
+  if (!result.ok) {
+    redirectWithProjectsError(returnPath, result.errorMessage, projectId, "area");
+  }
+
+  const returnPathname = getProjectsPathname(returnPath);
+
+  revalidatePath("/tasks/projects");
+  revalidatePath(returnPathname);
+  revalidatePath("/tasks");
+  revalidatePath("/settings/areas");
+  revalidatePath("/work-analytics");
+  redirect(`${returnPath}#project-${projectId}`);
 }
 
 function getPurgeDeletePath(rawSlug: unknown) {

@@ -56,6 +56,9 @@ test("buildWorkAnalyticsReport returns correct breakdownTitle by breakdownBy", (
   const projectReport = buildWorkAnalyticsReport([], defaultTaskCounts, { ...defaultFilters, breakdownBy: "project" }, now);
   assert.strictEqual(projectReport.breakdownTitle, "Project breakdown");
 
+  const areaReport = buildWorkAnalyticsReport([], defaultTaskCounts, { ...defaultFilters, breakdownBy: "area" }, now);
+  assert.strictEqual(areaReport.breakdownTitle, "Area breakdown");
+
   const goalReport = buildWorkAnalyticsReport([], defaultTaskCounts, { ...defaultFilters, breakdownBy: "goal" }, now);
   assert.strictEqual(goalReport.breakdownTitle, "Goal breakdown");
 
