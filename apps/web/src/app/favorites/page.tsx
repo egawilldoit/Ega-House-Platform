@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Star } from "lucide-react";
+import { ArrowDown, ArrowUp, Star } from "lucide-react";
 
 import { AppShell } from "@/components/layout/app-shell";
 import { Card } from "@/components/ui/card";
@@ -37,9 +37,9 @@ function FavouriteRow({ item, index, count }: { item: FavoriteItem; index: numbe
             type="submit"
             disabled={index === 0}
             aria-label={`Move ${item.label} up`}
-            className="px-1 text-[length:var(--text-meta)] disabled:opacity-40"
+            className="inline-flex h-7 w-7 items-center justify-center rounded-[var(--radius-xs)] text-[color:var(--ega-text-secondary)] transition-colors hover:bg-[var(--ega-surface-hover)] hover:text-[color:var(--ega-text)] focus-visible:outline-none focus-visible:shadow-[var(--ega-focus-ring)] disabled:opacity-40 disabled:hover:bg-transparent"
           >
-            ↑
+            <ArrowUp className="h-3.5 w-3.5" aria-hidden="true" />
           </button>
         </form>
         <form action={moveFavoriteAction}>
@@ -50,9 +50,9 @@ function FavouriteRow({ item, index, count }: { item: FavoriteItem; index: numbe
             type="submit"
             disabled={index === count - 1}
             aria-label={`Move ${item.label} down`}
-            className="px-1 text-[length:var(--text-meta)] disabled:opacity-40"
+            className="inline-flex h-7 w-7 items-center justify-center rounded-[var(--radius-xs)] text-[color:var(--ega-text-secondary)] transition-colors hover:bg-[var(--ega-surface-hover)] hover:text-[color:var(--ega-text)] focus-visible:outline-none focus-visible:shadow-[var(--ega-focus-ring)] disabled:opacity-40 disabled:hover:bg-transparent"
           >
-            ↓
+            <ArrowDown className="h-3.5 w-3.5" aria-hidden="true" />
           </button>
         </form>
         <form action={toggleFavoriteAction}>
@@ -62,9 +62,9 @@ function FavouriteRow({ item, index, count }: { item: FavoriteItem; index: numbe
           <button
             type="submit"
             aria-label={`Remove ${item.label} from favourites`}
-            className="px-1 text-[color:var(--ega-text-secondary)]"
+            className="inline-flex h-7 w-7 items-center justify-center rounded-[var(--radius-xs)] text-[color:var(--status-risk)] transition-colors hover:bg-[var(--status-risk-bg)] focus-visible:outline-none focus-visible:shadow-[var(--ega-focus-ring)]"
           >
-            <Star className="h-3.5 w-3.5" aria-hidden="true" />
+            <Star className="h-3.5 w-3.5 fill-current" aria-hidden="true" />
           </button>
         </form>
       </span>
