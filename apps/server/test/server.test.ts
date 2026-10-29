@@ -97,6 +97,11 @@ class FakeQueryBuilder {
     return this;
   }
 
+  limit(count: number) {
+    this.steps.push({ method: "limit", args: [count] });
+    return this;
+  }
+
   order(column: string, options?: unknown) {
     this.steps.push({ method: "order", args: [column, options] });
     return this;
@@ -461,8 +466,9 @@ test("PATCH /api/projects/:id/status rejects an invalid status", async () => {
   });
 });
 
-test("POST /api/projects/:id/archive writes the archived status", async () => {
+test("POST /api/projects/:id/archive writes the archive marker and metadata", async () => {
   const fake = fakeSupabase();
+  fake.pushResult("tasks", { data: [], error: null });
   fake.pushResult("projects", { data: null, error: null });
   const app = makeApp(fake);
 
@@ -474,10 +480,36 @@ test("POST /api/projects/:id/archive writes the archived status", async () => {
   assert.equal(response.status, 200);
   const update = updateSteps(fake, "projects")[0];
   assert.ok(update);
-  assert.deepEqual(update.args[0], { status: "archived", updated_at: FIXED_NOW });
+  assert.deepEqual(update.args[0], {
+    status: "archived",
+    archived_at: FIXED_NOW,
+    archived_by: "user-123",
+    updated_at: FIXED_NOW,
+  });
 });
 
-test("POST /api/projects/:id/unarchive writes the active status", async () => {
+test("POST /api/projects/:id/archive refuses while a task timer is running", async () => {
+  const fake = fakeSupabase();
+  fake.pushResult("tasks", { data: [{ id: "task-1" }], error: null });
+  fake.pushResult("task_sessions", { data: [{ id: "session-1" }], error: null });
+  const app = makeApp(fake);
+
+  const response = await app.request("/api/projects/project-1/archive", {
+    method: "POST",
+    headers: AUTH,
+  });
+
+  assert.equal(response.status, 400);
+  assert.deepEqual(await response.json(), {
+    error: {
+      code: "VALIDATION",
+      message: "Stop the active timer before archiving this project.",
+    },
+  });
+  assert.equal(updateSteps(fake, "projects").length, 0);
+});
+
+test("POST /api/projects/:id/unarchive clears the archive marker", async () => {
   const fake = fakeSupabase();
   fake.pushResult("projects", { data: null, error: null });
   const app = makeApp(fake);
@@ -490,7 +522,12 @@ test("POST /api/projects/:id/unarchive writes the active status", async () => {
   assert.equal(response.status, 200);
   const update = updateSteps(fake, "projects")[0];
   assert.ok(update);
-  assert.deepEqual(update.args[0], { status: "active", updated_at: FIXED_NOW });
+  assert.deepEqual(update.args[0], {
+    status: "active",
+    archived_at: null,
+    archived_by: null,
+    updated_at: FIXED_NOW,
+  });
 });
 
 const ARCHIVED_PROJECT_ROW = {
@@ -1265,8 +1302,9 @@ test("PATCH /api/goals/:id/next-step updates the next step", async () => {
   assert.deepEqual(update.args[0], { next_step: "Call the architect", updated_at: FIXED_NOW });
 });
 
-test("POST /api/goals/:id/archive writes the archived status", async () => {
+test("POST /api/goals/:id/archive writes the archive marker and metadata", async () => {
   const fake = fakeSupabase();
+  fake.pushResult("tasks", { data: [], error: null });
   fake.pushResult("goals", { data: null, error: null });
   const app = makeApp(fake);
 
@@ -1278,10 +1316,15 @@ test("POST /api/goals/:id/archive writes the archived status", async () => {
   assert.equal(response.status, 200);
   const update = updateSteps(fake, "goals")[0];
   assert.ok(update);
-  assert.deepEqual(update.args[0], { status: "archived", updated_at: FIXED_NOW });
+  assert.deepEqual(update.args[0], {
+    status: "archived",
+    archived_at: FIXED_NOW,
+    archived_by: "user-123",
+    updated_at: FIXED_NOW,
+  });
 });
 
-test("POST /api/goals/:id/unarchive writes the active status", async () => {
+test("POST /api/goals/:id/unarchive clears the archive marker", async () => {
   const fake = fakeSupabase();
   fake.pushResult("goals", { data: null, error: null });
   const app = makeApp(fake);
@@ -1294,7 +1337,12 @@ test("POST /api/goals/:id/unarchive writes the active status", async () => {
   assert.equal(response.status, 200);
   const update = updateSteps(fake, "goals")[0];
   assert.ok(update);
-  assert.deepEqual(update.args[0], { status: "active", updated_at: FIXED_NOW });
+  assert.deepEqual(update.args[0], {
+    status: "active",
+    archived_at: null,
+    archived_by: null,
+    updated_at: FIXED_NOW,
+  });
 });
 
 test("unknown routes return a JSON 404", async () => {
