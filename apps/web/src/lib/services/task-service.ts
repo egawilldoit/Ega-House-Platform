@@ -1218,7 +1218,7 @@ export async function getTasksWorkspaceData(
       ended_at: string | null;
     }>;
     const sessionTaskIds = Array.from(new Set(sessionRows.map((session) => session.task_id)));
-    let sessionTaskTitles = new Map<string, string>();
+    const sessionTaskTitles = new Map<string, string>();
     const visibleSessionTaskIds = new Set<string>();
     if (sessionTaskIds.length > 0) {
       let sessionTasksQuery = supabase
