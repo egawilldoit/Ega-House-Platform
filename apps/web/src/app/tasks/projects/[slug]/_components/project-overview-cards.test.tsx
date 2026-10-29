@@ -3,7 +3,11 @@ import test from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
-import type { ProjectGoalRecord, ProjectProgressSummary } from "@ega/application";
+import type {
+  EstimateVsActualAggregate,
+  ProjectGoalRecord,
+  ProjectProgressSummary,
+} from "@ega/application";
 
 import { buildProjectProgress } from "@ega/application";
 
@@ -16,6 +20,29 @@ import { selectProjectComingUpTasks } from "@/lib/project-overview";
 
 function progress(tasks: Array<{ status: string }>): ProjectProgressSummary {
   return buildProjectProgress(tasks);
+}
+
+function estimateAggregate(
+  overrides: Partial<EstimateVsActualAggregate> = {},
+): EstimateVsActualAggregate {
+  return {
+    taskCount: 0,
+    estimatedTaskCount: 0,
+    trackedTaskCount: 0,
+    estimateMinutes: 0,
+    trackedSeconds: 0,
+    trackedSecondsOnAllTasks: 0,
+    comparison: null,
+    overTaskCount: 0,
+    underTaskCount: 0,
+    onTargetTaskCount: 0,
+    evaluatedTaskCount: 0,
+    onTargetEvaluatedTaskCount: 0,
+    accuracyPercent: null,
+    topOverRuns: [],
+    hasOpenSessions: false,
+    ...overrides,
+  };
 }
 
 test("progress card names completion and deep-links each status segment", () => {
@@ -110,6 +137,7 @@ test("time card distinguishes no-estimate, tracked and estimate states", () => {
         estimatedMinutes: 0,
         estimatedTaskCount: 0,
       }}
+      estimateVsActual={estimateAggregate()}
     />,
   );
   assert.match(noEstimate, /No estimate/);
@@ -126,6 +154,27 @@ test("time card distinguishes no-estimate, tracked and estimate states", () => {
         estimatedMinutes: 60,
         estimatedTaskCount: 1,
       }}
+      estimateVsActual={estimateAggregate({
+        taskCount: 1,
+        estimatedTaskCount: 1,
+        trackedTaskCount: 1,
+        estimateMinutes: 60,
+        trackedSeconds: 7200,
+        trackedSecondsOnAllTasks: 7200,
+        overTaskCount: 1,
+        evaluatedTaskCount: 1,
+        comparison: {
+          estimateMinutes: 60,
+          estimateSeconds: 3600,
+          trackedSeconds: 7200,
+          deltaSeconds: 3600,
+          deltaMinutes: 60,
+          percent: 100,
+          state: "over",
+          hasTrackedTime: true,
+          hasOpenSession: false,
+        },
+      })}
     />,
   );
   assert.match(tracked, /1h/);
