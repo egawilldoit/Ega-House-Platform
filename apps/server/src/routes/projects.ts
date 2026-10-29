@@ -91,6 +91,7 @@ export function createProjectsRoutes(
         name: body.name,
         slug: body.slug,
         description: body.description,
+        areaId: body.areaId,
       },
     );
 

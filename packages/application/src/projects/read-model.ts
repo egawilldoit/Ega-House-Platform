@@ -6,6 +6,8 @@ import {
 import type { AuthenticatedActor } from "../auth/actor";
 import { applicationFailure, applicationSuccess, type ApplicationResult } from "../shared/result";
 import type {
+  AreaFilter,
+  AreaRecord,
   ProjectGoalRecord,
   ProjectRecord,
   ProjectsRepository,
@@ -23,6 +25,7 @@ export type ProjectCardReadModel = ProjectRecord & {
 
 export type ProjectsReadModel = {
   projects: ProjectCardReadModel[];
+  areas: AreaRecord[];
   summary: {
     total: number;
     active: number;
@@ -40,18 +43,21 @@ export async function getProjectsReadModel(
   actor: AuthenticatedActor,
   repository: ProjectsRepository,
   view: ProjectViewFilter,
+  areaFilter: AreaFilter = null,
 ): Promise<ApplicationResult<ProjectsReadModel>> {
-  const [projectsResult, statusesResult] = await Promise.all([
-    repository.listProjects(actor, view),
+  const [projectsResult, statusesResult, areasResult] = await Promise.all([
+    repository.listProjects(actor, view, areaFilter),
     repository.listProjectStatuses(actor),
+    repository.listAreas(actor),
   ]);
 
-  if (!projectsResult.ok || !statusesResult.ok) {
+  if (!projectsResult.ok || !statusesResult.ok || !areasResult.ok) {
     return applicationFailure("Unable to load projects right now.");
   }
 
   const projects = projectsResult.value;
   const statuses = statusesResult.value;
+  const areas = areasResult.value;
   const summary = {
     total: statuses.length,
     active: statuses.filter((status) => status === "active").length,
@@ -60,7 +66,7 @@ export async function getProjectsReadModel(
   };
 
   if (projects.length === 0) {
-    return applicationSuccess({ projects: [], summary });
+    return applicationSuccess({ projects: [], areas, summary });
   }
 
   const tasksResult = await repository.listTasksForProjects(
@@ -96,6 +102,7 @@ export async function getProjectsReadModel(
         recentTasks: projectTasks.slice(0, 2),
       };
     }),
+    areas,
     summary,
   });
 }

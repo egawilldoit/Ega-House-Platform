@@ -203,6 +203,8 @@ test("listProjects maps rows, applies the view filter, and scopes by owner", asy
         slug: "home-renovation",
         description: "Kitchen",
         status: "active",
+        area_id: null,
+        areas: null,
         created_at: "2026-01-01T00:00:00.000Z",
         updated_at: "2026-02-01T00:00:00.000Z",
       },
@@ -221,6 +223,10 @@ test("listProjects maps rows, applies the view filter, and scopes by owner", asy
       slug: "home-renovation",
       description: "Kitchen",
       status: "active",
+      areaId: null,
+      areaName: null,
+      areaColor: null,
+      areaIcon: null,
       createdAt: "2026-01-01T00:00:00.000Z",
       updatedAt: "2026-02-01T00:00:00.000Z",
     },
@@ -282,6 +288,7 @@ test("createProject scopes the insert by owner and maps 23505 to conflict", asyn
     name: "Duplicate",
     slug: "duplicate",
     description: null,
+    area_id: null,
     owner_user_id: "user-123",
   });
 });

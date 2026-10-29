@@ -1,5 +1,6 @@
 export * from "./tasks/index";
 export * from "./projects/index";
+export * from "./areas/index";
 export * from "./goals/index";
 export * from "./archive/index";
 export * from "./friction/index";
