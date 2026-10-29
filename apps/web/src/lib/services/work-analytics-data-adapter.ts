@@ -44,6 +44,35 @@ export type WorkAnalyticsTaskCounts = {
   blockedCount: number;
 };
 
+/**
+ * Count tasks completed inside a canonical window.
+ *
+ * Single owner for the "completed in this window" rule used by Analytics and
+ * Home. It counts the durable `completed_at` timestamp (maintained by the task
+ * status trigger) and deliberately does not filter `archived_at`, so historical
+ * completion totals survive archiving.
+ */
+export async function getCompletedTaskCountForWindow(args: {
+  ownerUserId: string;
+  window: ExecutionEvidenceWindow;
+  supabase?: SupabaseServerClient;
+}): Promise<{ data: number | null; errorMessage: string | null }> {
+  const supabase = await resolveSupabaseClient(args.supabase);
+  const { count, error } = await supabase
+    .from("tasks")
+    .select("id", { count: "exact", head: true })
+    .eq("owner_user_id", args.ownerUserId)
+    .eq("status", "done")
+    .gte("completed_at", args.window.startIso)
+    .lt("completed_at", args.window.endIso);
+
+  if (error) {
+    return { data: null, errorMessage: `Failed to load completed task count: ${error.message}` };
+  }
+
+  return { data: count ?? 0, errorMessage: null };
+}
+
 export async function getWorkAnalyticsTaskCounts(args: {
   ownerUserId: string;
   window: ExecutionEvidenceWindow;
@@ -64,19 +93,22 @@ export async function getWorkAnalyticsTaskCounts(args: {
   }
   const createdCount = createdCountRaw ?? 0;
 
-  // Count tasks completed within the window: completed_at >= start AND completed_at < end AND status = 'done'
-  const { count: completedCountRaw, error: completedError } = await supabase
-    .from("tasks")
-    .select("id", { count: "exact", head: true })
-    .eq("owner_user_id", args.ownerUserId)
-    .eq("status", "done")
-    .gte("completed_at", args.window.startIso)
-    .lt("completed_at", args.window.endIso);
+  // Count tasks completed within the window through the shared rule.
+  const completedResult = await getCompletedTaskCountForWindow({
+    ownerUserId: args.ownerUserId,
+    window: args.window,
+    supabase,
+  });
 
-  if (completedError) {
-    return { data: null, errorMessage: `Failed to load work analytics task counts: ${completedError.message}` };
+  if (completedResult.errorMessage || completedResult.data === null) {
+    return {
+      data: null,
+      errorMessage:
+        completedResult.errorMessage ??
+        "Failed to load work analytics task counts: completed count unavailable.",
+    };
   }
-  const completedCount = completedCountRaw ?? 0;
+  const completedCount = completedResult.data;
 
   // Count tasks that are currently blocked within scope:
   // completed_at IS NULL AND (blocked_reason IS NOT NULL OR status = 'blocked')
