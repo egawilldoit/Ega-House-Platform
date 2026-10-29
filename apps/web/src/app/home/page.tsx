@@ -8,6 +8,7 @@ import { getActiveTimerSession } from "@/lib/services/timer-service";
 import { getShellIdentity, getWorkspaceShellMetricsResult } from "@/lib/workspace-shell";
 
 import { AuthenticatedHomePage } from "./_components/authenticated-home-page";
+import { getHomeDashboardData } from "./_lib/home-dashboard-data";
 import { buildHomeGreeting, type HomeGreeting } from "./_lib/home-greeting";
 import { buildHomeModel } from "./_lib/home-page-model";
 
@@ -26,12 +27,18 @@ export const metadata: Metadata = {
  * Attention) never waits on secondary Activity analytics: the Activity pulse
  * streams in through its own Suspense section.
  */
-export default async function HomeRoute() {
-  const [snapshotResult, attentionResult, user, identity] = await Promise.all([
+export default async function HomeRoute({
+  searchParams,
+}: {
+  searchParams: Promise<{ myTasks?: string }>;
+}) {
+  const resolvedSearchParams = await searchParams;
+  const [snapshotResult, attentionResult, user, identity, dashboard] = await Promise.all([
     getOperatorSnapshotData(),
     getWorkspaceShellMetricsResult(),
     getCurrentUser(),
     getShellIdentity(),
+    getHomeDashboardData(),
   ]);
 
   // Bounded active-session read, only when the canonical Operator snapshot says
@@ -53,6 +60,8 @@ export default async function HomeRoute() {
         }
       : null,
     activeTimerStartedAt,
+    dashboard,
+    myTasksTab: resolvedSearchParams.myTasks,
   });
 
   // Greeting/date come from the canonical Time Context already embedded in the

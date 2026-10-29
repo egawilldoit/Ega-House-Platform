@@ -21,6 +21,7 @@ import type {
 const AVAILABLE_RANGES: AnalyticsRange[] = [
   "today",
   "7d",
+  "this-week",
   "30d",
   "mtm",
   "prev-month",
