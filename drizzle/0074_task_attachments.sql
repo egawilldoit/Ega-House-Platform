@@ -401,6 +401,7 @@ ALTER TABLE "public"."task_activity_events"
   ADD CONSTRAINT "task_activity_events_event_kind_check" CHECK (
     "event_kind" in (
       'created', 'field_change', 'archived', 'restored',
+      'reminder_scheduled', 'reminder_updated', 'reminder_cancelled', 'comment',
       'attachment_added', 'attachment_removed'
     )
   );

@@ -820,7 +820,8 @@ export const taskAttachments = pgTable(
     ),
     check(
       "task_activity_events_event_kind_check",
-      sql`${table.eventKind} in ('created', 'field_change', 'archived', 'restored', 'reminder_scheduled', 'reminder_updated', 'reminder_cancelled', 'comment', 'attachment_added', 'attachment_removed')`,    ),
+      sql`${table.eventKind} in ('created', 'field_change', 'archived', 'restored', 'reminder_scheduled', 'reminder_updated', 'reminder_cancelled', 'comment', 'attachment_added', 'attachment_removed')`,
+    ),
   ],
 );
 
