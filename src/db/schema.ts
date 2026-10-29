@@ -27,6 +27,7 @@ export const projects = pgTable(
     status: varchar("status", { length: 64 }).notNull().default("planned"),
     archivedAt: timestamp("archived_at", { withTimezone: true }),
     archivedBy: uuid("archived_by"),
+    templateOperationId: uuid("template_operation_id"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
@@ -47,6 +48,9 @@ export const projects = pgTable(
       "projects_archive_state_check",
       sql`(${table.archivedAt} is not null) = (${table.status} = 'archived')`,
     ),
+    uniqueIndex("projects_template_operation_unique")
+      .on(table.ownerUserId, table.templateOperationId)
+      .where(sql`${table.templateOperationId} is not null`),
   ],
 );
 
