@@ -15,11 +15,39 @@ import {
   varchar,
 } from "drizzle-orm/pg-core";
 
+export const areas = pgTable(
+  "areas",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    ownerUserId: uuid("owner_user_id").default(sql`auth.uid()`),
+    name: varchar("name", { length: 80 }).notNull(),
+    icon: varchar("icon", { length: 32 }).notNull().default("folder"),
+    color: varchar("color", { length: 32 }).notNull().default("slate"),
+    description: text("description"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    index("areas_owner_user_id_idx").on(table.ownerUserId),
+    uniqueIndex("areas_owner_user_id_name_unique").on(
+      table.ownerUserId,
+      table.name,
+    ),
+  ],
+);
+
 export const projects = pgTable(
   "projects",
   {
     id: uuid("id").defaultRandom().primaryKey(),
     ownerUserId: uuid("owner_user_id").default(sql`auth.uid()`),
+    areaId: uuid("area_id").references(() => areas.id, {
+      onDelete: "set null",
+    }),
     name: varchar("name", { length: 256 }).notNull(),
     slug: varchar("slug", { length: 256 }).notNull(),
     description: text("description"),
@@ -35,6 +63,10 @@ export const projects = pgTable(
   },
   (table) => [
     index("projects_owner_user_id_idx").on(table.ownerUserId),
+    index("projects_owner_user_id_area_id_idx").on(
+      table.ownerUserId,
+      table.areaId,
+    ),
     uniqueIndex("projects_owner_user_id_slug_unique").on(
       table.ownerUserId,
       table.slug,

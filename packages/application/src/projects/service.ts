@@ -12,6 +12,7 @@ export type ProjectFormValues = {
   name: string;
   slug: string;
   description: string;
+  areaId?: string;
 };
 
 export type CreateProjectResult =
@@ -34,6 +35,7 @@ export async function createProject(
     name: unknown;
     slug: unknown;
     description: unknown;
+    areaId?: unknown;
     mcpOperationId?: string;
     mcpClientId?: string;
   },
@@ -41,7 +43,8 @@ export async function createProject(
   const name = String(input.name ?? "").trim();
   const slug = normalizeProjectSlug(String(input.slug ?? ""));
   const description = String(input.description ?? "").trim();
-  const values = { name, slug, description };
+  const areaId = String(input.areaId ?? "").trim();
+  const values = { name, slug, description, areaId };
 
   if (!name) return { ok: false, errorMessage: "Project name is required.", values };
   if (!slug) return { ok: false, errorMessage: "Slug is required.", values };
@@ -53,10 +56,29 @@ export async function createProject(
     };
   }
 
+  if (areaId) {
+    if (!PROJECT_ID_PATTERN.test(areaId)) {
+      return { ok: false, errorMessage: "Choose a valid area.", values };
+    }
+
+    const areaResult = await repository.getAreaById(actor, areaId);
+    if (!areaResult.ok) {
+      return {
+        ok: false,
+        errorMessage: "Unable to verify the area right now.",
+        values,
+      };
+    }
+    if (!areaResult.value) {
+      return { ok: false, errorMessage: "Area not found.", values };
+    }
+  }
+
   const createInput = {
     name,
     slug,
     description: description || null,
+    areaId: areaId || null,
     ...(input.mcpOperationId && input.mcpClientId
       ? { mcpOperationId: input.mcpOperationId, mcpClientId: input.mcpClientId }
       : {}),

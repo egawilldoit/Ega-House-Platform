@@ -7,10 +7,13 @@ import type { GoalViewFilter, ProjectViewFilter } from "@ega/domain";
 import {
   archiveGoal,
   archiveProject,
+  assignProjectArea,
   buildProjectProgress,
+  createArea,
   createAuthenticatedActor,
   createGoal,
   createProject,
+  deleteArea,
   deleteArchivedProject,
   getGoalsReadModel,
   getProjectIdentityReadModel,
@@ -19,10 +22,14 @@ import {
   purgeArchivedProject,
   unarchiveGoal,
   unarchiveProject,
+  updateArea,
   updateGoalHealth,
   updateGoalNextStep,
   updateGoalStatus,
   updateProjectStatus,
+  type AreaFilter,
+  type AreaRecord,
+  type AreaWriteInput,
   type AuthenticatedActor,
   type CreateGoalRecordInput,
   type CreateProjectRecordInput,
@@ -58,6 +65,20 @@ class FakeProjectsRepository implements ProjectsRepository {
   slugResult: RepositoryResult<ProjectRecord | null> = okResult(null);
   idResult: RepositoryResult<ProjectRecord | null> = okResult(null);
   goalsResult: RepositoryResult<ProjectGoalRecord[]> = okResult([]);
+  areasResult: RepositoryResult<AreaRecord[]> = okResult([]);
+  areaResult: RepositoryResult<AreaRecord | null> = okResult(null);
+  createAreaResult: RepositoryResult<AreaRecord> = okResult({
+    id: "area-1",
+    name: "Job hunt",
+    icon: "briefcase",
+    color: "blue",
+    description: null,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+  });
+  updateAreaResult: RepositoryResult<AreaRecord | null> = okResult(null);
+  deleteAreaResult: RepositoryResult<{ deleted: boolean }> = okResult({ deleted: true });
+  assignAreaResult: RepositoryResult<{ updated: boolean }> = okResult({ updated: true });
   updateResult: RepositoryResult<null> = okResult(null);
   activeTimerResult: RepositoryResult<boolean> = okResult(false);
   deleteResult: RepositoryResult<DeleteArchivedProjectResult> = okResult({ deleted: true });
@@ -76,9 +97,39 @@ class FakeProjectsRepository implements ProjectsRepository {
     this.calls.push({ method, actorUserId, args });
   }
 
-  async listProjects(actor: AuthenticatedActor, view: ProjectViewFilter) {
-    this.record("listProjects", actor.userId, { view });
+  async listProjects(actor: AuthenticatedActor, view: ProjectViewFilter, areaFilter?: AreaFilter) {
+    this.record("listProjects", actor.userId, { view, areaFilter });
     return this.listResult;
+  }
+  async listAreas(actor: AuthenticatedActor) {
+    this.record("listAreas", actor.userId, {});
+    return this.areasResult;
+  }
+  async getAreaById(actor: AuthenticatedActor, areaId: string) {
+    this.record("getAreaById", actor.userId, { areaId });
+    return this.areaResult;
+  }
+  async createArea(actor: AuthenticatedActor, input: AreaWriteInput) {
+    this.record("createArea", actor.userId, input);
+    return this.createAreaResult;
+  }
+  async updateArea(
+    actor: AuthenticatedActor,
+    input: AreaWriteInput & { areaId: string; updatedAt: string },
+  ) {
+    this.record("updateArea", actor.userId, input);
+    return this.updateAreaResult;
+  }
+  async deleteArea(actor: AuthenticatedActor, input: { areaId: string }) {
+    this.record("deleteArea", actor.userId, input);
+    return this.deleteAreaResult;
+  }
+  async assignProjectArea(
+    actor: AuthenticatedActor,
+    input: { projectId: string; areaId: string | null; updatedAt: string },
+  ) {
+    this.record("assignProjectArea", actor.userId, input);
+    return this.assignAreaResult;
   }
   async listProjectStatuses(actor: AuthenticatedActor) {
     this.record("listProjectStatuses", actor.userId, {});
@@ -220,6 +271,10 @@ const PROJECT_ROW: ProjectRecord = {
   slug: "home-renovation",
   description: "Kitchen and bathroom",
   status: "active",
+  areaId: null,
+  areaName: null,
+  areaColor: null,
+  areaIcon: null,
   createdAt: "2026-01-01T00:00:00.000Z",
   updatedAt: "2026-02-01T00:00:00.000Z",
 };
@@ -254,6 +309,7 @@ test("createProject normalizes the slug and passes the actor to the repository",
     name: "My Cool Project!",
     slug: "my-cool-project",
     description: "A description.",
+    areaId: null,
   });
 });
 
@@ -1278,4 +1334,121 @@ test("goals read model failures are sanitized", async () => {
 
   assert.equal(result.ok, false);
   assert.equal(result.ok || result.errorMessage, "Unable to load goals right now.");
+});
+
+test("createArea normalizes untrusted input and persists through the actor", async () => {
+  const repository = new FakeProjectsRepository();
+
+  const result = await createArea(ACTOR, repository, {
+    name: "  Job hunt  ",
+    icon: "briefcase",
+    color: "blue",
+    description: "  Applications and interviews.  ",
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(repository.calls.length, 1);
+  assert.equal(repository.calls[0].method, "createArea");
+  assert.equal(repository.calls[0].actorUserId, "user-123");
+  assert.deepEqual(repository.calls[0].args, {
+    name: "Job hunt",
+    icon: "briefcase",
+    color: "blue",
+    description: "Applications and interviews.",
+  });
+});
+
+test("createArea rejects a missing name without persisting", async () => {
+  const repository = new FakeProjectsRepository();
+
+  const result = await createArea(ACTOR, repository, {
+    name: " ",
+    icon: "not-an-icon",
+    color: "not-a-colour",
+    description: "",
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(repository.calls.length, 0);
+  if (result.ok) return;
+  assert.equal(result.values.icon, "folder");
+  assert.equal(result.values.color, "slate");
+});
+
+test("assignProjectArea refuses an area owned by another user before writing", async () => {
+  const repository = new FakeProjectsRepository();
+  repository.areaResult = okResult(null);
+
+  const result = await assignProjectArea(ACTOR, repository, {
+    projectId: "11111111-1111-4111-8111-111111111111",
+    areaId: "22222222-2222-4222-8222-222222222222",
+  });
+
+  assert.equal(result.ok, false);
+  if (result.ok) return;
+  assert.equal(result.code, "notFound");
+  assert.deepEqual(
+    repository.calls.map((call) => call.method),
+    ["getAreaById"],
+  );
+});
+
+test("assignProjectArea validates ids and can clear the area", async () => {
+  const repository = new FakeProjectsRepository();
+
+  const invalid = await assignProjectArea(ACTOR, repository, {
+    projectId: "not-a-uuid",
+    areaId: "",
+  });
+  assert.equal(invalid.ok, false);
+
+  const cleared = await assignProjectArea(ACTOR, repository, {
+    projectId: "11111111-1111-4111-8111-111111111111",
+    areaId: "",
+    now: new Date("2026-03-01T00:00:00.000Z"),
+  });
+  assert.equal(cleared.ok, true);
+  assert.deepEqual(repository.calls.at(-1)?.args, {
+    projectId: "11111111-1111-4111-8111-111111111111",
+    areaId: null,
+    updatedAt: "2026-03-01T00:00:00.000Z",
+  });
+});
+
+test("deleteArea never deletes a malformed id", async () => {
+  const repository = new FakeProjectsRepository();
+
+  const result = await deleteArea(ACTOR, repository, { areaId: "drop-table" });
+
+  assert.equal(result.ok, false);
+  assert.equal(repository.calls.length, 0);
+});
+
+test("projects read model passes the area filter and returns the owner's areas", async () => {
+  const repository = new FakeProjectsRepository();
+  repository.listResult = okResult([PROJECT_ROW]);
+  repository.areasResult = okResult([
+    {
+      id: "area-1",
+      name: "Job hunt",
+      icon: "briefcase",
+      color: "blue",
+      description: null,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    },
+  ]);
+
+  const result = await getProjectsReadModel(ACTOR, repository, "active", {
+    kind: "area",
+    areaId: "area-1",
+  });
+
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.deepEqual(repository.calls[0].args, {
+    view: "active",
+    areaFilter: { kind: "area", areaId: "area-1" },
+  });
+  assert.equal(result.data.areas[0]?.name, "Job hunt");
 });
