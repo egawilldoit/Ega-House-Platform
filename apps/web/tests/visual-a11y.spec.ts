@@ -8,6 +8,8 @@ const authenticatedRoutes = [
   "/dashboard",
   "/today",
   "/tasks",
+  "/settings/appearance",
+  "/settings/preferences",
 ] as const;
 
 test.describe("visual and a11y — desktop and 390px", () => {
