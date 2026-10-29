@@ -45,6 +45,7 @@ vi.mock("@/app/tasks/actions", () => ({
   updateTaskEditorAction: vi.fn(),
   updateTaskReminderAction: vi.fn(),
   updateTaskInlineAction: vi.fn(),
+  updateTaskTableCellAction: vi.fn(),
 }));
 
 vi.mock("@/app/timer/actions", () => ({
@@ -198,6 +199,7 @@ function buildModel(overrides: Partial<TasksPageViewModel> = {}): TasksPageViewM
       activeTasks: false,
       density: null,
       boardOrder: null,
+      columns: undefined,
     },
     groups: [{ key: "all", label: "All tasks", count: tasks.length, tasks }],
     filteredTotal: tasks.length,

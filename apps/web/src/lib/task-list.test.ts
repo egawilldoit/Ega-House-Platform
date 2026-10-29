@@ -7,6 +7,8 @@ import {
   buildTaskListUrl,
   normalizeTaskBoardOrder,
   normalizeTaskLayout,
+  parseTaskListView,
+  parseTaskTableColumns,
   sortTasksByValue,
   sortTasksForBoard,
 } from "./task-list";
@@ -249,5 +251,26 @@ test("board order values are validated and preserved in URLs", () => {
   assert.equal(
     buildTaskListUrl("/tasks", { layout: "kanban", boardOrder: null }),
     "/tasks?layout=kanban",
+  );
+});
+
+test("EGA-792: table column layout round-trips through the shared view URL", () => {
+  const columns = parseTaskTableColumns({
+    cols: "task,project,status",
+    widths: "task:420,project:240",
+  });
+  const url = buildTaskListUrl("/tasks", {
+    status: "todo",
+    columns,
+  });
+  const params = new URL(url, "http://ega.local").searchParams;
+
+  assert.equal(params.get("status"), "todo");
+  assert.equal(params.get("cols"), "task,project,status");
+  assert.equal(params.get("widths"), "task:420,project:240");
+  assert.equal(params.get("sort"), null);
+  assert.deepEqual(
+    parseTaskListView(Object.fromEntries(params)).columns,
+    columns,
   );
 });

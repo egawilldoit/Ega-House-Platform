@@ -23,11 +23,13 @@ import {
   TASK_PRIORITY_LABELS,
   TASK_STATUS_GROUP_ORDER,
   TASK_STATUS_LABELS,
+  TASK_TABLE_DEFAULT_COLUMNS,
   TASK_VISIBLE_SORT_KEYS,
   TASK_VIEW_FILTER_FIELDS,
   TASK_VIEW_GROUP_BY_VALUES,
   TASK_VIEW_MAX_FILTERS,
   TASK_VIEW_SORT_LABELS,
+  areTaskTableColumnsEqual,
   getDefaultTaskViewSortDirection,
   getTaskViewFilterOperators,
   toTaskViewSearchPairs,
@@ -106,6 +108,7 @@ function filterStateForUrl(
     layout: props.activeLayout,
     density: props.activeDensity,
     boardOrder: props.activeBoardOrder ?? null,
+    columns: view.columns,
   };
 }
 
@@ -282,7 +285,11 @@ export function TaskViewToolbar({
     view.groupBy === "none" &&
     view.sort.key === "updated" &&
     view.sort.direction === "desc" &&
-    !view.activeOnly;
+    !view.activeOnly &&
+    areTaskTableColumnsEqual(
+      view.columns ?? TASK_TABLE_DEFAULT_COLUMNS,
+      TASK_TABLE_DEFAULT_COLUMNS,
+    );
   const activeViewId = activeSavedView?.id ?? (isDefaultView ? "all-tasks" : null);
 
   function buildCurrentHref() {

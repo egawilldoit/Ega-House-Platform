@@ -45,6 +45,204 @@ export function isTaskSortValue(value: string): value is TaskSortValue {
 }
 
 /* -------------------------------------------------------------------------- */
+/* Table column layout (EGA-792)                                              */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Columns whose configuration is persisted with a view. `task` is the row
+ * anchor and is always visible/first; the remaining columns can be hidden,
+ * resized and reordered. The action column is fixed.
+ */
+export const TASK_TABLE_COLUMN_IDS = [
+  "task",
+  "project",
+  "priority",
+  "due",
+  "status",
+  "estimate",
+] as const;
+
+export type TaskTableColumnId = (typeof TASK_TABLE_COLUMN_IDS)[number];
+
+export const TASK_TABLE_COLUMN_MIN_WIDTH = 80;
+export const TASK_TABLE_COLUMN_MAX_WIDTH = 480;
+
+export type TaskTableColumnConfig = {
+  id: TaskTableColumnId;
+  width: number;
+  visible: boolean;
+};
+
+export const TASK_TABLE_DEFAULT_COLUMNS: readonly TaskTableColumnConfig[] = [
+  { id: "task", width: 360, visible: true },
+  { id: "project", width: 160, visible: false },
+  { id: "priority", width: 112, visible: true },
+  { id: "due", width: 152, visible: true },
+  { id: "status", width: 144, visible: true },
+  { id: "estimate", width: 112, visible: false },
+];
+
+const TASK_TABLE_DEFAULT_COLUMN_BY_ID = new Map(
+  TASK_TABLE_DEFAULT_COLUMNS.map((column) => [column.id, column]),
+);
+const DEFAULT_VISIBLE_COLUMNS = TASK_TABLE_DEFAULT_COLUMNS.filter(
+  (column) => column.visible,
+).map((column) => column.id);
+
+export function isTaskTableColumnId(value: string): value is TaskTableColumnId {
+  return (TASK_TABLE_COLUMN_IDS as readonly string[]).includes(value);
+}
+
+export function getTaskTableDefaultColumnWidth(id: TaskTableColumnId): number {
+  return TASK_TABLE_DEFAULT_COLUMN_BY_ID.get(id)?.width ?? TASK_TABLE_COLUMN_MIN_WIDTH;
+}
+
+export function clampTaskTableColumnWidth(
+  value: unknown,
+  fallback = TASK_TABLE_COLUMN_MIN_WIDTH,
+): number {
+  const numeric = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(numeric)) return fallback;
+  return Math.min(
+    TASK_TABLE_COLUMN_MAX_WIDTH,
+    Math.max(TASK_TABLE_COLUMN_MIN_WIDTH, Math.round(numeric)),
+  );
+}
+
+/**
+ * Normalize an untrusted persisted column config. Unknown ids and duplicates
+ * are dropped, widths are clamped, `task` is forced visible/first, and any
+ * column absent from the input falls back to its default.
+ */
+export function normalizeTaskTableColumns(raw: unknown): TaskTableColumnConfig[] {
+  const entries: TaskTableColumnConfig[] = [];
+  const seen = new Set<TaskTableColumnId>();
+
+  if (Array.isArray(raw)) {
+    for (const item of raw) {
+      if (typeof item !== "object" || item === null || Array.isArray(item)) continue;
+      const idValue = (item as { id?: unknown }).id;
+      if (typeof idValue !== "string" || !isTaskTableColumnId(idValue) || seen.has(idValue)) {
+        continue;
+      }
+      seen.add(idValue);
+      const fallback = TASK_TABLE_DEFAULT_COLUMN_BY_ID.get(idValue);
+      const width = clampTaskTableColumnWidth(
+        (item as { width?: unknown }).width,
+        fallback?.width ?? TASK_TABLE_COLUMN_MIN_WIDTH,
+      );
+      const rawVisible = (item as { visible?: unknown }).visible;
+      const visible =
+        idValue === "task"
+          ? true
+          : typeof rawVisible === "boolean"
+            ? rawVisible
+            : (fallback?.visible ?? true);
+      entries.push({ id: idValue, width, visible });
+    }
+  }
+
+  for (const fallback of TASK_TABLE_DEFAULT_COLUMNS) {
+    if (!seen.has(fallback.id)) entries.push({ ...fallback });
+  }
+
+  const task = entries.find((entry) => entry.id === "task") ?? {
+    ...TASK_TABLE_DEFAULT_COLUMNS[0],
+  };
+  const rest = entries.filter((entry) => entry.id !== "task");
+  const visible = rest.filter((entry) => entry.visible);
+  const hidden = rest.filter((entry) => !entry.visible);
+
+  return [{ ...task, visible: true }, ...visible, ...hidden];
+}
+
+export function areTaskTableColumnsEqual(
+  left: readonly TaskTableColumnConfig[],
+  right: readonly TaskTableColumnConfig[],
+): boolean {
+  return (
+    left.length === right.length &&
+    left.every((column, index) => {
+      const other = right[index];
+      return (
+        other !== undefined &&
+        other.id === column.id &&
+        other.width === column.width &&
+        other.visible === column.visible
+      );
+    })
+  );
+}
+
+function splitColumnList(value: string | null | undefined): string[] {
+  return String(value ?? "")
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
+/** Parse the compact table URL contract (`cols` + `widths`). */
+export function parseTaskTableColumns(input: {
+  cols?: string | null;
+  widths?: string | null;
+}): TaskTableColumnConfig[] {
+  const requestedOrder: TaskTableColumnId[] = [];
+  const seen = new Set<TaskTableColumnId>();
+  for (const entry of splitColumnList(input.cols)) {
+    if (!isTaskTableColumnId(entry) || seen.has(entry)) continue;
+    seen.add(entry);
+    requestedOrder.push(entry);
+  }
+
+  const visibleOrder = requestedOrder.length > 0 ? requestedOrder : DEFAULT_VISIBLE_COLUMNS;
+  const orderedVisible = ["task" as const, ...visibleOrder.filter((id) => id !== "task")];
+  const visible = new Set<TaskTableColumnId>(orderedVisible);
+  const widths = new Map<TaskTableColumnId, number>();
+  for (const entry of splitColumnList(input.widths)) {
+    const separator = entry.indexOf(":");
+    if (separator <= 0) continue;
+    const id = entry.slice(0, separator).trim();
+    const rawWidth = entry.slice(separator + 1).trim();
+    if (!isTaskTableColumnId(id) || widths.has(id) || !rawWidth) continue;
+    const width = Number(rawWidth);
+    if (!Number.isFinite(width)) continue;
+    widths.set(id, clampTaskTableColumnWidth(width, getTaskTableDefaultColumnWidth(id)));
+  }
+
+  const remaining = TASK_TABLE_DEFAULT_COLUMNS.map((column) => column.id).filter(
+    (id) => !visible.has(id),
+  );
+  return normalizeTaskTableColumns(
+    [...orderedVisible, ...remaining].map((id) => ({
+      id,
+      width: widths.get(id) ?? getTaskTableDefaultColumnWidth(id),
+      visible: visible.has(id),
+    })),
+  );
+}
+
+/** Serialize only deviations from the defaults, keeping ordinary URLs short. */
+export function serializeTaskTableColumns(
+  columns: readonly TaskTableColumnConfig[] | undefined,
+): { cols: string | null; widths: string | null } {
+  const safeColumns = normalizeTaskTableColumns(columns ?? null);
+  const orderedVisible = safeColumns
+    .filter((column) => column.visible)
+    .map((column) => column.id);
+  const sameOrder =
+    orderedVisible.length === DEFAULT_VISIBLE_COLUMNS.length &&
+    orderedVisible.every((value, index) => value === DEFAULT_VISIBLE_COLUMNS[index]);
+  const cols = sameOrder ? null : orderedVisible.join(",");
+  const widths = safeColumns
+    .filter((column) => column.width !== getTaskTableDefaultColumnWidth(column.id))
+    .map((column) => `${column.id}:${column.width}`)
+    .join(",");
+
+  return { cols, widths: widths || null };
+}
+
+
+/* -------------------------------------------------------------------------- */
 /* Versioned task view definition                                             */
 /* -------------------------------------------------------------------------- */
 
@@ -132,6 +330,8 @@ export type TaskViewDefinition = Readonly<{
   search: string;
   /** Legacy `tasks=active`: exclude completed status without inventing a chip. */
   activeOnly: boolean;
+  /** Table column layout; omitted old definitions read with the defaults. */
+  columns?: TaskTableColumnConfig[];
 }>;
 
 export const DEFAULT_TASK_VIEW_SORT: TaskViewSort = {
@@ -467,7 +667,7 @@ function normalizeSearch(raw: unknown): string | null {
   return search;
 }
 
-const V2_KEYS = new Set(["version", "filters", "groupBy", "sort", "search", "activeOnly"]);
+const V2_KEYS = new Set(["version", "filters", "groupBy", "sort", "search", "activeOnly", "columns"]);
 const V1_FILTER_KEYS = new Set([
   "activeTasks",
   "status",
@@ -547,6 +747,9 @@ function migrateVersionOneDefinition(raw: Record<string, unknown>): TaskViewDefi
     sort: DEFAULT_TASK_VIEW_SORT,
     search: "",
     activeOnly: legacy.activeTasks === true,
+    ...(raw.columns === undefined
+      ? {}
+      : { columns: normalizeTaskTableColumns(raw.columns) }),
   };
 }
 
@@ -583,6 +786,9 @@ export function normalizeTaskViewDefinition(raw: unknown): TaskViewDefinition | 
     sort,
     search,
     activeOnly: candidate.activeOnly === true,
+    ...(candidate.columns === undefined
+      ? {}
+      : { columns: normalizeTaskTableColumns(candidate.columns) }),
   };
 
   if (serializeTaskViewDefinition(definition).length > TASK_VIEW_DEFINITION_MAX_CHARS) {
@@ -788,6 +994,8 @@ export function parseTaskViewSearchParams(params: TaskViewSearchParams): TaskVie
   const groupRaw = readParam(params, "group");
   const search = normalizeSearch(readParam(params, "q") ?? readParam(params, "search")) ?? "";
 
+  const cols = readParam(params, "cols");
+  const widths = readParam(params, "widths");
   const definition: TaskViewDefinition = {
     version: TASK_VIEW_DEFINITION_VERSION,
     filters: filters
@@ -797,6 +1005,14 @@ export function parseTaskViewSearchParams(params: TaskViewSearchParams): TaskVie
     sort,
     search,
     activeOnly: readParam(params, "tasks") === "active",
+    ...(cols || widths
+      ? {
+          columns: parseTaskTableColumns({
+            cols,
+            widths,
+          }),
+        }
+      : {}),
   };
 
   return definition;
@@ -857,6 +1073,10 @@ export function toTaskViewSearchPairs(view: TaskViewDefinition): Array<[string, 
     }
   }
   if (view.activeOnly) pairs.push(["tasks", "active"]);
+
+  const columns = serializeTaskTableColumns(view.columns);
+  if (columns.cols) pairs.push(["cols", columns.cols]);
+  if (columns.widths) pairs.push(["widths", columns.widths]);
 
   return pairs;
 }
