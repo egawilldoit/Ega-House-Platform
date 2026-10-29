@@ -24,6 +24,7 @@ import type {
   SubtaskDto,
 } from "@ega/contracts";
 import { useTaskDrawerParam } from "./use-task-drawer-param";
+import { useWorkspacePreferences } from "@/components/layout/workspace-preferences-provider";
 
 const KNOWN_STATUSES: TaskStatusIconName[] = ["todo", "in_progress", "done", "blocked"];
 const KNOWN_PRIORITIES: TaskPriorityIconName[] = ["low", "medium", "high", "urgent"];
@@ -192,7 +193,8 @@ export function TaskDrawerHost({
   addDependencyAction,
   removeDependencyAction,
 }: TaskDrawerHostProps) {
-  const { taskId, mode, close, setMode } = useTaskDrawerParam();
+  const { taskOpenMode } = useWorkspacePreferences();
+  const { taskId, mode, close, setMode } = useTaskDrawerParam(taskOpenMode);
   // Scoped to the task it belongs to: a stale flag must never make a later,
   // unrelated task ask to discard nothing.
   const [dirtyTaskId, setDirtyTaskId] = useState<string | null>(null);

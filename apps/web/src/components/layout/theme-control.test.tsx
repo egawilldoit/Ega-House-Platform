@@ -3,11 +3,23 @@ import assert from "node:assert/strict";
 import { act } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import type { UserPreferences } from "@ega/domain/preferences";
 
 import { ThemeControl } from "./theme-control";
-import { WORKSPACE_THEME_STORAGE_KEY } from "@/lib/theme-preference";
-import { setWorkspaceThemePreference } from "@/lib/hooks/workspace-theme";
+import { WorkspacePreferencesProvider } from "./workspace-preferences-provider";
+
+const updateThemePreferenceAction = vi.hoisted(() =>
+  vi.fn(async (theme: string) => {
+    void theme;
+    return { errorMessage: null as string | null };
+  }),
+);
+
+vi.mock("@/app/settings/appearance/actions", () => ({
+  updateThemePreferenceAction,
+}));
 
 type MatchMediaFixture = {
   setDark: (value: boolean) => void;
@@ -49,6 +61,16 @@ function installMatchMedia(initialDark: boolean): MatchMediaFixture {
   };
 }
 
+const BASE_PREFERENCES: UserPreferences = {
+  theme: "system",
+  accent: "neutral",
+  density: "comfortable",
+  reducedMotion: false,
+  launchPage: "home",
+  taskLayout: "list",
+  taskOpenMode: "panel",
+};
+
 let container: HTMLDivElement;
 let root: Root;
 let media: MatchMediaFixture;
@@ -70,10 +92,19 @@ async function openThemeMenu() {
   const details = container.querySelector<HTMLDetailsElement>(".theme-control");
   const summary = container.querySelector<HTMLElement>(".theme-control-trigger");
   assert.ok(details && summary);
-  expect(details.open).toBe(false);
-  await click(summary);
+  if (!details.open) await click(summary);
   expect(details.open).toBe(true);
   return details;
+}
+
+async function renderThemeControl(preferences: Partial<UserPreferences> = {}) {
+  await act(async () => {
+    root.render(
+      <WorkspacePreferencesProvider value={{ ...BASE_PREFERENCES, ...preferences }}>
+        <ThemeControl />
+      </WorkspacePreferencesProvider>,
+    );
+  });
 }
 
 beforeEach(async () => {
@@ -82,13 +113,12 @@ beforeEach(async () => {
   document.documentElement.removeAttribute("data-theme");
   document.documentElement.removeAttribute("data-theme-preference");
   media = installMatchMedia(false);
-  setWorkspaceThemePreference("system");
+  updateThemePreferenceAction.mockClear();
+  updateThemePreferenceAction.mockImplementation(async () => ({ errorMessage: null }));
   container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);
-  await act(async () => {
-    root.render(<ThemeControl />);
-  });
+  await renderThemeControl();
 });
 
 afterEach(async () => {
@@ -98,11 +128,12 @@ afterEach(async () => {
 });
 
 describe("ThemeControl", () => {
-  it("renders three labelled choices with the system default active", () => {
+  it("renders three labelled choices with the server preference active", async () => {
+    await renderThemeControl({ theme: "dark" });
     const summary = container.querySelector<HTMLElement>(".theme-control-trigger");
     const buttons = container.querySelectorAll<HTMLButtonElement>(".theme-control-option");
 
-    expect(summary?.getAttribute("aria-label")).toBe("Theme: System. Change theme");
+    expect(summary?.getAttribute("aria-label")).toBe("Theme: Dark. Change theme");
     expect(buttons).toHaveLength(3);
     expect(Array.from(buttons).map((button) => button.textContent?.trim())).toEqual([
       "Light",
@@ -110,53 +141,41 @@ describe("ThemeControl", () => {
       "System",
     ]);
     expect(Array.from(buttons).every((button) => button.getAttribute("type") === "button")).toBe(true);
-    expect(option("System").getAttribute("aria-pressed")).toBe("true");
-    expect(option("Light").getAttribute("aria-pressed")).toBe("false");
-    expect(option("Dark").getAttribute("aria-pressed")).toBe("false");
-  });
-
-  it("switches light → dark → light without navigation and persists the choice", async () => {
-    await openThemeMenu();
-    await click(option("Dark"));
-    expect(document.documentElement.dataset.theme).toBe("dark");
-    expect(localStorage.getItem(WORKSPACE_THEME_STORAGE_KEY)).toBe("dark");
     expect(option("Dark").getAttribute("aria-pressed")).toBe("true");
     expect(option("System").getAttribute("aria-pressed")).toBe("false");
-    expect(container.querySelector(".theme-control")?.hasAttribute("open")).toBe(false);
-
-    await openThemeMenu();
-    await click(option("Light"));
-    expect(document.documentElement.dataset.theme).toBe("light");
-    expect(localStorage.getItem(WORKSPACE_THEME_STORAGE_KEY)).toBe("light");
-    expect(option("Light").getAttribute("aria-pressed")).toBe("true");
   });
 
-
-  it("keeps the selected theme when the shell remounts on client navigation", async () => {
+  it("saves the choice through the owner service and paints it without navigation", async () => {
     await openThemeMenu();
     await click(option("Dark"));
+
+    expect(updateThemePreferenceAction).toHaveBeenCalledWith("dark");
     expect(document.documentElement.dataset.theme).toBe("dark");
-
-    await act(async () => root.unmount());
-    container.remove();
-
-    container = document.createElement("div");
-    document.body.append(container);
-    root = createRoot(container);
-    await act(async () => {
-      root.render(<ThemeControl />);
-    });
-
-    expect(document.documentElement.dataset.theme).toBe("dark");
+    expect(document.documentElement.dataset.themePreference).toBe("dark");
     expect(option("Dark").getAttribute("aria-pressed")).toBe("true");
-    expect(container.querySelector(".theme-control-trigger")?.getAttribute("aria-label")).toBe(
-      "Theme: Dark. Change theme",
-    );
+    expect(container.querySelector(".theme-control")?.hasAttribute("open")).toBe(false);
+    // The durable row is the owner; the browser must not hold a second copy.
+    expect(localStorage.length).toBe(0);
+  });
+
+  it("reverts and explains a failed save instead of claiming success", async () => {
+    updateThemePreferenceAction.mockImplementationOnce(async () => ({
+      errorMessage: "Unable to save preferences right now.",
+    }));
+
+    await openThemeMenu();
+    await click(option("Dark"));
+
+    expect(document.documentElement.dataset.theme).toBe("light");
+    expect(document.documentElement.dataset.themePreference).toBe("system");
+    expect(option("System").getAttribute("aria-pressed")).toBe("true");
+    const alert = container.querySelector("[role=alert]");
+    expect(alert?.textContent).toContain("Unable to save preferences right now.");
+    expect(container.querySelector(".theme-control")?.hasAttribute("open")).toBe(true);
   });
 
   it("returns to System and follows OS changes live", async () => {
-    await openThemeMenu();
-    await click(option("Dark"));
+    await renderThemeControl({ theme: "dark" });
     await openThemeMenu();
     await click(option("System"));
 
@@ -202,11 +221,14 @@ describe("ThemeControl", () => {
     outside.remove();
   });
 
-  it("server-renders the deterministic System state for hydration", () => {
-    const markup = renderToStaticMarkup(<ThemeControl />);
+  it("server-renders the owner's theme for a matching hydration", () => {
+    const markup = renderToStaticMarkup(
+      <WorkspacePreferencesProvider value={{ ...BASE_PREFERENCES, theme: "dark" }}>
+        <ThemeControl />
+      </WorkspacePreferencesProvider>,
+    );
 
-    expect(markup).toContain('aria-label="Theme: System. Change theme"');
-    expect(markup).toContain('aria-pressed="true"');
+    expect(markup).toContain('aria-label="Theme: Dark. Change theme"');
     expect(markup.match(/type="button"/g)?.length).toBe(3);
     expect(markup).toContain("System");
   });

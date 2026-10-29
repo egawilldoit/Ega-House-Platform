@@ -193,9 +193,9 @@ describe("light workspace shell", () => {
     expect(logout).toContain("workspace-nav-label");
   });
 
-  it("preserves the dashboard compatibility redirect pointing at Home", () => {
+  it("preserves the dashboard compatibility redirect pointing at the launch page", () => {
     const dashboard = read("src/app/dashboard/page.tsx");
-    expect(dashboard).toContain('redirect("/home")');
+    expect(dashboard).toContain("getLaunchPagePath(preferences.launchPage)");
     expect(dashboard).not.toContain("CommandCenterAsync");
     expect(dashboard).not.toContain("getDashboardData");
   });

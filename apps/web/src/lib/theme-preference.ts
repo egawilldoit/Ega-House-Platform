@@ -5,25 +5,32 @@
  *   - `system` (default): follow the operating system and live OS changes.
  *   - `light` / `dark`: an explicit choice that overrides the OS.
  *
- * This module deliberately has no browser imports so server components and
- * tests can share the exact same rules as the client controller.
+ * The durable owner record lives in `user_preferences`; this module only turns
+ * the resolved value into the `<html data-theme>` attribute. It deliberately has
+ * no browser imports so server components and tests share the exact same rules
+ * as the client controller, and no browser storage is read: switching accounts
+ * can never inherit the previous owner's theme.
  */
 
-export const WORKSPACE_THEME_STORAGE_KEY = "ega-workspace-theme";
+import {
+  isUserTheme,
+  USER_THEME_VALUES,
+  type UserTheme,
+} from "@ega/domain/preferences";
 
-export const WORKSPACE_THEME_PREFERENCES = ["system", "light", "dark"] as const;
+/** `<html>` attribute carrying the owner's preference for the pre-paint script. */
+export const WORKSPACE_THEME_ATTRIBUTE = "data-theme-preference";
 
-export type WorkspaceThemePreference = (typeof WORKSPACE_THEME_PREFERENCES)[number];
+export const WORKSPACE_THEME_PREFERENCES = USER_THEME_VALUES;
+
+export type WorkspaceThemePreference = UserTheme;
 
 export type WorkspaceResolvedTheme = "light" | "dark";
 
 export function isWorkspaceThemePreference(
   value: unknown,
 ): value is WorkspaceThemePreference {
-  return (
-    typeof value === "string" &&
-    (WORKSPACE_THEME_PREFERENCES as readonly string[]).includes(value)
-  );
+  return isUserTheme(value);
 }
 
 /** Missing, invalid, or unreadable values fall back to System. */
@@ -45,8 +52,10 @@ export function resolveWorkspaceTheme(
 /**
  * Runs before first paint from the root layout.
  *
- * It must stay dependency-free and defensive: storage can be unavailable in
- * private or embedded contexts, and `matchMedia` can be absent in old test
- * environments. Failure still leaves a deterministic System default.
+ * The server already resolved an explicit Light/Dark choice into
+ * `data-theme-preference`. System reads the OS preference here, before the
+ * body paints, so a dark desktop never shows a light frame. It must stay
+ * dependency-free and defensive: `matchMedia` can be absent in old or embedded
+ * environments, and failure still leaves the server-rendered theme in place.
  */
-export const WORKSPACE_THEME_INIT_SCRIPT = `(function(){try{var key="${WORKSPACE_THEME_STORAGE_KEY}";var stored=null;try{stored=window.localStorage.getItem(key)}catch(error){stored=null}var preference=stored==="light"||stored==="dark"?stored:"system";var dark=false;try{dark=window.matchMedia("(prefers-color-scheme: dark)").matches}catch(error){dark=false}var resolved=preference==="dark"||(preference==="system"&&dark)?"dark":"light";var root=document.documentElement;root.setAttribute("data-theme",resolved);root.setAttribute("data-theme-preference",preference)}catch(error){}})();`;
+export const WORKSPACE_THEME_INIT_SCRIPT = `(function(){try{var root=document.documentElement;var preference=root.getAttribute("${WORKSPACE_THEME_ATTRIBUTE}");if(preference!=="light"&&preference!=="dark"){preference="system"}var dark=false;try{dark=window.matchMedia("(prefers-color-scheme: dark)").matches}catch(error){dark=false}root.setAttribute("data-theme",preference==="dark"||(preference==="system"&&dark)?"dark":"light")}catch(error){}})();`;

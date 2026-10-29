@@ -1005,6 +1005,45 @@ export type Database = {
         }
         Relationships: []
       }
+      user_preferences: {
+        Row: {
+          user_id: string
+          theme: string
+          accent: string
+          density: string
+          reduced_motion: boolean
+          launch_page: string
+          task_layout: string
+          task_open_mode: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          user_id?: string
+          theme?: string
+          accent?: string
+          density?: string
+          reduced_motion?: boolean
+          launch_page?: string
+          task_layout?: string
+          task_open_mode?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          user_id?: string
+          theme?: string
+          accent?: string
+          density?: string
+          reduced_motion?: boolean
+          launch_page?: string
+          task_layout?: string
+          task_open_mode?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
