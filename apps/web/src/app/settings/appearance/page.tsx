@@ -52,7 +52,7 @@ export default async function AppearanceSettingsPage({
 
   return (
     <AppShell title="Appearance" description="Theme, accent, density and motion.">
-      <div className="flex max-w-3xl flex-col gap-6">
+      <div className="motion-rise flex max-w-3xl flex-col gap-6">
         <SettingsNav active="appearance" />
 
         {loadError ? (
