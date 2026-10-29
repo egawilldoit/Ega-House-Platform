@@ -190,7 +190,7 @@ export default async function AreasSettingsPage({
       title="Settings"
       description="Group projects into life and work areas."
     >
-      <div className="motion-rise flex max-w-4xl flex-col gap-6">
+      <div className="flex max-w-4xl flex-col gap-6">
         <SettingsNav active="areas" />
 
         {success ? (

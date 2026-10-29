@@ -57,7 +57,7 @@ export default async function AccountSettingsPage({
       title="Settings"
       description="Account controls and integrations."
     >
-      <div className="motion-rise flex max-w-3xl flex-col gap-6">
+      <div className="flex max-w-3xl flex-col gap-6">
         <SettingsNav active="account" />
 
         <TimezoneCard

@@ -48,7 +48,7 @@ export default async function WorkspacePreferencesPage({
       title="Preferences"
       description="Where the workspace opens and how tasks are presented."
     >
-      <div className="motion-rise flex max-w-3xl flex-col gap-6">
+      <div className="flex max-w-3xl flex-col gap-6">
         <SettingsNav active="preferences" />
 
         {loadError ? (

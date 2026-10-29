@@ -42,7 +42,7 @@ export function ActiveTimerDisplay({
 }: ActiveTimerDisplayProps) {
   return (
     <div
-      className="active-timer-card motion-rise flex flex-col gap-5"
+      className="active-timer-card flex flex-col gap-5"
       data-testid="active-timer-display"
     >
       <div className="active-timer-display-grid">
