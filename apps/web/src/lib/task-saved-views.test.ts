@@ -15,6 +15,7 @@ import {
   validateTaskSavedViewScope,
   type TaskSavedViewFilters,
 } from "./task-saved-views";
+import type { TaskTableColumnConfig } from "@ega/contracts/common/task-list";
 
 const BASE_FILTERS: TaskSavedViewFilters = {
   status: null,
@@ -317,7 +318,7 @@ test("validates saved-view names", () => {
 });
 
 test("EGA-792: v2 saved-view definitions round-trip the per-view column layout", () => {
-  const columns = [
+  const columns: TaskTableColumnConfig[] = [
     { id: "task", width: 420, visible: true },
     { id: "project", width: 240, visible: true },
     { id: "priority", width: 112, visible: true },
