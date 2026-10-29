@@ -1,5 +1,7 @@
 import {
   type AuthenticatedActor,
+  type CreateProjectFromTemplateRecordInput,
+  type CreateProjectFromTemplateRecordResult,
   type CreateProjectRecordInput,
   type DeleteArchivedProjectInput,
   type DeleteArchivedProjectResult,
@@ -125,6 +127,42 @@ function parsePurgeResult(data: unknown): PurgeArchivedProjectResult | null {
     externalRefsDeleted,
     notificationsDeleted,
     calendarDeleteJobsEnqueued,
+  };
+}
+
+/**
+ * Parse the template-creation RPC result without trusting its shape. Counts
+ * must be non-negative integers and the project id must be present before the
+ * application reports success; anything else fails closed to null.
+ */
+function parseCreateFromTemplateResult(
+  data: unknown,
+): CreateProjectFromTemplateRecordResult | null {
+  if (!data || typeof data !== "object" || Array.isArray(data)) {
+    return null;
+  }
+
+  const row = data as Record<string, unknown>;
+
+  if (row.status !== "created" && row.status !== "replayed") {
+    return null;
+  }
+
+  const projectId = typeof row.project_id === "string" ? row.project_id : "";
+  const slug = typeof row.slug === "string" ? row.slug : "";
+  const goalCount = row.goal_count;
+  const taskCount = row.task_count;
+
+  if (!projectId || !slug) return null;
+  if (typeof goalCount !== "number" || !Number.isInteger(goalCount) || goalCount < 0) return null;
+  if (typeof taskCount !== "number" || !Number.isInteger(taskCount) || taskCount < 0) return null;
+
+  return {
+    projectId,
+    slug,
+    goalCount,
+    taskCount,
+    replayed: row.status === "replayed",
   };
 }
 
@@ -333,6 +371,59 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
     }
 
     return { ok: true, value: null };
+  }
+
+  /**
+   * Create a project plus its template goals and tasks inside one database
+   * function. PostgREST cannot span a transaction across Supabase calls, so
+   * atomicity and the operation-id replay live in
+   * `create_project_from_template` (drizzle/0076_project_templates.sql).
+   *
+   * Identity comes from the request-scoped client (`auth.uid()` inside the
+   * function); no owner id is ever sent. A slug collision is a typed conflict
+   * so the application can phrase it; unexpected shapes fail closed.
+   */
+  async createProjectFromTemplate(
+    actor: AuthenticatedActor,
+    input: CreateProjectFromTemplateRecordInput,
+  ): Promise<RepositoryResult<CreateProjectFromTemplateRecordResult>> {
+    void actor;
+
+    const rpc = await (this.supabase as unknown as {
+      rpc: (
+        name: string,
+        args: Record<string, unknown>,
+      ) => Promise<{ data: unknown; error: { code?: string; message?: string } | null }>;
+    }).rpc("create_project_from_template", {
+      p_operation_id: input.operationId,
+      p_template_id: input.templateId,
+      p_name: input.name,
+      p_slug: input.slug,
+      p_description: input.description,
+      p_goals: input.goals,
+      p_tasks: input.tasks,
+    });
+
+    if (rpc.error) {
+      return { ok: false, error: sanitizeSupabaseError(rpc.error) };
+    }
+
+    if (
+      rpc.data
+      && typeof rpc.data === "object"
+      && !Array.isArray(rpc.data)
+      && (rpc.data as Record<string, unknown>).status === "slug_conflict"
+    ) {
+      return { ok: false, error: { code: "conflict" } };
+    }
+
+    const parsed = parseCreateFromTemplateResult(rpc.data);
+
+    if (!parsed) {
+      return { ok: false, error: { code: "unknown" } };
+    }
+
+    return { ok: true, value: parsed };
   }
 
   async updateProjectStatus(

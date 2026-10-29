@@ -28,6 +28,8 @@ const WORKSPACE_ROUTES = [
   "app/settings/account",
   "app/apps",
   "app/apps/[workspace]",
+  "app/agents",
+  "app/agents/[id]",
   "app/friction",
 ];
 
