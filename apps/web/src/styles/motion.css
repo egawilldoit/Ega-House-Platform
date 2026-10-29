@@ -61,6 +61,23 @@
     to { background-color: transparent; }
   }
 
+  /* Ends at `transform: none` so a held fill does not create a containing block
+     for fixed-position descendants (popovers, sticky rails). */
+  @keyframes ega-rise {
+    from { transform: translateY(8px); opacity: 0; }
+    to { transform: none; opacity: 1; }
+  }
+
+  /* Page-load entrance. Pass a stagger through `--motion-delay` on the element. */
+  .motion-rise {
+    animation: ega-rise var(--duration-enter) var(--ease-spring) both;
+    animation-delay: var(--motion-delay, 0ms);
+  }
+
+  .motion-rise-late {
+    --motion-delay: 120ms;
+  }
+
   .motion-check {
     animation: ega-check-pop var(--duration-base) var(--ease-spring) both;
   }
@@ -106,6 +123,7 @@ html[data-reduce-motion="true"] *::after {
 html[data-reduce-motion="true"] .motion-check,
 html[data-reduce-motion="true"] .motion-strike,
 html[data-reduce-motion="true"] .motion-land,
-html[data-reduce-motion="true"] .motion-add-wash {
+html[data-reduce-motion="true"] .motion-add-wash,
+html[data-reduce-motion="true"] .motion-rise {
   animation: none;
 }

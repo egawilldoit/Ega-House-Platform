@@ -35,7 +35,7 @@ export function TodayKpiRow({
 
   return (
     <div
-      className="flex flex-wrap items-center gap-3 sm:gap-6 rounded-lg border border-[var(--ega-border)] bg-[var(--ega-surface)] px-4 py-2.5 text-sm"
+      className="motion-rise flex flex-wrap items-center gap-3 sm:gap-6 rounded-lg border border-[var(--ega-border)] bg-[var(--ega-surface)] px-4 py-2.5 text-sm"
       data-testid="today-kpi-row"
     >
       <div
