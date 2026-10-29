@@ -9,6 +9,39 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
+      areas: {
+        Row: {
+          color: string
+          created_at: string
+          description: string | null
+          icon: string
+          id: string
+          name: string
+          owner_user_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          color?: string
+          created_at?: string
+          description?: string | null
+          icon?: string
+          id?: string
+          name: string
+          owner_user_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          color?: string
+          created_at?: string
+          description?: string | null
+          icon?: string
+          id?: string
+          name?: string
+          owner_user_id?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       agent_actors: {
         Row: {
           archived_at: string | null
@@ -369,6 +402,7 @@ export type Database = {
         Row: {
           archived_at: string | null
           archived_by: string | null
+          area_id: string | null
           created_at: string
           description: string | null
           id: string
@@ -382,6 +416,7 @@ export type Database = {
         Insert: {
           archived_at?: string | null
           archived_by?: string | null
+          area_id?: string | null
           created_at?: string
           description?: string | null
           id?: string
@@ -395,6 +430,7 @@ export type Database = {
         Update: {
           archived_at?: string | null
           archived_by?: string | null
+          area_id?: string | null
           created_at?: string
           description?: string | null
           id?: string
@@ -405,7 +441,15 @@ export type Database = {
           template_operation_id?: string | null
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "projects_area_id_areas_id_fk"
+            columns: ["area_id"]
+            isOneToOne: false
+            referencedRelation: "areas"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       task_sessions: {
         Row: {
@@ -1284,6 +1328,7 @@ export type Database = {
           p_name: string
           p_slug: string
           p_description: string | null
+          p_area_id: string | null
           p_goals: Json
           p_tasks: Json
         }

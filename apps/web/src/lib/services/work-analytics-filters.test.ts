@@ -67,6 +67,7 @@ describe("parseBreakdownBy", () => {
 
   it("returns valid breakdownBy values", () => {
     assert.equal(parseBreakdownBy("project"), "project");
+    assert.equal(parseBreakdownBy("area"), "area");
     assert.equal(parseBreakdownBy("goal"), "goal");
     assert.equal(parseBreakdownBy("task"), "task");
   });

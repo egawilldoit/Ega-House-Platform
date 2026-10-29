@@ -24,7 +24,7 @@ export type AnalyticsRange =
 
 export type AnalyticsGroupBy = "day" | "week" | "month";
 
-export type AnalyticsBreakdownBy = "project" | "goal" | "task";
+export type AnalyticsBreakdownBy = "project" | "area" | "goal" | "task";
 
 export type AnalyticsFilterValues = {
   range: AnalyticsRange;
@@ -47,6 +47,7 @@ const VALID_GROUP_BYS: readonly string[] = ["day", "week", "month"] as const;
 
 const VALID_BREAKDOWN_BYS: readonly string[] = [
   "project",
+  "area",
   "goal",
   "task",
 ] as const;
@@ -362,6 +363,7 @@ export const GROUP_BY_LABELS: Record<AnalyticsGroupBy, string> = {
 
 export const BREAKDOWN_BY_LABELS: Record<AnalyticsBreakdownBy, string> = {
   project: "Project",
+  area: "Area",
   goal: "Goal",
   task: "Task",
 };

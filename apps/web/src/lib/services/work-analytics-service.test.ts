@@ -7,6 +7,7 @@ import {
   calculateWorkAnalyticsDailySeries,
   calculateWorkAnalyticsGroupedSeries,
   calculateWorkAnalyticsGoalBreakdown,
+  calculateWorkAnalyticsAreaBreakdown,
   calculateWorkAnalyticsMonthComparison,
   calculateWorkAnalyticsProjectBreakdown,
   calculateWorkAnalyticsTaskBreakdown,
@@ -1512,6 +1513,42 @@ test("calculateWorkAnalyticsProjectBreakdown handles null project gracefully", (
   const result = calculateWorkAnalyticsProjectBreakdown(sessions, window);
   assert.equal(result.length, 1);
   assert.equal(result[0].projectName, "Unknown project");
+});
+
+test("calculateWorkAnalyticsAreaBreakdown groups current project areas and keeps unassigned evidence", () => {
+  const sessions = [
+    {
+      task_id: "task-1",
+      started_at: "2026-04-20T09:00:00.000Z",
+      ended_at: "2026-04-20T10:00:00.000Z",
+      duration_seconds: 3600,
+      tasks: {
+        id: "task-1",
+        title: "Apply",
+        projects: {
+          id: "project-1",
+          name: "Applications",
+          areas: { id: "area-1", name: "Job hunt" },
+        },
+      },
+    },
+    {
+      task_id: "task-2",
+      started_at: "2026-04-20T10:00:00.000Z",
+      ended_at: "2026-04-20T11:00:00.000Z",
+      duration_seconds: 3600,
+      tasks: {
+        id: "task-2",
+        title: "Loose end",
+        projects: { id: "project-2", name: "No area project", areas: null },
+      },
+    },
+  ];
+  const result = calculateWorkAnalyticsAreaBreakdown(sessions, window);
+  assert.deepEqual(result, [
+    { areaId: "area-1", areaName: "Job hunt", workedMinutes: 60, sessionCount: 1 },
+    { areaId: null, areaName: "No area", workedMinutes: 60, sessionCount: 1 },
+  ]);
 });
 
 test("estimateAccuracy handles sessions outside window", () => {

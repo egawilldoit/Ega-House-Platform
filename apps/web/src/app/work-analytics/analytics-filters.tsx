@@ -32,6 +32,7 @@ const AVAILABLE_GROUP_BYS: AnalyticsGroupBy[] = ["day", "week", "month"];
 
 const AVAILABLE_BREAKDOWN_BYS: AnalyticsBreakdownBy[] = [
   "project",
+  "area",
   "goal",
   "task",
 ];

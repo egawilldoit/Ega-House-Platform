@@ -7,16 +7,29 @@ import { ChevronDown, FolderKanban, Plus } from "lucide-react";
 import {
   createAuthenticatedActor,
   getProjectsReadModel,
+  type AreaFilter,
+  type AreaRecord,
   type ProjectCardReadModel,
 } from "@ega/application";
 import { SupabaseProjectsRepository } from "@ega/data-access";
 
 import {
   archiveProjectAction,
+  assignProjectAreaAction,
   unarchiveProjectAction,
   updateProjectStatusAction,
 } from "@/app/tasks/projects/actions";
+import {
+  ALL_PROJECT_AREAS,
+  buildProjectsHref,
+  groupProjectsByArea,
+  parseProjectAreaQuery,
+  toRepositoryAreaFilter,
+  type ProjectAreaQuery,
+} from "@/app/tasks/projects/area-filter";
+import { AreaColorDot, AreaIconView } from "@/components/projects/area-icon";
 import { InlineProjectStatusForm } from "@/components/projects/inline-project-status-form";
+import { ProjectAreaForm } from "@/components/projects/project-area-form";
 import { TasksWorkspaceShell } from "@/components/tasks/tasks-workspace-shell";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
@@ -47,17 +60,21 @@ const PROJECT_VIEWS = [
   { value: "all", label: "All" },
 ] as const;
 
-function getProjectViewHref(view: ProjectViewFilter) {
-  return `/tasks/projects?view=${view}`;
+function getProjectViewHref(view: ProjectViewFilter, areaQuery: ProjectAreaQuery) {
+  return buildProjectsHref(view, areaQuery);
 }
 
-async function getProjectsWithTaskContext(view: ProjectViewFilter) {
+async function getProjectsWithTaskContext(
+  view: ProjectViewFilter,
+  areaQuery: ProjectAreaQuery,
+) {
   const supabase = await createClient();
   const user = await requireAuthenticatedUser({ supabase });
   const actor = createAuthenticatedActor(user.id);
   const repository = new SupabaseProjectsRepository(supabase);
+  const areaFilter: AreaFilter = toRepositoryAreaFilter(areaQuery);
 
-  const result = await getProjectsReadModel(actor, repository, view);
+  const result = await getProjectsReadModel(actor, repository, view, areaFilter);
 
   if (!result.ok) {
     throw new Error(result.errorMessage);
@@ -69,14 +86,18 @@ async function getProjectsWithTaskContext(view: ProjectViewFilter) {
 function ProjectRow({
   project,
   returnTo,
+  areas,
   inlineError,
   archiveError,
+  areaError,
   activeView,
 }: {
   project: ProjectCardReadModel;
   returnTo: string;
+  areas: AreaRecord[];
   inlineError?: string | null;
   archiveError?: string | null;
+  areaError?: string | null;
   activeView: ProjectViewFilter;
 }) {
   const isArchived = isProjectArchivedStatus(project.status);
@@ -177,6 +198,11 @@ function ProjectRow({
               {archiveError}
             </p>
           ) : null}
+          {areaError ? (
+            <p role="alert" className="feedback-block feedback-block-error">
+              {areaError}
+            </p>
+          ) : null}
 
           <details className="action-overflow">
             <summary className="btn-instrument btn-instrument-muted flex h-7 cursor-pointer items-center gap-1 px-2.5 text-xs">
@@ -198,6 +224,17 @@ function ProjectRow({
                   defaultStatus={project.status}
                 />
               )}
+
+              <div className="border-t border-[var(--ega-divider)] pt-3">
+                <ProjectAreaForm
+                  action={assignProjectAreaAction}
+                  projectId={project.id}
+                  currentAreaId={project.areaId}
+                  areas={areas}
+                  returnTo={returnTo}
+                  compact
+                />
+              </div>
 
               <form action={isArchived ? unarchiveProjectAction : archiveProjectAction}>
                 <input type="hidden" name="projectId" value={project.id} />
@@ -231,9 +268,31 @@ function ProjectRow({
 
 function ProjectsEmptyState({
   hasArchivedProjects,
+  filteredByArea,
+  clearHref,
 }: {
   hasArchivedProjects: boolean;
+  filteredByArea: boolean;
+  clearHref: string;
 }) {
+  if (filteredByArea) {
+    return (
+      <EmptyState
+        icon={FolderKanban}
+        title="No projects in this area"
+        description="No project in this view belongs to the selected area. All other projects are still available."
+        action={
+          <Link
+            href={clearHref}
+            className="btn-instrument btn-instrument-muted inline-flex h-8 items-center px-3 text-xs"
+          >
+            Show all projects
+          </Link>
+        }
+      />
+    );
+  }
+
   return (
     <EmptyState
       icon={FolderKanban}
@@ -258,6 +317,7 @@ function ProjectsEmptyState({
 type TasksProjectsPageProps = {
   searchParams: Promise<{
     view?: string;
+    area?: string;
     projectUpdateError?: string;
     projectUpdateProjectId?: string;
     projectUpdateField?: string;
@@ -267,27 +327,48 @@ type TasksProjectsPageProps = {
 export default async function TasksProjectsPage({ searchParams }: TasksProjectsPageProps) {
   const resolvedSearchParams = await searchParams;
   const activeView = normalizeProjectViewFilter(resolvedSearchParams.view);
+  const activeArea = parseProjectAreaQuery(resolvedSearchParams.area);
   const projectUpdateError = resolvedSearchParams.projectUpdateError?.slice(0, 180) ?? null;
   const projectUpdateProjectId = resolvedSearchParams.projectUpdateProjectId ?? null;
   const projectUpdateField = resolvedSearchParams.projectUpdateField ?? null;
-  const { projects, summary } = await getProjectsWithTaskContext(activeView);
+  const { projects, areas, summary } = await getProjectsWithTaskContext(
+    activeView,
+    activeArea,
+  );
+  const groups = groupProjectsByArea(projects, areas);
   const totalProjects = summary.total;
   const activeProjects = summary.active;
   const completedProjects = summary.completed;
   const archivedProjects = summary.archived;
+  const returnTo = buildProjectsHref(activeView, activeArea);
+  const clearAreaHref = buildProjectsHref(activeView, ALL_PROJECT_AREAS);
+  const filteredAreaName =
+    activeArea.kind === "unassigned"
+      ? "Unassigned"
+      : activeArea.kind === "area"
+        ? areas.find((area) => area.id === activeArea.areaId)?.name ?? "Selected area"
+        : null;
 
   return (
     <TasksWorkspaceShell
       title="Projects"
-      description="Project directory — status, active work, progress, and recency."
+      description="Project directory — grouped by area, with status, active work, progress, and recency."
       actions={
-        <Link
-          href="/tasks/projects/new"
-          className={cn(buttonVariants({ variant: "primary" }), "flex h-8 items-center gap-2 px-3")}
-        >
-          <Plus className="h-4 w-4" aria-hidden="true" />
-          New project
-        </Link>
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            href="/settings/areas"
+            className={cn(buttonVariants({ variant: "secondary" }), "flex h-8 items-center px-3")}
+          >
+            Manage areas
+          </Link>
+          <Link
+            href="/tasks/projects/new"
+            className={cn(buttonVariants({ variant: "primary" }), "flex h-8 items-center gap-2 px-3")}
+          >
+            <Plus className="h-4 w-4" aria-hidden="true" />
+            New project
+          </Link>
+        </div>
       }
     >
       <div className="flex flex-col gap-6">
@@ -308,18 +389,52 @@ export default async function TasksProjectsPage({ searchParams }: TasksProjectsP
                 <CardTitle>Project directory</CardTitle>
                 <CardDescription className="mt-1">
                   {projects.length} shown · {totalProjects} total · {archivedProjects} archived
+                  {filteredAreaName ? ` · Area: ${filteredAreaName}` : ""}
                 </CardDescription>
               </div>
-              <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Project views">
-                {PROJECT_VIEWS.map((view) => (
+              <div className="flex flex-col items-end gap-2">
+                <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Project views">
+                  {PROJECT_VIEWS.map((view) => (
+                    <FilterPill
+                      key={view.value}
+                      label={view.label}
+                      href={getProjectViewHref(view.value, activeArea)}
+                      active={activeView === view.value}
+                      ariaCurrent={activeView === view.value ? "page" : undefined}
+                    />
+                  ))}
+                </div>
+                <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Project areas">
                   <FilterPill
-                    key={view.value}
-                    label={view.label}
-                    href={getProjectViewHref(view.value)}
-                    active={activeView === view.value}
-                    ariaCurrent={activeView === view.value ? "page" : undefined}
+                    label="All areas"
+                    href={buildProjectsHref(activeView, ALL_PROJECT_AREAS)}
+                    active={activeArea.kind === "all"}
+                    ariaCurrent={activeArea.kind === "all" ? "page" : undefined}
                   />
-                ))}
+                  {areas.map((area) => {
+                    const selected =
+                      activeArea.kind === "area" && activeArea.areaId === area.id;
+
+                    return (
+                      <FilterPill
+                        key={area.id}
+                        label={area.name}
+                        href={buildProjectsHref(activeView, {
+                          kind: "area",
+                          areaId: area.id,
+                        })}
+                        active={selected}
+                        ariaCurrent={selected ? "page" : undefined}
+                      />
+                    );
+                  })}
+                  <FilterPill
+                    label="Unassigned"
+                    href={buildProjectsHref(activeView, { kind: "unassigned" })}
+                    active={activeArea.kind === "unassigned"}
+                    ariaCurrent={activeArea.kind === "unassigned" ? "page" : undefined}
+                  />
+                </div>
               </div>
             </div>
           </CardHeader>
@@ -345,29 +460,67 @@ export default async function TasksProjectsPage({ searchParams }: TasksProjectsP
                   </th>
                 </tr>
               </thead>
-              <tbody>
-                {projects.map((project) => (
-                  <ProjectRow
-                    key={project.id}
-                    project={project}
-                    returnTo={`/tasks/projects?view=${activeView}`}
-                    inlineError={
-                      projectUpdateProjectId === project.id && projectUpdateField === "status"
-                        ? projectUpdateError
-                        : null
-                    }
-                    archiveError={
-                      projectUpdateProjectId === project.id && projectUpdateField === "archive"
-                        ? projectUpdateError
-                        : null
-                    }
-                    activeView={activeView}
-                  />
-                ))}
-              </tbody>
+              {groups.map((group) => (
+                <tbody key={group.key} data-area-group={group.key}>
+                  <tr className="area-group-row">
+                    <th
+                      scope="colgroup"
+                      colSpan={6}
+                      className="border-b border-[var(--ega-divider)] bg-[color:var(--ega-surface-subtle)] px-[var(--panel-pad,18px)] py-2 text-left"
+                    >
+                      <span className="flex flex-wrap items-center gap-2">
+                        {group.unassigned ? null : (
+                          <>
+                            <AreaColorDot color={group.color} />
+                            <AreaIconView
+                              icon={group.icon}
+                              className="h-3.5 w-3.5 text-ega-text-secondary"
+                            />
+                          </>
+                        )}
+                        <span className="text-[length:var(--text-meta)] font-semibold uppercase tracking-[var(--tracking-widest)] text-ega-text-secondary">
+                          {group.name}
+                        </span>
+                        <span className="text-[length:var(--text-meta)] font-normal text-ega-text-tertiary">
+                          {group.projects.length}{" "}
+                          {group.projects.length === 1 ? "project" : "projects"}
+                        </span>
+                      </span>
+                    </th>
+                  </tr>
+                  {group.projects.map((project) => (
+                    <ProjectRow
+                      key={project.id}
+                      project={project}
+                      areas={areas}
+                      returnTo={returnTo}
+                      inlineError={
+                        projectUpdateProjectId === project.id && projectUpdateField === "status"
+                          ? projectUpdateError
+                          : null
+                      }
+                      archiveError={
+                        projectUpdateProjectId === project.id && projectUpdateField === "archive"
+                          ? projectUpdateError
+                          : null
+                      }
+                      areaError={
+                        projectUpdateProjectId === project.id && projectUpdateField === "area"
+                          ? projectUpdateError
+                          : null
+                      }
+                      activeView={activeView}
+                    />
+                  ))}
+                </tbody>
+              ))}
             </table>
           ) : (
-            <ProjectsEmptyState hasArchivedProjects={archivedProjects > 0} />
+            <ProjectsEmptyState
+              hasArchivedProjects={archivedProjects > 0}
+              filteredByArea={activeArea.kind !== "all"}
+              clearHref={clearAreaHref}
+            />
           )}
         </Card>
       </div>
