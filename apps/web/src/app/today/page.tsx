@@ -314,7 +314,7 @@ export default async function TodayPage({
 
       <div className="workspace-main-rail-grid">
         {/* Left / Main Column: Focus & Execution */}
-        <div className="flex flex-col gap-4">
+        <div className="motion-rise flex flex-col gap-4">
           <StartHerePanel
             task={todayData.startHere}
             returnTo={returnTo}
@@ -480,7 +480,7 @@ export default async function TodayPage({
         </div>
 
         {/* Right / Rail Column: Active Timer, Timeline, Intelligence, Plans */}
-        <div className="workspace-secondary-rail">
+        <div className="motion-rise motion-rise-late workspace-secondary-rail">
           <ActiveTimerPanel
             activeTimer={todayData.activeTimer}
             returnTo={returnTo}
