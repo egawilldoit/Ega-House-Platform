@@ -263,6 +263,151 @@ describe("OwnerScopedRealtimeRefresh", () => {
       vi.advanceTimersByTime(501);
     });
     assert.equal(routerRefreshCalls.length, 0);
+
+    unmount();
+  });
+
+  test("visibilitychange catch-up: pending hidden payload triggers refresh when visible", () => {
+    mount({
+      ownerUserId: "user-1",
+      channelPrefix: "dashboard",
+      tables: ["task_sessions"],
+      refreshDebounceMs: 500,
+    });
+
+    // Hidden: payload becomes pending
+    Object.defineProperty(document, "hidden", {
+      configurable: true,
+      value: true,
+    });
+    assert.ok(activeOnPayload);
+    act(() => {
+      activeOnPayload!(createPayload("INSERT", { updated_at: "2026-04-18T00:01:00.000Z" }));
+    });
+    act(() => {
+      vi.advanceTimersByTime(501);
+    });
+    assert.equal(routerRefreshCalls.length, 0);
+
+    // Become visible and fire visibilitychange -> catch-up
+    Object.defineProperty(document, "hidden", {
+      configurable: true,
+      value: false,
+    });
+    act(() => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    act(() => {
+      vi.advanceTimersByTime(1);
+    });
+    assert.equal(routerRefreshCalls.length, 1);
+
+    unmount();
+  });
+
+  test("visibilitychange coalescing: multiple hidden payloads yield one catch-up refresh", () => {
+    mount({
+      ownerUserId: "user-1",
+      channelPrefix: "dashboard",
+      tables: ["task_sessions"],
+      refreshDebounceMs: 500,
+    });
+
+    Object.defineProperty(document, "hidden", {
+      configurable: true,
+      value: true,
+    });
+    assert.ok(activeOnPayload);
+    act(() => {
+      activeOnPayload!(createPayload("INSERT", { updated_at: "2026-04-18T00:01:00.000Z" }));
+      activeOnPayload!(createPayload("UPDATE", { updated_at: "2026-04-18T00:02:00.000Z" }));
+      activeOnPayload!(createPayload("UPDATE", { updated_at: "2026-04-18T00:03:00.000Z" }));
+    });
+
+    Object.defineProperty(document, "hidden", {
+      configurable: true,
+      value: false,
+    });
+    act(() => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    act(() => {
+      vi.advanceTimersByTime(1);
+    });
+    assert.equal(routerRefreshCalls.length, 1);
+
+    unmount();
+  });
+
+  test("visibilitychange: no catch-up refresh after unmount", () => {
+    mount({
+      ownerUserId: "user-1",
+      channelPrefix: "dashboard",
+      tables: ["task_sessions"],
+      refreshDebounceMs: 500,
+    });
+
+    Object.defineProperty(document, "hidden", {
+      configurable: true,
+      value: true,
+    });
+    assert.ok(activeOnPayload);
+    act(() => {
+      activeOnPayload!(createPayload("INSERT"));
+    });
+
+    unmount();
+
+    Object.defineProperty(document, "hidden", {
+      configurable: true,
+      value: false,
+    });
+    // Listener removed; dispatch should not throw or refresh
+    act(() => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    act(() => {
+      vi.advanceTimersByTime(501);
+    });
+    assert.equal(routerRefreshCalls.length, 0);
+  });
+
+  test("visibilitychange coalescing: no duplicate timeout when one already pending", () => {
+    mount({
+      ownerUserId: "user-1",
+      channelPrefix: "dashboard",
+      tables: ["task_sessions"],
+      refreshDebounceMs: 500,
+    });
+
+    // Start a pending refresh while visible
+    assert.ok(activeOnPayload);
+    act(() => {
+      activeOnPayload!(createPayload("INSERT", { updated_at: "2026-04-18T00:01:00.000Z" }));
+    });
+    // Now hide and trigger a hidden payload
+    Object.defineProperty(document, "hidden", {
+      configurable: true,
+      value: true,
+    });
+    act(() => {
+      activeOnPayload!(createPayload("UPDATE", { updated_at: "2026-04-18T00:02:00.000Z" }));
+    });
+    // visible again with an active timeout -> catch-up should not schedule a second
+    Object.defineProperty(document, "hidden", {
+      configurable: true,
+      value: false,
+    });
+    act(() => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    act(() => {
+      vi.advanceTimersByTime(501);
+    });
+    // Only the originally scheduled refresh fires
+    assert.equal(routerRefreshCalls.length, 1);
+
+    unmount();
   });
 
   test("calls router.refresh() when document becomes visible again (subsequent payload)", () => {

@@ -41,7 +41,8 @@ const getSidebarProjects = cache(async (): Promise<SidebarProject[]> => {
       .from("tasks")
       .select("project_id")
       .in("project_id", projectIds)
-      .neq("status", "done");
+      .neq("status", "done")
+      .limit(1000);
 
     const activeTaskCounts = new Map<string, number>();
     for (const row of taskRows ?? []) {
