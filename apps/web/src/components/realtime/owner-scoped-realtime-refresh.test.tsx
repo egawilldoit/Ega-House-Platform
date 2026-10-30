@@ -722,4 +722,3 @@ describe("OwnerScopedRealtimeRefresh", () => {
       document.body.removeChild(el2);
     }
   });
-
