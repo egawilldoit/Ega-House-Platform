@@ -1,3 +1,4 @@
+import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Bot } from "lucide-react";
@@ -82,11 +83,8 @@ export default async function AgentsPage({
   ]);
 
   return (
-    <AppShell
-      title="Agents"
-      description="Owner-registered agent identities, their credentials and observed activity."
-    >
-      <div className="flex flex-col gap-4">
+    <>
+<div className="flex flex-col gap-4">
         {params.error ? (
           <p
             role="alert"
@@ -158,6 +156,6 @@ export default async function AgentsPage({
           </Card>
         ) : null}
       </div>
-    </AppShell>
+</>
   );
 }

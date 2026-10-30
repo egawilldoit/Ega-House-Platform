@@ -1,3 +1,4 @@
+import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
 import type { Metadata } from "next";
 
 import {
@@ -52,11 +53,8 @@ export default async function AccountSettingsPage({
     settingsResult.errorMessage;
 
   return (
-    <AppShell
-      title="Settings"
-      description="Account controls and integrations."
-    >
-      <div className="flex max-w-3xl flex-col gap-6">
+    <>
+<div className="flex max-w-3xl flex-col gap-6">
         <SettingsNav active="account" />
 
         <TimezoneCard
@@ -223,6 +221,6 @@ export default async function AccountSettingsPage({
           </Card>
         ) : null}
       </div>
-    </AppShell>
+</>
   );
 }

@@ -1,3 +1,4 @@
+import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ChevronRight, Inbox, Search } from "lucide-react";
@@ -190,10 +191,8 @@ export default async function BacklogPage({ searchParams }: BacklogPageProps) {
   ]);
 
   return (
-    <AppShell
-      title="Backlog"
-      description="Keep ideas here until they are ready to become real work."
-      actions={<BacklogAddButton />}
+    <>
+}
     >
       <div className="flex flex-col gap-6">
         <section className="flex flex-col gap-4">
@@ -268,6 +267,6 @@ export default async function BacklogPage({ searchParams }: BacklogPageProps) {
           </Card>
         </section>
       </div>
-    </AppShell>
+</>
   );
 }

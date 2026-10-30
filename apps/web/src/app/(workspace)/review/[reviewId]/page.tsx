@@ -67,15 +67,8 @@ export default async function ReviewDetailPage({ params }: ReviewDetailPageProps
   }
 
   return (
-    <AppShell
-      title="Past review detail"
-      description={`${formatIsoDate(review.week_start)} — ${formatIsoDate(review.week_end)} · saved reflection fields.`}
-      actions={
-        <Link
-          href="/review"
-          className="btn-instrument btn-instrument-muted inline-flex h-8 items-center px-3 text-[length:var(--text-meta-lg)]"
-        >
-          Back to review workspace
+    <>
+Back to review workspace
         </Link>
       }
     >
@@ -112,6 +105,6 @@ export default async function ReviewDetailPage({ params }: ReviewDetailPageProps
           </CardContent>
         </Card>
       </div>
-    </AppShell>
+</>
   );
 }

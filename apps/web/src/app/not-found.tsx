@@ -9,8 +9,8 @@ export const metadata: Metadata = {
 
 export default function NotFound() {
   return (
-    <AppShell title="Page not found" description="The requested page could not be located.">
-      <Card>
+    <>
+<Card>
         <CardHeader>
           <CardTitle>Page not found</CardTitle>
         </CardHeader>
@@ -41,6 +41,6 @@ export default function NotFound() {
           </div>
         </CardContent>
       </Card>
-    </AppShell>
+</>
   );
 }

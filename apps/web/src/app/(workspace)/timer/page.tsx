@@ -1,3 +1,4 @@
+import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { TimerActionFeedback } from "@/components/timer/timer-action-feedback";
@@ -14,12 +15,8 @@ export default async function TimerPage({ searchParams }: { searchParams: Promis
   const resolvedSearchParams = await searchParams;
   const model = await getTimerPageModel(resolvedSearchParams);
   return (
-    <AppShell
-      title="Timer"
-      description="Track focused work and review your recent sessions."
-      actions={
-        <div className="flex flex-wrap items-center gap-2">
-          <Link
+    <>
+<Link
             href="/today"
             className="btn-instrument btn-instrument-muted flex h-8 items-center px-3 text-sm"
           >
@@ -37,6 +34,6 @@ export default async function TimerPage({ searchParams }: { searchParams: Promis
     >
       <TimerActionFeedback actionError={model.actionError} actionSuccess={model.actionSuccess} />
       <TimerPageView model={model} />
-    </AppShell>
+</>
   );
 }

@@ -1,3 +1,4 @@
+import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Bell, CheckCheck } from "lucide-react";
@@ -134,11 +135,8 @@ export default async function NotificationsPage({ searchParams }: NotificationsP
 
   if (result.errorMessage || !result.data) {
     return (
-      <AppShell
-        title="Notifications"
-        description="Review reminders and return to the work they reference."
-      >
-        {notice ? (
+      <>
+{notice ? (
           <div className="feedback-block mb-5" role="status" aria-live="polite">
             {notice}
           </div>
@@ -154,7 +152,7 @@ export default async function NotificationsPage({ searchParams }: NotificationsP
             </Link>
           </div>
         </Card>
-      </AppShell>
+</>
     );
   }
 
@@ -163,11 +161,8 @@ export default async function NotificationsPage({ searchParams }: NotificationsP
   const groups = buildNotificationGroups(notifications, timeContext?.timezone);
 
   return (
-    <AppShell
-      title="Notifications"
-      description="Review reminders and return to the work they reference."
-      actions={
-        unreadCount > 0 ? (
+    <>
+0 ? (
           <form action={markAllNotificationsReadAction}>
             <PendingSubmitButton
               type="submit"
@@ -233,6 +228,6 @@ export default async function NotificationsPage({ searchParams }: NotificationsP
           />
         )}
       </Card>
-    </AppShell>
+</>
   );
 }

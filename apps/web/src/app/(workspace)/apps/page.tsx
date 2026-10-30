@@ -1,3 +1,4 @@
+import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
 import type { Metadata } from "next";
 
 
@@ -11,16 +12,13 @@ export const metadata: Metadata = {
 
 export default async function AppsIndexPage() {
   return (
-    <AppShell
-      title="Apps"
-      description="Open the module you need without leaving context."
-    >
-      <div className="flex flex-col gap-3">
+    <>
+<div className="flex flex-col gap-3">
         <p className="text-[length:var(--text-meta)] text-[color:var(--ega-text-tertiary)]">
           Navigate with mouse, tab, or arrow keys. Press Enter or Space to open.
         </p>
         <AppsLauncherGrid items={APPS_LAUNCHER_ITEMS} />
       </div>
-    </AppShell>
+</>
   );
 }

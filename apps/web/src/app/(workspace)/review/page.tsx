@@ -1,3 +1,4 @@
+import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
 import type { Metadata } from "next";
 import { getFrictionRadar } from "@/lib/services/friction-service";
 import { getHealthSnapshotData } from "@/lib/services/health-snapshot-service";
@@ -18,22 +19,12 @@ export default async function ReviewPage({ searchParams }: { searchParams: Promi
     getFrictionRadar().catch(() => ({ errorMessage: "Friction evidence is unavailable.", data: null })),
   ]);
   return (
-    <AppShell
-      title="Review"
-      description="What happened this week, and what to change next."
-      actions={
-        <ExportCsvButton
-          href={`/review/export?weekOf=${model.weekOf}`}
-          defaultFilename={
-            model.weekOf ? `review-${model.weekOf}.csv` : "reviews.csv"
-          }
-          className="btn-instrument btn-instrument-muted inline-flex h-8 items-center px-3 text-[length:var(--text-meta-lg)]"
-        >
-          Export CSV
+    <>
+Export CSV
         </ExportCsvButton>
       }
     >
       <ReviewPageView model={model} health={health} friction={friction} />
-    </AppShell>
+</>
   );
 }

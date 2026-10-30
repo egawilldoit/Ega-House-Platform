@@ -1,3 +1,4 @@
+import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
 import type { Metadata } from "next";
 import { AnalyticsFilters } from "./analytics-filters";
 import { getWorkAnalyticsPageModel } from "./_lib/work-analytics-page-model";
@@ -16,12 +17,10 @@ export default async function WorkAnalyticsPage({ searchParams }: { searchParams
   if (!model.user) return <div className="p-6">Please log in to view work analytics.</div>;
   if (model.error) return <div className="p-6">{model.error}</div>;
   return (
-    <AppShell
-      title="Analytics"
-      description="See where your focused time goes."
-      actions={<AnalyticsFilters />}
+    <>
+}
     >
       <WorkAnalyticsPageView model={model} />
-    </AppShell>
+</>
   );
 }
