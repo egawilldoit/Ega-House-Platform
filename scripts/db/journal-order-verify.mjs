@@ -145,8 +145,11 @@ const BOUNDARIES = [
     observable: "0077's exact-length permission-document pin",
     check: async (sql) => {
       const rows = await sql.unsafe(
-        `SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint
-          WHERE conname = 'mcp_authorization_grants_profile_permissions_check'`,
+        `SELECT pg_get_constraintdef(c.oid) AS def FROM pg_constraint c
+          JOIN pg_class t ON t.oid = c.conrelid
+          JOIN pg_namespace n ON n.oid = t.relnamespace
+          WHERE c.conname = 'mcp_authorization_grants_profile_permissions_check'
+            AND n.nspname = 'public' AND t.relname = 'mcp_authorization_grants'`,
       );
       const def = rows[0]?.def ?? "";
       return {

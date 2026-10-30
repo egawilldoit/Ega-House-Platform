@@ -701,6 +701,13 @@
       "when": 1787880000049,
       "tag": "0086_mcp_direct_rpc_boundary",
       "breakpoints": true
+    },
+    {
+      "idx": 100,
+      "version": "7",
+      "when": 1787880000050,
+      "tag": "0087_project_area_trigger_execute_grants",
+      "breakpoints": true
     }
   ]
 }
