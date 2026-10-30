@@ -35,6 +35,18 @@
   background-size: 100% 1.5px;
 }
 
+/* A running-state dot. It is solid by default and only pulses when motion is
+   allowed, so the state still reads without animation. */
+.live-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--status-healthy);
+  vertical-align: middle;
+}
+
 /* ── Task interaction accents ──────────────────────────────
    Small, purposeful feedback for completing, deferring and adding work.
    Declared only when the user has not asked for reduced motion; the global
@@ -61,6 +73,32 @@
     to { background-color: transparent; }
   }
 
+  /* Ends at `transform: none` so a held fill does not create a containing block
+     for fixed-position descendants (popovers, sticky rails). */
+  @keyframes ega-rise {
+    from { transform: translateY(8px); opacity: 0; }
+    to { transform: none; opacity: 1; }
+  }
+
+  /* Page-load entrance. Pass a stagger through `--motion-delay` on the element. */
+  .motion-rise {
+    animation: ega-rise var(--duration-enter) var(--ease-spring) both;
+    animation-delay: var(--motion-delay, 0ms);
+  }
+
+  .motion-rise-late {
+    --motion-delay: 120ms;
+  }
+
+  @keyframes ega-live-pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.4; transform: scale(0.75); }
+  }
+
+  .live-dot {
+    animation: ega-live-pulse 1.8s var(--ease-default) infinite;
+  }
+
   .motion-check {
     animation: ega-check-pop var(--duration-base) var(--ease-spring) both;
   }
@@ -76,6 +114,40 @@
   .motion-add-wash {
     animation: ega-add-wash var(--duration-slow) var(--ease-default) both;
   }
+
+  /* ── Shared stagger: children rise 8px, 340ms, --ease-out, 45ms per --i ── */
+  @keyframes ega-stagger-rise {
+    from { transform: translateY(8px); opacity: 0; }
+    to { transform: none; opacity: 1; }
+  }
+
+  .motion-stagger > * {
+    animation: ega-stagger-rise var(--dur-slow) var(--ease-out) both;
+    animation-delay: calc(var(--i, 0) * 45ms);
+  }
+
+  /* Cap at 8 children */
+  .motion-stagger > *:nth-child(n+9) {
+    animation-delay: calc(8 * 45ms);
+  }
+
+  /* ── :active press feedback ──────────────────────────────── */
+  button:active,
+  [role="button"]:active,
+  .row:active,
+  a:active {
+    transform: scale(0.98);
+  }
+
+  /* ── Saved-row flash: 600ms tint fade ────────────────────── */
+  @keyframes ega-row-flash {
+    0% { background-color: var(--ega-accent-soft); }
+    100% { background-color: transparent; }
+  }
+
+  .row-flash {
+    animation: ega-row-flash 600ms var(--ease-default) both;
+  }
 }
 
 /* Reduced motion */
@@ -87,6 +159,18 @@
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
+  }
+
+  button:active,
+  [role="button"]:active,
+  .row:active,
+  a:active {
+    transform: none;
+  }
+
+  .motion-stagger > *,
+  .row-flash {
+    animation: none;
   }
 }
 
@@ -106,6 +190,17 @@ html[data-reduce-motion="true"] *::after {
 html[data-reduce-motion="true"] .motion-check,
 html[data-reduce-motion="true"] .motion-strike,
 html[data-reduce-motion="true"] .motion-land,
-html[data-reduce-motion="true"] .motion-add-wash {
+html[data-reduce-motion="true"] .motion-add-wash,
+html[data-reduce-motion="true"] .motion-rise,
+html[data-reduce-motion="true"] .live-dot,
+html[data-reduce-motion="true"] .motion-stagger > *,
+html[data-reduce-motion="true"] .row-flash {
   animation: none;
+}
+
+html[data-reduce-motion="true"] button:active,
+html[data-reduce-motion="true"] [role="button"]:active,
+html[data-reduce-motion="true"] .row:active,
+html[data-reduce-motion="true"] a:active {
+  transform: none;
 }

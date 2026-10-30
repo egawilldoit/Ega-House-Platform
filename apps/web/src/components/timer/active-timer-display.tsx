@@ -41,11 +41,17 @@ export function ActiveTimerDisplay({
   timezone,
 }: ActiveTimerDisplayProps) {
   return (
-    <div className="active-timer-card flex flex-col gap-5" data-testid="active-timer-display">
+    <div
+      className="active-timer-card flex flex-col gap-5"
+      data-testid="active-timer-display"
+    >
       <div className="active-timer-display-grid">
         <div className="flex flex-col gap-3">
           <div className="flex flex-wrap items-center gap-2">
-            <Badge tone="active">Running now</Badge>
+            <Badge tone="active">
+              <span className="live-dot" aria-hidden="true" />
+              Running now
+            </Badge>
             <Badge tone={getTaskStatusTone(session.tasks?.status ?? "todo")}>
               {formatTaskToken(session.tasks?.status ?? "todo")}
             </Badge>

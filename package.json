@@ -16,7 +16,7 @@
     "check:font-egress": "node scripts/ci/font-egress.mjs",
     "ci:purity": "node scripts/ci/package-purity.mjs",
     "ci:security": "node scripts/ci/security-proofs.mjs",
-    "ci:workspace": "node --test scripts/ci/audit-production.test.mjs scripts/ci/security-backports.test.mjs && node scripts/ci/workspace-proofs.mjs",
+    "ci:workspace": "node --test scripts/ci/decode-uri-component-cjs.test.mjs && node --test scripts/ci/audit-production.test.mjs scripts/ci/security-backports.test.mjs && node scripts/ci/workspace-proofs.mjs",
     "contracts:test": "npm run test --workspace @ega/contracts",
     "contracts:typecheck": "npm run typecheck --workspace @ega/contracts",
     "data-access:test": "npm run test --workspace @ega/data-access",
@@ -75,7 +75,8 @@
     "dotenv": "^17.4.2",
     "drizzle-orm": "^0.45.2",
     "google-auth-library": "^9.15.1",
-    "postgres": "^3.4.9"
+    "postgres": "^3.4.9",
+    "decode-uri-component": "file:./vendor/decode-uri-component"
   },
   "devDependencies": {
     "drizzle-kit": "^0.31.10",
@@ -122,7 +123,8 @@
     "source-map-js": "1.2.2",
     "undici@^6": "6.29.1",
     "braces": "https://codeload.github.com/FSDevelop/braces/tar.gz/28d440b5dd449dbf1fe6f3506cf94ecca4d02660",
-    "node-forge": "https://codeload.github.com/Krysthyan/forge/tar.gz/ceba34402e329f0365134f23fe19898756527d65"
+    "node-forge": "https://codeload.github.com/Krysthyan/forge/tar.gz/ceba34402e329f0365134f23fe19898756527d65",
+    "decode-uri-component": "$decode-uri-component"
   },
   "optionalDependencies": {
     "@next/swc-linux-x64-gnu": "16.4.3",
