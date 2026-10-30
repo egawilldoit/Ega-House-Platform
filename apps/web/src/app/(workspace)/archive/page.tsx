@@ -1,6 +1,6 @@
 import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
-import { ArchivePageView } from "@/app/archive/_components/ArchivePageView";
-import { getArchivePageModel } from "@/app/archive/_lib/archive-page-model";
+import { ArchivePageView } from "@/app/(workspace)/archive/_components/ArchivePageView";
+import { getArchivePageModel } from "@/app/(workspace)/archive/_lib/archive-page-model";
 
 type ArchivePageProps = {
   searchParams: Promise<{

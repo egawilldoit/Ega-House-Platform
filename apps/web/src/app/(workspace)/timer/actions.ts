@@ -1,6 +1,6 @@
 "use server";
 
-import { getTimerActionReturnPath } from "@/app/timer/return-path";
+import { getTimerActionReturnPath } from "@/app/(workspace)/timer/return-path";
 import {
   blockTask,
   markTaskDone,

@@ -9,12 +9,12 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh }),
 }));
 
-vi.mock("@/app/tasks/attachments-actions", () => ({
+vi.mock("@/app/(workspace)/tasks/attachments-actions", () => ({
   deleteAttachmentAction: vi.fn(),
   getAttachmentPreviewAction: vi.fn(),
 }));
 
-import { deleteAttachmentAction, getAttachmentPreviewAction } from "@/app/tasks/attachments-actions";
+import { deleteAttachmentAction, getAttachmentPreviewAction } from "@/app/(workspace)/tasks/attachments-actions";
 import { ProjectFilesTab } from "./project-files-tab";
 
 const FILE = {

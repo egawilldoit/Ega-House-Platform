@@ -18,7 +18,7 @@ vi.mock("next/link", () => ({
   ),
 }));
 
-vi.mock("@/app/tasks/actions", () => ({
+vi.mock("@/app/(workspace)/tasks/actions", () => ({
   archiveManyCompletedTasksAction: vi.fn(),
   archiveTaskAction: vi.fn(),
   cancelTaskReminderAction: vi.fn(),
@@ -49,17 +49,17 @@ vi.mock("@/app/tasks/actions", () => ({
   rescheduleTaskCalendarAction: vi.fn(),
 }));
 
-vi.mock("@/app/timer/actions", () => ({
+vi.mock("@/app/(workspace)/timer/actions", () => ({
   startTimerAction: vi.fn(),
 }));
 
-vi.mock("@/app/tasks/saved-views-actions", () => ({
+vi.mock("@/app/(workspace)/tasks/saved-views-actions", () => ({
   createTaskSavedViewAction: vi.fn(),
   deleteTaskSavedViewAction: vi.fn(),
   updateTaskSavedViewAction: vi.fn(),
 }));
 
-vi.mock("@/app/tasks/create-task-form", () => ({
+vi.mock("@/app/(workspace)/tasks/create-task-form", () => ({
   CreateTaskForm: () => <form data-testid="mock-create-task-form" />,
 }));
 

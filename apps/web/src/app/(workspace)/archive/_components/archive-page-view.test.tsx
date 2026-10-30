@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { renderToStaticMarkup } from "react-dom/server";
 
-import type { ArchivePageModel } from "@/app/archive/_lib/archive-page-model";
+import type { ArchivePageModel } from "@/app/(workspace)/archive/_lib/archive-page-model";
 
 import { ArchivePageView } from "./ArchivePageView";
 

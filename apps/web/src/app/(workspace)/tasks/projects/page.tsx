@@ -18,7 +18,7 @@ import {
   assignProjectAreaAction,
   unarchiveProjectAction,
   updateProjectStatusAction,
-} from "@/app/tasks/projects/actions";
+} from "@/app/(workspace)/tasks/projects/actions";
 import {
   ALL_PROJECT_AREAS,
   buildProjectsHref,
@@ -26,7 +26,7 @@ import {
   parseProjectAreaQuery,
   toRepositoryAreaFilter,
   type ProjectAreaQuery,
-} from "@/app/tasks/projects/area-filter";
+} from "@/app/(workspace)/tasks/projects/area-filter";
 import { AreaColorDot, AreaIconView } from "@/components/projects/area-icon";
 import { InlineProjectStatusForm } from "@/components/projects/inline-project-status-form";
 import { ProjectAreaForm } from "@/components/projects/project-area-form";

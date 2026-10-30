@@ -7,8 +7,8 @@ import type { ArchiveTab } from "@ega/domain";
 import { Archive, FolderArchive, Goal, ListChecks, Search } from "lucide-react";
 import Link from "next/link";
 
-import { restoreArchivedEntityAction } from "@/app/archive/actions";
-import type { ArchivePageModel } from "@/app/archive/_lib/archive-page-model";
+import { restoreArchivedEntityAction } from "@/app/(workspace)/archive/actions";
+import type { ArchivePageModel } from "@/app/(workspace)/archive/_lib/archive-page-model";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";

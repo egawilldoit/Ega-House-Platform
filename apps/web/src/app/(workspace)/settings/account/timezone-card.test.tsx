@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const updateAccountTimezoneAction = vi.fn();
 
-vi.mock("@/app/settings/account/actions", () => ({
+vi.mock("@/app/(workspace)/settings/account/actions", () => ({
   updateAccountTimezoneAction: (formData: FormData) =>
     updateAccountTimezoneAction(formData),
 }));

@@ -8,7 +8,7 @@ import {
 } from "@ega/application";
 import { SupabaseProjectsRepository } from "@ega/data-access";
 
-import { purgeProjectAction } from "@/app/tasks/projects/actions";
+import { purgeProjectAction } from "@/app/(workspace)/tasks/projects/actions";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { PendingSubmitButton } from "@/components/ui/pending-submit-button";

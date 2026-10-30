@@ -7,7 +7,7 @@ import {
   assignProjectAreaAction,
   unarchiveProjectAction,
   updateProjectStatusAction,
-} from "@/app/tasks/projects/actions";
+} from "@/app/(workspace)/tasks/projects/actions";
 import { AreaColorDot, AreaIconView } from "@/components/projects/area-icon";
 import { InlineProjectStatusForm } from "@/components/projects/inline-project-status-form";
 import { ProjectAreaForm } from "@/components/projects/project-area-form";

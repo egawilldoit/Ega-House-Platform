@@ -24,7 +24,7 @@ import {
 } from "@ega/domain";
 import type { ProjectAttachmentDto } from "@ega/contracts";
 
-import { deleteAttachmentAction, getAttachmentPreviewAction } from "@/app/tasks/attachments-actions";
+import { deleteAttachmentAction, getAttachmentPreviewAction } from "@/app/(workspace)/tasks/attachments-actions";
 import { AttachmentPreviewDialog } from "@/components/tasks/attachment-preview-dialog";
 import { EmptyState } from "@/components/ui/empty-state";
 import { formatTimerDateTime } from "@/lib/timer-domain";

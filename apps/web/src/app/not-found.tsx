@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { AppShell } from "@/components/layout/app-shell";
 
 export const metadata: Metadata = {
   title: "Not found",
@@ -9,8 +10,8 @@ export const metadata: Metadata = {
 
 export default function NotFound() {
   return (
-    <>
-<Card>
+    <AppShell>
+      <Card>
         <CardHeader>
           <CardTitle>Page not found</CardTitle>
         </CardHeader>
@@ -41,6 +42,6 @@ export default function NotFound() {
           </div>
         </CardContent>
       </Card>
-</>
+    </AppShell>
   );
 }
