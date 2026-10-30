@@ -115,4 +115,99 @@ describe("GET /review/export", () => {
       expect(hasOwnerFilter).toBe(true);
     }
   });
+
+  it("exports all reviews with default filename when no weekOf is provided", async () => {
+    const chains: Record<string, any[]> = {
+      week_reviews: [],
+      tasks: [],
+      task_sessions: [],
+      goals: [],
+    };
+
+    const results: Record<string, unknown> = {
+      week_reviews: {
+        data: [
+          {
+            id: "review-1",
+            week_start: "2026-04-13",
+            week_end: "2026-04-19",
+            summary: "Closed the loop",
+            wins: "Ship export",
+            blockers: "None",
+            next_steps: "Keep momentum",
+            created_at: "2026-04-18T10:00:00.000Z",
+            updated_at: "2026-04-18T11:00:00.000Z",
+          },
+        ],
+        error: null,
+      },
+      tasks: { data: null, error: null, count: 0 },
+      task_sessions: { data: [], error: null },
+      goals: { data: [], error: null },
+    };
+
+    createClient.mockResolvedValueOnce({
+      auth: {
+        getUser: vi.fn(async () => ({ data: { user: { id: "user-1" } }, error: null })),
+      },
+      from: vi.fn((table: string) => {
+        const chain = makeChain(results[table]);
+        chains[table].push(chain);
+        return chain;
+      }),
+    } as never);
+
+    const response = await GET(new Request("http://localhost/review/export"));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-disposition")).toContain('filename="reviews.csv"');
+    const csv = await response.text();
+    expect(csv).toContain("review-1");
+  });
+
+  it("uses weekOf from query to name file as review-<weekOf>.csv", async () => {
+    const chains: Record<string, any[]> = {
+      week_reviews: [],
+      tasks: [],
+      task_sessions: [],
+      goals: [],
+    };
+
+    const results: Record<string, unknown> = {
+      week_reviews: {
+        data: [
+          {
+            id: "review-2",
+            week_start: "2026-05-11",
+            week_end: "2026-05-17",
+            summary: "Focus week",
+            wins: "Progress",
+            blockers: "Time",
+            next_steps: "Plan",
+            created_at: "2026-05-16T10:00:00.000Z",
+            updated_at: "2026-05-16T11:00:00.000Z",
+          },
+        ],
+        error: null,
+      },
+      tasks: { data: null, error: null, count: 1 },
+      task_sessions: { data: [], error: null },
+      goals: { data: [], error: null },
+    };
+
+    createClient.mockResolvedValueOnce({
+      auth: {
+        getUser: vi.fn(async () => ({ data: { user: { id: "user-1" } }, error: null })),
+      },
+      from: vi.fn((table: string) => {
+        const chain = makeChain(results[table]);
+        chains[table].push(chain);
+        return chain;
+      }),
+    } as never);
+
+    const response = await GET(new Request("http://localhost/review/export?weekOf=2026-05-11"));
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-disposition")).toBe('attachment; filename="review-2026-05-11.csv"');
+  });
 });
