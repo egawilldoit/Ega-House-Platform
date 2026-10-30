@@ -3,8 +3,8 @@
 ## Status
 - Branch: perf/vercel-fluid-cpu-50
 - Base: origin/main @ 1bd39c3be574c95ca120bf27a64deb200738e39f
-- PR: TBD (draft)
-- Target: ≥50% reduction in Vercel Fluid Active CPU for equivalent traffic (pending production verification)
+- PR: https://github.com/egawilldoit/Ega-House-Platform/pull/337 (non-draft)
+- Target: ≥50% reduction in Vercel Fluid Active CPU for equivalent traffic (pending production verification; no production deployment authorized)
 
 ## Baseline
 - Next.js: 16.4.3 (apps/web/package.json)
@@ -20,6 +20,6 @@ Wave 0: Setup complete. Branch created from origin/main, docs initialized.
 - Tests: owner-scoped-realtime-refresh.test.tsx passed (14/14).
 
 ## Wave 2 - App shell query optimization
-- Change: AppShell sidebar project active-task counts now use per-project head-count queries (count: "exact", head: true) instead of fetching up to 1000 task rows and counting in JS.
-- Rationale: reduces data transfer/serialization for shell; preserves counts and behavior.
-- Tests: workspace-shell.test.tsx passed (13/13); home-routing.test.ts passed (5/5); home-dashboard/task-read-home tests passed (12/12).
+- Change: AppShell sidebar project active-task counts now aggregate in a single tasks query selecting `project_id` (filtered to non-done) instead of one head-count query per project; rows are counted in JS. This reduces round trips (N -> 1) and drops the unused `status` column. An explicit `.limit(1000)` keeps the pre-existing Supabase row cap explicit.
+- Correctness note: counts are derived from the fetched (capped) row set, so they are a lower bound when a project has more than 1000 active tasks. This row-cap undercount already existed on main; the PR does not introduce a net regression and does not claim exact counts beyond the cap. No RPC/schema change was added.
+- Tests: workspace-shell.test.tsx; home-routing; home-dashboard/task-read-home. Request/count behavior covered by focused assertions; exact counts beyond the cap are not claimed.

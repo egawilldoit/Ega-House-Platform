@@ -52,6 +52,10 @@ export function OwnerScopedRealtimeRefresh({
   const hasPendingWhileHiddenRef = useRef(false);
 
   useEffect(() => {
+    // Reset mounted state on (re)subscription so a dependency change or remount
+    // does not leave isMountedRef stuck at false from the previous cleanup.
+    isMountedRef.current = true;
+
     if (!ownerUserId || tables.length === 0) {
       return undefined;
     }
