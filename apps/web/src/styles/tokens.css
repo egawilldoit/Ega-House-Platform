@@ -180,10 +180,16 @@
   /* ── Motion ──────────────────────────────────────────── */
   --ease-default: cubic-bezier(0.4, 0, 0.2, 1);
   --ease-spring: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
   --duration-fast: 110ms;
   --duration-base: 160ms;
   --duration-slow: 220ms;
   --duration-enter: 260ms;
+
+  /* Motion tokens for new rules (shorter, calmer than the legacy set above). */
+  --dur-fast: 120ms;
+  --dur-base: 220ms;
+  --dur-slow: 340ms;
 
   /* ── Layout ──────────────────────────────────────────── */
   --sidebar-width: 264px;
