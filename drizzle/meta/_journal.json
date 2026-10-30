@@ -680,6 +680,13 @@
       "when": 1787880000046,
       "tag": "0083_mcp_completed_at_update_authority",
       "breakpoints": true
+    },
+    {
+      "idx": 97,
+      "version": "7",
+      "when": 1787880000047,
+      "tag": "0084_mcp_projects_area_id_fence_classification",
+      "breakpoints": true
     }
   ]
 }
