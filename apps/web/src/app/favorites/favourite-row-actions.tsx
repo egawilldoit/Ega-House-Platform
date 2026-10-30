@@ -38,6 +38,7 @@ export function RemoveButton({ label }: RemoveButtonProps) {
   return (
     <button
       type="submit"
+      disabled={pending}
       aria-label={label}
       className={cn(
         "inline-flex h-7 w-7 min-h-[40px] min-w-[40px] items-center justify-center rounded-[var(--radius-xs)] text-[color:var(--ega-data-orange)] transition-colors hover:outline hover:outline-2 hover:outline-[var(--ega-data-orange)] focus-visible:shadow-[var(--ega-focus-ring)]",
