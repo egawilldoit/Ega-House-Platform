@@ -35,7 +35,11 @@ export default async function ReviewPage({
       <WorkspacePageHeader
         title="Review"
         description="Weekly review reflection workflow."
-        actions={<ExportCsvButton exportUrl="/api/review/export">Export CSV</ExportCsvButton>}
+        actions={
+          <ExportCsvButton href={resolvedSearchParams.weekOf ? `/review/export?weekOf=${encodeURIComponent(resolvedSearchParams.weekOf)}` : "/review/export"}>
+            Export CSV
+          </ExportCsvButton>
+        }
       />
       <ReviewPageView model={model} health={health} friction={friction} />
     </>
