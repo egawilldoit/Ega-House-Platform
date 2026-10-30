@@ -146,8 +146,6 @@ export async function getHomeDashboardData(): Promise<HomeDashboardData> {
     const [
       projectCounts,
       openTaskCount,
-      completedTaskCount,
-      weekSessions,
       todayDeadlines,
       tomorrowDeadlines,
       thisWeekDeadlines,
@@ -157,8 +155,6 @@ export async function getHomeDashboardData(): Promise<HomeDashboardData> {
     ] = await Promise.all([
       getProjectDashboardCounts({ ownerUserId: user.id, supabase }),
       getOpenTaskCount({ ownerUserId: user.id, supabase }),
-      getCompletedTaskCountForWindow({ ownerUserId: user.id, window: weekWindow, supabase }),
-      getWorkAnalyticsSessionsForWindow({ ownerUserId: user.id, window: weekWindow, supabase }),
       getHomeDeadlinePreview({
         ownerUserId: user.id,
         dueFrom: windows.todayFrom,
@@ -199,14 +195,31 @@ export async function getHomeDashboardData(): Promise<HomeDashboardData> {
       }),
     ]);
 
-    const trackedThisWeekMinutes =
-      weekSessions.data && !weekSessions.errorMessage
-        ? calculateWorkAnalytics(weekSessions.data, weekWindow, {
-            nowIso: now.toISOString(),
-            includeOpenSessions: false,
-            timezone: context.timezone,
-          }).totalWorkedMinutes
-        : null;
+    let completedThisWeekCount: number | null = null;
+    let trackedThisWeekMinutes: number | null = null;
+
+    void Promise.all([
+      getCompletedTaskCountForWindow({ ownerUserId: user.id, window: weekWindow, supabase }),
+      getWorkAnalyticsSessionsForWindow({ ownerUserId: user.id, window: weekWindow, supabase }),
+    ])
+      .then(([completedTaskCount, weekSessions]) => {
+        completedThisWeekCount = completedTaskCount.data;
+        if (weekSessions.data && !weekSessions.errorMessage) {
+          try {
+            trackedThisWeekMinutes = calculateWorkAnalytics(weekSessions.data, weekWindow, {
+              nowIso: now.toISOString(),
+              includeOpenSessions: false,
+              timezone: context.timezone,
+            }).totalWorkedMinutes;
+          } catch {
+            trackedThisWeekMinutes = null;
+          }
+        }
+      })
+      .catch(() => {
+        completedThisWeekCount = null;
+        trackedThisWeekMinutes = null;
+      });
 
     return {
       today,
@@ -218,7 +231,7 @@ export async function getHomeDashboardData(): Promise<HomeDashboardData> {
             }
           : null,
         openTasks: openTaskCount.count,
-        completedThisWeek: completedTaskCount.data,
+        completedThisWeek: completedThisWeekCount,
         trackedThisWeekMinutes,
       },
       deadlines: {

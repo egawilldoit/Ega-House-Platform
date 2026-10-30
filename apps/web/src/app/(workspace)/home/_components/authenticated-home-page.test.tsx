@@ -604,4 +604,23 @@ describe("AuthenticatedHomePage (EGA-663)", () => {
     expect(panel?.textContent).toContain("Tasks are unavailable right now");
     expect(panel?.textContent).not.toContain("No completed tasks yet");
   });
+
+  it("renders Now/start without waiting for independent analytics", async () => {
+    await render(
+      emptyModel({
+        startHere: task({ id: "s1", title: "Ship the fix", priority: "high" }),
+        stats: {
+          activeProjects: { count: null, atRiskCount: null, href: "/tasks/projects?view=active" },
+          openTasks: { count: null, href: "/tasks?tasks=active" },
+          completedThisWeek: { count: null, href: "/work-analytics?range=this-week" },
+          overdue: { count: null, href: "/tasks?due=overdue&sort=due" },
+          trackedThisWeek: { minutes: null, href: "/work-analytics?range=this-week" },
+        },
+      }),
+    );
+
+    expect(container.querySelector('[data-testid="home-start-here"]')).not.toBeNull();
+    expect(container.textContent).toContain("Ship the fix");
+    expect(container.textContent).toContain("Open timer");
+  });
 });
