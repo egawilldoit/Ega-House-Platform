@@ -131,7 +131,7 @@ export default async function TodayPage({
             errorMessage: "The approval plan is unavailable.",
           }))
         : Promise.resolve({ data: null, errorMessage: null }),
-      // Request-memoized and already resolved by AppShell; reusing it keeps the
+      // Request-memoized and already resolved by the workspace layout; reusing it keeps the
       // visible "overdue" metric on the same canonical semantics as the sidebar.
       getWorkspaceShellMetrics(),
     ]);
