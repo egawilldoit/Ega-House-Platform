@@ -356,28 +356,45 @@ export async function getTasksPageModel(
     parsed.activeLayout === "timeline"
       ? await getTaskTimelineData({ range: timelineRange })
       : null;
-  const selectedTaskSubtasks = selectedTaskId
-    ? (await listTaskSubtasks(selectedTaskId)).data ?? []
-    : [];
-  const selectedTaskAttachments = selectedTaskId
-    ? await listTaskAttachments(selectedTaskId)
-    : { data: [], errorMessage: null };
+
+  let selectedTaskSubtasks: Awaited<ReturnType<typeof listTaskSubtasks>>["data"] = [];
+  let selectedTaskAttachments: Awaited<ReturnType<typeof listTaskAttachments>> = {
+    data: [],
+    errorMessage: null,
+  };
+  let selectedTaskActivityPage: Awaited<ReturnType<typeof getTaskActivity>> = {
+    items: [],
+    hasMore: false,
+  };
+  let selectedTaskActivity: Awaited<ReturnType<typeof getTaskActivity>>["items"] = [];
+  let selectedTaskActivityHasMore = false;
+  let selectedTaskComments: Awaited<ReturnType<typeof getTaskCommentThread>> = {
+    comments: [],
+    mentionCandidates: [],
+    errorMessage: null,
+  };
+  let selectedTaskIsFavourite = false;
+
+  if (selectedTaskId) {
+    const [subtasksResult, attachmentsResult, activityPageResult, commentsResult, isFavouriteResult] =
+      await Promise.all([
+        listTaskSubtasks(selectedTaskId),
+        listTaskAttachments(selectedTaskId),
+        getTaskActivity(selectedTaskId, { limit: 8 }),
+        getTaskCommentThread(selectedTaskId),
+        isFavorite("task", selectedTaskId),
+      ]);
+
+    selectedTaskSubtasks = subtasksResult.data ?? [];
+    selectedTaskAttachments = attachmentsResult;
+    selectedTaskActivityPage = activityPageResult;
+    selectedTaskActivity = activityPageResult.items;
+    selectedTaskActivityHasMore = activityPageResult.hasMore;
+    selectedTaskComments = commentsResult;
+    selectedTaskIsFavourite = isFavouriteResult;
+  }
+
   const subtaskCounts = await getSubtaskCountsForTasks(tasks.map((task) => task.id));
-  const selectedTaskActivityPage = selectedTaskId
-    ? await getTaskActivity(selectedTaskId, { limit: 8 })
-    : { items: [], hasMore: false };
-  const selectedTaskActivity = selectedTaskActivityPage.items;
-  const selectedTaskActivityHasMore = selectedTaskActivityPage.hasMore;
-  const selectedTaskComments = selectedTaskId
-    ? await getTaskCommentThread(selectedTaskId)
-    : {
-        comments: [],
-        mentionCandidates: [],
-        errorMessage: null,
-      };
-  const selectedTaskIsFavourite = selectedTaskId
-    ? await isFavorite("task", selectedTaskId)
-    : false;
 
   return {
     selectedTaskId,
