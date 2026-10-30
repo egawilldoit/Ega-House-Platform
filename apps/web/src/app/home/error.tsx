@@ -13,7 +13,8 @@ import { RefreshCw } from "lucide-react";
 export default function HomeErrorPage() {
   return (
     <div
-      className="flex min-h-[60vh] flex-col items-start justify-center gap-4"
+      className="flex min-h-[60vh] flex-col items-start justify-center gap-4 bg-[var(--ega-bg)] px-6 py-12"
+      data-workspace-theme="workspace"
       data-testid="home-error"
       role="alert"
     >

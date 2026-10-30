@@ -98,6 +98,7 @@ jobs:
               - 'drizzle.config.ts'
               - 'packages/**'
               - 'apps/server/**'
+              - 'scripts/ci/**'
               - 'package.json'
               - 'package-lock.json'
               - '.github/workflows/**'
@@ -384,6 +385,8 @@ jobs:
         run: node scripts/ci/verify-platform-optionals.mjs
       - name: Web typecheck
         run: npm run typecheck
+      - name: Web font egress guard
+        run: npm run check:font-egress
       - name: Web tests
         run: npm test
       - name: Web production build
@@ -521,10 +524,42 @@ jobs:
         env:
           PROOF_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ega_proof
         run: node scripts/db/project-purge-invariant-verify.mjs --url "$PROOF_DATABASE_URL"
+      - name: Prove archive reconciliation, RLS scope and ancestry invariants through the migration journal
+        env:
+          PROOF_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ega_proof
+        run: node scripts/db/archive-invariant-verify.mjs --url "$PROOF_DATABASE_URL"
+      - name: Prove project-template creation is atomic and idempotent through the migration journal
+        env:
+          PROOF_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ega_proof
+        run: node scripts/db/project-template-invariant-verify.mjs --url "$PROOF_DATABASE_URL"
       - name: Prove task_status_events ledger and completed_at invariant through the migration journal
         env:
           PROOF_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ega_proof
         run: node scripts/db/task-status-events-invariant-verify.mjs --url "$PROOF_DATABASE_URL"
+      - name: Prove agent identity and attribution invariants through the migration journal
+        env:
+          PROOF_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ega_proof
+        run: node scripts/db/agent-actor-invariant-verify.mjs --url "$PROOF_DATABASE_URL"
+      - name: Prove task comment ownership, idempotency and reaction invariants through the migration journal
+        env:
+          PROOF_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ega_proof
+        run: node scripts/db/task-comments-invariant-verify.mjs --url "$PROOF_DATABASE_URL"
+      - name: Prove task activity attribution and producer coverage through the migration journal
+        env:
+          PROOF_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ega_proof
+        run: node scripts/db/task-activity-attribution-invariant-verify.mjs --url "$PROOF_DATABASE_URL"
+      - name: Prove task dependency ownership, cycle and date-window invariants through the migration journal
+        env:
+          PROOF_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ega_proof
+        run: node scripts/db/task-dependencies-invariant-verify.mjs --url "$PROOF_DATABASE_URL"
+      - name: Prove task attachment metadata and Storage ownership through the migration journal
+        env:
+          PROOF_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ega_proof
+        run: node scripts/db/task-attachments-rls-verify.mjs --url "$PROOF_DATABASE_URL"
+      - name: Prove Areas owner isolation and cross-owner assignment refusal through the migration journal
+        env:
+          PROOF_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ega_proof
+        run: node scripts/db/areas-invariant-verify.mjs --url "$PROOF_DATABASE_URL"
       - name: Prove MCP upgrade from the current-main 0049 baseline with legacy grants
         env:
           PROOF_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ega_proof
@@ -537,22 +572,14 @@ jobs:
         env:
           PROOF_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ega_proof
         run: node scripts/db/mcp-upgrade-path-verify.mjs --url "$PROOF_DATABASE_URL"
-      # Every other proof in this job applies the journal with the repository's
-      # own applier, which walks the journal as an array and never reads `when`.
-      # This one drives drizzle-orm's real migrator, because a non-increasing or
-      # shared `when` makes it SKIP entries while reporting success.
+      - name: Prove user preference defaults, enum checks and owner RLS through the migration journal
+        env:
+          PROOF_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ega_proof
+        run: node scripts/db/user-preferences-invariant-verify.mjs --url "$PROOF_DATABASE_URL"
       - name: Prove the real migrator applies every remaining journal entry
         env:
           PROOF_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ega_proof
         run: node scripts/db/journal-order-verify.mjs --url "$PROOF_DATABASE_URL"
-      # The two proofs below were written for this program and never wired into
-      # any job, so the two largest security verifiers in scripts/db gated
-      # nothing. They share this job's single database with every other step
-      # above, deliberately and contrary to an earlier comment here that claimed
-      # each named its own: every verifier drops and recreates
-      # public/auth/automation as its first act and restores them before it
-      # exits, so sequential steps in one job are safe and a shared service
-      # container stays the only Postgres this job needs.
       - name: Prove the MCP OAuth database authorization surface
         env:
           PROOF_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ega_proof
@@ -561,9 +588,6 @@ jobs:
         env:
           PROOF_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ega_proof
         run: node scripts/db/mcp-normal-user-rls-verify.mjs --url "$PROOF_DATABASE_URL"
-      # Names its own database like the verifier above, for the same reason: it
-      # drops the public/auth/automation schemas and then lets drizzle-kit push
-      # rewrite the result.
       - name: Prove db:generate and db:push cannot regress the MCP permission-version model
         env:
           PROOF_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ega_proof

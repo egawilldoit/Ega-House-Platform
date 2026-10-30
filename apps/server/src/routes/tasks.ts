@@ -48,7 +48,10 @@ export function createTasksRoutes(
 
   routes.get("/", async (c) => {
     const { actor, client } = c.var;
-    const parsed = parseMobileTaskListQuery((name) => c.req.query(name));
+    const parsed = parseMobileTaskListQuery(
+      (name) => c.req.query(name),
+      (name) => c.req.queries(name),
+    );
     if (!parsed.ok) {
       return c.json({ error: { code: "VALIDATION", message: parsed.message } }, 400);
     }

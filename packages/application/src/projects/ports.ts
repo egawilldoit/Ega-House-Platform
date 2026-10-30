@@ -1,7 +1,14 @@
-import type { ProjectStatus, ProjectViewFilter } from "@ega/domain";
+import type {
+  GoalHealth,
+  GoalStatus,
+  ProjectStatus,
+  ProjectViewFilter,
+  TaskPriority,
+} from "@ega/domain";
 
 import type { AuthenticatedActor } from "../auth/actor";
 import type { RepositoryResult } from "../shared/result";
+import type { ProjectTemplateId } from "./templates";
 
 export type ProjectRecord = {
   id: string;
@@ -9,9 +16,36 @@ export type ProjectRecord = {
   slug: string;
   description: string | null;
   status: string;
+  areaId: string | null;
+  areaName: string | null;
+  areaColor: string | null;
+  areaIcon: string | null;
   createdAt: string;
   updatedAt: string;
 };
+
+export type AreaRecord = {
+  id: string;
+  name: string;
+  icon: string;
+  color: string;
+  description: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+/** A validated Area write payload after presentation defaults are resolved. */
+export type AreaWriteInput = {
+  name: string;
+  icon: string;
+  color: string;
+  description: string | null;
+};
+
+export type AreaFilter =
+  | Readonly<{ kind: "area"; areaId: string }>
+  | Readonly<{ kind: "unassigned" }>
+  | null;
 
 export type ProjectTaskContextRecord = {
   id: string;
@@ -26,14 +60,57 @@ export type ProjectGoalRecord = {
   id: string;
   title: string;
   projectId: string;
+  /** Canonical goal health, or null when unset. */
+  health: GoalHealth | null;
+  /** Immediate next move for the goal, or null when the owner has not set one. */
+  nextStep: string | null;
 };
 
 export type CreateProjectRecordInput = {
   name: string;
   slug: string;
   description: string | null;
+  areaId?: string | null;
   mcpOperationId?: string;
   mcpClientId?: string;
+};
+
+export type CreateProjectFromTemplateGoalInput = {
+  title: string;
+  description: string | null;
+  status: GoalStatus;
+};
+
+export type CreateProjectFromTemplateTaskInput = {
+  /** Zero-based index into `goals`, or null for a project-level task. */
+  goalIndex: number | null;
+  title: string;
+  description: string | null;
+  priority: TaskPriority;
+  estimateMinutes: number | null;
+  /** Owner-local date-only due date (YYYY-MM-DD). */
+  dueDate: string | null;
+};
+
+export type CreateProjectFromTemplateRecordInput = {
+  /** Server-issued retry token; identical submits resolve to one project. */
+  operationId: string;
+  templateId: ProjectTemplateId;
+  name: string;
+  slug: string;
+  description: string | null;
+  areaId?: string | null;
+  goals: CreateProjectFromTemplateGoalInput[];
+  tasks: CreateProjectFromTemplateTaskInput[];
+};
+
+export type CreateProjectFromTemplateRecordResult = {
+  projectId: string;
+  slug: string;
+  goalCount: number;
+  taskCount: number;
+  /** True when the operation id already owned a project (retry/double-submit). */
+  replayed: boolean;
 };
 
 export type DeleteArchivedProjectInput = {
@@ -84,11 +161,34 @@ export interface ProjectsRepository {
   listProjects(
     actor: AuthenticatedActor,
     view: ProjectViewFilter,
+    areaFilter?: AreaFilter,
   ): Promise<RepositoryResult<ProjectRecord[]>>;
+  listAreas(actor: AuthenticatedActor): Promise<RepositoryResult<AreaRecord[]>>;
+  getAreaById(
+    actor: AuthenticatedActor,
+    areaId: string,
+  ): Promise<RepositoryResult<AreaRecord | null>>;
+  createArea(
+    actor: AuthenticatedActor,
+    input: AreaWriteInput,
+  ): Promise<RepositoryResult<AreaRecord>>;
+  updateArea(
+    actor: AuthenticatedActor,
+    input: AreaWriteInput & { areaId: string; updatedAt: string },
+  ): Promise<RepositoryResult<AreaRecord | null>>;
+  deleteArea(
+    actor: AuthenticatedActor,
+    input: { areaId: string },
+  ): Promise<RepositoryResult<{ deleted: boolean }>>;
+  assignProjectArea(
+    actor: AuthenticatedActor,
+    input: { projectId: string; areaId: string | null; updatedAt: string },
+  ): Promise<RepositoryResult<{ updated: boolean }>>;
   listProjectStatuses(actor: AuthenticatedActor): Promise<RepositoryResult<string[]>>;
   listTasksForProjects(
     actor: AuthenticatedActor,
     projectIds: string[],
+    options?: { includeArchived?: boolean },
   ): Promise<RepositoryResult<ProjectTaskContextRecord[]>>;
   getProjectBySlug(
     actor: AuthenticatedActor,
@@ -106,10 +206,27 @@ export interface ProjectsRepository {
     actor: AuthenticatedActor,
     input: CreateProjectRecordInput,
   ): Promise<RepositoryResult<null>>;
+  createProjectFromTemplate(
+    actor: AuthenticatedActor,
+    input: CreateProjectFromTemplateRecordInput,
+  ): Promise<RepositoryResult<CreateProjectFromTemplateRecordResult>>;
   updateProjectStatus(
     actor: AuthenticatedActor,
     input: { projectId: string; status: ProjectStatus; updatedAt: string },
   ): Promise<RepositoryResult<null>>;
+  /**
+   * Write the archive marker and its metadata in one statement. `archivedAt`
+   * is null for a restore; the repository derives `status` and `archived_by`
+   * so the pair can never diverge (DB CHECK enforces the same invariant).
+   */
+  updateProjectArchiveState(
+    actor: AuthenticatedActor,
+    input: { projectId: string; archivedAt: string | null; updatedAt: string },
+  ): Promise<RepositoryResult<null>>;
+  hasOpenTaskSessionForProject(
+    actor: AuthenticatedActor,
+    projectId: string,
+  ): Promise<RepositoryResult<boolean>>;
   deleteArchivedProject(
     actor: AuthenticatedActor,
     input: DeleteArchivedProjectInput,

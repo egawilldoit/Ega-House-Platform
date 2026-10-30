@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -57,7 +58,10 @@ function getButton(label: string) {
 
 async function click(element: Element) {
   await act(async () => {
-    element.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    // `cancelable` is required for the fixture link's preventDefault() to take
+    // effect; without it jsdom follows the href and logs an unimplemented
+    // document navigation.
+    element.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
   });
 }
 

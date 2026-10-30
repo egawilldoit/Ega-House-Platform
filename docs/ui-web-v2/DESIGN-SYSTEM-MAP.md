@@ -97,7 +97,7 @@ DERIVED (to add)
 - Keep compatibility shims in `globals.css` mapping old vars → new:
   ` --accent: var(--ega-gold) ` etc., then migrate callers incrementally.
 - Remove `workspace-citrus`, `workspace-signal`, `ega-green` after callers moved (Wave 8 cleanup).
-- Font: replace `@import url('https://fonts.googleapis.com/...')` with `next/font/google` (Sora + Instrument Sans or Inter/Geist per taste) in `layout.tsx`.
+- Font: replace `@import url('https://fonts.googleapis.com/...')` with `next/font/google` (Sora + Instrument Sans or Inter/Geist per taste) in `layout.tsx` — **superseded by EGA-778**: fonts are self-hosted `next/font/local` binaries under `apps/web/src/app/fonts/`, and `npm run check:font-egress` rejects a Google Fonts dependency.
 
 ## 3. Typography (current vs target)
 
@@ -128,11 +128,16 @@ Target (mission): core scale 4/8/12/16/20/24/32, cards 10–14px, controls 8–1
 | Card | `ui/card.tsx` | Exists, `ega-glass` | Remap to `ega-surface` + `ega-border` + `shadow-sm` |
 | Input | `ui/input.tsx` | Exists | Keep, add `ega-gold` focus ring |
 | Tabs | `ui/tabs.tsx` | Exists | Keep (verify tasks board) |
-| Tooltip | — | Missing | **Create** (Radix or custom) for icon-only, collapsed sidebar, truncated text |
-| Popover | — | Missing | **Create** (for filter menus) |
+| Tooltip | `ui/tooltip.tsx` | Exists (custom portal + delay) | Keep; do not duplicate with Radix |
+| Popover | `ui/popover.tsx` | **Added by EGA-806** (Radix shell) | Focus return, Escape/outside dismissal, collision-aware placement |
+| MenuList | `ui/menu-list.tsx` | **Added by EGA-806** | `listbox`/`option` semantics, arrow/Home/End/Enter, type-ahead, disabled skip |
+| PropertyPill | `ui/property-pill.tsx` | **Added by EGA-806** | Property picker: `aria-haspopup="listbox"` + `aria-expanded` over Popover + MenuList |
+| Kbd | `ui/kbd.tsx` | **Added by EGA-806** | Presentational keycap; control owns `aria-keyshortcuts` |
+| StatusIcon / PriorityIcon | `ui/status-icon.tsx`, `ui/priority-icon.tsx` | **Added by EGA-806** | Canonical glyphs from `status-*` / `priority-*` tokens, `role="img"` or `decorative` |
 | Dialog | `ui/sheet.tsx` exists as Sheet | Exists as Sheet (drawer) | Enhance as Dialog for modal flows; add motion |
-| DropdownMenu | — | Missing | **Create** (for task row actions, avoid 5-button toolbars) |
-| ContextMenu | — | Missing | **Create** or use Dropdown for kanban |
+| DropdownMenu | `ui/dropdown-menu.tsx` | **Added by EGA-806** | Token-styled Radix wrapper (danger tone, separator); first consumer EGA-786 |
+| ContextMenu | `ui/context-menu.tsx` | **Added by EGA-806** | Token-styled Radix wrapper for row/kanban right-click; first consumer EGA-786 |
+| Toast + undo | `ui/toast-provider.tsx`, `ui/use-undo-toast.ts` | **Added by EGA-806** | Queue of 3, 6 s default, persistent polite live region, `role=alert` errors, real success/conflict/failure reporting; mounted by EGA-786 |
 | EmptyState | `ui/empty-state.tsx` | Exists | Keep, polish |
 | Skeleton | `ui/skeleton.tsx` | Exists | Keep, geometry-match final content |
 | ProgressBar | `ui/progress-bar.tsx` | Exists | Keep |
@@ -144,7 +149,25 @@ Target (mission): core scale 4/8/12/16/20/24/32, cards 10–14px, controls 8–1
 | PageHeader | — | Implicit in AppShell | **Create** `components/layout/page-header.tsx` |
 | FilterPill | `ui/filter-pill.tsx` | Exists | Keep, remap active to gold |
 
-**Decision**: Evolve existing `ui/` files; do NOT install shadcn as dependency — copy patterns if needed. Keep `motion` for all primitives.
+**Decision**: Evolve existing `ui/` files; do NOT install shadcn. Keep `motion`
+for all primitives.
+
+**Motion accents (EGA-806)**: `check`/`strike`/`land`/`add` keyframes live in
+`styles/motion.css` with matching `motion-*` classes; the animation is gated on
+`prefers-reduced-motion: no-preference` while the struck-through completed state
+renders regardless.
+
+**Update (EGA-806)**: `@radix-ui/react-popover`,
+`@radix-ui/react-dropdown-menu` and `@radix-ui/react-context-menu` are installed
+for the behaviour that is expensive to get right by hand — focus restoration,
+dismiss layers and collision-aware placement. They come from the same compatible
+Radix release family as the existing `@radix-ui/react-dialog`; majors differ
+(dialog/popover v1, dropdown/context v2), so pin by the lockfile rather than by
+major.
+Build a primitive only with the ticket that consumes it. `--ega-shadow-drag` is
+defined in both palettes; `--status-review*` is deliberately **not** defined
+while EGA-790 is an unapproved owner decision. See
+[`GR8R-IMPLEMENTATION-GUIDE.md`](GR8R-IMPLEMENTATION-GUIDE.md).
 
 ## 6. Motion (current vs target)
 
@@ -174,7 +197,7 @@ app/<route>/_components/ → route-specific composition
 
 ## 9. Cleanup Checklist (post-migration) — Updated 2026-08-26
 
-- [x] Remove `@import` fonts → replaced with `next/font/google` (Instrument_Sans, Sora, JetBrains_Mono) in `layout.tsx`
+- [x] Remove `@import` fonts → replaced with `next/font` (Instrument Sans, Sora, JetBrains Mono) in `layout.tsx`; since EGA-778 the families are self-hosted `next/font/local` binaries under `apps/web/src/app/fonts/`, so the build no longer needs font-host egress (see that folder's README)
 - [x] Remap `workspace-citrus`/`workspace-signal`/`workspace-cream`/`workspace-paper` to EGA tokens via shim in `globals.css:56-69` (prevents drift; full removal deferred to keep editorial-shell.css stable)
 - [x] Remap `ega-green`/`ega-green-strong`/`ega-border-glass` to `--status-healthy`/`--ega-border` via shim; self-cycles removed
 - [x] Audit for raw hex (`#173b2d`→`#161F2C`, `#0f241c`→`#161F2C`, `#177b52`→`#3E8F6B`, `#10b981`→`#3E8F6B`, `rgba(23,123,82`→`rgba(62,143,107`, `rgba(46,125,50`→`rgba(62,143,107`) — semantic legacy residues replaced with `--ega-*`/`--status-healthy`

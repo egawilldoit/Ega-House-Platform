@@ -12,6 +12,7 @@ import type { DrilldownSessionDTO } from "@/lib/services/work-analytics-service"
 export type DrilldownType =
   | "date"
   | "project"
+  | "area"
   | "goal"
   | "task"
   | "none";

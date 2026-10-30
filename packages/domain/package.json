@@ -7,11 +7,14 @@
     ".": "./src/index.ts",
     "./tasks": "./src/tasks/index.ts",
     "./projects": "./src/projects/index.ts",
+    "./areas": "./src/areas/index.ts",
     "./goals": "./src/goals/index.ts",
+    "./archive": "./src/archive/index.ts",
     "./friction": "./src/friction/index.ts",
     "./inbox": "./src/inbox/index.ts",
     "./inbox-ai": "./src/inbox-ai/index.ts",
-    "./time-context": "./src/time-context.ts"
+    "./time-context": "./src/time-context.ts",
+    "./preferences": "./src/preferences.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",

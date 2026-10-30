@@ -31,3 +31,13 @@ export function getGoalHealthTone(value: GoalHealth) {
   if (value === "at_risk") return "warn" as const;
   return "error" as const;
 }
+
+const GOAL_HEALTH_COLORS: Record<GoalHealth, string> = {
+  on_track: "var(--status-healthy)",
+  at_risk: "var(--status-risk)",
+  off_track: "var(--status-overdue)",
+};
+
+export function getGoalHealthColor(value: GoalHealth | null | undefined) {
+  return value ? GOAL_HEALTH_COLORS[value] : "var(--ega-text-tertiary)";
+}

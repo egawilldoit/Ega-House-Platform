@@ -1,11 +1,27 @@
+import { TASK_TITLE_MAX, TASK_TITLE_LENGTH_ERROR } from "@/lib/task-domain";
 import { zonedWallTimeToUtcIso } from "@ega/domain/time-context";
 import { createClient } from "@/lib/supabase/server";
 import type { Json, TablesInsert, TablesUpdate } from "@/lib/supabase/database.types";
 import {
   getTodayLocalIsoDate,
+  isDateOnlyValue,
   normalizeTaskDueDateInput,
+  normalizeTaskStartDateInput,
+  normalizeTaskPlannedDateInput,
   shiftDateOnlyValue,
 } from "@/lib/task-due-date";
+import {
+  buildCalendarRange,
+  buildTaskCalendarProjection,
+  getLocalWallTimeParts,
+  type CalendarProjectableSession,
+  type CalendarProjectableTask,
+  type TaskCalendarProjection,
+} from "@/lib/task-calendar";
+import type {
+  TaskCalendarDateField,
+  TaskCalendarView,
+} from "@/lib/task-list";
 import { normalizeTaskEstimateInput } from "@/lib/task-estimate";
 import { normalizeTaskScheduleInput } from "@/lib/task-schedule";
 import {
@@ -32,14 +48,32 @@ import {
 import { enqueueCalendarSyncJob } from "@/lib/services/calendar-sync-service";
 import type { GoogleCalendarClient } from "@/lib/services/google-calendar-service";
 import {
-  applyTaskListQuery,
+  taskViewFromLegacyInput,
   type TaskDueFilter,
   type TaskSortValue,
+  type TaskViewDefinition,
 } from "@/lib/task-list";
-import type { TaskViewFilter } from "@/lib/task-archive";
-import { getTaskTotalDurationMap } from "@/lib/task-session";
+import {
+  applyTaskView,
+  type TaskViewRecord,
+} from "@ega/application/tasks/view";
+import {
+  canExactlyCountTaskViewFilters,
+  normalizeTaskViewDefinition,
+} from "@ega/contracts/common/task-list";
+import type { TaskViewFilter as TaskArchiveViewFilter } from "@/lib/task-archive";
+import { getTaskTrackedTimeSummary } from "@/lib/task-session";
 import { stopActiveTimerSessionsForTask } from "@/lib/services/timer-service";
-import { getActiveTasksForOwner } from "@/lib/services/task-read-service";
+import {
+  getActiveTasksForOwner,
+  getTaskCountForOwner,
+  TASK_READ_PAGE_SIZE,
+  type TaskReadQuery,
+} from "@/lib/services/task-read-service";
+import {
+  getTaskDependencyDetail,
+  type TaskDependencyDetail,
+} from "@/lib/services/task-dependency-service";
 import {
   isMissingTasksArchivedAtColumn,
   isMissingSupabaseColumn,
@@ -58,8 +92,8 @@ import {
   QUICK_WINS_SAVED_VIEW_ID,
   getTaskSavedViewDefinitionFromFilters,
   getTaskSavedViewFiltersFromDefinition,
+  getTaskViewFromSavedView,
   normalizeTaskSavedViewFilters,
-  normalizeTaskSavedViewDefinition,
 } from "@/lib/task-saved-views";
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
@@ -140,12 +174,14 @@ export type TasksWorkspaceFilters = {
   requestedGoalId: string | null;
   activeDueFilter: TaskDueFilter;
   activeSort: TaskSortValue;
-  activeView: TaskViewFilter;
+  activeView: TaskArchiveViewFilter;
   activeTasksOnly?: boolean;
   activePriorityValues?: ReadonlyArray<TaskPriority>;
   activeEstimateMinMinutes?: number | null;
   activeEstimateMaxMinutes?: number | null;
   activeDueWithinDays?: number | null;
+  /** Canonical toolbar definition; supersedes the legacy fields above. */
+  view?: TaskViewDefinition;
 };
 
 export type TasksWorkspaceData = {
@@ -158,6 +194,7 @@ export type TasksWorkspaceData = {
     blocked_reason: string | null;
     status: string;
     priority: string;
+    start_date: string | null;
     due_date: string | null;
     planned_for_date: string | null;
     scheduled_start_at: string | null;
@@ -170,6 +207,8 @@ export type TasksWorkspaceData = {
     project_id: string;
     goal_id: string | null;
     focus_rank: number | null;
+    board_rank: string | null;
+    created_at?: string | null;
     archived_at: string | null;
     archived_by: string | null;
     projects: { name: string; slug?: string | null } | null;
@@ -183,6 +222,8 @@ export type TasksWorkspaceData = {
     archived: number;
   };
   taskTotalDurations: Record<string, number>;
+  /** Tasks with a running session; their tracked total still moves. */
+  taskOpenSessionIds: string[];
   savedViews: Array<{
     id: string;
     name: string;
@@ -198,6 +239,22 @@ export type TasksWorkspaceData = {
   savedViewsUnavailable: boolean;
   activeProjectId: string | null;
   activeGoalId: string | null;
+  /** Canonical view after owner-scope sanitization. */
+  view: TaskViewDefinition;
+  /** Exact owner-scoped matches before the row ceiling, when countable. */
+  filteredTotal: number;
+  /** Rows actually loaded into `tasks`. */
+  loadedCount: number;
+  truncated: boolean;
+  /** Present only when the calendar layout requested a visible window. */
+  calendar: TaskCalendarProjection | null;
+};
+
+export type TasksWorkspaceCalendarOptions = {
+  view: TaskCalendarView;
+  dateField: TaskCalendarDateField;
+  anchorDate: string;
+  timezone: string;
 };
 
 export type TaskRecord = TasksWorkspaceData["tasks"][number];
@@ -210,7 +267,9 @@ export type ValidateTaskInlineUpdateInput = {
   description?: unknown;
   status: string;
   priority: string;
+  startDate?: unknown;
   dueDate: unknown;
+  plannedForDate?: unknown;
   estimateMinutes: unknown;
   blockedReason: unknown;
   recurrenceRule?: unknown;
@@ -242,7 +301,9 @@ export type ValidatedTaskInlineUpdateInput = {
   description?: string | null;
   status: TaskStatus;
   priority: TaskPriority;
+  startDate?: string | null;
   dueDate: string | null;
+  plannedForDate?: string | null;
   estimateMinutes: number | null;
   blockedReason: string | null;
   recurrenceRule?: TaskRecurrenceRule | null;
@@ -310,7 +371,7 @@ type CreateTaskScopeSuccessResult = {
   scope: TaskScopeSnapshot;
 };
 
-async function resolveSupabaseClient(supabase?: SupabaseServerClient) {
+export async function resolveSupabaseClient(supabase?: SupabaseServerClient) {
   if (supabase) {
     return supabase;
   }
@@ -318,7 +379,7 @@ async function resolveSupabaseClient(supabase?: SupabaseServerClient) {
   return createClient();
 }
 
-async function getAuthenticatedUserId(supabase: SupabaseServerClient) {
+export async function getAuthenticatedUserId(supabase: SupabaseServerClient) {
   if (!("auth" in supabase) || typeof supabase.auth?.getUser !== "function") {
     return null;
   }
@@ -610,6 +671,17 @@ function isTaskRecurrencesUnavailable(error: unknown) {
   );
 }
 
+/** Keep `.in()` URLs bounded when a filtered view loads thousands of rows. */
+const TASK_ID_QUERY_CHUNK = 200;
+
+function chunkTaskIds(taskIds: string[]) {
+  const chunks: string[][] = [];
+  for (let index = 0; index < taskIds.length; index += TASK_ID_QUERY_CHUNK) {
+    chunks.push(taskIds.slice(index, index + TASK_ID_QUERY_CHUNK));
+  }
+  return chunks;
+}
+
 export async function getTaskRemindersForTasks(
   supabase: SupabaseServerClient,
   taskIds: string[],
@@ -621,22 +693,24 @@ export async function getTaskRemindersForTasks(
     return remindersByTaskId;
   }
 
-  const { data, error } = await supabase
-    .from("task_reminders")
-    .select(
-      "id, task_id, remind_at, channel, status, sent_at, failure_reason, created_at, updated_at",
-    )
-    .in("task_id", uniqueTaskIds)
-    .order("remind_at", { ascending: false });
+  for (const chunk of chunkTaskIds(uniqueTaskIds)) {
+    const { data, error } = await supabase
+      .from("task_reminders")
+      .select(
+        "id, task_id, remind_at, channel, status, sent_at, failure_reason, created_at, updated_at",
+      )
+      .in("task_id", chunk)
+      .order("remind_at", { ascending: false });
 
-  if (error) {
-    throw new Error(`Failed to load task reminders: ${error.message}`);
-  }
+    if (error) {
+      throw new Error(`Failed to load task reminders: ${error.message}`);
+    }
 
-  for (const reminder of data ?? []) {
-    const normalizedReminder = normalizeTaskReminderRow(reminder);
-    remindersByTaskId[normalizedReminder.task_id] ??= [];
-    remindersByTaskId[normalizedReminder.task_id]?.push(normalizedReminder);
+    for (const reminder of data ?? []) {
+      const normalizedReminder = normalizeTaskReminderRow(reminder);
+      remindersByTaskId[normalizedReminder.task_id] ??= [];
+      remindersByTaskId[normalizedReminder.task_id]?.push(normalizedReminder);
+    }
   }
 
   return remindersByTaskId;
@@ -653,33 +727,35 @@ export async function getTaskRecurrencesForTasks(
     return recurrencesByTaskId;
   }
 
-  const { data, error } = await supabase
-    .from("task_recurrences")
-    .select(
-      "id, task_id, rule, anchor_date, timezone, next_occurrence_date, last_generated_at, created_at, updated_at",
-    )
-    .in("task_id", uniqueTaskIds);
+  for (const chunk of chunkTaskIds(uniqueTaskIds)) {
+    const { data, error } = await supabase
+      .from("task_recurrences")
+      .select(
+        "id, task_id, rule, anchor_date, timezone, next_occurrence_date, last_generated_at, created_at, updated_at",
+      )
+      .in("task_id", chunk);
 
-  if (error) {
-    if (isTaskRecurrencesUnavailable(error)) {
-      console.warn("task_recurrences unavailable during task recurrence load", {
-        taskCount: uniqueTaskIds.length,
-        code: error.code,
-        message: error.message,
-      });
-      return recurrencesByTaskId;
+    if (error) {
+      if (isTaskRecurrencesUnavailable(error)) {
+        console.warn("task_recurrences unavailable during task recurrence load", {
+          taskCount: uniqueTaskIds.length,
+          code: error.code,
+          message: error.message,
+        });
+        return recurrencesByTaskId;
+      }
+
+      throw new Error(`Failed to load task recurrences: ${error.message}`);
     }
 
-    throw new Error(`Failed to load task recurrences: ${error.message}`);
-  }
-
-  for (const recurrence of data ?? []) {
-    const normalizedRecurrence = normalizeTaskRecurrenceRow(recurrence);
-    if (!normalizedRecurrence) {
-      continue;
+    for (const recurrence of data ?? []) {
+      const normalizedRecurrence = normalizeTaskRecurrenceRow(recurrence);
+      if (!normalizedRecurrence) {
+        continue;
+      }
+      recurrencesByTaskId[normalizedRecurrence.task_id] ??= [];
+      recurrencesByTaskId[normalizedRecurrence.task_id]?.push(normalizedRecurrence);
     }
-    recurrencesByTaskId[normalizedRecurrence.task_id] ??= [];
-    recurrencesByTaskId[normalizedRecurrence.task_id]?.push(normalizedRecurrence);
   }
 
   return recurrencesByTaskId;
@@ -843,15 +919,27 @@ export async function getTasksSummary(supabase: SupabaseServerClient): Promise<{
   return { total, active, archived: Math.max(0, total - active), unavailable: false };
 }
 
+const CALENDAR_ROW_CAP = 500;
+
 export async function getTasksWorkspaceData(
   filters: TasksWorkspaceFilters,
-  options?: { supabase?: SupabaseServerClient; todayIsoDate?: string },
+  options?: {
+    supabase?: SupabaseServerClient;
+    todayIsoDate?: string;
+    calendar?: TasksWorkspaceCalendarOptions;
+  },
 ): Promise<TasksWorkspaceData> {
   const supabase = await resolveSupabaseClient(options?.supabase);
   const todayIsoDate = options?.todayIsoDate ?? getTodayLocalIsoDate();
-  const dueWithinEndIsoDate = filters.activeDueWithinDays
-    ? shiftDateOnlyValue(todayIsoDate, filters.activeDueWithinDays)
+  const calendarRange = options?.calendar
+    ? buildCalendarRange({
+        view: options.calendar.view,
+        anchorDate: options.calendar.anchorDate,
+        timezone: options.calendar.timezone,
+      })
     : null;
+  const calendarDateColumn =
+    options?.calendar?.dateField === "planned" ? "planned_for_date" : "due_date";
   const savedViewSelectWithDefinition =
     "id, name, status, project_id, goal_id, due_filter, sort_value, definition_json, updated_at";
   const savedViewSelectLegacy =
@@ -910,75 +998,311 @@ export async function getTasksWorkspaceData(
       ? filters.requestedGoalId
       : null;
 
-  const tasksResult = await getActiveTasksForOwner({
-    supabase,
-    archiveFilter: filters.activeView === "all" ? "all" : filters.activeView,
-    applyQuery(query) {
-      if (filters.activeTasksOnly) {
-        query = query.neq("status", "done");
-      }
+  const baseView =
+    filters.view ??
+    taskViewFromLegacyInput({
+      status: filters.activeStatus,
+      priority: filters.activePriorityValues,
+      projectId: activeProjectId,
+      goalId: activeGoalId,
+      due: filters.activeDueFilter,
+      dueWithinDays: filters.activeDueWithinDays,
+      estimateMinMinutes: filters.activeEstimateMinMinutes,
+      estimateMaxMinutes: filters.activeEstimateMaxMinutes,
+      sort: filters.activeSort,
+      activeOnly: filters.activeTasksOnly,
+    });
+  const projectIds = new Set(projectsResult.data.map((project) => project.id));
+  const visibleGoalIds = new Set(visibleGoals.map((goal) => goal.id));
+  const scopedView =
+    normalizeTaskViewDefinition({
+      ...baseView,
+      filters: baseView.filters.flatMap((filter) => {
+        if (filter.field === "project") {
+          const values = filter.values.filter((value) => projectIds.has(value));
+          return values.length > 0 ? [{ ...filter, values }] : [];
+        }
+        if (filter.field === "goal") {
+          const values = filter.values.filter((value) => visibleGoalIds.has(value));
+          return values.length > 0 ? [{ ...filter, values }] : [];
+        }
+        return [filter];
+      }),
+    }) ?? baseView;
 
-      if (filters.activePriorityValues?.length) {
-        query = query.in("priority", [...filters.activePriorityValues]);
-      }
+  const applyQuery = (query: TaskReadQuery): TaskReadQuery => {
+    if (activeProjectId) query = query.eq("project_id", activeProjectId);
+    if (activeGoalId) query = query.eq("goal_id", activeGoalId);
 
-      if (filters.activeEstimateMinMinutes) {
-        query = query.gte("estimate_minutes", filters.activeEstimateMinMinutes);
-      }
+    let dueWindowApplied = false;
 
-      if (filters.activeEstimateMaxMinutes) {
-        query = query.lte("estimate_minutes", filters.activeEstimateMaxMinutes);
+    for (const filter of scopedView.filters) {
+      if (filter.field === "status") {
+        query =
+          filter.operator === "is"
+            ? query.eq("status", filter.values[0])
+            : filter.operator === "is_not"
+              ? query.neq("status", filter.values[0])
+              : filter.operator === "is_any_of"
+                ? query.in("status", filter.values)
+                : query.not("status", "in", `(${filter.values.join(",")})`);
+      } else if (filter.field === "priority") {
+        query =
+          filter.operator === "is"
+            ? query.eq("priority", filter.values[0])
+            : filter.operator === "is_not"
+              ? query.neq("priority", filter.values[0])
+              : filter.operator === "is_any_of"
+                ? query.in("priority", filter.values)
+                : query.not("priority", "in", `(${filter.values.join(",")})`);
+      } else if (filter.field === "project" || filter.field === "goal") {
+        const column = filter.field === "project" ? "project_id" : "goal_id";
+        if (filter.operator === "is") query = query.eq(column, filter.values[0]);
+        if (filter.operator === "is_any_of") query = query.in(column, filter.values);
+      } else if (filter.field === "estimate") {
+        if (filter.values[0] !== "") query = query.gte("estimate_minutes", Number(filter.values[0]));
+        if (filter.values[1] !== "") query = query.lte("estimate_minutes", Number(filter.values[1]));
+      } else if (filter.field === "due_within_days") {
+        if (!dueWindowApplied) {
+          dueWindowApplied = true;
+          query = query
+            .gte("due_date", todayIsoDate)
+            .lte("due_date", shiftDateOnlyValue(todayIsoDate, Number(filter.values[0])));
+        }
+      } else if (filter.field === "due_bucket" && filter.operator === "is") {
+        const bucket = filter.values[0];
+        if (bucket === "none") query = query.is("due_date", null);
+        if (!dueWindowApplied && bucket === "overdue") {
+          dueWindowApplied = true;
+          query = query.lt("due_date", todayIsoDate).neq("status", "done");
+        }
+        if (!dueWindowApplied && bucket === "today") {
+          dueWindowApplied = true;
+          query = query.eq("due_date", todayIsoDate).neq("status", "done");
+        }
+        if (!dueWindowApplied && bucket === "next_7_days") {
+          dueWindowApplied = true;
+          query = query
+            .gte("due_date", todayIsoDate)
+            .lte("due_date", shiftDateOnlyValue(todayIsoDate, 7))
+            .neq("status", "done");
+        }
       }
+    }
 
-      if (dueWithinEndIsoDate) {
-        query = query.gte("due_date", todayIsoDate).lte("due_date", dueWithinEndIsoDate);
-      }
+    if (scopedView.activeOnly) query = query.neq("status", "done");
+    if (scopedView.search) {
+      query = query.ilike("title", `%${scopedView.search.replace(/[\\%_]/g, "\\$&")}%`);
+    }
 
-      if (filters.activeStatus) {
-        query = query.eq("status", filters.activeStatus);
-      }
+    if (calendarRange) {
+      // Bound the read to the visible grid: only tasks whose selected date
+      // field falls inside the window are loaded, never the first page of an
+      // unrelated global list.
+      query = query
+        .gte(calendarDateColumn, calendarRange.startDate)
+        .lte(calendarDateColumn, calendarRange.endDate)
+        .limit(CALENDAR_ROW_CAP);
+    }
 
-      if (activeProjectId) {
-        query = query.eq("project_id", activeProjectId);
-      }
+    return query;
+  };
 
-      if (activeGoalId) {
-        query = query.eq("goal_id", activeGoalId);
-      }
-
-      return query;
-    },
-  });
+  const archiveFilter = filters.activeView === "all" ? "all" : filters.activeView;
+  const tasksResult = await getActiveTasksForOwner({ supabase, archiveFilter, applyQuery });
 
   if (tasksResult.errorMessage) {
     throw new Error(`Failed to load tasks: ${tasksResult.errorMessage}`);
   }
 
   const rawTasks = tasksResult.data;
-
-  const tasks = applyTaskListQuery(rawTasks, {
-    dueFilter: filters.activeDueFilter,
-    sortValue: filters.activeSort,
+  // Only pay for an exact count when the page could be truncated; a short page
+  // is already the complete filtered set.
+  const countResult =
+    rawTasks.length >= TASK_READ_PAGE_SIZE &&
+    canExactlyCountTaskViewFilters(scopedView.filters)
+      ? await getTaskCountForOwner({ supabase, archiveFilter, applyQuery })
+      : { count: null, errorMessage: null };
+  const viewRecords: TaskViewRecord[] = rawTasks.map((task) => ({
+    id: task.id,
+    title: task.title,
+    description: task.description,
+    status: task.status,
+    priority: task.priority,
+    projectId: task.project_id,
+    projectName: task.projects?.name ?? null,
+    goalId: task.goal_id,
+    goalTitle: task.goals?.title ?? null,
+    dueDate: task.due_date,
+    plannedForDate: task.planned_for_date,
+    estimateMinutes: task.estimate_minutes,
+    boardRank: task.board_rank,
+    focusRank: task.focus_rank,
+    createdAt: task.created_at,
+    updatedAt: task.updated_at,
+  }));
+  const viewResult = applyTaskView(viewRecords, scopedView, {
     today: todayIsoDate,
+    totalCount: countResult.errorMessage ? null : countResult.count,
   });
+  const recordsById = new Map(rawTasks.map((task) => [task.id, task]));
+  const tasks = viewResult.items
+    .map((record) => recordsById.get(record.id))
+    .filter((task): task is (typeof rawTasks)[number] => Boolean(task));
 
   const taskIds = tasks.map((task) => task.id);
-  const [taskTotalDurations, taskRemindersByTaskId, taskRecurrencesByTaskId] = await Promise.all([
-    getTaskTotalDurationMap(supabase, taskIds),
+  const [taskTrackedTime, taskRemindersByTaskId, taskRecurrencesByTaskId] = await Promise.all([
+    getTaskTrackedTimeSummary(supabase, taskIds),
     getTaskRemindersForTasks(supabase, taskIds),
     getTaskRecurrencesForTasks(supabase, taskIds),
   ]);
+  if (!taskTrackedTime.data) {
+    throw new Error(taskTrackedTime.errorMessage ?? "Failed to load task session totals.");
+  }
+  const taskTotalDurations = taskTrackedTime.data.trackedSecondsByTask;
   const tasksWithReminders = tasks.map((task) => ({
     ...task,
     task_reminders: taskRemindersByTaskId[task.id] ?? [],
     task_recurrences: taskRecurrencesByTaskId[task.id] ?? [],
   }));
 
+  let calendar: TaskCalendarProjection | null = null;
+  if (calendarRange && options?.calendar) {
+    const userId = await getAuthenticatedUserId(supabase);
+    const taskCalendarSelect =
+      "id, title, status, priority, due_date, planned_for_date, scheduled_start_at, scheduled_end_at, calendar_sync_enabled, updated_at, projects(name)";
+
+    let scheduledQuery = supabase
+      .from("tasks")
+      .select(taskCalendarSelect)
+      .lt("scheduled_start_at", calendarRange.endUtcIso)
+      .gt("scheduled_end_at", calendarRange.startUtcIso);
+    if (userId) scheduledQuery = scheduledQuery.eq("owner_user_id", userId);
+    if (filters.activeView === "active") {
+      scheduledQuery = scheduledQuery.is("archived_at", null);
+    } else if (filters.activeView === "archived") {
+      scheduledQuery = scheduledQuery.not("archived_at", "is", null);
+    }
+    if (filters.activeStatus) {
+      scheduledQuery = scheduledQuery.eq("status", filters.activeStatus);
+    }
+    if (filters.activeTasksOnly) {
+      scheduledQuery = scheduledQuery.neq("status", "done");
+    }
+    if (activeProjectId) {
+      scheduledQuery = scheduledQuery.eq("project_id", activeProjectId);
+    }
+    if (activeGoalId) {
+      scheduledQuery = scheduledQuery.eq("goal_id", activeGoalId);
+    }
+    const scheduledResult = await scheduledQuery
+      .order("scheduled_start_at", { ascending: true })
+      .limit(CALENDAR_ROW_CAP);
+
+    if (scheduledResult.error) {
+      throw new Error(`Failed to load calendar schedule: ${scheduledResult.error.message}`);
+    }
+
+    let sessionsQuery = supabase
+      .from("task_sessions")
+      .select("id, task_id, started_at, ended_at")
+      .lt("started_at", calendarRange.endUtcIso)
+      .or(`ended_at.is.null,ended_at.gt.${calendarRange.startUtcIso}`)
+      .order("started_at", { ascending: true })
+      .limit(CALENDAR_ROW_CAP);
+    if (userId) sessionsQuery = sessionsQuery.eq("owner_user_id", userId);
+    const sessionsResult = await sessionsQuery;
+
+    if (sessionsResult.error) {
+      throw new Error(`Failed to load calendar sessions: ${sessionsResult.error.message}`);
+    }
+
+    const sessionRows = (sessionsResult.data ?? []) as Array<{
+      id: string;
+      task_id: string;
+      started_at: string;
+      ended_at: string | null;
+    }>;
+    const sessionTaskIds = Array.from(new Set(sessionRows.map((session) => session.task_id)));
+    const sessionTaskTitles = new Map<string, string>();
+    const visibleSessionTaskIds = new Set<string>();
+    if (sessionTaskIds.length > 0) {
+      let sessionTasksQuery = supabase
+        .from("tasks")
+        .select("id, title, project_id, goal_id, status, archived_at")
+        .in("id", sessionTaskIds);
+      if (userId) sessionTasksQuery = sessionTasksQuery.eq("owner_user_id", userId);
+      const sessionTasksResult = await sessionTasksQuery;
+      if (sessionTasksResult.error) {
+        throw new Error(
+          `Failed to load calendar session tasks: ${sessionTasksResult.error.message}`,
+        );
+      }
+      for (const task of sessionTasksResult.data ?? []) {
+        sessionTaskTitles.set(task.id, task.title);
+        const matchesProject = !activeProjectId || task.project_id === activeProjectId;
+        const matchesGoal = !activeGoalId || task.goal_id === activeGoalId;
+        const matchesStatus = !filters.activeStatus || task.status === filters.activeStatus;
+        const matchesActiveOnly = !filters.activeTasksOnly || task.status !== "done";
+        const matchesArchive =
+          filters.activeView === "active"
+            ? task.archived_at === null
+            : filters.activeView === "archived"
+              ? task.archived_at !== null
+              : true;
+        if (
+          matchesProject &&
+          matchesGoal &&
+          matchesStatus &&
+          matchesActiveOnly &&
+          matchesArchive
+        ) {
+          visibleSessionTaskIds.add(task.id);
+        }
+      }
+    }
+
+    const scheduledTasks = (scheduledResult.data ?? []) as unknown as CalendarProjectableTask[];
+    const sessions: CalendarProjectableSession[] = sessionRows
+      .filter(
+        (session) =>
+          visibleSessionTaskIds.has(session.task_id) ||
+          // A deleted task with no verifiable scope is only shown when no
+          // narrowing filter is active; its owner-scoped title is gone.
+          (!sessionTaskTitles.has(session.task_id) &&
+            !activeProjectId &&
+            !activeGoalId &&
+            !filters.activeStatus),
+      )
+      .map((session) => ({
+        id: session.id,
+        taskId: session.task_id,
+        title: sessionTaskTitles.get(session.task_id) ?? "Deleted task",
+        startIso: session.started_at,
+        endIso: session.ended_at,
+      }));
+
+    calendar = buildTaskCalendarProjection({
+      range: calendarRange,
+      view: options.calendar.view,
+      dateField: options.calendar.dateField,
+      todayDate: todayIsoDate,
+      tasks: tasksWithReminders as unknown as CalendarProjectableTask[],
+      scheduledTasks,
+      sessions,
+      truncated:
+        tasks.length >= CALENDAR_ROW_CAP ||
+        scheduledTasks.length >= CALENDAR_ROW_CAP ||
+        sessionRows.length >= CALENDAR_ROW_CAP,
+    });
+  }
+
   return {
     projects: projectsResult.data,
     goals: visibleGoals,
     tasks: tasksWithReminders,
     taskTotalDurations,
+    taskOpenSessionIds: taskTrackedTime.data.openSessionTaskIds,
     summary: taskSummary.unavailable
       ? { total: tasks.length, active: tasks.length, archived: 0 }
       : {
@@ -1002,14 +1326,19 @@ export async function getTasksWorkspaceData(
             is_default: true,
           })),
           ...(savedViewsResult.data ?? []).map((view) => {
-            const definition = normalizeTaskSavedViewDefinition(
-              "definition_json" in view ? view.definition_json : null,
-            );
+            const definition = getTaskViewFromSavedView({
+              definitionJson: "definition_json" in view ? view.definition_json : null,
+              status: view.status,
+              projectId: view.project_id,
+              goalId: view.goal_id,
+              dueFilter: view.due_filter,
+              sortValue: view.sort_value,
+            });
             const definitionFilters = getTaskSavedViewFiltersFromDefinition(definition);
             const legacyFilters = normalizeTaskSavedViewFilters({
               status: definitionFilters.status ?? view.status,
-              projectId: view.project_id,
-              goalId: view.goal_id,
+              projectId: definitionFilters.projectId ?? view.project_id,
+              goalId: definitionFilters.goalId ?? view.goal_id,
               dueFilter: view.due_filter ?? "all",
               sortValue: view.sort_value ?? "updated_desc",
               activeTasks: definitionFilters.activeTasks,
@@ -1036,6 +1365,11 @@ export async function getTasksWorkspaceData(
     savedViewsUnavailable,
     activeProjectId,
     activeGoalId,
+    view: scopedView,
+    filteredTotal: viewResult.totalCount,
+    loadedCount: viewResult.loadedCount,
+    truncated: viewResult.truncated,
+    calendar,
   };
 }
 
@@ -1056,6 +1390,7 @@ export async function createTasks(
   }
 
   for (const row of taskRows) {
+    if (row.title.length > TASK_TITLE_MAX) return { errorMessage: TASK_TITLE_LENGTH_ERROR };
     const statusValue = String(row.status ?? "todo").trim();
     const blockedReason = normalizeTaskBlockedReasonInput(row.blocked_reason);
 
@@ -1087,6 +1422,8 @@ export async function createTasks(
   }
 
   if (error) {
+    if (error.code === "22001") return { errorMessage: TASK_TITLE_LENGTH_ERROR };
+    console.error("Task insert failed", { code: error.code });
     return { errorMessage: "Unable to create task right now." };
   }
 
@@ -1430,7 +1767,15 @@ export function validateTaskInlineUpdateInput(input: ValidateTaskInlineUpdateInp
       : String(input.description ?? "").trim() || null;
   const status = input.status.trim();
   const priority = input.priority.trim();
+  const startDateResult =
+    input.startDate === undefined
+      ? { value: undefined, error: null }
+      : normalizeTaskStartDateInput(input.startDate);
   const dueDateResult = normalizeTaskDueDateInput(input.dueDate);
+  const plannedForDateResult =
+    input.plannedForDate === undefined
+      ? { value: undefined as string | null | undefined, error: null as string | null }
+      : normalizeTaskPlannedDateInput(input.plannedForDate);
   const estimateResult = normalizeTaskEstimateInput(input.estimateMinutes);
   const blockedReason = normalizeTaskBlockedReasonInput(input.blockedReason);
   const recurrenceRuleResult =
@@ -1467,6 +1812,10 @@ export function validateTaskInlineUpdateInput(input: ValidateTaskInlineUpdateInp
     };
   }
 
+  if (title !== undefined && title.length > TASK_TITLE_MAX) {
+    return { errorMessage: TASK_TITLE_LENGTH_ERROR };
+  }
+
   if (projectId !== undefined && !projectId) {
     return {
       errorMessage: "Project is required.",
@@ -1485,9 +1834,27 @@ export function validateTaskInlineUpdateInput(input: ValidateTaskInlineUpdateInp
     };
   }
 
+  if (startDateResult.error) {
+    return {
+      errorMessage: startDateResult.error,
+    };
+  }
+
   if (dueDateResult.error) {
     return {
       errorMessage: dueDateResult.error,
+    };
+  }
+
+  if (startDateResult.value && dueDateResult.value && dueDateResult.value < startDateResult.value) {
+    return {
+      errorMessage: "Due date cannot be before the start date.",
+    };
+  }
+
+  if (plannedForDateResult.error) {
+    return {
+      errorMessage: plannedForDateResult.error,
     };
   }
 
@@ -1528,7 +1895,11 @@ export function validateTaskInlineUpdateInput(input: ValidateTaskInlineUpdateInp
       ...(description === undefined ? {} : { description }),
       status,
       priority,
+      ...(startDateResult.value === undefined ? {} : { startDate: startDateResult.value }),
       dueDate: dueDateResult.value,
+      ...(plannedForDateResult.value === undefined
+        ? {}
+        : { plannedForDate: plannedForDateResult.value }),
       estimateMinutes: estimateResult.value,
       blockedReason: normalizedBlockedReason,
       ...(scheduleResult
@@ -1772,6 +2143,18 @@ export async function updateTaskInline(
     supabase?: SupabaseServerClient;
     updatedAtIso?: string;
     /**
+     * Optimistic-concurrency precondition: the row must still carry this
+     * `updated_at` or the write is rejected. Used by single-field patches so a
+     * second editor cannot silently write back the values it read earlier.
+     */
+    expectedUpdatedAt?: string;
+    /**
+     * Board position for a card move (EGA-785). `null` explicitly means "append
+     * to the end of the column"; the database trigger assigns the append key.
+     * Provided together with `status` so status + order commit in one row write.
+     */
+    boardRank?: string | null;
+    /**
      * Canonical account local date (YYYY-MM-DD) from the owner's Time Context.
      * Used as the recurrence anchor fallback instead of the runtime-local date
      * so web writes agree with the Hono transport near account midnight.
@@ -1780,11 +2163,14 @@ export async function updateTaskInline(
   },
 ) {
   const supabase = await resolveSupabaseClient(options?.supabase);
+  if (input.title !== undefined && input.title.length > TASK_TITLE_MAX) {
+    return { errorMessage: TASK_TITLE_LENGTH_ERROR };
+  }
   const updatedAtIso = options?.updatedAtIso ?? new Date().toISOString();
 
   let { data: currentTask, error: currentTaskError } = await supabase
     .from("tasks")
-    .select("id, owner_user_id, project_id, goal_id, status, completed_at, archived_at")
+    .select("id, owner_user_id, project_id, goal_id, status, start_date, due_date, completed_at, archived_at, updated_at")
     .eq("id", input.taskId)
     .maybeSingle();
   let completedAtUnavailable = false;
@@ -1792,7 +2178,7 @@ export async function updateTaskInline(
   if (currentTaskError && isMissingTasksCompletedAtColumn(currentTaskError)) {
     const fallbackResult = await supabase
       .from("tasks")
-      .select("id, owner_user_id, project_id, goal_id, status, archived_at")
+      .select("id, owner_user_id, project_id, goal_id, status, start_date, due_date, archived_at, updated_at")
       .eq("id", input.taskId)
       .maybeSingle();
 
@@ -1809,6 +2195,14 @@ export async function updateTaskInline(
 
   if (!currentTask) {
     return { errorMessage: "Task was not found or is no longer available." };
+  }
+
+  const effectiveStartDate =
+    input.startDate !== undefined ? input.startDate : currentTask.start_date ?? null;
+  const effectiveDueDate =
+    input.dueDate !== undefined ? input.dueDate : currentTask.due_date ?? null;
+  if (effectiveStartDate && effectiveDueDate && effectiveDueDate < effectiveStartDate) {
+    return { errorMessage: "Due date cannot be before the start date." };
   }
 
   if (input.projectId !== undefined || input.goalId !== undefined) {
@@ -1856,6 +2250,14 @@ export async function updateTaskInline(
     updated_at: updatedAtIso,
   };
 
+  if (input.startDate !== undefined) {
+    updatePayload.start_date = input.startDate;
+  }
+
+  if (input.plannedForDate !== undefined) {
+    updatePayload.planned_for_date = input.plannedForDate;
+  }
+
   if (input.title !== undefined) {
     updatePayload.title = input.title;
   }
@@ -1870,6 +2272,12 @@ export async function updateTaskInline(
 
   if (input.description !== undefined) {
     updatePayload.description = input.description;
+  }
+
+  if (options?.boardRank !== undefined) {
+    // Status and order are one row update, so a cross-column move cannot commit
+    // a new status with a stale position (or vice versa).
+    updatePayload.board_rank = options.boardRank;
   }
 
   if (input.scheduledStartAt !== undefined) {
@@ -1892,20 +2300,22 @@ export async function updateTaskInline(
         : null;
   }
 
-  let { data: updatedTask, error } = await supabase
-    .from("tasks")
-    .update(updatePayload)
-    .eq("id", input.taskId)
+  const expectedUpdatedAt = options?.expectedUpdatedAt;
+  const guard = <T extends { eq: (column: string, value: string) => T }>(query: T): T =>
+    expectedUpdatedAt ? query.eq("updated_at", expectedUpdatedAt) : query;
+
+  let { data: updatedTask, error } = await guard(
+    supabase.from("tasks").update(updatePayload).eq("id", input.taskId),
+  )
     .select("id")
     .maybeSingle();
 
   if (error && isTasksBlockedReasonMissing(error)) {
     const fallbackPayload = { ...updatePayload };
     delete fallbackPayload.blocked_reason;
-    const fallbackResult = await supabase
-      .from("tasks")
-      .update(fallbackPayload)
-      .eq("id", input.taskId)
+    const fallbackResult = await guard(
+      supabase.from("tasks").update(fallbackPayload).eq("id", input.taskId),
+    )
       .select("id")
       .maybeSingle();
     updatedTask = fallbackResult.data;
@@ -1915,10 +2325,9 @@ export async function updateTaskInline(
   if (error && isMissingTasksCompletedAtColumn(error)) {
     const fallbackPayload = { ...updatePayload };
     delete fallbackPayload.completed_at;
-    const fallbackResult = await supabase
-      .from("tasks")
-      .update(fallbackPayload)
-      .eq("id", input.taskId)
+    const fallbackResult = await guard(
+      supabase.from("tasks").update(fallbackPayload).eq("id", input.taskId),
+    )
       .select("id")
       .maybeSingle();
     updatedTask = fallbackResult.data;
@@ -1930,7 +2339,11 @@ export async function updateTaskInline(
   }
 
   if (!updatedTask) {
-    return { errorMessage: "Task was not found or is no longer available." };
+    return {
+      errorMessage: expectedUpdatedAt
+        ? "This task changed since you opened it. Reload and try again."
+        : "Task was not found or is no longer available.",
+    };
   }
 
   if (input.recurrenceRule !== undefined) {
@@ -2095,7 +2508,7 @@ export async function getTaskById(
   let { data, error } = await supabase
     .from("tasks")
     .select(
-      "id, title, description, blocked_reason, status, priority, due_date, planned_for_date, scheduled_start_at, scheduled_end_at, calendar_sync_enabled, calendar_reminder_minutes, estimate_minutes, updated_at, completed_at, project_id, goal_id, focus_rank, archived_at, archived_by, projects(name, slug), goals(title)",
+      "id, title, description, blocked_reason, status, priority, start_date, due_date, planned_for_date, scheduled_start_at, scheduled_end_at, calendar_sync_enabled, calendar_reminder_minutes, estimate_minutes, updated_at, completed_at, project_id, goal_id, focus_rank, board_rank, archived_at, archived_by, projects(name, slug), goals(title)",
     )
     .eq("id", normalizedTaskId)
     .maybeSingle();
@@ -2104,7 +2517,7 @@ export async function getTaskById(
     const fallbackResult = await supabase
       .from("tasks")
       .select(
-        "id, title, description, status, priority, due_date, planned_for_date, scheduled_start_at, scheduled_end_at, calendar_sync_enabled, calendar_reminder_minutes, estimate_minutes, updated_at, completed_at, project_id, goal_id, focus_rank, archived_at, archived_by, projects(name, slug), goals(title)",
+        "id, title, description, status, priority, start_date, due_date, planned_for_date, scheduled_start_at, scheduled_end_at, calendar_sync_enabled, calendar_reminder_minutes, estimate_minutes, updated_at, completed_at, project_id, goal_id, focus_rank, board_rank, archived_at, archived_by, projects(name, slug), goals(title)",
       )
       .eq("id", normalizedTaskId)
       .maybeSingle();
@@ -2225,4 +2638,676 @@ export async function deleteTaskSafely(
   }
 
   return { errorMessage: null };
+}
+
+/**
+ * Minimal projection the task drawer needs for its header and read-only
+ * metadata. Mutations keep using the existing validated update services.
+ */
+export type TaskDrawerDetail = {
+  id: string;
+  title: string;
+  description: string | null;
+  status: string;
+  priority: string;
+  start_date: string | null;
+  due_date: string | null;
+  estimate_minutes: number | null;
+  blocked_reason: string | null;
+  project_id: string | null;
+  goal_id: string | null;
+  archived_at: string | null;
+  /** Blocked-by dependency detail, loaded with the drawer row. */
+  dependencies: TaskDependencyDetail | null;
+  dependencyError: string | null;
+  /**
+   * Lifetime tracked seconds from the canonical timer total. `null` means the
+   * session query failed: the drawer must not present that as zero tracked.
+   */
+  tracked_seconds: number | null;
+  /** A running session is included, so the total is still moving. */
+  has_open_session: boolean;
+};
+
+/**
+ * Load one task for the detail drawer, scoped to the authenticated owner.
+ *
+ * RLS already restricts rows to the caller; the explicit `owner_user_id` filter
+ * makes the intent local and keeps an unknown id indistinguishable from another
+ * owner's id (both `unavailable`), so the drawer cannot disclose that a task
+ * exists elsewhere. A query error is reported as `error`, never as a missing
+ * task.
+ */
+export type TaskDrawerDetailResult =
+  | { kind: "found"; task: TaskDrawerDetail }
+  | { kind: "unavailable" }
+  | { kind: "error" };
+
+export async function getTaskDrawerDetail(
+  taskId: string,
+  options?: { supabase?: SupabaseServerClient },
+): Promise<TaskDrawerDetailResult> {
+  const normalizedId = taskId.trim();
+  if (!normalizedId) return { kind: "unavailable" };
+
+  const supabase = await resolveSupabaseClient(options?.supabase);
+  const userId = await getAuthenticatedUserId(supabase);
+  if (!userId) return { kind: "unavailable" };
+
+  const { data, error } = await supabase
+    .from("tasks")
+    .select(
+      "id, title, description, status, priority, start_date, due_date, estimate_minutes, blocked_reason, project_id, goal_id, archived_at",
+    )
+    .eq("id", normalizedId)
+    .eq("owner_user_id", userId)
+    .maybeSingle();
+
+  // A missing row (unknown id or another owner's task under RLS) is
+  // indistinguishable; a query error is an operational failure and must not be
+  // reported to the user as "deleted".
+  if (error) return { kind: "error" };
+  if (!data) return { kind: "unavailable" };
+
+  const dependencyResult = await getTaskDependencyDetail(normalizedId, { supabase });
+  // The task id was resolved from an owner-scoped row, and task_sessions is
+  // RLS-scoped too, so the session total cannot read another owner's history.
+  const trackedResult = await getTaskTrackedTimeSummary(supabase, [data.id]);
+  const trackedSeconds = trackedResult.data
+    ? trackedResult.data.trackedSecondsByTask[data.id] ?? 0
+    : null;
+
+  return {
+    kind: "found",
+    task: {
+      ...(data as Omit<
+        TaskDrawerDetail,
+        "dependencies" | "dependencyError" | "tracked_seconds" | "has_open_session"
+      >),
+      dependencies: dependencyResult.data,
+      dependencyError: dependencyResult.errorMessage,
+      tracked_seconds: trackedSeconds,
+      has_open_session: trackedResult.data
+        ? trackedResult.data.openSessionTaskIds.includes(data.id)
+        : false,
+    },
+  };
+}
+
+/**
+ * Fields the drawer may patch one at a time.
+ *
+ * Deliberately narrow: project/goal, recurrence, reminders and scheduling keep
+ * their dedicated services because they carry side effects a generic patch must
+ * not bypass.
+ */
+export const TASK_FIELD_PATCH_FIELDS = [
+  "title",
+  "description",
+  "status",
+  "priority",
+  "project",
+  "startDate",
+  "dueDate",
+  "plannedDate",
+  "estimateMinutes",
+  "blockedReason",
+] as const;
+
+export type TaskFieldPatchField = (typeof TASK_FIELD_PATCH_FIELDS)[number];
+
+export function isTaskFieldPatchField(value: string): value is TaskFieldPatchField {
+  return (TASK_FIELD_PATCH_FIELDS as readonly string[]).includes(value);
+}
+
+/** The current values a single-field patch must carry forward unchanged. */
+export type TaskFieldPatchCurrent = {
+  title: string;
+  description: string | null;
+  status: string;
+  priority: string;
+  project_id: string;
+  start_date: string | null;
+  due_date: string | null;
+  planned_for_date: string | null;
+  estimate_minutes: number | null;
+  blocked_reason: string | null;
+};
+
+/**
+ * Merge one changed field into the task's current values.
+ *
+ * `validateTaskInlineUpdateInput` requires status/priority/due/estimate/blocked
+ * together, so a single-field patch cannot forward only the changed field. The
+ * current values come from the server-side row, never from hidden client fields,
+ * so an unrelated stale field can never be written back.
+ */
+export function buildTaskFieldPatchInput(
+  taskId: string,
+  current: TaskFieldPatchCurrent,
+  field: string,
+  value: string,
+): { errorMessage: null; input: ValidateTaskInlineUpdateInput } | { errorMessage: string } {
+  if (!isTaskFieldPatchField(field)) {
+    return { errorMessage: "Unsupported task field update." };
+  }
+
+  const input: ValidateTaskInlineUpdateInput = {
+    taskId,
+    // Carried only when the patch targets it: `updateTaskInline` rewrites every
+    // field it receives, and a priority/due edit must not touch the title.
+    title: field === "title" ? value : undefined,
+    // Same rule as the title: only a description edit carries a description, so
+    // a status/priority patch can never overwrite text the drawer did not show.
+    description: field === "description" ? value : undefined,
+    status: current.status,
+    priority: current.priority,
+    startDate: current.start_date ?? "",
+    dueDate: current.due_date ?? "",
+    // Carried only for a planned-date patch: `updateTaskInline` writes every
+    // field it receives, so unrelated patches must leave the date untouched.
+    plannedForDate: field === "plannedDate" ? value : undefined,
+    estimateMinutes: current.estimate_minutes,
+    blockedReason: current.blocked_reason,
+  };
+
+  if (field === "status") input.status = value;
+  if (field === "priority") input.priority = value;
+  if (field === "project") {
+    input.projectId = value;
+    // The goal must belong to the selected project. Match the bulk path by
+    // clearing it only when the project actually changes.
+    if (value !== current.project_id) input.goalId = "";
+  }
+  if (field === "startDate") input.startDate = value;
+  if (field === "dueDate") input.dueDate = value;
+  if (field === "plannedDate") input.plannedForDate = value;
+  if (field === "estimateMinutes") input.estimateMinutes = value;
+  if (field === "blockedReason") input.blockedReason = value;
+
+  return { errorMessage: null, input };
+}
+
+/**
+ * Move/resize a planned task bar: both date-only endpoints in one versioned
+ * write.
+ *
+ * Timeline drag/resize and the non-drag date editor share this function, so
+ * they enforce the same date-only validation, `due >= start`, owner scope and
+ * optimistic version check. Routing through `updateTaskInline` also preserves
+ * the existing calendar-signal policy and unrelated task fields.
+ */
+export async function updateTaskTimelineSchedule(
+  input: {
+    taskId: string;
+    startDate: unknown;
+    dueDate: unknown;
+    expectedUpdatedAt?: string;
+  },
+  options?: { supabase?: SupabaseServerClient; accountTimezone?: string },
+): Promise<{ errorMessage: string | null }> {
+  const taskId = input.taskId.trim();
+  if (!taskId) return { errorMessage: "Task schedule update request is invalid." };
+
+  const startDateResult = normalizeTaskStartDateInput(input.startDate);
+  const dueDateResult = normalizeTaskDueDateInput(input.dueDate);
+  if (startDateResult.error) return { errorMessage: startDateResult.error };
+  if (dueDateResult.error) return { errorMessage: dueDateResult.error };
+  if (startDateResult.value && dueDateResult.value && dueDateResult.value < startDateResult.value) {
+    return { errorMessage: "Due date cannot be before the start date." };
+  }
+
+  const supabase = await resolveSupabaseClient(options?.supabase);
+  const userId = await getAuthenticatedUserId(supabase);
+  if (!userId) return { errorMessage: "Task was not found or is no longer available." };
+
+  const { data: current, error: loadError } = await supabase
+    .from("tasks")
+    .select("status, priority, start_date, due_date, estimate_minutes, blocked_reason, archived_at, updated_at")
+    .eq("id", taskId)
+    .eq("owner_user_id", userId)
+    .maybeSingle();
+  if (loadError) return { errorMessage: "Unable to load task right now." };
+  if (!current) return { errorMessage: "Task was not found or is no longer available." };
+  if (current.archived_at) return { errorMessage: "Restore this task before changing its dates." };
+
+  const expectedUpdatedAt = String(input.expectedUpdatedAt ?? "").trim() || current.updated_at;
+  if (expectedUpdatedAt !== current.updated_at) {
+    return { errorMessage: "This task changed since you opened it. Reload and try again." };
+  }
+
+  const validation = validateTaskInlineUpdateInput({
+    taskId,
+    status: String(current.status),
+    priority: String(current.priority),
+    startDate: startDateResult.value,
+    dueDate: dueDateResult.value,
+    estimateMinutes: current.estimate_minutes,
+    blockedReason: current.blocked_reason,
+    accountTimezone: options?.accountTimezone,
+  });
+  if (validation.errorMessage || !validation.data) {
+    return { errorMessage: validation.errorMessage ?? "Task schedule update is invalid." };
+  }
+
+  return updateTaskInline(validation.data, {
+    supabase,
+    expectedUpdatedAt: current.updated_at,
+  });
+}
+
+export type TaskFieldPatchResult = {
+  errorMessage: string | null;
+  savedValue?: string;
+  updatedAt?: string;
+};
+
+/**
+ * Apply one whitelisted field change to a task the caller owns.
+ *
+ * The current row is read server-side and merged into the validated input, so a
+ * single-field patch can never write back a stale value the browser happened to
+ * hold. Unknown ids, another owner's ids and a missing session all return the
+ * same message.
+ *
+ * When the caller supplies `expectedUpdatedAt` (the revision it rendered), a
+ * changed row is rejected before any write. The write itself is always guarded
+ * by the revision read here.
+ */
+export async function updateTaskFieldForOwner(
+  input: {
+    taskId: string;
+    field: string;
+    value: string;
+    expectedUpdatedAt?: string;
+  },
+  options?: {
+    supabase?: SupabaseServerClient;
+    accountTimezone?: string;
+    fallbackAnchorDate?: string;
+    /**
+     * Revision the calendar rendered. A newer edit rejects the write instead
+     * of silently overwriting it.
+     */
+    expectedUpdatedAt?: string;
+  },
+): Promise<TaskFieldPatchResult> {
+  const taskId = input.taskId.trim();
+  if (!taskId) return { errorMessage: "Task update request is invalid." };
+  if (!isTaskFieldPatchField(input.field)) {
+    return { errorMessage: "Unsupported task field update." };
+  }
+
+  const supabase = await resolveSupabaseClient(options?.supabase);
+  const userId = await getAuthenticatedUserId(supabase);
+  if (!userId) return { errorMessage: "Task was not found or is no longer available." };
+
+  const { data: current, error: loadError } = await supabase
+    .from("tasks")
+    .select(
+      "title, description, status, priority, project_id, start_date, due_date, planned_for_date, scheduled_start_at, scheduled_end_at, calendar_sync_enabled, estimate_minutes, blocked_reason, updated_at",
+    )
+    .eq("id", taskId)
+    .eq("owner_user_id", userId)
+    .maybeSingle();
+
+  if (loadError) return { errorMessage: "Unable to load task right now." };
+  if (!current) {
+    return { errorMessage: "Task was not found or is no longer available." };
+  }
+
+  const currentUpdatedAt = String((current as { updated_at?: string }).updated_at ?? "");
+  const expectedUpdatedAt = String(input.expectedUpdatedAt ?? "").trim();
+  if (expectedUpdatedAt) {
+    const expectedTime = Date.parse(expectedUpdatedAt);
+    const currentTime = Date.parse(currentUpdatedAt);
+    const matches =
+      Number.isFinite(expectedTime) && Number.isFinite(currentTime)
+        ? expectedTime === currentTime
+        : expectedUpdatedAt === currentUpdatedAt;
+    if (!matches) {
+      return {
+        errorMessage: "This task changed since you opened it. Reload and try again.",
+      };
+    }
+  }
+
+  const built = buildTaskFieldPatchInput(
+    taskId,
+    current as TaskFieldPatchCurrent,
+    input.field,
+    input.value,
+  );
+  if (!("input" in built)) return { errorMessage: built.errorMessage };
+
+  const validation = validateTaskInlineUpdateInput({
+    ...built.input,
+    accountTimezone: options?.accountTimezone,
+  });
+  if (validation.errorMessage || !validation.data) {
+    return { errorMessage: validation.errorMessage ?? "Task update request is invalid." };
+  }
+
+  const updatedAtIso = new Date().toISOString();
+  const result = await updateTaskInline(validation.data, {
+    supabase,
+    updatedAtIso,
+    fallbackAnchorDate: options?.fallbackAnchorDate,
+    expectedUpdatedAt: currentUpdatedAt,
+  });
+
+  if (result.errorMessage) return { errorMessage: result.errorMessage };
+
+  // A due/planned move changes only the selected date field, but an already
+  // scheduled task with calendar sync enabled must still re-push its event so
+  // external calendar copies agree with the task surface.
+  if (input.field === "dueDate" || input.field === "plannedDate") {
+    const scheduledStartAt = (current as { scheduled_start_at?: string | null }).scheduled_start_at;
+    const scheduledEndAt = (current as { scheduled_end_at?: string | null }).scheduled_end_at;
+    const calendarSyncEnabled = Boolean(
+      (current as { calendar_sync_enabled?: boolean | null }).calendar_sync_enabled,
+    );
+    if (calendarSyncEnabled && scheduledStartAt && scheduledEndAt) {
+      await enqueueCalendarSyncJob(
+        { taskId, ownerUserId: userId, operation: "upsert" },
+        { supabase },
+      );
+    }
+  }
+
+  return {
+    errorMessage: null,
+    savedValue: input.value,
+    updatedAt: updatedAtIso,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Calendar rescheduling
+// ---------------------------------------------------------------------------
+
+export type TaskCalendarDateMoveField = "due" | "planned";
+
+export type TaskCalendarRescheduleResult = {
+  errorMessage: string | null;
+  /** False for an idempotent duplicate submit that matched the stored value. */
+  changed: boolean;
+};
+
+const TASK_CALENDAR_MOVE_SELECT =
+  "id, title, description, status, priority, due_date, planned_for_date, scheduled_start_at, scheduled_end_at, calendar_sync_enabled, estimate_minutes, blocked_reason, updated_at";
+
+function padCalendarPart(value: number) {
+  return String(value).padStart(2, "0");
+}
+
+function formatUtcWallDate(valueMs: number) {
+  const date = new Date(valueMs);
+  return `${date.getUTCFullYear()}-${padCalendarPart(date.getUTCMonth() + 1)}-${padCalendarPart(
+    date.getUTCDate(),
+  )}T${padCalendarPart(date.getUTCHours())}:${padCalendarPart(date.getUTCMinutes())}`;
+}
+
+/**
+ * Preserve the block's wall-clock duration while moving it to another local
+ * date/time. The returned values are `datetime-local` strings interpreted in
+ * the owner's timezone by the canonical schedule validator.
+ */
+export function buildRescheduledWallWindow(input: {
+  currentStartIso: string;
+  currentEndIso: string;
+  timezone: string;
+  targetDate: string;
+  targetTime?: string | null;
+}): { errorMessage: null; startLocal: string; endLocal: string } | { errorMessage: string } {
+  if (!isDateOnlyValue(input.targetDate)) {
+    return { errorMessage: "Choose a valid day to move this block." };
+  }
+
+  const currentStart = getLocalWallTimeParts(input.currentStartIso, input.timezone);
+  const currentEnd = getLocalWallTimeParts(input.currentEndIso, input.timezone);
+  if (!currentStart || !currentEnd) {
+    return { errorMessage: "Unable to read the scheduled block right now." };
+  }
+
+  const targetTime = (input.targetTime ?? "").trim() || currentStart.time;
+  if (!/^\d{2}:\d{2}$/.test(targetTime)) {
+    return { errorMessage: "Start time must use HH:MM." };
+  }
+
+  const startCarrierMs = Date.parse(`${currentStart.date}T${currentStart.time}:00.000Z`);
+  const endCarrierMs = Date.parse(`${currentEnd.date}T${currentEnd.time}:00.000Z`);
+  const durationMinutes = Math.round((endCarrierMs - startCarrierMs) / 60_000);
+  if (!Number.isFinite(durationMinutes) || durationMinutes <= 0) {
+    return { errorMessage: "The scheduled block is invalid." };
+  }
+
+  const targetStartMs = Date.parse(`${input.targetDate}T${targetTime}:00.000Z`);
+  if (!Number.isFinite(targetStartMs)) {
+    return { errorMessage: "Choose a valid day and time to move this block." };
+  }
+
+  return {
+    errorMessage: null,
+    startLocal: `${input.targetDate}T${targetTime}`,
+    endLocal: formatUtcWallDate(targetStartMs + durationMinutes * 60_000),
+  };
+}
+
+type CalendarMoveTaskRow = {
+  id: string;
+  title: string;
+  description: string | null;
+  status: string;
+  priority: string;
+  due_date: string | null;
+  planned_for_date: string | null;
+  scheduled_start_at: string | null;
+  scheduled_end_at: string | null;
+  calendar_sync_enabled: boolean;
+  estimate_minutes: number | null;
+  blocked_reason: string | null;
+  updated_at: string;
+};
+
+async function loadCalendarMoveTask(
+  supabase: SupabaseServerClient,
+  userId: string,
+  taskId: string,
+): Promise<{ task: CalendarMoveTaskRow | null; errorMessage: string | null }> {
+  const { data, error } = await supabase
+    .from("tasks")
+    .select(TASK_CALENDAR_MOVE_SELECT)
+    .eq("id", taskId)
+    .eq("owner_user_id", userId)
+    .maybeSingle();
+
+  if (error) return { task: null, errorMessage: "Unable to load task right now." };
+  if (!data) {
+    return { task: null, errorMessage: "Task was not found or is no longer available." };
+  }
+  return { task: data as CalendarMoveTaskRow, errorMessage: null };
+}
+
+/**
+ * Move a task between calendar days by changing only the selected date field.
+ *
+ * The current row is read server-side, so the action never trusts a client
+ * snapshot for unrelated fields. A duplicate submit that already matches the
+ * stored date is a successful no-op; a stale render is rejected.
+ */
+export async function rescheduleTaskDateForOwner(
+  input: {
+    taskId: string;
+    field: TaskCalendarDateMoveField;
+    date: string;
+    expectedUpdatedAt?: string;
+  },
+  options?: {
+    supabase?: SupabaseServerClient;
+    accountTimezone?: string;
+    fallbackAnchorDate?: string;
+  },
+): Promise<TaskCalendarRescheduleResult> {
+  const taskId = input.taskId.trim();
+  if (!taskId) {
+    return { errorMessage: "Task update request is invalid.", changed: false };
+  }
+  if (input.field !== "due" && input.field !== "planned") {
+    return { errorMessage: "Unsupported calendar date field.", changed: false };
+  }
+
+  const normalizedDate =
+    input.field === "planned"
+      ? normalizeTaskPlannedDateInput(input.date)
+      : normalizeTaskDueDateInput(input.date);
+  if (normalizedDate.error || !normalizedDate.value) {
+    return {
+      errorMessage: normalizedDate.error ?? "Choose a valid day to move this task.",
+      changed: false,
+    };
+  }
+
+  const supabase = await resolveSupabaseClient(options?.supabase);
+  const userId = await getAuthenticatedUserId(supabase);
+  if (!userId) {
+    return { errorMessage: "Task was not found or is no longer available.", changed: false };
+  }
+
+  const loaded = await loadCalendarMoveTask(supabase, userId, taskId);
+  if (!loaded.task) {
+    return { errorMessage: loaded.errorMessage, changed: false };
+  }
+
+  const currentValue =
+    input.field === "planned" ? loaded.task.planned_for_date : loaded.task.due_date;
+  if (currentValue === normalizedDate.value) {
+    return { errorMessage: null, changed: false };
+  }
+
+  if (input.expectedUpdatedAt && input.expectedUpdatedAt !== loaded.task.updated_at) {
+    return {
+      errorMessage: "This task changed since you opened it. Reload and try again.",
+      changed: false,
+    };
+  }
+
+  const result = await updateTaskFieldForOwner(
+    {
+      taskId,
+      field: input.field === "planned" ? "plannedDate" : "dueDate",
+      value: normalizedDate.value,
+      expectedUpdatedAt: input.expectedUpdatedAt ?? loaded.task.updated_at,
+    },
+    {
+      supabase,
+      accountTimezone: options?.accountTimezone,
+      fallbackAnchorDate: options?.fallbackAnchorDate,
+    },
+  );
+
+  return { errorMessage: result.errorMessage, changed: result.errorMessage === null };
+}
+
+/**
+ * Move a scheduled block to another local day (and optionally start time),
+ * preserving its wall-clock duration. Validation and the write go through the
+ * canonical schedule input, so DST gaps, owner timezone and calendar resync
+ * behave exactly like the task editor.
+ */
+export async function rescheduleTaskScheduledWindowForOwner(
+  input: {
+    taskId: string;
+    date: string;
+    time?: string | null;
+    expectedUpdatedAt?: string;
+  },
+  options?: {
+    supabase?: SupabaseServerClient;
+    accountTimezone?: string;
+    fallbackAnchorDate?: string;
+  },
+): Promise<TaskCalendarRescheduleResult> {
+  const taskId = input.taskId.trim();
+  if (!taskId) {
+    return { errorMessage: "Task update request is invalid.", changed: false };
+  }
+
+  const timezone = options?.accountTimezone?.trim();
+  if (!timezone) {
+    return {
+      errorMessage: "Unable to load the account timezone right now.",
+      changed: false,
+    };
+  }
+
+  const supabase = await resolveSupabaseClient(options?.supabase);
+  const userId = await getAuthenticatedUserId(supabase);
+  if (!userId) {
+    return { errorMessage: "Task was not found or is no longer available.", changed: false };
+  }
+
+  const loaded = await loadCalendarMoveTask(supabase, userId, taskId);
+  if (!loaded.task) {
+    return { errorMessage: loaded.errorMessage, changed: false };
+  }
+
+  if (!loaded.task.scheduled_start_at || !loaded.task.scheduled_end_at) {
+    return { errorMessage: "This task has no scheduled block to move.", changed: false };
+  }
+
+  const wallWindow = buildRescheduledWallWindow({
+    currentStartIso: loaded.task.scheduled_start_at,
+    currentEndIso: loaded.task.scheduled_end_at,
+    timezone,
+    targetDate: input.date,
+    targetTime: input.time,
+  });
+  if (!("startLocal" in wallWindow)) {
+    return { errorMessage: wallWindow.errorMessage, changed: false };
+  }
+
+  const currentStart = getLocalWallTimeParts(loaded.task.scheduled_start_at, timezone);
+  if (
+    currentStart &&
+    currentStart.date === input.date &&
+    wallWindow.startLocal === `${currentStart.date}T${currentStart.time}`
+  ) {
+    return { errorMessage: null, changed: false };
+  }
+
+  if (input.expectedUpdatedAt && input.expectedUpdatedAt !== loaded.task.updated_at) {
+    return {
+      errorMessage: "This task changed since you opened it. Reload and try again.",
+      changed: false,
+    };
+  }
+
+  const validation = validateTaskInlineUpdateInput({
+    taskId,
+    status: loaded.task.status,
+    priority: loaded.task.priority,
+    dueDate: loaded.task.due_date ?? "",
+    plannedForDate: loaded.task.planned_for_date,
+    estimateMinutes: loaded.task.estimate_minutes,
+    blockedReason: loaded.task.blocked_reason,
+    scheduledStartAt: wallWindow.startLocal,
+    scheduledEndAt: wallWindow.endLocal,
+    accountTimezone: timezone,
+    fallbackAnchorDate: options?.fallbackAnchorDate,
+  });
+  if (validation.errorMessage || !validation.data) {
+    return {
+      errorMessage: validation.errorMessage ?? "Scheduled block is invalid.",
+      changed: false,
+    };
+  }
+
+  const result = await updateTaskInline(validation.data, {
+    supabase,
+    expectedUpdatedAt: input.expectedUpdatedAt ?? loaded.task.updated_at,
+    fallbackAnchorDate: options?.fallbackAnchorDate,
+  });
+
+  return { errorMessage: result.errorMessage, changed: result.errorMessage === null };
 }

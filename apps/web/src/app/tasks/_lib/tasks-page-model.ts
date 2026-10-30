@@ -1,23 +1,50 @@
 import {
   DEFAULT_TASK_DUE_FILTER,
+  DEFAULT_TASK_LAYOUT,
   DEFAULT_TASK_SORT,
   buildTaskKanbanBoard,
   buildTaskListUrl,
   isTaskDueFilter,
+  isTaskLayout,
   isTaskSortValue,
+  normalizeTaskBoardOrder,
+  normalizeTaskCalendarDateField,
+  normalizeTaskCalendarView,
   normalizeTaskDensity,
-  normalizeTaskLayout,
+  parseTaskListView,
+  sortTasksForBoard,
+  type TaskBoardOrder,
+  type TaskCalendarDateField,
+  type TaskCalendarView,
   type TaskDensity,
   type TaskDueFilter,
   type TaskLayoutMode,
   type TaskSortValue,
+  type TaskViewDefinition,
 } from "@/lib/task-list";
+import { isDateOnlyValue } from "@/lib/task-due-date";
 import { isTaskStatus, type TaskStatus } from "@/lib/task-domain";
-import { normalizeTaskViewFilter, type TaskViewFilter } from "@/lib/task-archive";
-import { normalizeTaskSavedViewFilters } from "@/lib/task-saved-views";
+import { normalizeTaskViewFilter, type TaskViewFilter as TaskArchiveViewFilter } from "@/lib/task-archive";
+import {
+  getTaskSavedViewFiltersFromDefinition,
+  normalizeTaskSavedViewFilters,
+} from "@/lib/task-saved-views";
+import { groupTaskViewRecords } from "@ega/application/tasks/view";
+import { getTaskDrawerDetail } from "@/lib/services/task-service";
+import { getSubtaskCountsForTasks, listTaskSubtasks } from "@/lib/services/subtask-service";
+import { listTaskAttachments } from "@/lib/services/attachment-service";
+import { getTaskActivity } from "@/lib/services/task-activity-service";
+import { getTaskCommentThread } from "@/lib/services/task-comment-service";
+import { isFavorite } from "@/lib/services/favorite-service";
 import { getTasksWorkspaceData } from "@/lib/services/task-service";
+import { getTaskTimelineData } from "@/lib/services/task-timeline-service";
 import { getWebTimeContext } from "@/lib/services/time-context-service";
-import { isTaskDueSoon, isTaskOverdue } from "@/lib/task-due-date";
+import {
+  getTodayLocalIsoDate,
+  isTaskDueSoon,
+  isTaskOverdue,
+} from "@/lib/task-due-date";
+import { normalizeTimelineZoom, resolveTimelineRange } from "@/lib/task-timeline";
 
 export type TasksSearchParams = {
   status?: string;
@@ -33,13 +60,35 @@ export type TasksSearchParams = {
   archive?: string;
   layout?: string;
   density?: string;
+  boardOrder?: string;
   view?: string;
+  /** Table column layout (EGA-792). */
+  cols?: string;
+  widths?: string;
+  /** Canonical toolbar parameters (EGA-791). */
+  q?: string;
+  group?: string;
+  dir?: string;
+  filter?: string | string[];
+  /** `month` | `week` while `layout=calendar`. */
+  cal?: string;
+  /** Anchor date (YYYY-MM-DD) for the calendar window. */
+  date?: string;
+  /** `due` | `planned` task field used to place tasks on calendar days. */
+  dateField?: string;
   taskUpdateError?: string;
   taskUpdateSuccess?: string;
   taskUpdateTaskId?: string;
   statusUpdateError?: string;
   viewError?: string;
   viewSuccess?: string;
+  /** Selected task for the detail drawer (?task=<id>). */
+  task?: string;
+  /** `?taskMode=full` renders the detail full page instead of a side panel. */
+  taskMode?: string;
+  /** Timeline window anchor (YYYY-MM-DD) and week/month zoom. */
+  tlStart?: string;
+  tlZoom?: string;
 };
 
 export type ParsedTasksFilters = {
@@ -48,35 +97,76 @@ export type ParsedTasksFilters = {
   activeSort: TaskSortValue;
   activeLayout: TaskLayoutMode;
   activeDensity: TaskDensity;
-  activeView: TaskViewFilter;
+  activeBoardOrder: TaskBoardOrder | null;
+  activeCalendarView: TaskCalendarView;
+  activeCalendarDate: string | null;
+  activeCalendarDateField: TaskCalendarDateField;
+  activeView: TaskArchiveViewFilter;
   projectParam: string | null;
   goalParam: string | null;
   savedViewDefinitionFilters: ReturnType<typeof normalizeTaskSavedViewFilters>;
+  /** Canonical filter/group/sort/search definition shared with saved views. */
+  view: TaskViewDefinition;
   taskUpdateError: string | null;
   taskUpdateSuccess: string | null;
   taskUpdateTaskId: string | null;
   savedViewFeedback: { error: string | null; success: string | null };
 };
 
-export function parseTasksSearchParams(searchParams: TasksSearchParams): ParsedTasksFilters {
-  const statusParam = searchParams.status;
+export type TaskPageDefaults = {
+  /** Owner's durable layout for a Tasks view with no explicit `layout` param. */
+  defaultLayout?: TaskLayoutMode;
+};
+
+export function parseTasksSearchParams(
+  searchParams: TasksSearchParams,
+  defaults: TaskPageDefaults = {},
+): ParsedTasksFilters {
+  const defaultLayout = defaults.defaultLayout ?? DEFAULT_TASK_LAYOUT;
   const projectParam = searchParams.project?.trim() || null;
   const goalParam = searchParams.goal?.trim() || null;
-  const dueParam = searchParams.due?.trim() || DEFAULT_TASK_DUE_FILTER;
-  const sortParam = searchParams.sort?.trim() || DEFAULT_TASK_SORT;
-  const activeStatus: TaskStatus | null = statusParam && isTaskStatus(statusParam) ? statusParam : null;
-  const activeDueFilter: TaskDueFilter = isTaskDueFilter(dueParam) ? dueParam : DEFAULT_TASK_DUE_FILTER;
-  const activeSort: TaskSortValue = isTaskSortValue(sortParam) ? sortParam : DEFAULT_TASK_SORT;
+  const view = parseTaskListView(searchParams);
+  const projected = getTaskSavedViewFiltersFromDefinition(view);
   const savedViewDefinitionFilters = normalizeTaskSavedViewFilters({
-    activeTasks: searchParams.tasks === "active",
-    priority: searchParams.priority,
-    estimateMinMinutes: searchParams.estimateMin,
-    estimateMaxMinutes: searchParams.estimateMax,
-    dueWithinDays: searchParams.dueWithin,
+    activeTasks: view.activeOnly,
+    priority: projected.priorityValues,
+    estimateMinMinutes: projected.estimateMinMinutes,
+    estimateMaxMinutes: projected.estimateMaxMinutes,
+    dueWithinDays: projected.dueWithinDays,
+    status: projected.status,
+    projectId: projected.projectId,
+    goalId: projected.goalId,
+    dueFilter: projected.dueFilter,
+    sortValue: projected.sortValue,
   });
-  const activeLayout: TaskLayoutMode = normalizeTaskLayout(searchParams.layout);
+  const statusFilter = view.filters.find(
+    (filter) =>
+      filter.field === "status" &&
+      (filter.operator === "is" || filter.operator === "is_any_of") &&
+      filter.values.length === 1,
+  );
+  const activeStatus: TaskStatus | null =
+    statusFilter && isTaskStatus(statusFilter.values[0]) ? (statusFilter.values[0] as TaskStatus) : null;
+  const activeDueFilter: TaskDueFilter =
+    isTaskDueFilter(projected.dueFilter ?? "") ? (projected.dueFilter as TaskDueFilter) : DEFAULT_TASK_DUE_FILTER;
+  const activeSort: TaskSortValue =
+    isTaskSortValue(projected.sortValue ?? "") ? (projected.sortValue as TaskSortValue) : DEFAULT_TASK_SORT;
+  const activeLayout: TaskLayoutMode = isTaskLayout(searchParams.layout)
+    ? searchParams.layout
+    : defaultLayout;
   const activeDensity: TaskDensity = normalizeTaskDensity(searchParams.density);
-  const activeView: TaskViewFilter = normalizeTaskViewFilter(searchParams.archive ?? searchParams.view);
+  const activeBoardOrder = normalizeTaskBoardOrder(searchParams.boardOrder);
+  const requestedCalendarDate = searchParams.date?.trim() ?? "";
+  const activeCalendarDate = isDateOnlyValue(requestedCalendarDate)
+    ? requestedCalendarDate
+    : null;
+  const activeCalendarView: TaskCalendarView = normalizeTaskCalendarView(searchParams.cal);
+  const activeCalendarDateField: TaskCalendarDateField = normalizeTaskCalendarDateField(
+    searchParams.dateField,
+  );
+  const activeView: TaskArchiveViewFilter = normalizeTaskViewFilter(
+    searchParams.archive ?? searchParams.view,
+  );
   const taskUpdateError =
     searchParams.taskUpdateError?.slice(0, 180) ?? searchParams.statusUpdateError?.slice(0, 180) ?? null;
   const taskUpdateSuccess = searchParams.taskUpdateSuccess?.slice(0, 180) ?? null;
@@ -91,10 +181,15 @@ export function parseTasksSearchParams(searchParams: TasksSearchParams): ParsedT
     activeSort,
     activeLayout,
     activeDensity,
+    activeCalendarView,
+    activeCalendarDate,
+    activeCalendarDateField,
     activeView,
+    activeBoardOrder,
     projectParam,
     goalParam,
     savedViewDefinitionFilters,
+    view,
     taskUpdateError,
     taskUpdateSuccess,
     taskUpdateTaskId,
@@ -102,11 +197,23 @@ export function parseTasksSearchParams(searchParams: TasksSearchParams): ParsedT
   };
 }
 
-export async function getTasksPageModel(searchParams: TasksSearchParams) {
-  const parsed = parseTasksSearchParams(searchParams);
-  // Due-within-N-days windows use the owner's canonical local date from Time
-  // Context so the Tasks workspace agrees with Today/Timer on the calendar day.
-  const accountLocalDate = (await getWebTimeContext().catch(() => null))?.localDate;
+export async function getTasksPageModel(
+  searchParams: TasksSearchParams,
+  defaults: TaskPageDefaults = {},
+) {
+  const parsed = parseTasksSearchParams(searchParams, defaults);
+  // Due-within-N-days windows, the timeline range and the calendar grid use
+  // the owner's canonical local date/timezone from Time Context so Tasks
+  // agrees with Today/Timer on the calendar day. A missing context falls back
+  // to UTC explicitly.
+  const timeContext = await getWebTimeContext().catch(() => null);
+  const accountLocalDate = timeContext?.localDate;
+  const accountTimezone = timeContext?.timezone ?? "UTC";
+  const ownerToday = accountLocalDate ?? getTodayLocalIsoDate();
+  const timelineZoom = normalizeTimelineZoom(searchParams.tlZoom);
+  const timelineRange = resolveTimelineRange(ownerToday, searchParams.tlStart);
+  const calendarAnchorDate =
+    parsed.activeCalendarDate ?? accountLocalDate ?? new Date().toISOString().slice(0, 10);
   const workspaceData = await getTasksWorkspaceData(
     {
       activeStatus: parsed.activeStatus,
@@ -120,41 +227,111 @@ export async function getTasksPageModel(searchParams: TasksSearchParams) {
       activeEstimateMinMinutes: parsed.savedViewDefinitionFilters.estimateMinMinutes,
       activeEstimateMaxMinutes: parsed.savedViewDefinitionFilters.estimateMaxMinutes,
       activeDueWithinDays: parsed.savedViewDefinitionFilters.dueWithinDays,
+      view: parsed.view,
     },
-    { todayIsoDate: accountLocalDate ?? undefined },
+    {
+      todayIsoDate: accountLocalDate ?? undefined,
+      ...(parsed.activeLayout === "calendar"
+        ? {
+            calendar: {
+              view: parsed.activeCalendarView,
+              dateField: parsed.activeCalendarDateField,
+              anchorDate: calendarAnchorDate,
+              timezone: accountTimezone,
+            },
+          }
+        : {}),
+    },
   );
-  const { projects, goals, tasks, taskTotalDurations, summary, savedViews, activeProjectId, activeGoalId } =
-    workspaceData;
+  const {
+    projects,
+    goals,
+    tasks,
+    taskTotalDurations,
+    summary,
+    savedViews,
+    activeProjectId,
+    activeGoalId,
+    view: workspaceView,
+    filteredTotal: workspaceFilteredTotal,
+    loadedCount: workspaceLoadedCount,
+    truncated: workspaceTruncated,
+    calendar,
+  } = workspaceData;
+  // Older/partial workspace fixtures and adapters may not echo the canonical
+  // view; the parsed URL definition is the safe fallback.
+  const view = workspaceView ?? parsed.view;
+  const filteredTotal = workspaceFilteredTotal ?? tasks.length;
+  const loadedCount = workspaceLoadedCount ?? tasks.length;
+  const truncated = workspaceTruncated ?? false;
   const returnPath = buildTaskListUrl("/tasks", {
-    status: parsed.activeStatus,
-    priority: parsed.savedViewDefinitionFilters.priorityValues.join(","),
-    estimateMin: parsed.savedViewDefinitionFilters.estimateMinMinutes,
-    estimateMax: parsed.savedViewDefinitionFilters.estimateMaxMinutes,
-    dueWithin: parsed.savedViewDefinitionFilters.dueWithinDays,
-    activeTasks: parsed.savedViewDefinitionFilters.activeTasks,
-    project: activeProjectId,
-    goal: activeGoalId,
-    due: parsed.activeDueFilter,
-    sort: parsed.activeSort,
+    filters: view.filters,
+    group: view.groupBy,
+    q: view.search,
+    sortKey: view.sort.key,
+    sortDirection: view.sort.direction,
+    activeTasks: view.activeOnly,
     view: parsed.activeView,
     layout: parsed.activeLayout,
     density: parsed.activeDensity,
+    boardOrder: parsed.activeBoardOrder,
+    timelineStart: parsed.activeLayout === "timeline" ? timelineRange.start : null,
+    timelineZoom: parsed.activeLayout === "timeline" ? timelineZoom : null,
+    columns: view.columns,
+    cal: parsed.activeCalendarView,
+    date: parsed.activeLayout === "calendar" ? (parsed.activeCalendarDate ?? calendarAnchorDate) : null,
+    dateField: parsed.activeCalendarDateField,
   });
 
   const taskUrlFilters = {
-    status: parsed.activeStatus,
-    priority: parsed.savedViewDefinitionFilters.priorityValues.join(","),
-    estimateMin: parsed.savedViewDefinitionFilters.estimateMinMinutes,
-    estimateMax: parsed.savedViewDefinitionFilters.estimateMaxMinutes,
-    dueWithin: parsed.savedViewDefinitionFilters.dueWithinDays,
-    activeTasks: parsed.savedViewDefinitionFilters.activeTasks,
-    project: activeProjectId,
-    goal: activeGoalId,
-    due: parsed.activeDueFilter,
-    sort: parsed.activeSort,
+    filters: view.filters,
+    group: view.groupBy,
+    q: view.search,
+    sortKey: view.sort.key,
+    sortDirection: view.sort.direction,
+    activeTasks: view.activeOnly,
     density: parsed.activeDensity === "compact" ? "compact" : null,
+    boardOrder: parsed.activeBoardOrder,
+    columns: view.columns,
+    cal: parsed.activeCalendarView,
+    date: parsed.activeLayout === "calendar" ? (parsed.activeCalendarDate ?? calendarAnchorDate) : null,
+    dateField: parsed.activeCalendarDateField,
   };
-  const kanbanBoard = buildTaskKanbanBoard(tasks, parsed.activeStatus);
+  const today = accountLocalDate ?? getTodayLocalIsoDate();
+  const tasksById = new Map(tasks.map((task) => [task.id, task]));
+  const groups = groupTaskViewRecords(
+    tasks.map((task) => ({
+      id: task.id,
+      title: task.title,
+      description: task.description,
+      status: task.status,
+      priority: task.priority,
+      projectId: task.project_id,
+      projectName: task.projects?.name ?? null,
+      goalId: task.goal_id,
+      goalTitle: task.goals?.title ?? null,
+      dueDate: task.due_date,
+      plannedForDate: task.planned_for_date,
+      estimateMinutes: task.estimate_minutes,
+      boardRank: task.board_rank,
+      focusRank: task.focus_rank,
+      createdAt: task.created_at ?? null,
+      updatedAt: task.updated_at,
+    })),
+    view.groupBy,
+    { today },
+  ).map((group) => ({
+    key: group.key,
+    label: group.label,
+    count: group.count,
+    tasks: group.items
+      .map((record) => tasksById.get(record.id))
+      .filter((task): task is (typeof tasks)[number] => Boolean(task)),
+  }));
+  const kanbanBoard = buildTaskKanbanBoard(
+    sortTasksForBoard(tasks, parsed.activeBoardOrder),
+    parsed.activeStatus,
+  );
   const inProgressCount = tasks.filter((t) => t.status === "in_progress").length;
   const blockedCount = tasks.filter((t) => t.status === "blocked").length;
   const overdueCount = tasks.filter((t) =>
@@ -164,7 +341,58 @@ export async function getTasksPageModel(searchParams: TasksSearchParams) {
     isTaskDueSoon(t.due_date, t.status, accountLocalDate ?? undefined),
   ).length;
 
+  // The selected task may be outside the current list filters (archived tab,
+  // project filter, timeline window), so always load the drawer projection by
+  // id. A missing or other-owner id yields null and the drawer shows an
+  // unavailable state. The projection also carries dependency detail.
+  const selectedTaskId = searchParams.task?.trim() || null;
+  const selectedTaskMode = searchParams.taskMode === "full" ? "full" : "panel";
+  const drawerResult = selectedTaskId
+    ? await getTaskDrawerDetail(selectedTaskId)
+    : ({ kind: "unavailable" as const } as const);
+  const selectedTask = drawerResult.kind === "found" ? drawerResult.task : null;
+  const selectedTaskError = drawerResult.kind === "error";
+  const timeline =
+    parsed.activeLayout === "timeline"
+      ? await getTaskTimelineData({ range: timelineRange })
+      : null;
+  const selectedTaskSubtasks = selectedTaskId
+    ? (await listTaskSubtasks(selectedTaskId)).data ?? []
+    : [];
+  const selectedTaskAttachments = selectedTaskId
+    ? await listTaskAttachments(selectedTaskId)
+    : { data: [], errorMessage: null };
+  const subtaskCounts = await getSubtaskCountsForTasks(tasks.map((task) => task.id));
+  const selectedTaskActivityPage = selectedTaskId
+    ? await getTaskActivity(selectedTaskId, { limit: 8 })
+    : { items: [], hasMore: false };
+  const selectedTaskActivity = selectedTaskActivityPage.items;
+  const selectedTaskActivityHasMore = selectedTaskActivityPage.hasMore;
+  const selectedTaskComments = selectedTaskId
+    ? await getTaskCommentThread(selectedTaskId)
+    : {
+        comments: [],
+        mentionCandidates: [],
+        errorMessage: null,
+      };
+  const selectedTaskIsFavourite = selectedTaskId
+    ? await isFavorite("task", selectedTaskId)
+    : false;
+
   return {
+    selectedTaskId,
+    selectedTaskMode,
+    selectedTask,
+    selectedTaskError,
+    selectedTaskSubtasks,
+    selectedTaskAttachments,
+    subtaskCounts,
+    selectedTaskActivity,
+    selectedTaskActivityHasMore,
+    selectedTaskComments,
+    selectedTaskCommentMentions: selectedTaskComments.mentionCandidates,
+    selectedTaskCommentError: selectedTaskComments.errorMessage,
+    selectedTaskIsFavourite,
     parsed,
     projects,
     goals,
@@ -177,10 +405,19 @@ export async function getTasksPageModel(searchParams: TasksSearchParams) {
     returnPath,
     taskUrlFilters,
     kanbanBoard,
+    calendar,
     inProgressCount,
     blockedCount,
     overdueCount,
     dueSoonCount,
+    groups,
+    filteredTotal,
+    loadedCount,
+    truncated,
+    timeline,
+    timelineRange,
+    timelineZoom,
+    ownerToday,
   };
 }
 

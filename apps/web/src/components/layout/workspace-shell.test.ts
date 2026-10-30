@@ -62,6 +62,7 @@ describe("light workspace shell", () => {
       ["Startup", "/startup"],
       ["Shutdown", "/shutdown"],
       ["Apps", "/apps"],
+      ["Agents", "/agents"],
       ["Help", "/help"],
       ["Settings", "/settings/account"],
     ]) {
@@ -172,6 +173,14 @@ describe("light workspace shell", () => {
     const logout = read("src/components/layout/sidebar-logout.tsx");
 
     expect(css).toContain('.app-shell[data-collapsed="true"]');
+    const collapsedCreateTrigger = cssRule(css, '.app-shell[data-collapsed="true"] .workspace-create-task-trigger');
+    expect(collapsedCreateTrigger).toContain("justify-content: center");
+    expect(collapsedCreateTrigger).toContain("padding-inline: 0");
+    expect(collapsedCreateTrigger).toContain("gap: 0");
+    const drawerCreateTrigger = cssRule(css, '.app-shell .workspace-drawer-panel .workspace-create-task-trigger');
+    expect(drawerCreateTrigger).toContain("justify-content: flex-start");
+    expect(drawerCreateTrigger).toContain("padding-inline: 12px");
+    expect(drawerCreateTrigger).toContain("gap: 10px");
     expect(read("src/styles/tokens.css")).toContain("--sidebar-collapsed-width: 72px");
     expect(sidebar).toContain('data-collapsed={collapsed ? "true" : "false"}');
     expect(sidebar).toContain("compact={collapsed}");
@@ -185,9 +194,9 @@ describe("light workspace shell", () => {
     expect(logout).toContain("workspace-nav-label");
   });
 
-  it("preserves the dashboard compatibility redirect pointing at Home", () => {
+  it("preserves the dashboard compatibility redirect pointing at the launch page", () => {
     const dashboard = read("src/app/dashboard/page.tsx");
-    expect(dashboard).toContain('redirect("/home")');
+    expect(dashboard).toContain("getLaunchPagePath(preferences.launchPage)");
     expect(dashboard).not.toContain("CommandCenterAsync");
     expect(dashboard).not.toContain("getDashboardData");
   });

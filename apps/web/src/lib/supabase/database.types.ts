@@ -9,6 +9,196 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
+      areas: {
+        Row: {
+          color: string
+          created_at: string
+          description: string | null
+          icon: string
+          id: string
+          name: string
+          owner_user_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          color?: string
+          created_at?: string
+          description?: string | null
+          icon?: string
+          id?: string
+          name: string
+          owner_user_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          color?: string
+          created_at?: string
+          description?: string | null
+          icon?: string
+          id?: string
+          name?: string
+          owner_user_id?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      agent_actors: {
+        Row: {
+          archived_at: string | null
+          avatar_color: string
+          created_at: string
+          display_name: string
+          id: string
+          kind: string
+          owner_user_id: string
+          role: string | null
+          updated_at: string
+        }
+        Insert: {
+          archived_at?: string | null
+          avatar_color?: string
+          created_at?: string
+          display_name: string
+          id?: string
+          kind: string
+          owner_user_id?: string
+          role?: string | null
+          updated_at?: string
+        }
+        Update: {
+          archived_at?: string | null
+          avatar_color?: string
+          created_at?: string
+          display_name?: string
+          id?: string
+          kind?: string
+          owner_user_id?: string
+          role?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      agent_integration_events: {
+        Row: {
+          action: string
+          agent_id: string | null
+          agent_label: string | null
+          created_at: string
+          duration_ms: number | null
+          error_code: string | null
+          grant_id: string | null
+          id: string
+          ip_address: string | null
+          metadata: Json
+          oauth_client_id: string | null
+          outcome: string
+          owner_user_id: string
+          request_id: string | null
+          resource_id: string | null
+          resource_type: string | null
+          token_id: string | null
+          tool_name: string | null
+        }
+        Insert: {
+          action: string
+          agent_id?: string | null
+          agent_label?: string | null
+          created_at?: string
+          duration_ms?: number | null
+          error_code?: string | null
+          grant_id?: string | null
+          id?: string
+          ip_address?: string | null
+          metadata?: Json
+          oauth_client_id?: string | null
+          outcome: string
+          owner_user_id: string
+          request_id?: string | null
+          resource_id?: string | null
+          resource_type?: string | null
+          token_id?: string | null
+          tool_name?: string | null
+        }
+        Update: {
+          action?: string
+          agent_id?: string | null
+          agent_label?: string | null
+          created_at?: string
+          duration_ms?: number | null
+          error_code?: string | null
+          grant_id?: string | null
+          id?: string
+          ip_address?: string | null
+          metadata?: Json
+          oauth_client_id?: string | null
+          outcome?: string
+          owner_user_id?: string
+          request_id?: string | null
+          resource_id?: string | null
+          resource_type?: string | null
+          token_id?: string | null
+          tool_name?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_integration_events_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: false
+            referencedRelation: "agent_actors"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      agent_integration_tokens: {
+        Row: {
+          agent_id: string | null
+          created_at: string
+          id: string
+          last_used_at: string | null
+          name: string
+          owner_user_id: string
+          revoked_at: string | null
+          scopes: Json
+          token_hash: string
+          token_prefix: string
+          updated_at: string
+        }
+        Insert: {
+          agent_id?: string | null
+          created_at?: string
+          id?: string
+          last_used_at?: string | null
+          name: string
+          owner_user_id: string
+          revoked_at?: string | null
+          scopes?: Json
+          token_hash: string
+          token_prefix: string
+          updated_at?: string
+        }
+        Update: {
+          agent_id?: string | null
+          created_at?: string
+          id?: string
+          last_used_at?: string | null
+          name?: string
+          owner_user_id?: string
+          revoked_at?: string | null
+          scopes?: Json
+          token_hash?: string
+          token_prefix?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_integration_tokens_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: false
+            referencedRelation: "agent_actors"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       calendar_integration_settings: {
         Row: {
           access_token_encrypted: string | null
@@ -104,6 +294,8 @@ export type Database = {
       }
       goals: {
         Row: {
+          archived_at: string | null
+          archived_by: string | null
           created_at: string
           description: string | null
           health: string | null
@@ -117,6 +309,8 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          archived_at?: string | null
+          archived_by?: string | null
           created_at?: string
           description?: string | null
           health?: string | null
@@ -130,6 +324,8 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          archived_at?: string | null
+          archived_by?: string | null
           created_at?: string
           description?: string | null
           health?: string | null
@@ -204,6 +400,9 @@ export type Database = {
       }
       projects: {
         Row: {
+          archived_at: string | null
+          archived_by: string | null
+          area_id: string | null
           created_at: string
           description: string | null
           id: string
@@ -211,9 +410,13 @@ export type Database = {
           owner_user_id: string | null
           slug: string
           status: string
+          template_operation_id: string | null
           updated_at: string
         }
         Insert: {
+          archived_at?: string | null
+          archived_by?: string | null
+          area_id?: string | null
           created_at?: string
           description?: string | null
           id?: string
@@ -221,9 +424,13 @@ export type Database = {
           owner_user_id?: string | null
           slug: string
           status?: string
+          template_operation_id?: string | null
           updated_at?: string
         }
         Update: {
+          archived_at?: string | null
+          archived_by?: string | null
+          area_id?: string | null
           created_at?: string
           description?: string | null
           id?: string
@@ -231,9 +438,18 @@ export type Database = {
           owner_user_id?: string | null
           slug?: string
           status?: string
+          template_operation_id?: string | null
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "projects_area_id_areas_id_fk"
+            columns: ["area_id"]
+            isOneToOne: false
+            referencedRelation: "areas"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       task_sessions: {
         Row: {
@@ -245,6 +461,10 @@ export type Database = {
           started_at: string
           task_id: string
           updated_at: string
+          actor_kind: string
+          actor_user_id: string | null
+          actor_agent_id: string | null
+          actor_label: string | null
         }
         Insert: {
           created_at?: string
@@ -255,6 +475,10 @@ export type Database = {
           started_at: string
           task_id: string
           updated_at?: string
+          actor_kind?: string
+          actor_user_id?: string | null
+          actor_agent_id?: string | null
+          actor_label?: string | null
         }
         Update: {
           created_at?: string
@@ -265,6 +489,10 @@ export type Database = {
           started_at?: string
           task_id?: string
           updated_at?: string
+          actor_kind?: string
+          actor_user_id?: string | null
+          actor_agent_id?: string | null
+          actor_label?: string | null
         }
         Relationships: [
           {
@@ -380,6 +608,10 @@ export type Database = {
           occurred_at: string
           operation_metadata: Json | null
           created_at: string
+          actor_kind: string
+          actor_user_id: string | null
+          actor_agent_id: string | null
+          actor_label: string | null
         }
         Insert: {
           id?: string
@@ -390,6 +622,10 @@ export type Database = {
           occurred_at: string
           operation_metadata?: Json | null
           created_at?: string
+          actor_kind?: string
+          actor_user_id?: string | null
+          actor_agent_id?: string | null
+          actor_label?: string | null
         }
         Update: {
           id?: string
@@ -400,6 +636,10 @@ export type Database = {
           occurred_at?: string
           operation_metadata?: Json | null
           created_at?: string
+          actor_kind?: string
+          actor_user_id?: string | null
+          actor_agent_id?: string | null
+          actor_label?: string | null
         }
         Relationships: [
           {
@@ -407,6 +647,377 @@ export type Database = {
             columns: ["task_id"]
             isOneToOne: false
             referencedRelation: "tasks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      task_operation_receipts: {
+        Row: {
+          id: string
+          owner_user_id: string
+          operation_id: string
+          task_id: string
+          action: string
+          before_values: Json
+          after_values: Json
+          created_at: string
+          expires_at: string
+          undone_at: string | null
+        }
+        Insert: {
+          id?: string
+          owner_user_id?: string
+          operation_id: string
+          task_id: string
+          action: string
+          before_values: Json
+          after_values: Json
+          created_at?: string
+          expires_at: string
+          undone_at?: string | null
+        }
+        Update: {
+          id?: string
+          owner_user_id?: string
+          operation_id?: string
+          task_id?: string
+          action?: string
+          before_values?: Json
+          after_values?: Json
+          created_at?: string
+          expires_at?: string
+          undone_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "task_operation_receipts_task_id_tasks_id_fk"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      favorites: {
+        Row: {
+          id: string
+          owner_user_id: string
+          entity_kind: string
+          entity_id: string
+          position: number
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          owner_user_id?: string
+          entity_kind: string
+          entity_id: string
+          position?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          owner_user_id?: string
+          entity_kind?: string
+          entity_id?: string
+          position?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      task_activity_events: {
+        Row: {
+          id: string
+          owner_user_id: string
+          task_id: string | null
+          actor_kind: string
+          actor_user_id: string | null
+          actor_agent_id: string | null
+          actor_label: string | null
+          event_kind: string
+          delta: Json
+          source_event_id: string | null
+          occurred_at: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          owner_user_id?: string
+          task_id?: string | null
+          actor_kind: string
+          actor_user_id?: string | null
+          actor_agent_id?: string | null
+          actor_label?: string | null
+          event_kind: string
+          delta: Json
+          source_event_id?: string | null
+          occurred_at: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          owner_user_id?: string
+          task_id?: string | null
+          actor_kind?: string
+          actor_user_id?: string | null
+          actor_agent_id?: string | null
+          actor_label?: string | null
+          event_kind?: string
+          delta?: Json
+          source_event_id?: string | null
+          occurred_at?: string
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "task_activity_events_task_id_tasks_id_fk"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      task_attachments: {
+        Row: {
+          id: string
+          owner_user_id: string
+          task_id: string
+          file_name: string
+          storage_path: string
+          mime_type: string
+          size_bytes: number
+          status: string
+          idempotency_key: string
+          upload_expires_at: string
+          finalized_at: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          owner_user_id?: string
+          task_id: string
+          file_name: string
+          storage_path: string
+          mime_type: string
+          size_bytes: number
+          status?: string
+          idempotency_key: string
+          upload_expires_at: string
+          finalized_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          owner_user_id?: string
+          task_id?: string
+          file_name?: string
+          storage_path?: string
+          mime_type?: string
+          size_bytes?: number
+          status?: string
+          idempotency_key?: string
+          upload_expires_at?: string
+          finalized_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "task_attachments_task_id_tasks_id_fk"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      task_subtasks: {
+        Row: {
+          id: string
+          owner_user_id: string
+          task_id: string
+          title: string
+          done: boolean
+          position: number
+          completed_at: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          owner_user_id?: string
+          task_id: string
+          title: string
+          done?: boolean
+          position: number
+          completed_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          owner_user_id?: string
+          task_id?: string
+          title?: string
+          done?: boolean
+          position?: number
+          completed_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "task_subtasks_task_id_tasks_id_fk"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      task_comments: {
+        Row: {
+          id: string
+          owner_user_id: string
+          task_id: string
+          author_kind: string
+          author_user_id: string | null
+          author_token_id: string | null
+          author_ref: string
+          author_label: string
+          body: string
+          client_request_id: string
+          created_at: string
+          updated_at: string
+          edited_at: string | null
+        }
+        Insert: {
+          id?: string
+          owner_user_id?: string
+          task_id: string
+          author_kind: string
+          author_user_id?: string | null
+          author_token_id?: string | null
+          author_ref: string
+          author_label: string
+          body: string
+          client_request_id: string
+          created_at?: string
+          updated_at?: string
+          edited_at?: string | null
+        }
+        Update: {
+          id?: string
+          owner_user_id?: string
+          task_id?: string
+          author_kind?: string
+          author_user_id?: string | null
+          author_token_id?: string | null
+          author_ref?: string
+          author_label?: string
+          body?: string
+          client_request_id?: string
+          created_at?: string
+          updated_at?: string
+          edited_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "task_comments_task_id_tasks_id_fk"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      task_comment_mentions: {
+        Row: {
+          id: string
+          owner_user_id: string
+          comment_id: string
+          mention_kind: string
+          mention_ref: string
+          mention_label: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          owner_user_id?: string
+          comment_id: string
+          mention_kind: string
+          mention_ref: string
+          mention_label: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          owner_user_id?: string
+          comment_id?: string
+          mention_kind?: string
+          mention_ref?: string
+          mention_label?: string
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "task_comment_mentions_comment_id_fk"
+            columns: ["comment_id"]
+            isOneToOne: false
+            referencedRelation: "task_comments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      task_comment_reactions: {
+        Row: {
+          id: string
+          owner_user_id: string
+          comment_id: string
+          actor_kind: string
+          actor_user_id: string | null
+          actor_token_id: string | null
+          actor_ref: string
+          actor_label: string
+          emoji: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          owner_user_id?: string
+          comment_id: string
+          actor_kind: string
+          actor_user_id?: string | null
+          actor_token_id?: string | null
+          actor_ref: string
+          actor_label: string
+          emoji: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          owner_user_id?: string
+          comment_id?: string
+          actor_kind?: string
+          actor_user_id?: string | null
+          actor_token_id?: string | null
+          actor_ref?: string
+          actor_label?: string
+          emoji?: string
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "task_comment_reactions_comment_id_fk"
+            columns: ["comment_id"]
+            isOneToOne: false
+            referencedRelation: "task_comments"
             referencedColumns: ["id"]
           },
         ]
@@ -468,11 +1079,51 @@ export type Database = {
           },
         ]
       }
+      task_dependencies: {
+        Row: {
+          blocked_by_task_id: string
+          created_at: string
+          id: string
+          owner_user_id: string
+          task_id: string
+        }
+        Insert: {
+          blocked_by_task_id: string
+          created_at?: string
+          id?: string
+          owner_user_id?: string
+          task_id: string
+        }
+        Update: {
+          blocked_by_task_id?: string
+          created_at?: string
+          id?: string
+          owner_user_id?: string
+          task_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "task_dependencies_blocked_by_task_id_tasks_id_fk"
+            columns: ["blocked_by_task_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "task_dependencies_task_id_tasks_id_fk"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tasks: {
         Row: {
           archived_at: string | null
           archived_by: string | null
           blocked_reason: string | null
+          board_rank: string | null
           completed_at: string | null
           created_at: string
           due_date: string | null
@@ -492,6 +1143,7 @@ export type Database = {
           project_id: string
           scheduled_end_at: string | null
           scheduled_start_at: string | null
+          start_date: string | null
           status: string
           title: string
           updated_at: string
@@ -500,6 +1152,7 @@ export type Database = {
           archived_at?: string | null
           archived_by?: string | null
           blocked_reason?: string | null
+          board_rank?: string | null
           completed_at?: string | null
           created_at?: string
           due_date?: string | null
@@ -519,6 +1172,7 @@ export type Database = {
           project_id: string
           scheduled_end_at?: string | null
           scheduled_start_at?: string | null
+          start_date?: string | null
           status?: string
           title: string
           updated_at?: string
@@ -527,6 +1181,7 @@ export type Database = {
           archived_at?: string | null
           archived_by?: string | null
           blocked_reason?: string | null
+          board_rank?: string | null
           completed_at?: string | null
           created_at?: string
           due_date?: string | null
@@ -546,6 +1201,7 @@ export type Database = {
           project_id?: string
           scheduled_end_at?: string | null
           scheduled_start_at?: string | null
+          start_date?: string | null
           status?: string
           title?: string
           updated_at?: string
@@ -621,12 +1277,139 @@ export type Database = {
         }
         Relationships: []
       }
+      user_preferences: {
+        Row: {
+          user_id: string
+          theme: string
+          accent: string
+          density: string
+          reduced_motion: boolean
+          launch_page: string
+          task_layout: string
+          task_open_mode: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          user_id?: string
+          theme?: string
+          accent?: string
+          density?: string
+          reduced_motion?: boolean
+          launch_page?: string
+          task_layout?: string
+          task_open_mode?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          user_id?: string
+          theme?: string
+          accent?: string
+          density?: string
+          reduced_motion?: boolean
+          launch_page?: string
+          task_layout?: string
+          task_open_mode?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      create_project_from_template: {
+        Args: {
+          p_operation_id: string
+          p_template_id: string
+          p_name: string
+          p_slug: string
+          p_description: string | null
+          p_area_id: string | null
+          p_goals: Json
+          p_tasks: Json
+        }
+        Returns: Json
+      }
+      promote_task_subtask: {
+        Args: { p_subtask_id: string; p_new_task_id: string }
+        Returns: boolean
+      }
+      create_task_comment: {
+        Args: {
+          p_task_id: string
+          p_body: string
+          p_client_request_id: string
+          p_author_kind: string
+          p_owner_user_id?: string | null
+          p_author_token_id?: string | null
+          p_mentions?: Json
+        }
+        Returns: Database["public"]["Tables"]["task_comments"]["Row"]
+      }
+      update_task_comment: {
+        Args: {
+          p_comment_id: string
+          p_body: string
+          p_author_kind: string
+          p_owner_user_id?: string | null
+          p_author_token_id?: string | null
+          p_mentions?: Json
+          p_task_id?: string | null
+        }
+        Returns: Database["public"]["Tables"]["task_comments"]["Row"]
+      }
+      delete_task_comment: {
+        Args: {
+          p_comment_id: string
+          p_author_kind: string
+          p_owner_user_id?: string | null
+          p_author_token_id?: string | null
+          p_task_id?: string | null
+        }
+        Returns: boolean
+      }
+      toggle_task_comment_reaction: {
+        Args: {
+          p_comment_id: string
+          p_emoji: string
+          p_actor_kind: string
+          p_owner_user_id?: string | null
+          p_actor_token_id?: string | null
+          p_task_id?: string | null
+        }
+        Returns: Json
+      }
+      list_task_comment_mentions: {
+        Args: { p_owner_user_id?: string | null }
+        Returns: Json
+      }
+      create_task_attachment_upload: {
+        Args: {
+          p_task_id: string
+          p_file_name: string
+          p_mime_type: string
+          p_size_bytes: number
+          p_extension: string
+          p_idempotency_key: string
+        }
+        Returns: Json
+      }
+      finalize_task_attachment: {
+        Args: { p_attachment_id: string; p_size_bytes: number }
+        Returns: Json
+      }
+      fail_task_attachment: {
+        Args: { p_attachment_id: string; p_reason: string }
+        Returns: boolean
+      }
+      delete_task_attachment: {
+        Args: { p_attachment_id: string }
+        Returns: Json
+      }
     }
     Enums: {
       [_ in never]: never

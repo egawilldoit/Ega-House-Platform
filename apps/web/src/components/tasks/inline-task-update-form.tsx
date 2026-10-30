@@ -1,9 +1,10 @@
 "use client";
 
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useRef, useState } from "react";
 import { Check } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { ConfirmDeleteTaskButton } from "./confirm-delete-task-button";
 import { Input } from "@/components/ui/input";
 import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import { Textarea } from "@/components/ui/textarea";
@@ -145,13 +146,16 @@ export function InlineTaskUpdateForm({
   stickyFooter = false,
 }: InlineTaskUpdateFormProps) {
   const [selectedStatus, setSelectedStatus] = useState(defaultStatus);
+  const [previousDefaultStatus, setPreviousDefaultStatus] = useState(defaultStatus);
   const updateFormId = `task-update-${taskId}`;
+  const deleteFormRef = useRef<HTMLFormElement | null>(null);
   const isArchived = Boolean(archivedAt);
   const isCompleted = isTaskCompletedStatus(defaultStatus);
 
-  useEffect(() => {
+  if (defaultStatus !== previousDefaultStatus) {
+    setPreviousDefaultStatus(defaultStatus);
     setSelectedStatus(defaultStatus);
-  }, [defaultStatus]);
+  }
 
   const scheduledStartAtDefaultValue = defaultScheduledStartAt
     ? defaultScheduledStartAt.slice(0, 16)
@@ -408,29 +412,17 @@ export function InlineTaskUpdateForm({
                   </form>
                 ) : null}
                 {overflowActions}
-                <form
-                  action={deleteAction}
-                  onSubmit={(event) => {
-                    if (
-                      !window.confirm(
-                        `Delete "${taskTitle}"? This is permanent and is blocked if the task has timer history.`,
-                      )
-                    ) {
-                      event.preventDefault();
-                    }
-                  }}
-                >
+                <form action={deleteAction} ref={deleteFormRef}>
                   <input type="hidden" name="taskId" value={taskId} />
                   <input type="hidden" name="returnTo" value={returnTo} />
                   <input type="hidden" name="confirmDelete" value="true" />
-                  <Button
-                    size="sm"
-                    type="submit"
-                    variant="danger"
+                  <ConfirmDeleteTaskButton
+                    taskTitle={taskTitle}
+                    formRef={deleteFormRef}
+                    dataTestId={`task-inline-delete-${taskId}`}
+                    triggerLabel="Delete task"
                     className="min-h-11 w-full justify-center"
-                  >
-                    Delete task
-                  </Button>
+                  />
                 </form>
               </div>
             </div>

@@ -17,10 +17,8 @@ import {
 } from "@/lib/services/agent-task-service";
 import {
   forbidden,
-  notFound,
   invalidRequest,
   rateLimited,
-  validationError,
 } from "@/lib/http/agent-errors";
 import { INTERNAL_ERROR_RESPONSE } from "@/lib/contracts/agent";
 import type {
@@ -378,6 +376,7 @@ export function createCreateHandlers(
         auth!.ownerUserId,
         auth!.tokenId,
         taskPayloads,
+        auth!.agentId,
       );
 
       const response: AgentTaskCreateBulkResponse = {
@@ -481,7 +480,12 @@ export function createUpdateHandlers(
         updates.push(update);
       }
 
-      const result = await updateTasks(auth!.ownerUserId, auth!.tokenId, updates as never);
+      const result = await updateTasks(
+        auth!.ownerUserId,
+        auth!.tokenId,
+        updates as never,
+        auth!.agentId,
+      );
 
       const response: AgentTaskUpdateBulkResponse = {
         ok: true,
@@ -576,7 +580,12 @@ export function createArchiveHandlers(
         });
       }
 
-      const result = await archiveTasks(auth!.ownerUserId, auth!.tokenId, archivePayloads);
+      const result = await archiveTasks(
+        auth!.ownerUserId,
+        auth!.tokenId,
+        archivePayloads,
+        auth!.agentId,
+      );
 
       const response: AgentTaskArchiveBulkResponse = {
         ok: true,

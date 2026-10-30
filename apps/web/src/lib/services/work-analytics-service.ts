@@ -185,6 +185,13 @@ export type WorkAnalyticsProjectBreakdown = {
   sessionCount: number;
 };
 
+export type WorkAnalyticsAreaBreakdown = {
+  areaId: string | null;
+  areaName: string;
+  workedMinutes: number;
+  sessionCount: number;
+};
+
 export type WorkAnalyticsWithBreakdown = {
   period: WorkAnalyticsPeriod;
   projectBreakdown: WorkAnalyticsProjectBreakdown[];
@@ -309,7 +316,8 @@ export function calculateWorkAnalyticsDailySeries(
       const bucket = result.find((day) => day.date === part.dayKey);
       if (bucket) {
         bucket.workedMinutes += part.seconds;
-        bucket.sessionCount += 1;
+        // Count each session once in the selected range, even across midnight.
+        if (part === dayParts[0]) bucket.sessionCount += 1;
       }
     }
   }
@@ -534,6 +542,67 @@ export function calculateWorkAnalyticsProjectBreakdown(
     return a.projectName.localeCompare(b.projectName); // ascending by name
   });
   
+  return breakdown;
+}
+
+/**
+ * Calculates an Area slice over the existing session evidence. The grouping
+ * uses each project's current Area; sessions from unassigned projects appear
+ * under "No area". Nothing historical is rewritten or recalculated.
+ */
+export function calculateWorkAnalyticsAreaBreakdown(
+  sessions: ExecutionEvidenceSessionRow[],
+  window: ExecutionEvidenceWindow,
+  options: WorkAnalyticsOptions = {}
+): WorkAnalyticsAreaBreakdown[] {
+  const nowIso = options.nowIso ?? new Date().toISOString();
+  const includeOpenSessions = options.includeOpenSessions ?? false;
+
+  const areaMap = new Map<
+    string,
+    { workedMinutes: number; sessionCount: number; areaName: string }
+  >();
+
+  for (const session of sessions) {
+    const trackedSeconds = getExecutionEvidenceSessionOverlapSeconds(
+      session,
+      window,
+      { nowIso, includeOpenSessions }
+    );
+    if (trackedSeconds <= 0) continue;
+
+    const area = session.tasks?.projects?.areas;
+    const key = area?.id ?? "__no-area__";
+    const areaName = area?.name ?? "No area";
+    const existing = areaMap.get(key);
+
+    if (existing) {
+      existing.workedMinutes += trackedSeconds;
+      existing.sessionCount += 1;
+    } else {
+      areaMap.set(key, {
+        workedMinutes: trackedSeconds,
+        sessionCount: 1,
+        areaName,
+      });
+    }
+  }
+
+  const breakdown: WorkAnalyticsAreaBreakdown[] = [];
+  for (const [key, data] of areaMap.entries()) {
+    breakdown.push({
+      areaId: key === "__no-area__" ? null : key,
+      areaName: data.areaName,
+      workedMinutes: Math.floor(data.workedMinutes / 60),
+      sessionCount: data.sessionCount,
+    });
+  }
+
+  breakdown.sort((a, b) => {
+    if (a.workedMinutes !== b.workedMinutes) return b.workedMinutes - a.workedMinutes;
+    return a.areaName.localeCompare(b.areaName);
+  });
+
   return breakdown;
 }
 
@@ -1308,6 +1377,8 @@ export type DrilldownSessionDTO = {
   taskTitle: string;
   projectName: string | null;
   projectId: string | null;
+  areaName?: string | null;
+  areaId?: string | null;
   goalTitle: string | null;
   goalId: string | null;
   startedAt: string; // ISO
@@ -1319,12 +1390,14 @@ export type DrilldownSessionDTO = {
  * Drilldown indexes keyed by bucket label.
  * - date: key is YYYY-MM-DD
  * - project: key is projectId (or '__unknown__' for null)
+ * - area: key is areaId (or '__no-area__' for null)
  * - goal: key is goalId (or '__no-goal__' for null)
  * - task: key is taskId
  */
 export type DrilldownIndexes = {
   date: Record<string, DrilldownSessionDTO[]>;
   project: Record<string, DrilldownSessionDTO[]>;
+  area: Record<string, DrilldownSessionDTO[]>;
   goal: Record<string, DrilldownSessionDTO[]>;
   task: Record<string, DrilldownSessionDTO[]>;
 };
@@ -1346,6 +1419,7 @@ export function buildDrilldownIndexes(
 ): DrilldownIndexes {
   const date: Record<string, DrilldownSessionDTO[]> = {};
   const project: Record<string, DrilldownSessionDTO[]> = {};
+  const area: Record<string, DrilldownSessionDTO[]> = {};
   const goal: Record<string, DrilldownSessionDTO[]> = {};
   const task: Record<string, DrilldownSessionDTO[]> = {};
 
@@ -1382,6 +1456,8 @@ export function buildDrilldownIndexes(
       taskTitle: session.tasks?.title ?? "Untitled task",
       projectName: session.tasks?.projects?.name ?? null,
       projectId: session.tasks?.projects?.id ?? session.tasks?.project_id ?? null,
+      areaName: session.tasks?.projects?.areas?.name ?? null,
+      areaId: session.tasks?.projects?.areas?.id ?? null,
       goalTitle: session.tasks?.goals?.title ?? null,
       goalId: session.tasks?.goals?.id ?? null,
       startedAt: session.started_at,
@@ -1402,6 +1478,10 @@ export function buildDrilldownIndexes(
     if (!project[projectKey]) project[projectKey] = [];
     project[projectKey].push(dto);
 
+    const areaKey = dto.areaId ?? "__no-area__";
+    if (!area[areaKey]) area[areaKey] = [];
+    area[areaKey].push(dto);
+
     const goalKey = dto.goalId ?? "__no-goal__";
     if (!goal[goalKey]) goal[goalKey] = [];
     goal[goalKey].push(dto);
@@ -1411,7 +1491,7 @@ export function buildDrilldownIndexes(
     task[taskKey].push(dto);
   }
 
-  return { date, project, goal, task };
+  return { date, project, area, goal, task };
 }
 
 /**

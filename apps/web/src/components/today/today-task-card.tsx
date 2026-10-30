@@ -21,6 +21,7 @@ import {
   TASK_STATUS_VALUES,
 } from "@/lib/task-domain";
 import { formatTaskEstimate } from "@/lib/task-estimate";
+import { buildTaskDrawerLink } from "@/lib/task-drawer-url";
 import type { TodayPlannerTask } from "@/lib/services/today-planner-service";
 import { ChevronDown, ExternalLink } from "lucide-react";
 import { TodayScheduledTimeRange } from "@/components/today/today-scheduled-time-range";
@@ -62,7 +63,13 @@ export function getTodayTaskStatusOptions(task: TodayPlannerTask) {
 }
 
 export function canShowTodayTaskStartTimer(task: Pick<TodayPlannerTask, "status">) {
-  return !isTaskCompletedStatus(task.status) && !isTaskCanceledStatus(task.status);
+  // Review is a hand-off state: starting a timer requires an explicit return to
+  // in progress, matching the timer service's guard.
+  return (
+    !isTaskCompletedStatus(task.status) &&
+    !isTaskCanceledStatus(task.status) &&
+    task.status !== "review"
+  );
 }
 
 export function getTodayTaskStartTimerActionMeta(
@@ -149,7 +156,16 @@ export function TodayTaskCard({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-start gap-2">
-            <h3 className="task-row-title min-w-0 truncate">{task.title}</h3>
+            <h3 className="task-row-title min-w-0 truncate">
+              {/* Same selected-task drawer as /tasks; the URL keeps Today's
+                  filters and returns here on close. */}
+              <Link
+                href={buildTaskDrawerLink(returnTo, task.id)}
+                className="hover:underline focus-visible:outline-[var(--ega-focus-outline)] focus-visible:outline-offset-2"
+              >
+                {task.title}
+              </Link>
+            </h3>
             {task.hasActiveTimer ? <Badge tone="active">Active timer</Badge> : null}
           </div>
           <div className="mt-2 flex flex-wrap items-center gap-2">

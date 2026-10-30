@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
@@ -41,6 +42,8 @@ describe("SidebarCreateButton (Unified Create Flow)", () => {
     expect(button?.getAttribute("aria-keyshortcuts")).toBe("Control+Shift+N Meta+Shift+N");
     expect(button?.textContent).toContain("Create");
     expect(button?.className).toContain("workspace-create-task-trigger");
+    const kbd = button?.querySelector("kbd");
+    expect(kbd?.className).toContain("workspace-create-kbd");
   });
 
   it("dispatches the canonical quick-task event and does not mount its own task surface", async () => {

@@ -77,13 +77,14 @@ export function TrendBarChart({ data, title, onBarClick }: TrendBarChartProps) {
             <button
               key={entry.date}
               type="button"
+              aria-label={`${toDayLabel(entry.date)} · ${formatDisplayDuration(entry.workedMinutes * 60, "minute")} · ${entry.sessionCount} ${entry.sessionCount === 1 ? "session" : "sessions"}`}
               onClick={() => {
                 if (onBarClick && entry.workedMinutes > 0) {
                   onBarClick(entry.date, formatDateShort(entry.date));
                 }
               }}
               disabled={!interactive}
-              className={`group grid w-full grid-cols-[5.5rem_minmax(0,1fr)_4.5rem] items-center gap-3 rounded-[var(--radius-sm)] px-1 py-0.5 text-left ${
+              className={`group grid w-full grid-cols-[5.5rem_minmax(0,1fr)_max-content] items-center gap-3 rounded-[var(--radius-sm)] px-1 py-0.5 text-left ${
                 interactive
                   ? "cursor-pointer transition-colors hover:bg-ega-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ega-text"
                   : ""
@@ -103,7 +104,7 @@ export function TrendBarChart({ data, title, onBarClick }: TrendBarChartProps) {
                   {formatDisplayDuration(entry.workedMinutes * 60, "minute")}
                 </span>
                 <span className="ml-1 text-[length:var(--text-meta)] tabular-nums text-ega-text-tertiary">
-                  {entry.sessionCount}
+                  {" · "}{entry.sessionCount} {entry.sessionCount === 1 ? "session" : "sessions"}
                 </span>
               </span>
             </button>

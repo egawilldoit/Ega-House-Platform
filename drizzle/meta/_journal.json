@@ -454,132 +454,230 @@
       "idx": 64,
       "version": "7",
       "when": 1787880000014,
-      "tag": "0064_mcp_write_column_fence",
+      "tag": "0064_task_operation_receipts",
       "breakpoints": true
     },
     {
       "idx": 65,
       "version": "7",
       "when": 1787880000015,
-      "tag": "0065_mcp_oauth_table_scope_hardening",
+      "tag": "0065_task_subtasks",
       "breakpoints": true
     },
     {
       "idx": 66,
       "version": "7",
       "when": 1787880000016,
-      "tag": "0066_mcp_permission_version_2",
+      "tag": "0066_task_activity_events",
       "breakpoints": true
     },
     {
       "idx": 67,
       "version": "7",
       "when": 1787880000017,
-      "tag": "0067_mcp_audit_tool_allowlist",
+      "tag": "0067_favorites",
       "breakpoints": true
     },
     {
       "idx": 68,
       "version": "7",
       "when": 1787880000018,
-      "tag": "0068_mcp_write_fence_insert_branch",
+      "tag": "0068_task_activity_attribution",
       "breakpoints": true
     },
     {
       "idx": 69,
       "version": "7",
       "when": 1787880000019,
-      "tag": "0069_mcp_write_fence_insert_authorization",
+      "tag": "0069_task_board_rank",
       "breakpoints": true
     },
     {
       "idx": 70,
       "version": "7",
       "when": 1787880000020,
-      "tag": "0070_mcp_referential_ownership_isolation",
+      "tag": "0070_task_comments",
       "breakpoints": true
     },
     {
       "idx": 71,
       "version": "7",
       "when": 1787880000021,
-      "tag": "0071_mcp_rate_limit_and_fence_classification",
+      "tag": "0071_task_start_date_dependencies",
       "breakpoints": true
     },
     {
       "idx": 72,
       "version": "7",
       "when": 1787880000022,
-      "tag": "0072_mcp_write_implies_read_back",
+      "tag": "0072_user_preferences",
       "breakpoints": true
     },
     {
       "idx": 73,
       "version": "7",
-      "when": 1787880000024,
-      "tag": "0073_mcp_audit_capability_authority",
+      "when": 1787880000023,
+      "tag": "0073_archive_centre",
       "breakpoints": true
     },
     {
       "idx": 74,
       "version": "7",
-      "when": 1787880000025,
-      "tag": "0074_mcp_operation_identity_pair",
+      "when": 1787880000024,
+      "tag": "0074_task_attachments",
       "breakpoints": true
     },
     {
       "idx": 75,
       "version": "7",
-      "when": 1787880000026,
-      "tag": "0076_mcp_rate_limit_execute_grant",
+      "when": 1787880000025,
+      "tag": "0075_agent_actors",
       "breakpoints": true
     },
     {
       "idx": 76,
       "version": "7",
-      "when": 1787880000027,
-      "tag": "0077_mcp_permission_document_exactness",
+      "when": 1787880000026,
+      "tag": "0076_project_templates",
       "breakpoints": true
     },
     {
       "idx": 77,
       "version": "7",
-      "when": 1787880001023,
-      "tag": "0078_mcp_write_fence_trigger_order",
+      "when": 1787880000027,
+      "tag": "0077_areas",
       "breakpoints": true
     },
     {
       "idx": 78,
       "version": "7",
-      "when": 1787880002023,
-      "tag": "0079_mcp_client_id_derivation",
+      "when": 1787880000028,
+      "tag": "0064_mcp_write_column_fence",
       "breakpoints": true
     },
     {
       "idx": 79,
       "version": "7",
-      "when": 1787880003023,
-      "tag": "0080_mcp_completed_at_insert_authority",
+      "when": 1787880000029,
+      "tag": "0065_mcp_oauth_table_scope_hardening",
       "breakpoints": true
     },
     {
       "idx": 80,
       "version": "7",
-      "when": 1787880004023,
-      "tag": "0081_mcp_write_fence_state_transitions",
+      "when": 1787880000030,
+      "tag": "0066_mcp_permission_version_2",
       "breakpoints": true
     },
     {
       "idx": 81,
       "version": "7",
-      "when": 1787880005023,
-      "tag": "0082_mcp_operation_id_update_authority",
+      "when": 1787880000031,
+      "tag": "0067_mcp_audit_tool_allowlist",
       "breakpoints": true
     },
     {
       "idx": 82,
       "version": "7",
-      "when": 1787880006023,
+      "when": 1787880000032,
+      "tag": "0068_mcp_write_fence_insert_branch",
+      "breakpoints": true
+    },
+    {
+      "idx": 83,
+      "version": "7",
+      "when": 1787880000033,
+      "tag": "0069_mcp_write_fence_insert_authorization",
+      "breakpoints": true
+    },
+    {
+      "idx": 84,
+      "version": "7",
+      "when": 1787880000034,
+      "tag": "0070_mcp_referential_ownership_isolation",
+      "breakpoints": true
+    },
+    {
+      "idx": 85,
+      "version": "7",
+      "when": 1787880000035,
+      "tag": "0071_mcp_rate_limit_and_fence_classification",
+      "breakpoints": true
+    },
+    {
+      "idx": 86,
+      "version": "7",
+      "when": 1787880000036,
+      "tag": "0072_mcp_write_implies_read_back",
+      "breakpoints": true
+    },
+    {
+      "idx": 87,
+      "version": "7",
+      "when": 1787880000037,
+      "tag": "0073_mcp_audit_capability_authority",
+      "breakpoints": true
+    },
+    {
+      "idx": 88,
+      "version": "7",
+      "when": 1787880000038,
+      "tag": "0074_mcp_operation_identity_pair",
+      "breakpoints": true
+    },
+    {
+      "idx": 89,
+      "version": "7",
+      "when": 1787880000039,
+      "tag": "0076_mcp_rate_limit_execute_grant",
+      "breakpoints": true
+    },
+    {
+      "idx": 90,
+      "version": "7",
+      "when": 1787880000040,
+      "tag": "0077_mcp_permission_document_exactness",
+      "breakpoints": true
+    },
+    {
+      "idx": 91,
+      "version": "7",
+      "when": 1787880000041,
+      "tag": "0078_mcp_write_fence_trigger_order",
+      "breakpoints": true
+    },
+    {
+      "idx": 92,
+      "version": "7",
+      "when": 1787880000042,
+      "tag": "0079_mcp_client_id_derivation",
+      "breakpoints": true
+    },
+    {
+      "idx": 93,
+      "version": "7",
+      "when": 1787880000043,
+      "tag": "0080_mcp_completed_at_insert_authority",
+      "breakpoints": true
+    },
+    {
+      "idx": 94,
+      "version": "7",
+      "when": 1787880000044,
+      "tag": "0081_mcp_write_fence_state_transitions",
+      "breakpoints": true
+    },
+    {
+      "idx": 95,
+      "version": "7",
+      "when": 1787880000045,
+      "tag": "0082_mcp_operation_id_update_authority",
+      "breakpoints": true
+    },
+    {
+      "idx": 96,
+      "version": "7",
+      "when": 1787880000046,
       "tag": "0083_mcp_completed_at_update_authority",
       "breakpoints": true
     }

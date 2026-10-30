@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { QuickTaskSheetPanel } from "@/components/tasks/quick-task-sheet";
 import { InboxCapturePanel } from "@/components/inbox/inbox-capture-sheet";
 import { QUICK_TASK_EVENT, INBOX_CAPTURE_EVENT } from "@/lib/workspace-events";
+import { isTaskStatus } from "@/lib/task-domain";
 import { cn } from "@/lib/utils";
 
 export const UNIFIED_CREATE_EVENT = "ega:open-unified-create";
@@ -29,6 +30,7 @@ export function UnifiedCreateSheet({
   const [mode, setMode] = useState<CreateMode>(initialMode);
   const [draftTitle, setDraftTitle] = useState("");
   const [taskProjectId, setTaskProjectId] = useState(projects[0]?.id ?? "");
+  const [taskStatus, setTaskStatus] = useState("todo");
   const [backlogProjectId, setBacklogProjectId] = useState(projects[0]?.id ?? "");
   const [taskActiveTab, setTaskActiveTab] = useState<"single" | "multi">("single");
   const lastFocusedElementRef = useRef<HTMLElement | null>(null);
@@ -44,12 +46,16 @@ export function UnifiedCreateSheet({
   }
 
   useEffect(() => {
-    const handleQuickTask = () => {
+    const handleQuickTask = (event: Event) => {
       const activeElement = document.activeElement;
       lastFocusedElementRef.current =
         activeElement instanceof HTMLElement && activeElement !== document.body
           ? activeElement
           : null;
+      const detail = (event as CustomEvent<{ status?: string }>).detail;
+      setTaskStatus(
+        detail?.status && isTaskStatus(detail.status) ? detail.status : "todo",
+      );
       setMode("task");
       setOpen(true);
     };
@@ -99,7 +105,7 @@ export function UnifiedCreateSheet({
     >
       <DialogPrimitive.Portal>
         <DialogPrimitive.Overlay
-          className="fixed inset-0 z-[90] bg-[rgba(17,17,15,0.58)] backdrop-blur-[1px] transition-opacity"
+          className="fixed inset-0 z-[90] bg-[var(--ega-overlay)] backdrop-blur-[1px] transition-opacity"
         />
         <DialogPrimitive.Content
           id="unified-create-modal"
@@ -122,7 +128,7 @@ export function UnifiedCreateSheet({
             }
             lastFocusedElementRef.current = null;
           }}
-          className="fixed left-1/2 top-1/2 z-[91] flex max-h-[min(52rem,calc(100dvh-2rem))] w-[calc(100vw-1rem)] max-w-[38rem] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-2xl border border-[var(--ega-border)] bg-[var(--ega-surface)] shadow-[0_28px_80px_rgba(17,17,15,0.3)] outline-none"
+          className="fixed left-1/2 top-1/2 z-[91] flex max-h-[min(52rem,calc(100dvh-2rem))] w-[calc(100vw-1rem)] max-w-[38rem] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-2xl border border-[var(--ega-border)] bg-[var(--ega-surface)] shadow-[var(--ega-shadow-lg)] outline-none"
         >
           {/* Header */}
           <div className="flex items-center justify-between border-b border-[var(--ega-border)] px-5 py-3.5 sm:px-6">
@@ -206,6 +212,7 @@ export function UnifiedCreateSheet({
                 className="flex min-h-0 flex-1 flex-col overflow-hidden"
               >
                 <QuickTaskSheetPanel
+                  key={`task-${taskStatus}`}
                   projects={projects}
                   goals={goals}
                   activeTab={taskActiveTab}
@@ -220,6 +227,7 @@ export function UnifiedCreateSheet({
                   onCommandChange={setDraftTitle}
                   selectedProjectId={taskProjectId}
                   onProjectIdChange={setTaskProjectId}
+                  selectedStatus={taskStatus}
                 />
               </div>
             ) : (

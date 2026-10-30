@@ -270,7 +270,7 @@
   border: 0;
   border-radius: var(--radius-sm);
   background: var(--ega-ink);
-  color: #ffffff;
+  color: var(--ega-on-ink);
   font-size: var(--text-body);
   font-weight: 500;
   cursor: pointer;
@@ -376,11 +376,53 @@
   scrollbar-width: thin;
 }
 
+.sidebar-project-group {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.sidebar-project-group + .sidebar-project-group {
+  margin-top: 5px;
+}
+
+.sidebar-area-heading {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 6px 10px 3px;
+  color: var(--ega-text-tertiary);
+  font-size: var(--text-micro);
+  font-weight: 600;
+  letter-spacing: var(--tracking-widest);
+  text-transform: uppercase;
+}
+
+.sidebar-area-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-area-count {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+}
+
+.sidebar-project-group-unassigned .sidebar-area-heading {
+  color: var(--ega-text-tertiary);
+  opacity: 0.85;
+}
+
 .sidebar-link {
   display: flex;
   align-items: center;
   gap: 10px;
-  min-height: 32px;
+  min-height: var(--nav-item-min-height);
   width: 100%;
   padding-inline: 10px;
   border: 0;
@@ -527,17 +569,25 @@
 .app-shell[data-collapsed="true"] .workspace-brand-copy,
 .app-shell[data-collapsed="true"] .workspace-nav-label,
 .app-shell[data-collapsed="true"] .sidebar-section-label,
+.app-shell[data-collapsed="true"] .sidebar-area-heading,
 .app-shell[data-collapsed="true"] .sidebar-badge,
 .app-shell[data-collapsed="true"] .sidebar-project-count,
 .app-shell[data-collapsed="true"] .sidebar-project-status,
 .app-shell[data-collapsed="true"] .workspace-search-label,
 .app-shell[data-collapsed="true"] .workspace-search kbd,
+.app-shell[data-collapsed="true"] .workspace-create-kbd,
 .app-shell[data-collapsed="true"] .sidebar-section-action {
   display: none;
 }
 
 .app-shell[data-collapsed="true"] .sidebar-link,
 .app-shell[data-collapsed="true"] .sidebar-project-link {
+  justify-content: center;
+  padding-inline: 0;
+  gap: 0;
+}
+
+.app-shell[data-collapsed="true"] .workspace-create-task-trigger {
   justify-content: center;
   padding-inline: 0;
   gap: 0;
@@ -605,6 +655,102 @@
 .topbar-icon-button svg {
   width: 17px;
   height: 17px;
+}
+
+/* Theme control — native disclosure so Light/Dark/System labels stay
+   available on phone widths without widening the top bar. */
+.theme-control {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.theme-control-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ega-text-secondary);
+  cursor: pointer;
+  list-style: none;
+  transition: background var(--duration-fast) var(--ease-default),
+    color var(--duration-fast) var(--ease-default);
+}
+
+.theme-control-trigger::-webkit-details-marker {
+  display: none;
+}
+
+.theme-control-trigger:hover,
+.theme-control[open] > .theme-control-trigger {
+  background: var(--ega-surface-hover);
+  color: var(--ega-text);
+}
+
+.theme-control-trigger svg {
+  width: 17px;
+  height: 17px;
+}
+
+.theme-control-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 40;
+  min-width: 10.5rem;
+  padding: 4px;
+  border: 1px solid var(--ega-border);
+  border-radius: var(--radius-md);
+  background: var(--ega-surface-elevated);
+  box-shadow: var(--ega-shadow-md);
+}
+
+.theme-control-option {
+  display: flex;
+  width: 100%;
+  min-height: 34px;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--ega-text-secondary);
+  font-size: var(--text-meta-lg);
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-default),
+    color var(--duration-fast) var(--ease-default);
+}
+
+.theme-control-option:hover {
+  background: var(--ega-surface-hover);
+  color: var(--ega-text);
+}
+
+.theme-control-option[aria-pressed="true"] {
+  background: var(--ega-surface-muted);
+  color: var(--ega-text);
+}
+
+.theme-control-option-icon {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
+}
+
+.theme-control-option-label {
+  flex: 1;
+}
+
+.theme-control-option-check {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
 }
 
 .topbar-account {
@@ -899,7 +1045,7 @@
   border: 1px solid var(--ega-ink);
   border-radius: var(--radius-sm);
   background: var(--ega-ink);
-  color: #ffffff;
+  color: var(--ega-on-ink);
   font-size: var(--text-body);
   font-weight: 500;
   white-space: nowrap;
@@ -911,7 +1057,7 @@
 .btn-instrument:hover {
   background: var(--ega-ink-hover);
   border-color: var(--ega-ink-hover);
-  color: #ffffff;
+  color: var(--ega-on-ink);
 }
 
 .btn-instrument-muted,
@@ -930,7 +1076,7 @@
 
 .input-instrument,
 .ega-glass-input {
-  border: 1px solid var(--ega-border);
+  border: 1px solid var(--ega-control-border);
   border-radius: var(--radius-sm);
   background: var(--ega-surface);
   color: var(--ega-text);
@@ -942,7 +1088,7 @@
 
 .input-instrument:hover,
 .ega-glass-input:hover {
-  border-color: var(--ega-border-strong);
+  border-color: var(--ega-text-tertiary);
 }
 
 .input-instrument:focus,
@@ -991,11 +1137,11 @@ select.ega-glass-input {
 .filter-pill-active {
   border-color: var(--ega-text);
   background: var(--ega-ink);
-  color: #ffffff;
+  color: var(--ega-on-ink);
 }
 
 .filter-pill-active:hover {
-  color: #ffffff;
+  color: var(--ega-on-ink);
 }
 
 .ega-glass-empty,
@@ -1129,7 +1275,7 @@ select.ega-glass-input {
 }
 
 .data-table tbody td {
-  padding: 12px;
+  padding: var(--data-table-cell-padding);
   border-bottom: 1px solid var(--ega-divider);
   color: var(--ega-text);
   vertical-align: middle;
@@ -1148,9 +1294,9 @@ select.ega-glass-input {
 }
 
 /* ── Tasks list refinements ──────────────────────────────
-   The row title is the list's primary scanning anchor and its edit
-   affordance: one line, ellipsis-truncated, full value discoverable via
-   the native tooltip and the edit modal. Focus stays keyboard-visible;
+   The row title is the list's primary scanning anchor and the task-drawer
+   entry point: one line, ellipsis-truncated, with the full value in the native
+   tooltip. The ••• control opens the edit modal. Focus stays keyboard-visible;
    completed rows go quiet but stay readable. */
 
 .task-row-title-btn {
@@ -1332,6 +1478,7 @@ select.ega-glass-input {
 .app-shell .workspace-drawer-panel .sidebar-project-status,
 .app-shell .workspace-drawer-panel .workspace-search-label,
 .app-shell .workspace-drawer-panel .workspace-search kbd,
+.app-shell .workspace-drawer-panel .workspace-create-kbd,
 .app-shell .workspace-drawer-panel .workspace-brand-copy,
 .app-shell .workspace-drawer-panel .sidebar-section-action {
   display: revert;
@@ -1351,6 +1498,12 @@ select.ega-glass-input {
 .app-shell .workspace-drawer-panel .sidebar-link {
   justify-content: flex-start;
   padding-inline: 10px;
+  gap: 10px;
+}
+
+.app-shell .workspace-drawer-panel .workspace-create-task-trigger {
+  justify-content: flex-start;
+  padding-inline: 12px;
   gap: 10px;
 }
 
@@ -1376,7 +1529,7 @@ select.ega-glass-input {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 10px 16px;
+  padding: var(--row-padding-block) 16px;
   border-bottom: 1px solid var(--ega-divider);
 }
 
@@ -1729,4 +1882,656 @@ select.ega-glass-input {
   }
 }
 
+}
+
+/* ══════════════════════════════════════════════════════════════
+   Settings: section navigation and choice cards (EGA-798)
+   ══════════════════════════════════════════════════════════════ */
+
+.settings-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--ega-border);
+}
+
+.settings-nav-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding-inline: 12px;
+  border-radius: var(--radius-sm);
+  color: var(--ega-text-secondary);
+  font-size: var(--text-body);
+  font-weight: 500;
+  text-decoration: none;
+  transition: background var(--duration-fast) var(--ease-default),
+    color var(--duration-fast) var(--ease-default);
+}
+
+.settings-nav-link:hover {
+  background: var(--ega-surface-hover);
+  color: var(--ega-text);
+}
+
+.settings-nav-link[aria-current="page"] {
+  background: var(--ega-surface-muted);
+  color: var(--ega-text);
+}
+
+.settings-nav-link:focus-visible {
+  outline: var(--ega-focus-outline);
+  outline-offset: 2px;
+}
+
+.choice-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--ega-border);
+  border-radius: var(--radius-md);
+  background: var(--ega-surface);
+  cursor: pointer;
+  transition: border-color var(--duration-fast) var(--ease-default),
+    background var(--duration-fast) var(--ease-default);
+}
+
+.choice-card:hover {
+  border-color: var(--ega-border-strong);
+  background: var(--ega-surface-hover);
+}
+
+.choice-card:has(input:checked) {
+  border-color: var(--ega-ink);
+  background: var(--ega-surface-subtle);
+}
+
+/* `:has()` keeps the focus ring on the whole selectable card while the native
+   radio keeps arrow keys, Space/Enter and its own accessible name. */
+.choice-card:has(input:focus-visible) {
+  outline: var(--ega-focus-outline);
+  outline-offset: 2px;
+}
+
+.choice-card-label {
+  display: block;
+  font-size: var(--text-body);
+  font-weight: 500;
+  color: var(--ega-text);
+}
+
+.choice-card-description {
+  display: block;
+  margin-top: 2px;
+  font-size: var(--text-meta);
+  color: var(--ega-text-secondary);
+}
+
+.theme-control-error {
+  margin: 6px 6px 2px;
+  font-size: var(--text-meta);
+  color: var(--status-overdue);
+}
+
+@media (pointer: coarse) {
+  .settings-nav-link {
+    min-height: 44px;
+  }
+
+  .choice-card {
+    min-height: 48px;
+  }
+}
+/* ---------------------------------------------------------------------------
+   Tasks calendar (EGA-793)
+   Month/week surfaces for due/planned dates, scheduled blocks and read-only
+   timer sessions. Tokens only; drag highlight changes instantly so reduced
+   motion never loses feedback.
+--------------------------------------------------------------------------- */
+
+.task-calendar {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.calendar-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+}
+
+.calendar-toolbar-nav,
+.calendar-toolbar-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.calendar-toolbar-toggles > div {
+  padding-left: 8px;
+  border-left: 1px solid var(--ega-divider);
+}
+
+.calendar-toolbar-toggles > div:first-child {
+  padding-left: 0;
+  border-left: 0;
+}
+
+.calendar-nav-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2rem;
+  height: 2rem;
+  padding: 0 8px;
+  border: 1px solid var(--ega-border);
+  border-radius: var(--radius-sm);
+  background: var(--ega-surface);
+  color: var(--ega-text-secondary);
+  font-size: var(--text-meta-lg);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.calendar-nav-button:hover {
+  background: var(--ega-surface-hover);
+  color: var(--ega-text);
+}
+
+.calendar-nav-button:focus-visible,
+.calendar-chip:focus-visible,
+.calendar-more:focus-visible,
+.calendar-timed:focus-visible,
+.calendar-popover-input:focus-visible,
+.calendar-popover-submit:focus-visible,
+.calendar-popover-link:focus-visible {
+  outline: 2px solid var(--ega-focus-outline);
+  outline-offset: 2px;
+}
+
+.calendar-title {
+  margin: 0 0 0 4px;
+  font-size: var(--text-body-lg);
+  font-weight: 650;
+  color: var(--ega-text);
+}
+
+.calendar-notice,
+.calendar-empty {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--ega-border);
+  border-radius: var(--radius-sm);
+  background: var(--ega-surface-subtle);
+  color: var(--ega-text-secondary);
+  font-size: var(--text-meta-lg);
+}
+
+.calendar-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  color: var(--ega-text-tertiary);
+  font-size: var(--text-meta);
+}
+
+.calendar-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.calendar-legend-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  border: 1px solid var(--ega-border-strong);
+}
+
+.calendar-legend-swatch-scheduled {
+  background: var(--status-info-bg);
+  border-color: var(--status-info-border);
+}
+
+.calendar-legend-swatch-session {
+  background: var(--ega-data-slate-soft);
+  border-color: var(--ega-border-strong);
+}
+
+/* Month grid ------------------------------------------------------------- */
+
+.calendar-month {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--ega-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--ega-surface);
+}
+
+.calendar-month-weekdays,
+.calendar-month-row {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+
+.calendar-weekday {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--ega-border);
+  background: var(--ega-surface-subtle);
+  color: var(--ega-text-tertiary);
+  font-size: var(--text-meta);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.calendar-day {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  min-height: 7.5rem;
+  padding: 6px;
+  border-right: 1px solid var(--ega-divider);
+  border-bottom: 1px solid var(--ega-divider);
+  background: var(--ega-surface);
+}
+
+.calendar-month-row:last-child .calendar-day {
+  border-bottom: 0;
+}
+
+.calendar-day:nth-child(7n) {
+  border-right: 0;
+}
+
+.calendar-day-outside {
+  background: var(--ega-surface-subtle);
+  color: var(--ega-text-tertiary);
+}
+
+.calendar-day-today {
+  background: var(--status-info-bg);
+  box-shadow: inset 0 0 0 1px var(--status-info-border);
+}
+
+.calendar-day-dragover {
+  outline: 2px dashed var(--ega-accent);
+  outline-offset: -3px;
+  background: var(--ega-accent-soft);
+}
+
+.calendar-day-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  min-height: 1.25rem;
+  color: var(--ega-text-secondary);
+  font-size: var(--text-meta);
+  font-variant-numeric: tabular-nums;
+}
+
+.calendar-today-label {
+  color: var(--status-info);
+  font-size: var(--text-meta);
+  font-weight: 700;
+}
+
+.calendar-day-items {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.calendar-chip {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+  padding: 2px 5px;
+  border: 1px solid var(--ega-border);
+  border-left: 3px solid var(--ega-text-tertiary);
+  border-radius: var(--radius-sm);
+  background: var(--ega-surface);
+  color: var(--ega-text);
+  font-size: var(--text-meta);
+  line-height: 1.35;
+  text-align: left;
+  cursor: grab;
+}
+
+.calendar-chip:hover {
+  background: var(--ega-surface-hover);
+}
+
+.calendar-chip-status-todo {
+  border-left-color: var(--status-pending);
+}
+
+.calendar-chip-status-in_progress {
+  border-left-color: var(--status-info);
+}
+
+.calendar-chip-status-blocked {
+  border-left-color: var(--status-overdue);
+}
+
+.calendar-chip-status-done {
+  border-left-color: var(--status-healthy);
+  color: var(--ega-text-secondary);
+}
+
+.calendar-chip-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.calendar-chip-compact {
+  padding: 1px 4px;
+}
+
+.calendar-more {
+  align-self: flex-start;
+  padding: 1px 4px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ega-text-secondary);
+  font-size: var(--text-meta);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.calendar-more:hover {
+  background: var(--ega-surface-hover);
+  color: var(--ega-text);
+}
+
+.calendar-more-content {
+  min-width: 14rem;
+}
+
+.calendar-more-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.calendar-day-timed-count {
+  margin: 0;
+  padding-left: 4px;
+  color: var(--ega-text-tertiary);
+  font-size: var(--text-meta);
+}
+
+/* Week grid -------------------------------------------------------------- */
+
+.calendar-week-scroll {
+  overflow-x: auto;
+  border: 1px solid var(--ega-border);
+  border-radius: var(--radius-md);
+  background: var(--ega-surface);
+}
+
+.calendar-week {
+  min-width: 52rem;
+}
+
+.calendar-week-row {
+  display: grid;
+  grid-template-columns: 3.5rem repeat(7, minmax(0, 1fr));
+}
+
+.calendar-week-header {
+  border-bottom: 1px solid var(--ega-border);
+  background: var(--ega-surface-subtle);
+}
+
+.calendar-week-hour-heading {
+  padding: 6px 6px 6px 8px;
+  border-right: 1px solid var(--ega-divider);
+  color: var(--ega-text-tertiary);
+  font-size: var(--text-meta);
+  font-weight: 600;
+}
+
+.calendar-week-day-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px;
+  padding: 6px 8px;
+  border-right: 1px solid var(--ega-divider);
+  color: var(--ega-text-secondary);
+  font-size: var(--text-meta-lg);
+  font-weight: 600;
+}
+
+.calendar-week-day-heading:last-child {
+  border-right: 0;
+}
+
+.calendar-week-task-row {
+  border-bottom: 1px solid var(--ega-border);
+}
+
+.calendar-week-task-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-height: 3rem;
+  min-width: 0;
+  padding: 4px;
+  border-right: 1px solid var(--ega-divider);
+}
+
+.calendar-week-task-cell:last-child {
+  border-right: 0;
+}
+
+.calendar-week-empty {
+  color: var(--ega-text-tertiary);
+  font-size: var(--text-meta);
+}
+
+.calendar-week-body {
+  position: relative;
+}
+
+.calendar-week-hours {
+  position: relative;
+  border-right: 1px solid var(--ega-divider);
+}
+
+.calendar-hour-label {
+  position: absolute;
+  right: 6px;
+  color: var(--ega-text-tertiary);
+  font-size: var(--text-meta);
+  font-variant-numeric: tabular-nums;
+  transform: translateY(-50%);
+}
+
+.calendar-week-column {
+  position: relative;
+  min-width: 0;
+  border-right: 1px solid var(--ega-divider);
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent calc(3rem - 1px),
+    var(--ega-divider) calc(3rem - 1px),
+    var(--ega-divider) 3rem
+  );
+}
+
+.calendar-week-column:last-child {
+  border-right: 0;
+}
+
+.calendar-timed {
+  position: absolute;
+  left: 3px;
+  right: 3px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-height: 1.25rem;
+  padding: 2px 5px;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-meta);
+  line-height: 1.3;
+  overflow: hidden;
+  text-align: left;
+}
+
+.calendar-timed-scheduled {
+  border: 1px solid var(--status-info-border);
+  border-left: 3px solid var(--status-info);
+  background: var(--status-info-bg);
+  color: var(--ega-text);
+  cursor: grab;
+}
+
+.calendar-timed-scheduled:hover {
+  filter: brightness(0.98);
+}
+
+.calendar-timed-session {
+  border: 1px dashed var(--ega-border-strong);
+  border-left: 3px solid var(--ega-data-slate);
+  background: var(--ega-data-slate-soft);
+  color: var(--ega-text-secondary);
+}
+
+.calendar-timed-badge {
+  align-self: flex-start;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--ega-surface);
+  color: var(--ega-text-tertiary);
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.calendar-timed-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.calendar-timed-time {
+  color: var(--ega-text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Popovers --------------------------------------------------------------- */
+
+.calendar-popover {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px;
+  min-width: 14rem;
+}
+
+.calendar-popover-title {
+  margin: 0;
+  color: var(--ega-text);
+  font-weight: 600;
+}
+
+.calendar-popover-meta {
+  margin: 0;
+  color: var(--ega-text-tertiary);
+  font-size: var(--text-meta);
+}
+
+.calendar-popover-form {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.calendar-popover-label {
+  color: var(--ega-text-secondary);
+  font-size: var(--text-meta);
+  font-weight: 600;
+}
+
+.calendar-popover-input {
+  height: 2rem;
+  padding: 0 6px;
+  border: 1px solid var(--ega-control-border);
+  border-radius: var(--radius-sm);
+  background: var(--ega-surface);
+  color: var(--ega-text);
+  font-size: var(--text-meta-lg);
+}
+
+.calendar-popover-submit {
+  height: 2rem;
+  padding: 0 10px;
+  border: 1px solid var(--ega-accent);
+  border-radius: var(--radius-sm);
+  background: var(--ega-accent);
+  color: var(--ega-accent-contrast, #ffffff);
+  font-size: var(--text-meta-lg);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.calendar-popover-link {
+  color: var(--ega-accent);
+  font-size: var(--text-meta-lg);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+@media (max-width: 640px) {
+  .calendar-day {
+    min-height: 5.5rem;
+    padding: 4px;
+  }
+
+  .calendar-chip,
+  .calendar-day-header,
+  .calendar-more,
+  .calendar-day-timed-count {
+    font-size: 0.6875rem;
+  }
+
+  .calendar-title {
+    width: 100%;
+    margin-left: 0;
+    font-size: var(--text-body);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .calendar-chip,
+  .calendar-nav-button,
+  .calendar-timed {
+    transition:
+      background-color var(--duration-fast) var(--ease-default),
+      border-color var(--duration-fast) var(--ease-default);
+  }
 }

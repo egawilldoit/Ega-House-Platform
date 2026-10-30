@@ -3,7 +3,7 @@
 import type { KeyboardEvent } from "react";
 import { useEffect, useRef } from "react";
 import Link from "next/link";
-import { ArrowRight, LayoutDashboard, Target, Timer, ListChecks, NotebookTabs } from "lucide-react";
+import { ArrowRight, House, Target, Timer, ListChecks, NotebookTabs, type LucideIcon } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -13,8 +13,8 @@ import { useCanonicalUrl } from "@/lib/use-canonical-url";
 
 import { getNextLauncherIndex, isLauncherActivationKey } from "./launcher-navigation";
 
-const ICON_MAP: Record<AppsLauncherIconKey, typeof LayoutDashboard> = {
-  dashboard: LayoutDashboard,
+const ICON_MAP: Record<AppsLauncherIconKey, LucideIcon> = {
+  home: House,
   tasks: ListChecks,
   timer: Timer,
   goals: Target,

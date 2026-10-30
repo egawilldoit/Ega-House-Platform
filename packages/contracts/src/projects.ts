@@ -1,3 +1,5 @@
+import type { GoalHealth } from "@ega/domain";
+
 export type { ProjectStatus, ProjectViewFilter } from "@ega/domain";
 
 /** Normalized values echoed by POST /api/projects. */
@@ -5,6 +7,8 @@ export type ProjectFormValues = {
   name: string;
   slug: string;
   description: string;
+  /** Selected Area id, or an empty string when the project has no area. */
+  areaId?: string;
 };
 
 /** Serialized project row used by project list and identity responses. */
@@ -14,6 +18,21 @@ export type ProjectRecord = {
   slug: string;
   description: string | null;
   status: string;
+  areaId?: string | null;
+  areaName?: string | null;
+  areaColor?: string | null;
+  areaIcon?: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+/** Owner-scoped project area used for grouping and filtering. */
+export type AreaRecord = {
+  id: string;
+  name: string;
+  icon: string;
+  color: string;
+  description: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -31,6 +50,10 @@ export type ProjectGoalRecord = {
   id: string;
   title: string;
   projectId: string;
+  /** Canonical goal health, or null when unset. */
+  health: GoalHealth | null;
+  /** Immediate next move for the goal, or null when the owner has not set one. */
+  nextStep: string | null;
 };
 
 /** GET /api/projects response body. */
@@ -44,6 +67,7 @@ export type ProjectCardReadModel = ProjectRecord & {
 
 export type ProjectsReadModel = {
   projects: ProjectCardReadModel[];
+  areas?: AreaRecord[];
   summary: {
     total: number;
     active: number;
@@ -63,6 +87,7 @@ export type CreateProjectInput = {
   name: string;
   slug: string;
   description: string | null;
+  areaId?: string | null;
 };
 
 export type CreateProjectResponse = {

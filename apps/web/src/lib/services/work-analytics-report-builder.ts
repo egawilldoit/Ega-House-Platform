@@ -22,6 +22,7 @@ import {
   calculateWorkAnalyticsInsights,
   calculateWorkAnalyticsMonthComparison,
   calculateWorkAnalyticsProjectBreakdown,
+  calculateWorkAnalyticsAreaBreakdown,
   calculateWorkAnalyticsGoalBreakdown,
   calculateWorkAnalyticsTaskBreakdown,
   calculateEstimateAccuracy,
@@ -35,6 +36,7 @@ import type {
   WorkAnalyticsInsights,
   WorkAnalyticsMonthComparison,
   WorkAnalyticsProjectBreakdown,
+  WorkAnalyticsAreaBreakdown,
   WorkAnalyticsGoalBreakdown,
   WorkAnalyticsTaskBreakdown,
   EstimateAccuracySummary,
@@ -110,6 +112,7 @@ export type WorkAnalyticsReport = {
   breakdownBy: AnalyticsBreakdownBy;
   breakdownTitle: string;
   projectBreakdown: WorkAnalyticsProjectBreakdown[];
+  areaBreakdown: WorkAnalyticsAreaBreakdown[];
   goalBreakdown: WorkAnalyticsGoalBreakdown[];
   taskBreakdown: WorkAnalyticsTaskBreakdown[];
   estimateAccuracy: EstimateAccuracySummary;
@@ -265,6 +268,7 @@ export function buildWorkAnalyticsReport(
   // 7. Breakdowns (selected window)
   const breakdownBy: AnalyticsBreakdownBy = filters.breakdownBy;
   const projectBreakdown = calculateWorkAnalyticsProjectBreakdown(sessions, selectedWindow, options);
+  const areaBreakdown = calculateWorkAnalyticsAreaBreakdown(sessions, selectedWindow, options);
   const goalBreakdown = calculateWorkAnalyticsGoalBreakdown(sessions, selectedWindow, options);
   const taskBreakdown = calculateWorkAnalyticsTaskBreakdown(sessions, selectedWindow, options);
 
@@ -285,11 +289,13 @@ export function buildWorkAnalyticsReport(
 
   // 11. Breakdown title
   const breakdownTitle =
-    breakdownBy === "goal"
-      ? "Goal breakdown"
-      : breakdownBy === "task"
-        ? "Task breakdown"
-        : "Project breakdown";
+    breakdownBy === "area"
+      ? "Area breakdown"
+      : breakdownBy === "goal"
+        ? "Goal breakdown"
+        : breakdownBy === "task"
+          ? "Task breakdown"
+          : "Project breakdown";
 
   return {
     selectedRange: filters.range,
@@ -309,6 +315,7 @@ export function buildWorkAnalyticsReport(
     breakdownBy,
     breakdownTitle,
     projectBreakdown,
+    areaBreakdown,
     goalBreakdown,
     taskBreakdown,
     estimateAccuracy,

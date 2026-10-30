@@ -7,7 +7,7 @@ import { buildWorkspaceShellMetrics } from "@/lib/workspace-shell";
 
 import { TopBar } from "./top-bar";
 
-const identity = { name: "EGA", email: "ega@egahouse.com", initials: "EG" };
+const identity = { id: null, name: "EGA", email: "ega@egahouse.com", initials: "EG" };
 
 const metrics = buildWorkspaceShellMetrics({
   hasActiveTimer: false,

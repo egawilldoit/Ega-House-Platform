@@ -7,6 +7,7 @@ import { MetricDelta } from "@/components/ui/metric";
 import { StatCard } from "@/components/ui/stat-card";
 import {
   DISPLAY_EMPTY,
+  formatDisplayCount,
   formatDisplayDuration,
   formatDisplayDurationDelta,
   formatDisplayMultiple,
@@ -171,6 +172,7 @@ export function WorkAnalyticsPageView({ model }: { model: WorkAnalyticsPageModel
         breakdownBy={report.breakdownBy}
         breakdownTitle={report.breakdownTitle}
         projectBreakdown={report.projectBreakdown}
+        areaBreakdown={report.areaBreakdown}
         goalBreakdown={report.goalBreakdown}
         taskBreakdown={report.taskBreakdown}
         selectedRangeLabel={report.selectedRangeLabel}
@@ -289,6 +291,21 @@ export function WorkAnalyticsPageView({ model }: { model: WorkAnalyticsPageModel
                       ? ""
                       : ` (${signedPercent(report.selectedComparison.percentChange)})`}
                   </p>
+                </div>
+
+                <div>
+                  <p className="glass-label">Tasks completed</p>
+                  <div className="mt-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                    <span
+                      className="text-[length:var(--text-metric)] font-semibold tabular-nums text-ega-text"
+                      data-testid="analytics-completed-tasks"
+                    >
+                      {formatDisplayCount(report.selectedSummary.completedTaskCount)}
+                    </span>
+                    <span className="text-[length:var(--text-meta-lg)] text-ega-text-secondary">
+                      {report.selectedRangeLabel} · counted at the task completion time
+                    </span>
+                  </div>
                 </div>
 
                 <div>

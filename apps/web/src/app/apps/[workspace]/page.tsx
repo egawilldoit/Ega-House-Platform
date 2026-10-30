@@ -1,7 +1,10 @@
 import { notFound, redirect } from "next/navigation";
 
 const WORKSPACE_REDIRECTS: Record<string, `/${string}`> = {
-  dashboard: "/dashboard",
+  home: "/home",
+  // Legacy /apps/dashboard deep links go straight to Home instead of
+  // chaining /apps/dashboard -> /dashboard -> /home.
+  dashboard: "/home",
   goals: "/goals",
   tasks: "/tasks",
   timer: "/timer",

@@ -31,7 +31,7 @@ exception-carrying transitives are named in the dependency-audit section of
 | Field | Value |
 |---|---|
 | Packages | `@modelcontextprotocol/client`, `@modelcontextprotocol/core`, `@modelcontextprotocol/server` |
-| Version | `2.3.0` (all three, pinned exactly — no range) |
+| Version | `2.3.1` (all three, pinned exactly — no range) |
 | Declared licence | `Apache-2.0` in each package's `package.json` `"license"` field |
 | Licence text location | `node_modules/@modelcontextprotocol/{client,core,server}/LICENSE` |
 | `NOTICE` file shipped | **No** — verified by `find` across all three package directories; no file named `NOTICE` or `COPYING` exists, and none of the three packages ships one |

@@ -1,19 +1,22 @@
-import React from "react";
+"use client";
+
+import React, { useRef } from "react";
 import { ChevronDown, Clock3, Folder, Pin } from "lucide-react";
 
 import { FocusPinToggleForm } from "@/components/tasks/focus-pin-toggle-form";
+import { EstimateVsActualBadge } from "@/components/tasks/estimate-vs-actual-badge";
 import { TaskEditModalTrigger } from "@/components/tasks/task-edit-modal-trigger";
+import { ConfirmDeleteTaskButton } from "@/components/tasks/confirm-delete-task-button";
 import type { UpdateTaskEditorAction } from "@/components/tasks/edit-task-modal";
 import { TaskDueDateLabel } from "@/components/tasks/task-due-date-label";
 import { TaskReminderPanel } from "@/components/tasks/task-reminder-panel";
 import { Badge } from "@/components/ui/badge";
 import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import { StatusBadge } from "@/components/ui/status-badge";
-import { formatTaskEstimate } from "@/lib/task-estimate";
+import { getTaskStatusTransitions } from "@ega/domain";
 import {
   formatTaskToken,
   isTaskCompletedStatus,
-  isTaskStatus,
   type TaskStatus,
 } from "@/lib/task-domain";
 import { formatTaskDueDate } from "@/lib/task-due-date";
@@ -38,20 +41,18 @@ type TaskKanbanCardProps = {
   cancelReminderAction?: (formData: FormData) => void | Promise<void>;
   returnTo?: string;
   trackedSeconds?: number;
+  subtaskCount?: { done: number; total: number } | null;
   projectOptions?: Array<{ id: string; name: string }>;
   goalOptions?: Array<{ id: string; title: string; projectId: string }>;
   error?: string | null;
 };
 
-const NEXT_STATUS_BY_STATUS = {
-  todo: ["in_progress", "blocked", "done"],
-  in_progress: ["todo", "blocked", "done"],
-  blocked: ["todo", "in_progress", "done"],
-  done: ["todo"],
-} as const satisfies Record<TaskStatus, readonly TaskStatus[]>;
-
+// Review is an explicit hand-off, never an implicit next step: work enters it
+// from in progress and leaves it back to in progress or straight to done. The
+// matrix lives in @ega/domain so board drag, card buttons and tap alternatives
+// cannot drift apart.
 export function getTaskKanbanNextStatuses(status: string): TaskStatus[] {
-  return isTaskStatus(status) ? [...NEXT_STATUS_BY_STATUS[status]] : [];
+  return getTaskStatusTransitions(status);
 }
 
 export function getTaskKanbanStatusActionLabel(status: TaskStatus) {
@@ -61,6 +62,10 @@ export function getTaskKanbanStatusActionLabel(status: TaskStatus) {
 
   if (status === "in_progress") {
     return "In Progress";
+  }
+
+  if (status === "review") {
+    return "Review";
   }
 
   if (status === "blocked") {
@@ -90,6 +95,7 @@ export function TaskKanbanCard({
   cancelReminderAction,
   returnTo = "/tasks?layout=kanban",
   trackedSeconds,
+  subtaskCount,
   projectOptions = [],
   goalOptions = [],
   error,
@@ -100,7 +106,11 @@ export function TaskKanbanCard({
   const isPinned = task.focus_rank !== null;
   const isCompleted = isTaskCompletedStatus(task.status);
   const isBlocked = task.status === "blocked";
-  const estimateLabel = formatTaskEstimate(task.estimate_minutes);
+  const subtaskLabel =
+    subtaskCount && subtaskCount.total > 0
+      ? `${subtaskCount.done}/${subtaskCount.total}`
+      : null;
+  const hasEstimate = task.estimate_minutes !== null && task.estimate_minutes !== undefined;
   const trackedLabel = typeof trackedSeconds === "number" ? formatDurationLabel(trackedSeconds) : null;
   const recurrenceRule = task.task_recurrences[0]?.rule ?? null;
   const recurrenceLabel = recurrenceRule ? formatTaskRecurrenceRule(recurrenceRule) : null;
@@ -110,14 +120,17 @@ export function TaskKanbanCard({
   const showTimerAction = !isArchived && !isCompleted && Boolean(startTimerAction);
   const showActiveActions = !isArchived && Boolean(pinToggleAction || archiveAction || deleteAction);
   const showArchivedActions = isArchived && Boolean(unarchiveAction || deleteAction);
+  const deleteActiveFormRef = useRef<HTMLFormElement | null>(null);
+  const deleteArchivedFormRef = useRef<HTMLFormElement | null>(null);
   const showOverflowActions = showStatusControls || showActiveActions || showArchivedActions;
   const showReminderPanel = Boolean(
     createReminderAction && cancelReminderAction && !updateEditorAction,
   );
   const showDetails = Boolean(
     goalName ||
-      estimateLabel ||
+      hasEstimate ||
       trackedLabel ||
+      subtaskLabel ||
       recurrenceLabel ||
       task.blocked_reason ||
       showReminderPanel ||
@@ -244,16 +257,23 @@ export function TaskKanbanCard({
                 />
               </summary>
               <div className="mt-2 space-y-3">
-                {goalName || estimateLabel || trackedLabel || recurrenceLabel || task.blocked_reason ? (
+                {goalName || hasEstimate || trackedLabel || recurrenceLabel || task.blocked_reason ? (
                   <dl className="grid gap-2 rounded-[var(--radius-sm)] border border-[var(--ega-border)] bg-[var(--ega-surface-subtle)] p-2 text-xs leading-5">
                     {goalName ? (
                       <TaskKanbanDetailItem label="Goal">{goalName}</TaskKanbanDetailItem>
                     ) : null}
-                    {estimateLabel ? (
-                      <TaskKanbanDetailItem label="Estimate">{estimateLabel}</TaskKanbanDetailItem>
-                    ) : null}
-                    {trackedLabel ? (
+                    {hasEstimate ? (
+                      <TaskKanbanDetailItem label="Estimate vs tracked">
+                        <EstimateVsActualBadge
+                          estimateMinutes={task.estimate_minutes}
+                          trackedSeconds={trackedSeconds ?? 0}
+                        />
+                      </TaskKanbanDetailItem>
+                    ) : trackedLabel ? (
                       <TaskKanbanDetailItem label="Tracked">{trackedLabel}</TaskKanbanDetailItem>
+                    ) : null}
+                    {subtaskLabel ? (
+                      <TaskKanbanDetailItem label="Subtasks">☑ {subtaskLabel}</TaskKanbanDetailItem>
                     ) : null}
                     {recurrenceLabel ? (
                       <TaskKanbanDetailItem label="Repeat">{recurrenceLabel}</TaskKanbanDetailItem>
@@ -372,17 +392,16 @@ export function TaskKanbanCard({
                       ) : null}
 
                       {deleteAction ? (
-                        <form action={deleteAction}>
+                        <form action={deleteAction} ref={deleteActiveFormRef}>
                           <TaskKanbanActionHiddenFields taskId={task.id} returnTo={returnTo} />
                           <input type="hidden" name="confirmDelete" value="true" />
-                          <PendingSubmitButton
-                            type="submit"
-                            size="sm"
-                            variant="danger"
+                          <ConfirmDeleteTaskButton
+                            taskTitle={task.title}
+                            formRef={deleteActiveFormRef}
+                            dataTestId={`task-kanban-delete-${task.id}`}
                             pendingLabel="Deleting…"
-                          >
-                            Delete
-                          </PendingSubmitButton>
+                            triggerLabel="Delete"
+                          />
                         </form>
                       ) : null}
                     </div>
@@ -408,17 +427,16 @@ export function TaskKanbanCard({
                       ) : null}
 
                       {deleteAction ? (
-                        <form action={deleteAction}>
+                        <form action={deleteAction} ref={deleteArchivedFormRef}>
                           <TaskKanbanActionHiddenFields taskId={task.id} returnTo={returnTo} />
                           <input type="hidden" name="confirmDelete" value="true" />
-                          <PendingSubmitButton
-                            type="submit"
-                            size="sm"
-                            variant="danger"
+                          <ConfirmDeleteTaskButton
+                            taskTitle={task.title}
+                            formRef={deleteArchivedFormRef}
+                            dataTestId={`task-kanban-delete-${task.id}`}
                             pendingLabel="Deleting…"
-                          >
-                            Delete
-                          </PendingSubmitButton>
+                            triggerLabel="Delete"
+                          />
                         </form>
                       ) : null}
                     </div>

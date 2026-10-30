@@ -84,7 +84,7 @@ function makeFakeClient(): EgaApiClient {
           tasks: [],
           counters: {
             total: 0,
-            byStatus: { todo: 0, in_progress: 0, done: 0, blocked: 0 },
+            byStatus: { todo: 0, in_progress: 0, review: 0, done: 0, blocked: 0 },
             byPriority: { low: 0, medium: 0, high: 0, urgent: 0 },
             pinned: 0,
             overdue: 0,
@@ -116,6 +116,11 @@ function makeFakeClient(): EgaApiClient {
       clearRecurrence: jest.fn(),
       pin: jest.fn(),
       unpin: jest.fn(),
+      listComments: jest.fn(),
+      createComment: jest.fn(),
+      updateComment: jest.fn(),
+      deleteComment: jest.fn(),
+      toggleCommentReaction: jest.fn(),
     },
     inbox: {
       list: jest.fn(),

@@ -7,7 +7,7 @@ import { normalizeStoredScopes, parseRequestedScopes } from "@/lib/services/agen
 
 test("normalizeStoredScopes preserves valid scopes", () => {
   const result = normalizeStoredScopes({
-    tasks: { read: true, create: true, bulkLimit: 10, idempotency: "source+sourceId" },
+    tasks: { read: true, create: true, bulkLimit: 10, idempotency: "source+sourceId", comment: true },
     projects: { read: true },
     goals: { read: false },
   });
@@ -16,6 +16,7 @@ test("normalizeStoredScopes preserves valid scopes", () => {
   assert.equal(result.tasks?.create, true);
   assert.equal(result.tasks?.bulkLimit, 10);
   assert.equal(result.tasks?.idempotency, "source+sourceId");
+  assert.equal(result.tasks?.comment, true);
   assert.equal(result.projects?.read, true);
   assert.equal(result.goals?.read, undefined); // false is treated as absent
 });
@@ -125,8 +126,7 @@ test("parseRequestedScopes rejects wrong types for boolean fields", () => {
   assert.match(result.ok ? "" : result.error, /tasks\.read must be a boolean/);
 });
 
-test("parseRequestedScopes validates bulkLimit range", () => {
-  assert.equal(parseRequestedScopes({ tasks: { bulkLimit: 0 } }).ok, false);
+test("parseRequestedScopes validates bulkLimit range", () => {  assert.equal(parseRequestedScopes({ tasks: { bulkLimit: 0 } }).ok, false);
   assert.equal(parseRequestedScopes({ tasks: { bulkLimit: 51 } }).ok, false);
   assert.equal(parseRequestedScopes({ tasks: { bulkLimit: 1.5 } }).ok, false);
   assert.equal(parseRequestedScopes({ tasks: { bulkLimit: "10" } }).ok, false);
@@ -148,4 +148,16 @@ test("parseRequestedScopes rejects unknown project/goal keys", () => {
 
   const goalsBad = parseRequestedScopes({ goals: { read: true, delete: true } });
   assert.equal(goalsBad.ok, false);
+});
+
+test("parseRequestedScopes accepts only an explicit comment grant", () => {
+  const good = parseRequestedScopes({ tasks: { read: true, comment: true } });
+  assert.ok(good.ok);
+  if (good.ok) assert.equal(good.scopes.tasks?.comment, true);
+
+  const bad = parseRequestedScopes({ tasks: { comment: "yes" } });
+  assert.equal(bad.ok, false);
+
+  const unknown = parseRequestedScopes({ tasks: { comments: true } });
+  assert.equal(unknown.ok, false);
 });

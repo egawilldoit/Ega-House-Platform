@@ -5,9 +5,10 @@ import { describe, expect, it } from "vitest";
 const read = (path: string) => readFileSync(resolve(process.cwd(), path), "utf8");
 
 describe("EGA-516 Operator acceptance", () => {
-  it("authenticated / enters the workspace Home surface (EGA-653)", () => {
+  it("authenticated / enters the configured workspace launch surface (EGA-653, EGA-798)", () => {
     const page = read("src/app/page.tsx");
-    expect(page).toContain('redirect("/home")');
+    expect(page).toContain("getLaunchPagePath(preferences.launchPage)");
+    expect(page).toContain('from "@ega/domain/preferences"');
     expect(page).not.toContain('redirect("/dashboard")');
     // Today remains its own deep workspace, reachable from the shell.
     const routeMeta = read("src/components/layout/shell-route-meta.ts");
@@ -15,13 +16,33 @@ describe("EGA-516 Operator acceptance", () => {
     expect(routeMeta).toContain('href: "/today"');
   });
 
-  it("/dashboard no longer computes competing command-center model and redirects to Home", () => {
+  it("/dashboard no longer computes competing command-center model and redirects to the launch page", () => {
     const dashboardPage = read("src/app/dashboard/page.tsx");
-    expect(dashboardPage).toContain('redirect("/home")');
+    expect(dashboardPage).toContain("getLaunchPagePath(preferences.launchPage)");
     // Should not import or compute competing dashboard-data panels
     expect(dashboardPage).not.toContain("getDashboardData");
     expect(dashboardPage).not.toContain("CommandCenterAsync");
     expect(dashboardPage).not.toContain("getDashboardHealthData");
+  });
+
+  it("Apps launcher advertises Home directly and /dashboard stays a legacy redirect (EGA-709)", () => {
+    // The launcher must not link the retired /dashboard route: it only
+    // server-redirects to the configured launch page, so operators lost the
+    // history entry.
+    const launcherItems = read("src/app/apps/launcher-items.ts");
+    expect(launcherItems).not.toContain('"/dashboard"');
+    expect(launcherItems).toContain('label: "Home"');
+    expect(launcherItems).toContain('href: "/home"');
+
+    // /apps/dashboard deep links go straight to Home instead of chaining
+    // /apps/dashboard -> /dashboard -> /home.
+    const appsWorkspacePage = read("src/app/apps/[workspace]/page.tsx");
+    expect(appsWorkspacePage).toContain('dashboard: "/home"');
+    expect(appsWorkspacePage).toContain('home: "/home"');
+
+    // Old bookmarks still resolve: /dashboard redirects to the launch page.
+    const dashboardPage = read("src/app/dashboard/page.tsx");
+    expect(dashboardPage).toContain("getLaunchPagePath");
   });
 
   it("web Today no longer forks shared ranking/status semantics", () => {

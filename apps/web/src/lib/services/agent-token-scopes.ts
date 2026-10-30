@@ -29,6 +29,7 @@ function coerceTaskScopes(raw: unknown): AgentTokenScopes["tasks"] {
   if (s.updateAny === true) out.updateAny = true;
   if (s.archive === true) out.archive = true;
   if (s.bulk === true) out.bulk = true;
+  if (s.comment === true) out.comment = true;
 
   // Preserve valid bulkLimit (integer 1-50), omit invalid values
   if (typeof s.bulkLimit === "number" && Number.isInteger(s.bulkLimit)) {
@@ -125,6 +126,7 @@ function validateTaskSection(
     "bulk",
     "bulkLimit",
     "idempotency",
+    "comment",
   ]);
 
   for (const key of Object.keys(s)) {
@@ -147,6 +149,9 @@ function validateTaskSection(
   }
   if (s.bulk !== undefined && typeof s.bulk !== "boolean") {
     return { error: "tasks.bulk must be a boolean" };
+  }
+  if (s.comment !== undefined && typeof s.comment !== "boolean") {
+    return { error: "tasks.comment must be a boolean" };
   }
 
   if (s.bulkLimit !== undefined) {

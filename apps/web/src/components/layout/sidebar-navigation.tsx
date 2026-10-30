@@ -2,7 +2,9 @@
 
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
+import { useId } from "react";
 import {
+  Archive,
   BarChart3,
   Bell,
   CalendarCheck2,
@@ -24,10 +26,11 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
-import { formatDisplayCount } from "@/lib/presentation-format";
+import { formatDisplayCount, formatDisplayCountLabel } from "@/lib/presentation-format";
 import type { WorkspaceShellMetrics } from "@/lib/workspace-shell";
 import { cn } from "@/lib/utils";
 import { useCanonicalUrl } from "@/lib/use-canonical-url";
+import { groupSidebarProjects, SidebarAreaHeading } from "./sidebar-areas";
 import { getSidebarTaskSignalBadge, SidebarSignalBadge } from "./shell-signals";
 import { SidebarLogout } from "./sidebar-logout";
 import { COMMAND_ROUTES, SYSTEM_ROUTES, type ShellRouteMeta } from "./shell-route-meta";
@@ -39,6 +42,10 @@ export type SidebarProject = {
   status: string;
   activeTaskCount: number;
   isPinned: boolean;
+  areaId?: string | null;
+  areaName?: string | null;
+  areaColor?: string | null;
+  areaIcon?: string | null;
 };
 
 export type SidebarGoal = {
@@ -47,7 +54,15 @@ export type SidebarGoal = {
   project_id: string;
 };
 
+export type SidebarFavorite = {
+  id: string;
+  label: string;
+  href: `/${string}`;
+  kind: "project" | "task";
+};
+
 type SidebarNavigationProps = {
+  favorites?: SidebarFavorite[];
   projects?: SidebarProject[];
   metrics: WorkspaceShellMetrics;
   compact?: boolean;
@@ -61,7 +76,44 @@ type SidebarNavigationProps = {
  */
 function getProjectAccessibleLabel(project: SidebarProject) {
   if (project.activeTaskCount <= 0) return project.name;
-  return `${project.name} — ${formatDisplayCount(project.activeTaskCount)} active tasks`;
+  return `${project.name} — ${formatDisplayCountLabel(project.activeTaskCount, "active task")}`;
+}
+
+function SidebarProjectLink({
+  project,
+  selected,
+  href,
+  onNavigate,
+}: {
+  project: SidebarProject;
+  selected: boolean;
+  href: string;
+  onNavigate?: () => void;
+}) {
+  return (
+    <Link
+      href={href}
+      aria-current={selected ? "page" : undefined}
+      aria-label={getProjectAccessibleLabel(project)}
+      title={getProjectAccessibleLabel(project)}
+      className={cn("sidebar-link sidebar-project-link", selected && "selected")}
+      onClick={onNavigate}
+    >
+      <span
+        className="project-dot"
+        style={{ background: getProjectColor(project.name) }}
+        aria-hidden="true"
+      />
+      <span className="workspace-nav-label min-w-0 flex-1 truncate">
+        {project.name}
+      </span>
+      {project.activeTaskCount > 0 ? (
+        <span className="sidebar-project-count" aria-hidden="true">
+          {formatDisplayCount(project.activeTaskCount)}
+        </span>
+      ) : null}
+    </Link>
+  );
 }
 
 const ROUTE_ICONS: Record<string, LucideIcon> = {
@@ -73,10 +125,12 @@ const ROUTE_ICONS: Record<string, LucideIcon> = {
   "/review": FileText,
   "/work-analytics": BarChart3,
   "/backlog": Lightbulb,
+  "/archive": Archive,
   "/notifications": Bell,
   "/startup": Rocket,
   "/shutdown": Power,
   "/apps": Grid2X2,
+  "/agents": Bot,
   "/help": CircleHelp,
   "/settings/account": Settings,
 };
@@ -106,6 +160,10 @@ function getProjectColor(name: string) {
 function isActive(pathname: string, href: string) {
   if (href === "/tasks") {
     return pathname === "/tasks" || pathname.startsWith("/tasks/");
+  }
+
+  if (href === "/settings/account") {
+    return pathname === "/settings" || pathname.startsWith("/settings/");
   }
 
   return pathname === href || pathname.startsWith(`${href}/`);
@@ -146,6 +204,7 @@ function RouteLink({
 }
 
 export function SidebarNavigation({
+  favorites = [],
   projects = [],
   metrics,
   compact = false,
@@ -162,6 +221,8 @@ export function SidebarNavigation({
     : null;
   const visibleProjects = projects.slice(0, VISIBLE_PROJECT_LIMIT);
   const hiddenProjectCount = Math.max(0, projects.length - visibleProjects.length);
+  const projectGroups = groupSidebarProjects(visibleProjects);
+  const areaHeadingPrefix = useId();
 
   return (
     <nav
@@ -193,6 +254,32 @@ export function SidebarNavigation({
         </div>
       </section>
 
+      {favorites.length > 0 ? (
+        <section className="sidebar-section workspace-nav-section" aria-labelledby="workspace-favorites-label">
+          <div className="sidebar-section-heading">
+            <div id="workspace-favorites-label" className="sidebar-section-label">
+              Favourites
+            </div>
+          </div>
+          <div className="sidebar-project-list">
+            {favorites.slice(0, 6).map((favorite) => (
+              <Link
+                key={favorite.id}
+                href={canonicalUrl.resolve(favorite.href)}
+                className="sidebar-link"
+                onClick={onNavigate}
+                title={favorite.label}
+              >
+                <span className="workspace-nav-icon" aria-hidden="true">★</span>
+                <span className="workspace-nav-label min-w-0 flex-1 truncate">
+                  {favorite.label}
+                </span>
+              </Link>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
       <section
         className="sidebar-section sidebar-project-section workspace-nav-section"
         aria-labelledby="workspace-projects-label"
@@ -214,37 +301,39 @@ export function SidebarNavigation({
 
         {visibleProjects.length > 0 ? (
           <div className="sidebar-project-list">
-            {visibleProjects.map((project) => {
-              const selected =
-                selectedProjectId === project.id || projectPathSlug === project.slug;
+            {projectGroups.map((group) => {
+              const headingId = `${areaHeadingPrefix}-${group.key}`;
 
               return (
-                <Link
-                  key={project.id}
-                  href={canonicalUrl.resolve(`/tasks?project=${project.id}`)}
-                  aria-current={selected ? "page" : undefined}
-                  aria-label={getProjectAccessibleLabel(project)}
-                  title={getProjectAccessibleLabel(project)}
+                <div
+                  key={group.key}
                   className={cn(
-                    "sidebar-link sidebar-project-link",
-                    selected && "selected",
+                    "sidebar-project-group",
+                    group.unassigned && "sidebar-project-group-unassigned",
                   )}
-                  onClick={onNavigate}
+                  role="group"
+                  aria-labelledby={headingId}
                 >
-                  <span
-                    className="project-dot"
-                    style={{ background: getProjectColor(project.name) }}
-                    aria-hidden="true"
+                  <SidebarAreaHeading
+                    headingId={headingId}
+                    name={group.name}
+                    icon={group.icon}
+                    color={group.color}
+                    projectCount={group.projects.length}
                   />
-                  <span className="workspace-nav-label min-w-0 flex-1 truncate">
-                    {project.name}
-                  </span>
-                  {project.activeTaskCount > 0 ? (
-                    <span className="sidebar-project-count" aria-hidden="true">
-                      {formatDisplayCount(project.activeTaskCount)}
-                    </span>
-                  ) : null}
-                </Link>
+                  {group.projects.map((project) => (
+                    <SidebarProjectLink
+                      key={project.id}
+                      project={project}
+                      selected={
+                        selectedProjectId === project.id ||
+                        projectPathSlug === project.slug
+                      }
+                      href={canonicalUrl.resolve(`/tasks?project=${project.id}`)}
+                      onNavigate={onNavigate}
+                    />
+                  ))}
+                </div>
               );
             })}
           </div>

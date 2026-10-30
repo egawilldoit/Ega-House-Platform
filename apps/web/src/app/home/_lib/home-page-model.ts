@@ -1,6 +1,16 @@
 import type { OperatorSnapshot, OperatorTask } from "@ega/application";
 
+import type { TaskDueBucket } from "@ega/domain";
+
+import { buildTaskListUrl, type TaskViewFilter } from "@/lib/task-list";
+import { getTaskContextHref } from "@/lib/task-navigation";
 import { isTaskCompletedStatus } from "@/lib/task-domain";
+
+import type {
+  HomeDashboardData,
+  HomeDashboardGroup,
+  HomeDashboardTask,
+} from "./home-dashboard-data";
 
 export type HomeAttention = {
   overdue: number;
@@ -37,6 +47,65 @@ export type HomeAvailability = {
   attention: "available" | "unavailable";
 };
 
+/** Compact task row shared by the deadline and My-tasks previews. */
+export type HomeTaskPreview = {
+  id: string;
+  title: string;
+  status: string;
+  priority: string;
+  dueDate: string | null;
+  projectName: string | null;
+  projectSlug: string | null;
+  href: string;
+};
+
+/**
+ * A stat's exact scope total. `count: null` means the aggregate read failed and
+ * the UI must not render a fabricated zero.
+ */
+export type HomeStat = {
+  count: number | null;
+  href: string;
+};
+
+export type HomeStats = {
+  activeProjects: HomeStat & { atRiskCount: number | null };
+  openTasks: HomeStat;
+  completedThisWeek: HomeStat;
+  overdue: HomeStat;
+  trackedThisWeek: { minutes: number | null; href: string };
+};
+
+export type HomeDeadlineBucketKey = "today" | "tomorrow" | "thisWeek";
+
+export type HomeDeadlineBucket = {
+  key: HomeDeadlineBucketKey;
+  label: string;
+  /** Destination scope for the whole bucket (all tasks, not just previews). */
+  href: string;
+  count: number | null;
+  tasks: HomeTaskPreview[];
+};
+
+export const HOME_MY_TASKS_TAB_VALUES = ["upcoming", "overdue", "completed"] as const;
+export type HomeMyTasksTabKey = (typeof HOME_MY_TASKS_TAB_VALUES)[number];
+
+export type HomeMyTasksTab = {
+  key: HomeMyTasksTabKey;
+  label: string;
+  /** URL state for switching the Home tab. */
+  href: string;
+  /** Canonical Tasks destination with the same scope as the tab count. */
+  viewAllHref: string;
+  count: number | null;
+  tasks: HomeTaskPreview[];
+};
+
+export type HomeMyTasks = {
+  activeTab: HomeMyTasksTabKey;
+  tabs: HomeMyTasksTab[];
+};
+
 export type HomeModel = {
   /** Canonical local date (YYYY-MM-DD) from the Operator snapshot. */
   date: string;
@@ -50,7 +119,161 @@ export type HomeModel = {
   /** Null when shell attention metrics are unavailable (degraded). */
   attention: HomeAttention | null;
   availability: HomeAvailability;
+  stats: HomeStats;
+  deadlines: HomeDeadlineBucket[];
+  myTasks: HomeMyTasks;
 };
+
+const HOME_DEADLINE_LABELS: Record<HomeDeadlineBucketKey, string> = {
+  today: "Today",
+  tomorrow: "Tomorrow",
+  thisWeek: "This week",
+};
+
+const HOME_MY_TASKS_LABELS: Record<HomeMyTasksTabKey, string> = {
+  upcoming: "Upcoming",
+  overdue: "Overdue",
+  completed: "Completed",
+};
+
+export function resolveHomeMyTasksTab(value: unknown): HomeMyTasksTabKey {
+  const normalized = String(value ?? "").trim();
+  return HOME_MY_TASKS_TAB_VALUES.includes(normalized as HomeMyTasksTabKey)
+    ? (normalized as HomeMyTasksTabKey)
+    : "upcoming";
+}
+
+function toHomeTaskPreview(task: HomeDashboardTask): HomeTaskPreview {
+  return {
+    ...task,
+    href: getTaskContextHref(task.id, task.projectSlug),
+  };
+}
+
+function mapPreviewTasks(group: HomeDashboardGroup | undefined | null): HomeTaskPreview[] {
+  return (group?.tasks ?? []).map(toHomeTaskPreview);
+}
+
+const dueBucketFilter = (
+  bucket: TaskDueBucket,
+  operator: "is" | "is_not" = "is",
+): TaskViewFilter => ({ field: "due_bucket", operator, values: [bucket] });
+
+/** Canonical Tasks URL for a due scope, ordered by due date. */
+function buildDueScopeHref(filters: readonly TaskViewFilter[], activeOnly = false) {
+  return buildTaskListUrl("/tasks", {
+    filters,
+    activeTasks: activeOnly,
+    sortKey: "due",
+    sortDirection: "asc",
+  });
+}
+
+function buildDeadlines(dashboard: HomeDashboardData | null): HomeDeadlineBucket[] {
+  const windows: Array<{
+    key: HomeDeadlineBucketKey;
+    group: HomeDashboardGroup | undefined;
+    filters: readonly TaskViewFilter[];
+  }> = [
+    { key: "today", group: dashboard?.deadlines.today, filters: [dueBucketFilter("today")] },
+    {
+      key: "tomorrow",
+      group: dashboard?.deadlines.tomorrow,
+      // within the next day, excluding today, is exactly tomorrow
+      filters: [
+        { field: "due_within_days", operator: "is", values: ["1"] },
+        dueBucketFilter("today", "is_not"),
+      ],
+    },
+    {
+      key: "thisWeek",
+      // The canonical EGA bucket is the next seven days; Home labels it This week
+      // and states the real window in its accessible name.
+      group: dashboard?.deadlines.thisWeek,
+      filters: [dueBucketFilter("next_7_days")],
+    },
+  ];
+
+  return windows.map(({ key, group, filters }) => ({
+    key,
+    label: HOME_DEADLINE_LABELS[key],
+    href: buildDueScopeHref(filters, true),
+    count: group?.count ?? null,
+    tasks: mapPreviewTasks(group),
+  }));
+}
+
+function buildMyTasks(
+  dashboard: HomeDashboardData | null,
+  requestedTab: unknown,
+): HomeMyTasks {
+  const tabs: HomeMyTasksTab[] = [
+    {
+      key: "upcoming",
+      label: HOME_MY_TASKS_LABELS.upcoming,
+      href: "/home?myTasks=upcoming",
+      viewAllHref: buildDueScopeHref([dueBucketFilter("overdue", "is_not")], true),
+      count: dashboard?.myTasks.upcoming.count ?? null,
+      tasks: mapPreviewTasks(dashboard?.myTasks.upcoming),
+    },
+    {
+      key: "overdue",
+      label: HOME_MY_TASKS_LABELS.overdue,
+      href: "/home?myTasks=overdue",
+      viewAllHref: buildDueScopeHref([dueBucketFilter("overdue")]),
+      count: dashboard?.myTasks.overdue.count ?? null,
+      tasks: mapPreviewTasks(dashboard?.myTasks.overdue),
+    },
+    {
+      key: "completed",
+      label: HOME_MY_TASKS_LABELS.completed,
+      href: "/home?myTasks=completed",
+      // Completed is all-time in the list; Home's completed-this-week stat is a
+      // separate weekly analytics scope and never masquerades as this tab.
+      viewAllHref: buildTaskListUrl("/tasks", {
+        filters: [{ field: "status", operator: "is", values: ["done"] }],
+        view: "all",
+      }),
+      count: dashboard?.myTasks.completed.count ?? null,
+      tasks: mapPreviewTasks(dashboard?.myTasks.completed),
+    },
+  ];
+
+  return { activeTab: resolveHomeMyTasksTab(requestedTab), tabs };
+}
+
+function buildStats(
+  dashboard: HomeDashboardData | null,
+  attention: HomeAttention | null,
+): HomeStats {
+  const activeProjects = dashboard?.stats.activeProjects ?? null;
+
+  return {
+    activeProjects: {
+      count: activeProjects?.count ?? null,
+      atRiskCount: activeProjects?.atRiskCount ?? null,
+      href: "/tasks/projects?view=active",
+    },
+    openTasks: {
+      count: dashboard?.stats.openTasks ?? null,
+      href: buildTaskListUrl("/tasks", { activeTasks: true }),
+    },
+    completedThisWeek: {
+      count: dashboard?.stats.completedThisWeek ?? null,
+      href: "/work-analytics?range=this-week",
+    },
+    // Shell attention and the overdue destination share the same canonical
+    // day window and status/archive scope.
+    overdue: {
+      count: attention?.overdue ?? null,
+      href: buildDueScopeHref([dueBucketFilter("overdue")]),
+    },
+    trackedThisWeek: {
+      minutes: dashboard?.stats.trackedThisWeekMinutes ?? null,
+      href: "/work-analytics?range=this-week",
+    },
+  };
+}
 
 function findTask(snapshot: OperatorSnapshot, taskId: string): OperatorTask | null {
   const pools: OperatorTask[][] = [
@@ -102,8 +325,11 @@ export function buildHomeModel(input: {
   snapshot: OperatorSnapshot | null;
   attention: HomeAttention | null;
   activeTimerStartedAt?: string | null;
+  dashboard?: HomeDashboardData | null;
+  myTasksTab?: unknown;
 }): HomeModel {
   const { snapshot, attention } = input;
+  const dashboard = input.dashboard ?? null;
   const activeTimer = snapshot?.activeTimer ?? null;
   const startHere = snapshot?.focus.startHere ?? null;
   const queue = snapshot?.focus.queue ?? [];
@@ -138,5 +364,8 @@ export function buildHomeModel(input: {
       operator: snapshot !== null ? "available" : "unavailable",
       attention: attention !== null ? "available" : "unavailable",
     },
+    stats: buildStats(dashboard, attention),
+    deadlines: buildDeadlines(dashboard),
+    myTasks: buildMyTasks(dashboard, input.myTasksTab),
   };
 }

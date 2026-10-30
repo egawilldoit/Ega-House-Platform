@@ -1,11 +1,9 @@
 import {
-  GOAL_ARCHIVE_STATUS,
   GOAL_STATUS_VALUES,
   isGoalStatus,
   normalizeGoalHealthInput,
   normalizeGoalNextStepInput,
   type GoalHealth,
-  type GoalStatus,
 } from "@ega/domain";
 
 import type { AuthenticatedActor } from "../auth/actor";
@@ -200,7 +198,7 @@ export async function updateGoalNextStep(
 async function setGoalArchiveState(
   actor: AuthenticatedActor,
   repository: GoalsRepository,
-  input: GoalUpdateInput & { status: GoalStatus | typeof GOAL_ARCHIVE_STATUS },
+  input: GoalUpdateInput & { archived: boolean },
 ): Promise<ApplicationResult<null>> {
   const goalId = String(input.goalId ?? "").trim();
 
@@ -208,10 +206,23 @@ async function setGoalArchiveState(
     return applicationFailure("Goal update request is invalid.");
   }
 
-  const result = await repository.updateGoalStatus(actor, {
+  // Archiving a goal hides its active tasks from active surfaces, so it must
+  // not detach currently running work. Mirrors the task archive rule.
+  if (input.archived) {
+    const timerResult = await repository.hasOpenTaskSessionForGoal(actor, goalId);
+    if (!timerResult.ok) {
+      return applicationFailure("Unable to validate timer sessions for this goal right now.");
+    }
+    if (timerResult.value) {
+      return applicationFailure("Stop the active timer before archiving this goal.");
+    }
+  }
+
+  const nowIso = (input.now ?? new Date()).toISOString();
+  const result = await repository.updateGoalArchiveState(actor, {
     goalId,
-    status: input.status,
-    updatedAt: (input.now ?? new Date()).toISOString(),
+    archivedAt: input.archived ? nowIso : null,
+    updatedAt: nowIso,
   });
 
   return result.ok
@@ -226,7 +237,7 @@ export function archiveGoal(
 ): Promise<ApplicationResult<null>> {
   return setGoalArchiveState(actor, repository, {
     ...input,
-    status: GOAL_ARCHIVE_STATUS,
+    archived: true,
   });
 }
 
@@ -237,7 +248,7 @@ export function unarchiveGoal(
 ): Promise<ApplicationResult<null>> {
   return setGoalArchiveState(actor, repository, {
     ...input,
-    status: "active",
+    archived: false,
   });
 }
 

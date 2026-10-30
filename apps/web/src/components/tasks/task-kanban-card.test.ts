@@ -16,6 +16,7 @@ function buildTask(overrides: Partial<TaskRecord> = {}): TaskRecord {
     priority: "high",
     due_date: null,
     planned_for_date: null,
+    start_date: null,
     scheduled_start_at: null,
     scheduled_end_at: null,
     calendar_sync_enabled: false,
@@ -26,6 +27,7 @@ function buildTask(overrides: Partial<TaskRecord> = {}): TaskRecord {
     project_id: "project-1",
     goal_id: null,
     focus_rank: null,
+    board_rank: null,
     archived_at: null,
     archived_by: null,
     projects: null,
@@ -131,10 +133,9 @@ test("kanban card default renders compact priority title project and due date", 
   assert.match(markup, /Details/);
   assert.match(markup, /Goal/);
   assert.match(markup, /Tighten weekly review/);
-  assert.match(markup, /Estimate/);
-  assert.match(markup, /1h 15m/);
-  assert.match(markup, /Tracked/);
-  assert.match(markup, /1h 1m 1s/);
+  assert.match(markup, /Estimate vs tracked/);
+  assert.match(markup, /1h 15m est/);
+  assert.match(markup, /1h 1m tracked/);
 });
 
 test("kanban card default renders planned date when due date is missing", () => {

@@ -3,10 +3,16 @@
 import Link from "next/link";
 import { useActionState, useState } from "react";
 
+import type { AreaRecord } from "@ega/application";
+
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 
+import {
+  TemplatePicker,
+  type TemplatePickerOption,
+} from "./_components/template-picker";
 import {
   type CreateProjectFormState,
   createProjectAction,
@@ -24,13 +30,26 @@ function normalizeSlug(value: string) {
 const FIELD_LABEL_CLASS =
   "text-[length:var(--text-body)] font-medium text-[color:var(--ega-text)]";
 
-export function CreateProjectForm() {
+type CreateProjectFormProps = {
+  areas: AreaRecord[];
+  templateOptions: TemplatePickerOption[];
+  /** Server-issued retry token: a double submit resolves to one project. */
+  operationId: string;
+};
+
+export function CreateProjectForm({
+  areas,
+  templateOptions,
+  operationId,
+}: CreateProjectFormProps) {
   const initialState: CreateProjectFormState = {
     error: null,
     values: {
       name: "",
       slug: "",
       description: "",
+      areaId: "",
+      templateId: "blank",
     },
   };
   const [state, formAction, isPending] = useActionState(
@@ -38,9 +57,35 @@ export function CreateProjectForm() {
     initialState,
   );
   const [slugEdited, setSlugEdited] = useState(Boolean(state.values.slug));
+  const [templateId, setTemplateId] = useState(state.values.templateId || "blank");
+  const [description, setDescription] = useState(state.values.description);
+  const [descriptionEdited, setDescriptionEdited] = useState(
+    Boolean(state.values.description),
+  );
+
+  function handleTemplateChange(nextTemplateId: string) {
+    setTemplateId(nextTemplateId);
+
+    if (descriptionEdited) {
+      return;
+    }
+
+    const option = templateOptions.find(
+      (candidate) => candidate.id === nextTemplateId,
+    );
+    setDescription(option?.projectDescription ?? "");
+  }
 
   return (
     <form action={formAction} className="flex flex-col gap-5">
+      <input type="hidden" name="operationId" value={operationId} />
+
+      <TemplatePicker
+        options={templateOptions}
+        value={templateId}
+        onChange={handleTemplateChange}
+      />
+
       <div className="flex flex-col gap-2">
         <label htmlFor="name" className={FIELD_LABEL_CLASS}>
           Name
@@ -97,6 +142,28 @@ export function CreateProjectForm() {
       </div>
 
       <div className="flex flex-col gap-2">
+        <label htmlFor="areaId" className={FIELD_LABEL_CLASS}>
+          Area (optional)
+        </label>
+        <select
+          id="areaId"
+          name="areaId"
+          defaultValue={state.values.areaId}
+          className="input-instrument h-8 text-[length:var(--text-meta-lg)]"
+        >
+          <option value="">No area</option>
+          {areas.map((area) => (
+            <option key={area.id} value={area.id}>
+              {area.name}
+            </option>
+          ))}
+        </select>
+        <p className="text-[length:var(--text-meta)] text-ega-text-secondary">
+          Group this project under a life or work area. You can change it later.
+        </p>
+      </div>
+
+      <div className="flex flex-col gap-2">
         <label htmlFor="description" className={FIELD_LABEL_CLASS}>
           Description (optional)
         </label>
@@ -104,8 +171,13 @@ export function CreateProjectForm() {
           id="description"
           name="description"
           placeholder="What this project is for and what done looks like."
-          defaultValue={state.values.description}
+          value={description}
           className="text-[length:var(--text-meta-lg)]"
+          onChange={(event) => {
+            const nextValue = event.currentTarget.value;
+            setDescription(nextValue);
+            setDescriptionEdited(nextValue.trim().length > 0);
+          }}
         />
       </div>
 

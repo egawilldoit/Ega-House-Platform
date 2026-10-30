@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -89,6 +90,7 @@ const report: WorkAnalyticsReport = {
   breakdownBy: "project",
   breakdownTitle: "Project breakdown",
   projectBreakdown: [{ projectId: "p1", projectName: "Alpha", workedMinutes: 200, sessionCount: 6 }],
+  areaBreakdown: [{ areaId: "a1", areaName: "Job hunt", workedMinutes: 200, sessionCount: 6 }],
   goalBreakdown: [],
   taskBreakdown: [],
   selectedComparison: {
@@ -126,6 +128,7 @@ const report: WorkAnalyticsReport = {
   drilldownIndexes: {
     date: { "2026-09-14": [session] },
     project: { p1: [session] },
+    area: { a1: [session] },
     goal: { g1: [session] },
     task: { t1: [session] },
   },

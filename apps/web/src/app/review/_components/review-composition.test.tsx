@@ -55,6 +55,49 @@ const model = {
       projects: [],
       goals: [],
     },
+    estimateAccuracy: {
+      taskCount: 2,
+      estimatedTaskCount: 1,
+      trackedTaskCount: 2,
+      estimateMinutes: 60,
+      trackedSeconds: 5400,
+      trackedSecondsOnAllTasks: 7200,
+      comparison: {
+        estimateMinutes: 60,
+        estimateSeconds: 3600,
+        trackedSeconds: 5400,
+        deltaSeconds: 1800,
+        deltaMinutes: 30,
+        percent: 50,
+        state: "over",
+        hasTrackedTime: true,
+        hasOpenSession: false,
+      },
+      overTaskCount: 1,
+      underTaskCount: 0,
+      onTargetTaskCount: 0,
+      evaluatedTaskCount: 1,
+      onTargetEvaluatedTaskCount: 0,
+      accuracyPercent: 0,
+      topOverRuns: [
+        {
+          taskId: "task-1",
+          title: "Ship the refactor",
+          comparison: {
+            estimateMinutes: 60,
+            estimateSeconds: 3600,
+            trackedSeconds: 5400,
+            deltaSeconds: 1800,
+            deltaMinutes: 30,
+            percent: 50,
+            state: "over",
+            hasTrackedTime: true,
+            hasOpenSession: false,
+          },
+        },
+      ],
+      hasOpenSessions: false,
+    },
     generatedDraft: {
       summary: "Generated summary",
       wins: "Generated wins",
@@ -147,4 +190,19 @@ test("ReviewPageView keeps saved review editing and the regenerate href", () => 
   assert.match(markup, /Regenerate/);
   assert.match(markup, /href="\/review\?weekOf=2026-09-14&amp;draft=generated"/);
   assert.match(markup, /reviewId="review-2"|value="review-2"/);
+});
+
+test("ReviewPageView renders review timestamps in the model timezone", () => {
+  const nonUtcModel = {
+    ...model,
+    timezone: "Africa/Casablanca",
+  } as unknown as ReviewPageModel;
+
+  const markup = renderToStaticMarkup(<ReviewPageView model={nonUtcModel} />);
+
+  // 2026-09-13T18:00:00Z + Africa/Casablanca -> 7:00 PM local.
+  assert.match(markup, /7:00 PM/);
+  // 2026-09-18T10:00:00Z + Africa/Casablanca -> 11:00 AM local.
+  assert.match(markup, /11:00 AM/);
+  assert.doesNotMatch(markup, /UTC/);
 });

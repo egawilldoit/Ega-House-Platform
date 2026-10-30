@@ -6,11 +6,14 @@ import {
 import type { AuthenticatedActor } from "../auth/actor";
 import { applicationFailure, applicationSuccess, type ApplicationResult } from "../shared/result";
 import type {
+  AreaFilter,
+  AreaRecord,
   ProjectGoalRecord,
   ProjectRecord,
   ProjectsRepository,
   ProjectTaskContextRecord,
 } from "./ports";
+import { buildProjectProgress } from "./progress";
 
 export type ProjectCardReadModel = ProjectRecord & {
   taskCount: number;
@@ -22,6 +25,7 @@ export type ProjectCardReadModel = ProjectRecord & {
 
 export type ProjectsReadModel = {
   projects: ProjectCardReadModel[];
+  areas: AreaRecord[];
   summary: {
     total: number;
     active: number;
@@ -39,18 +43,21 @@ export async function getProjectsReadModel(
   actor: AuthenticatedActor,
   repository: ProjectsRepository,
   view: ProjectViewFilter,
+  areaFilter: AreaFilter = null,
 ): Promise<ApplicationResult<ProjectsReadModel>> {
-  const [projectsResult, statusesResult] = await Promise.all([
-    repository.listProjects(actor, view),
+  const [projectsResult, statusesResult, areasResult] = await Promise.all([
+    repository.listProjects(actor, view, areaFilter),
     repository.listProjectStatuses(actor),
+    repository.listAreas(actor),
   ]);
 
-  if (!projectsResult.ok || !statusesResult.ok) {
+  if (!projectsResult.ok || !statusesResult.ok || !areasResult.ok) {
     return applicationFailure("Unable to load projects right now.");
   }
 
   const projects = projectsResult.value;
   const statuses = statusesResult.value;
+  const areas = areasResult.value;
   const summary = {
     total: statuses.length,
     active: statuses.filter((status) => status === "active").length,
@@ -59,7 +66,7 @@ export async function getProjectsReadModel(
   };
 
   if (projects.length === 0) {
-    return applicationSuccess({ projects: [], summary });
+    return applicationSuccess({ projects: [], areas, summary });
   }
 
   const tasksResult = await repository.listTasksForProjects(
@@ -81,28 +88,21 @@ export async function getProjectsReadModel(
   return applicationSuccess({
     projects: projects.map((project) => {
       const projectTasks = tasksByProject.get(project.id) ?? [];
-      const statusCountMap = new Map<string, number>();
-      for (const task of projectTasks) {
-        statusCountMap.set(task.status, (statusCountMap.get(task.status) ?? 0) + 1);
-      }
-      const completedTaskCount = projectTasks.filter((task) => task.status === "done").length;
-      const progressPercent = projectTasks.length
-        ? Math.round((completedTaskCount / projectTasks.length) * 100)
-        : 0;
-      const statusCounts = Array.from(statusCountMap.entries())
-        .map(([status, count]) => ({ status, count }))
+      const progress = buildProjectProgress(projectTasks);
+      const statusCounts = [...progress.statusCounts]
         .sort((left, right) => right.count - left.count || left.status.localeCompare(right.status))
         .slice(0, 3);
 
       return {
         ...project,
-        taskCount: projectTasks.length,
-        completedTaskCount,
-        progressPercent,
+        taskCount: progress.totalTaskCount,
+        completedTaskCount: progress.completedTaskCount,
+        progressPercent: progress.progressPercent,
         statusCounts,
         recentTasks: projectTasks.slice(0, 2),
       };
     }),
+    areas,
     summary,
   });
 }

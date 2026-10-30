@@ -7,10 +7,10 @@ function read(...segments: string[]) {
   return readFileSync(path.join(process.cwd(), "src", ...segments), "utf8");
 }
 
-test("EGA-653: authenticated root entry redirects to /home, public root stays public", () => {
+test("EGA-653/EGA-798: authenticated root entry uses the configured launch page, public root stays public", () => {
   const rootPage = read("app", "page.tsx");
-  assert.match(rootPage, /redirect\("\/home"\)/);
-  assert.doesNotMatch(rootPage, /redirect\("\/today"\)/);
+  assert.match(rootPage, /getLaunchPagePath\(preferences\.launchPage\)/);
+  assert.doesNotMatch(rootPage, /redirect\("\/dashboard"\)/);
   // Public marketing Home is still rendered for unauthenticated visitors.
   assert.match(rootPage, /HomePage/);
 });
@@ -39,8 +39,8 @@ test("EGA-653: an authenticated /home route exists and composes canonical owners
   assert.doesNotMatch(homeRoute, /from "\.\/home-page"/);
 });
 
-test("EGA-663: legacy /dashboard compatibility route redirects to /home", () => {
+test("EGA-663/EGA-798: legacy /dashboard compatibility route redirects to the launch page", () => {
   const dashboardPage = read("app", "dashboard", "page.tsx");
-  assert.match(dashboardPage, /redirect\("\/home"\)/);
+  assert.match(dashboardPage, /getLaunchPagePath\(preferences\.launchPage\)/);
   assert.doesNotMatch(dashboardPage, /redirect\("\/today"\)/);
 });

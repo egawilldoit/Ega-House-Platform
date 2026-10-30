@@ -21,6 +21,7 @@ import type {
 const AVAILABLE_RANGES: AnalyticsRange[] = [
   "today",
   "7d",
+  "this-week",
   "30d",
   "mtm",
   "prev-month",
@@ -31,6 +32,7 @@ const AVAILABLE_GROUP_BYS: AnalyticsGroupBy[] = ["day", "week", "month"];
 
 const AVAILABLE_BREAKDOWN_BYS: AnalyticsBreakdownBy[] = [
   "project",
+  "area",
   "goal",
   "task",
 ];

@@ -106,6 +106,25 @@ export function formatDisplayCount(value: number | null | undefined): string {
   return new Intl.NumberFormat(DISPLAY_LOCALE, { maximumFractionDigits: 0 }).format(value);
 }
 
+/**
+ * Count followed by a correctly pluralized noun, so a single item never reads
+ * as plural ("1 task", not "1 tasks"). The count itself goes through
+ * `formatDisplayCount`, so grouping and missing values follow the same policy.
+ *
+ *   formatDisplayCountLabel(1, "task")        -> "1 task"
+ *   formatDisplayCountLabel(12, "task")       -> "12 tasks"
+ *   formatDisplayCountLabel(1, "active task", "active tasks") -> "1 active task"
+ */
+export function formatDisplayCountLabel(
+  count: number | null | undefined,
+  singular: string,
+  plural = `${singular}s`,
+): string {
+  const formatted = formatDisplayCount(count);
+  if (formatted === DISPLAY_EMPTY) return DISPLAY_EMPTY;
+  return `${formatted} ${count === 1 ? singular : plural}`;
+}
+
 /** Compact multiplier such as "2.3×" for actual-vs-estimate comparisons. */
 export function formatDisplayMultiple(
   value: number | null | undefined,

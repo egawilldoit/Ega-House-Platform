@@ -1,15 +1,19 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { GOAL_ARCHIVE_STATUS, PROJECT_ARCHIVE_STATUS } from "@ega/domain";
+import { PROJECT_ARCHIVE_STATUS } from "@ega/domain";
 import type { GoalViewFilter, ProjectViewFilter } from "@ega/domain";
 
 import {
   archiveGoal,
   archiveProject,
+  assignProjectArea,
+  buildProjectProgress,
+  createArea,
   createAuthenticatedActor,
   createGoal,
   createProject,
+  deleteArea,
   deleteArchivedProject,
   getGoalsReadModel,
   getProjectIdentityReadModel,
@@ -18,12 +22,18 @@ import {
   purgeArchivedProject,
   unarchiveGoal,
   unarchiveProject,
+  updateArea,
   updateGoalHealth,
   updateGoalNextStep,
   updateGoalStatus,
   updateProjectStatus,
+  type AreaFilter,
+  type AreaRecord,
+  type AreaWriteInput,
   type AuthenticatedActor,
   type CreateGoalRecordInput,
+  type CreateProjectFromTemplateRecordInput,
+  type CreateProjectFromTemplateRecordResult,
   type CreateProjectRecordInput,
   type DeleteArchivedProjectResult,
   type GoalRecord,
@@ -51,13 +61,35 @@ function unknownFailure<T = never>(): RepositoryResult<T> {
 class FakeProjectsRepository implements ProjectsRepository {
   calls: Array<{ method: string; actorUserId: string; args: Record<string, unknown> }> = [];
   createResult: RepositoryResult<null> = okResult(null);
+  createFromTemplateResult: RepositoryResult<CreateProjectFromTemplateRecordResult> = okResult({
+    projectId: "project-1",
+    slug: "project-1",
+    goalCount: 0,
+    taskCount: 0,
+    replayed: false,
+  });
   listResult: RepositoryResult<ProjectRecord[]> = okResult([]);
   statusesResult: RepositoryResult<string[]> = okResult([]);
   tasksResult: RepositoryResult<ProjectTaskContextRecord[]> = okResult([]);
   slugResult: RepositoryResult<ProjectRecord | null> = okResult(null);
   idResult: RepositoryResult<ProjectRecord | null> = okResult(null);
   goalsResult: RepositoryResult<ProjectGoalRecord[]> = okResult([]);
+  areasResult: RepositoryResult<AreaRecord[]> = okResult([]);
+  areaResult: RepositoryResult<AreaRecord | null> = okResult(null);
+  createAreaResult: RepositoryResult<AreaRecord> = okResult({
+    id: "area-1",
+    name: "Job hunt",
+    icon: "briefcase",
+    color: "blue",
+    description: null,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+  });
+  updateAreaResult: RepositoryResult<AreaRecord | null> = okResult(null);
+  deleteAreaResult: RepositoryResult<{ deleted: boolean }> = okResult({ deleted: true });
+  assignAreaResult: RepositoryResult<{ updated: boolean }> = okResult({ updated: true });
   updateResult: RepositoryResult<null> = okResult(null);
+  activeTimerResult: RepositoryResult<boolean> = okResult(false);
   deleteResult: RepositoryResult<DeleteArchivedProjectResult> = okResult({ deleted: true });
   previewResult: RepositoryResult<ProjectPurgePreview | null> = okResult(null);
   purgeResult: RepositoryResult<PurgeArchivedProjectResult> = okResult({
@@ -74,16 +106,50 @@ class FakeProjectsRepository implements ProjectsRepository {
     this.calls.push({ method, actorUserId, args });
   }
 
-  async listProjects(actor: AuthenticatedActor, view: ProjectViewFilter) {
-    this.record("listProjects", actor.userId, { view });
+  async listProjects(actor: AuthenticatedActor, view: ProjectViewFilter, areaFilter?: AreaFilter) {
+    this.record("listProjects", actor.userId, { view, areaFilter });
     return this.listResult;
+  }
+  async listAreas(actor: AuthenticatedActor) {
+    this.record("listAreas", actor.userId, {});
+    return this.areasResult;
+  }
+  async getAreaById(actor: AuthenticatedActor, areaId: string) {
+    this.record("getAreaById", actor.userId, { areaId });
+    return this.areaResult;
+  }
+  async createArea(actor: AuthenticatedActor, input: AreaWriteInput) {
+    this.record("createArea", actor.userId, input);
+    return this.createAreaResult;
+  }
+  async updateArea(
+    actor: AuthenticatedActor,
+    input: AreaWriteInput & { areaId: string; updatedAt: string },
+  ) {
+    this.record("updateArea", actor.userId, input);
+    return this.updateAreaResult;
+  }
+  async deleteArea(actor: AuthenticatedActor, input: { areaId: string }) {
+    this.record("deleteArea", actor.userId, input);
+    return this.deleteAreaResult;
+  }
+  async assignProjectArea(
+    actor: AuthenticatedActor,
+    input: { projectId: string; areaId: string | null; updatedAt: string },
+  ) {
+    this.record("assignProjectArea", actor.userId, input);
+    return this.assignAreaResult;
   }
   async listProjectStatuses(actor: AuthenticatedActor) {
     this.record("listProjectStatuses", actor.userId, {});
     return this.statusesResult;
   }
-  async listTasksForProjects(actor: AuthenticatedActor, projectIds: string[]) {
-    this.record("listTasksForProjects", actor.userId, { projectIds });
+  async listTasksForProjects(
+    actor: AuthenticatedActor,
+    projectIds: string[],
+    options?: { includeArchived?: boolean },
+  ) {
+    this.record("listTasksForProjects", actor.userId, { projectIds, options });
     return this.tasksResult;
   }
   async getProjectBySlug(actor: AuthenticatedActor, slug: string) {
@@ -102,12 +168,30 @@ class FakeProjectsRepository implements ProjectsRepository {
     this.record("createProject", actor.userId, input);
     return this.createResult;
   }
+  async createProjectFromTemplate(
+    actor: AuthenticatedActor,
+    input: CreateProjectFromTemplateRecordInput,
+  ) {
+    this.record("createProjectFromTemplate", actor.userId, input);
+    return this.createFromTemplateResult;
+  }
   async updateProjectStatus(
     actor: AuthenticatedActor,
     input: { projectId: string; status: string; updatedAt: string },
   ) {
     this.record("updateProjectStatus", actor.userId, input);
     return this.updateResult;
+  }
+  async updateProjectArchiveState(
+    actor: AuthenticatedActor,
+    input: { projectId: string; archivedAt: string | null; updatedAt: string },
+  ) {
+    this.record("updateProjectArchiveState", actor.userId, input);
+    return this.updateResult;
+  }
+  async hasOpenTaskSessionForProject(actor: AuthenticatedActor, projectId: string) {
+    this.record("hasOpenTaskSessionForProject", actor.userId, { projectId });
+    return this.activeTimerResult;
   }
   async deleteArchivedProject(
     actor: AuthenticatedActor,
@@ -133,6 +217,7 @@ class FakeGoalsRepository implements GoalsRepository {
   calls: Array<{ method: string; actorUserId: string; args: Record<string, unknown> }> = [];
   createResult: RepositoryResult<GoalRecord | null> = okResult(null);
   updateResult: RepositoryResult<null> = okResult(null);
+  activeTimerResult: RepositoryResult<boolean> = okResult(false);
   projectOptionsResult: RepositoryResult<{ id: string; name: string }[]> = okResult([]);
   listResult: RepositoryResult<GoalRecord[]> = okResult([]);
   tasksResult: RepositoryResult<GoalTaskContextRecord[]> = okResult([]);
@@ -169,6 +254,17 @@ class FakeGoalsRepository implements GoalsRepository {
     this.record("updateGoalStatus", actor.userId, input);
     return this.updateResult;
   }
+  async updateGoalArchiveState(
+    actor: AuthenticatedActor,
+    input: { goalId: string; archivedAt: string | null; updatedAt: string },
+  ) {
+    this.record("updateGoalArchiveState", actor.userId, input);
+    return this.updateResult;
+  }
+  async hasOpenTaskSessionForGoal(actor: AuthenticatedActor, goalId: string) {
+    this.record("hasOpenTaskSessionForGoal", actor.userId, { goalId });
+    return this.activeTimerResult;
+  }
   async updateGoalHealth(
     actor: AuthenticatedActor,
     input: { goalId: string; health: string | null; updatedAt: string },
@@ -191,6 +287,10 @@ const PROJECT_ROW: ProjectRecord = {
   slug: "home-renovation",
   description: "Kitchen and bathroom",
   status: "active",
+  areaId: null,
+  areaName: null,
+  areaColor: null,
+  areaIcon: null,
   createdAt: "2026-01-01T00:00:00.000Z",
   updatedAt: "2026-02-01T00:00:00.000Z",
 };
@@ -225,6 +325,7 @@ test("createProject normalizes the slug and passes the actor to the repository",
     name: "My Cool Project!",
     slug: "my-cool-project",
     description: "A description.",
+    areaId: null,
   });
 });
 
@@ -335,15 +436,53 @@ test("project update failure is sanitized", async () => {
   assert.equal(result.ok || result.errorMessage, "Unable to update project right now.");
 });
 
-test("project archive and unarchive use canonical domain statuses", async () => {
+test("project archive and unarchive write the archive marker and its metadata", async () => {
+  const repository = new FakeProjectsRepository();
+  const now = new Date("2026-05-01T09:00:00.000Z");
+
+  await archiveProject(ACTOR, repository, { projectId: "project-1", now });
+  await unarchiveProject(ACTOR, repository, { projectId: "project-1", now });
+
+  assert.deepEqual(
+    repository.calls.map((call) => call.method),
+    [
+      "hasOpenTaskSessionForProject",
+      "updateProjectArchiveState",
+      "updateProjectArchiveState",
+    ],
+  );
+  assert.equal(repository.calls[1].args.archivedAt, "2026-05-01T09:00:00.000Z");
+  assert.equal(repository.calls[2].args.archivedAt, null);
+});
+
+test("project archive refuses while a task timer is running", async () => {
+  const repository = new FakeProjectsRepository();
+  repository.activeTimerResult = okResult(true);
+
+  const result = await archiveProject(ACTOR, repository, { projectId: "project-1" });
+
+  assert.equal(result.ok, false);
+  assert.equal(
+    result.ok || result.errorMessage,
+    "Stop the active timer before archiving this project.",
+  );
+  assert.equal(
+    repository.calls.some((call) => call.method === "updateProjectArchiveState"),
+    false,
+  );
+});
+
+test("project status updates cannot use the archive marker", async () => {
   const repository = new FakeProjectsRepository();
 
-  await archiveProject(ACTOR, repository, { projectId: "project-1" });
-  await unarchiveProject(ACTOR, repository, { projectId: "project-1" });
+  const result = await updateProjectStatus(ACTOR, repository, {
+    projectId: "project-1",
+    status: PROJECT_ARCHIVE_STATUS,
+  });
 
-  assert.equal(repository.calls.length, 2);
-  assert.equal(repository.calls[0].args.status, PROJECT_ARCHIVE_STATUS);
-  assert.equal(repository.calls[1].args.status, "active");
+  assert.equal(result.ok, false);
+  assert.equal(result.ok || result.errorMessage, "Project update request is invalid.");
+  assert.equal(repository.calls.length, 0);
 });
 
 const ARCHIVED_PROJECT_ROW: ProjectRecord = { ...PROJECT_ROW, status: "archived" };
@@ -429,6 +568,10 @@ test("deleteArchivedProject deletes an archived project without dependencies", a
   for (const call of repository.calls) {
     assert.equal(call.actorUserId, "user-123");
   }
+  assert.deepEqual(repository.calls[1].args, {
+    projectIds: [DELETE_PROJECT_ID],
+    options: { includeArchived: true },
+  });
   assert.deepEqual(repository.calls[3].args, { projectId: DELETE_PROJECT_ID });
 });
 
@@ -450,7 +593,9 @@ test("deleteArchivedProject blocks an archived project with linked tasks", async
 
 test("deleteArchivedProject blocks an archived project with linked goals", async () => {
   const repository = archivedRepository();
-  repository.goalsResult = okResult([{ id: "goal-1", title: "Finish kitchen", projectId: DELETE_PROJECT_ID }]);
+  repository.goalsResult = okResult([
+    { id: "goal-1", title: "Finish kitchen", projectId: DELETE_PROJECT_ID, health: null, nextStep: null },
+  ]);
 
   const result = failureMessage(await deleteArchivedProject(ACTOR, repository, { projectId: DELETE_PROJECT_ID }));
 
@@ -467,7 +612,9 @@ test("deleteArchivedProject blocks an archived project with linked tasks and goa
   repository.tasksResult = okResult([
     { id: "task-1", projectId: DELETE_PROJECT_ID, title: "Paint", status: "todo", priority: "high", updatedAt: "2026-02-02T00:00:00.000Z" },
   ]);
-  repository.goalsResult = okResult([{ id: "goal-1", title: "Finish kitchen", projectId: DELETE_PROJECT_ID }]);
+  repository.goalsResult = okResult([
+    { id: "goal-1", title: "Finish kitchen", projectId: DELETE_PROJECT_ID, health: null, nextStep: null },
+  ]);
 
   const result = failureMessage(await deleteArchivedProject(ACTOR, repository, { projectId: DELETE_PROJECT_ID }));
 
@@ -841,12 +988,61 @@ test("project read model preserves summary and progress behavior", async () => {
   assert.equal(first.recentTasks.length, 2);
 });
 
+test("project progress counts canonical statuses and never treats review as done", () => {
+  const progress = buildProjectProgress([
+    { status: "todo" },
+    { status: "in_progress" },
+    { status: "review" },
+    { status: "review" },
+    { status: "done" },
+    { status: "blocked" },
+  ]);
+
+  assert.equal(progress.totalTaskCount, 6);
+  assert.equal(progress.completedTaskCount, 1);
+  assert.equal(progress.openTaskCount, 5);
+  assert.equal(progress.progressPercent, 17);
+  assert.deepEqual(progress.statusCounts, [
+    { status: "todo", count: 1 },
+    { status: "in_progress", count: 1 },
+    { status: "review", count: 2 },
+    { status: "done", count: 1 },
+    { status: "blocked", count: 1 },
+  ]);
+});
+
+test("project progress has an honest zero state and keeps unknown statuses", () => {
+  const empty = buildProjectProgress([]);
+
+  assert.deepEqual(empty, {
+    totalTaskCount: 0,
+    completedTaskCount: 0,
+    openTaskCount: 0,
+    progressPercent: 0,
+    statusCounts: [],
+  });
+
+  const withUnknown = buildProjectProgress([
+    { status: "done" },
+    { status: "legacy_blocked" },
+    { status: "complete" },
+  ]);
+
+  assert.equal(withUnknown.totalTaskCount, 3);
+  assert.equal(withUnknown.completedTaskCount, 2);
+  assert.equal(withUnknown.progressPercent, 67);
+  assert.deepEqual(withUnknown.statusCounts, [
+    { status: "done", count: 2 },
+    { status: "legacy_blocked", count: 1 },
+  ]);
+});
+
 test("project identity read model resolves project and goals by slug", async () => {
   const repository = new FakeProjectsRepository();
   repository.slugResult = okResult(PROJECT_ROW);
   repository.goalsResult = okResult([
-    { id: "goal-1", title: "Finish kitchen", projectId: "project-1" },
-    { id: "goal-2", title: "Finish bathroom", projectId: "project-1" },
+    { id: "goal-1", title: "Finish kitchen", projectId: "project-1", health: "on_track", nextStep: "Order cabinets" },
+    { id: "goal-2", title: "Finish bathroom", projectId: "project-1", health: "at_risk", nextStep: null },
   ]);
 
   const result = await getProjectIdentityReadModel(ACTOR, repository, "home-renovation");
@@ -1053,16 +1249,36 @@ test("goal health and next step updates pass the actor and normalized values", a
   });
 });
 
-test("goal archive and unarchive use canonical domain statuses", async () => {
+test("goal archive and unarchive write the archive marker and its metadata", async () => {
   const repository = new FakeGoalsRepository();
+  const now = new Date("2026-05-01T09:00:00.000Z");
 
-  await archiveGoal(ACTOR, repository, { goalId: "goal-1" });
-  await unarchiveGoal(ACTOR, repository, { goalId: "goal-1" });
+  await archiveGoal(ACTOR, repository, { goalId: "goal-1", now });
+  await unarchiveGoal(ACTOR, repository, { goalId: "goal-1", now });
 
-  assert.equal(repository.calls.length, 2);
-  assert.equal(repository.calls[0].method, "updateGoalStatus");
-  assert.equal(repository.calls[0].args.status, GOAL_ARCHIVE_STATUS);
-  assert.equal(repository.calls[1].args.status, "active");
+  assert.deepEqual(
+    repository.calls.map((call) => call.method),
+    ["hasOpenTaskSessionForGoal", "updateGoalArchiveState", "updateGoalArchiveState"],
+  );
+  assert.equal(repository.calls[1].args.archivedAt, "2026-05-01T09:00:00.000Z");
+  assert.equal(repository.calls[2].args.archivedAt, null);
+});
+
+test("goal archive refuses while a task timer is running", async () => {
+  const repository = new FakeGoalsRepository();
+  repository.activeTimerResult = okResult(true);
+
+  const result = await archiveGoal(ACTOR, repository, { goalId: "goal-1" });
+
+  assert.equal(result.ok, false);
+  assert.equal(
+    result.ok || result.errorMessage,
+    "Stop the active timer before archiving this goal.",
+  );
+  assert.equal(
+    repository.calls.some((call) => call.method === "updateGoalArchiveState"),
+    false,
+  );
 });
 
 test("goals read model preserves project names, progress, and summary", async () => {
@@ -1134,4 +1350,121 @@ test("goals read model failures are sanitized", async () => {
 
   assert.equal(result.ok, false);
   assert.equal(result.ok || result.errorMessage, "Unable to load goals right now.");
+});
+
+test("createArea normalizes untrusted input and persists through the actor", async () => {
+  const repository = new FakeProjectsRepository();
+
+  const result = await createArea(ACTOR, repository, {
+    name: "  Job hunt  ",
+    icon: "briefcase",
+    color: "blue",
+    description: "  Applications and interviews.  ",
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(repository.calls.length, 1);
+  assert.equal(repository.calls[0].method, "createArea");
+  assert.equal(repository.calls[0].actorUserId, "user-123");
+  assert.deepEqual(repository.calls[0].args, {
+    name: "Job hunt",
+    icon: "briefcase",
+    color: "blue",
+    description: "Applications and interviews.",
+  });
+});
+
+test("createArea rejects a missing name without persisting", async () => {
+  const repository = new FakeProjectsRepository();
+
+  const result = await createArea(ACTOR, repository, {
+    name: " ",
+    icon: "not-an-icon",
+    color: "not-a-colour",
+    description: "",
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(repository.calls.length, 0);
+  if (result.ok) return;
+  assert.equal(result.values.icon, "folder");
+  assert.equal(result.values.color, "slate");
+});
+
+test("assignProjectArea refuses an area owned by another user before writing", async () => {
+  const repository = new FakeProjectsRepository();
+  repository.areaResult = okResult(null);
+
+  const result = await assignProjectArea(ACTOR, repository, {
+    projectId: "11111111-1111-4111-8111-111111111111",
+    areaId: "22222222-2222-4222-8222-222222222222",
+  });
+
+  assert.equal(result.ok, false);
+  if (result.ok) return;
+  assert.equal(result.code, "notFound");
+  assert.deepEqual(
+    repository.calls.map((call) => call.method),
+    ["getAreaById"],
+  );
+});
+
+test("assignProjectArea validates ids and can clear the area", async () => {
+  const repository = new FakeProjectsRepository();
+
+  const invalid = await assignProjectArea(ACTOR, repository, {
+    projectId: "not-a-uuid",
+    areaId: "",
+  });
+  assert.equal(invalid.ok, false);
+
+  const cleared = await assignProjectArea(ACTOR, repository, {
+    projectId: "11111111-1111-4111-8111-111111111111",
+    areaId: "",
+    now: new Date("2026-03-01T00:00:00.000Z"),
+  });
+  assert.equal(cleared.ok, true);
+  assert.deepEqual(repository.calls.at(-1)?.args, {
+    projectId: "11111111-1111-4111-8111-111111111111",
+    areaId: null,
+    updatedAt: "2026-03-01T00:00:00.000Z",
+  });
+});
+
+test("deleteArea never deletes a malformed id", async () => {
+  const repository = new FakeProjectsRepository();
+
+  const result = await deleteArea(ACTOR, repository, { areaId: "drop-table" });
+
+  assert.equal(result.ok, false);
+  assert.equal(repository.calls.length, 0);
+});
+
+test("projects read model passes the area filter and returns the owner's areas", async () => {
+  const repository = new FakeProjectsRepository();
+  repository.listResult = okResult([PROJECT_ROW]);
+  repository.areasResult = okResult([
+    {
+      id: "area-1",
+      name: "Job hunt",
+      icon: "briefcase",
+      color: "blue",
+      description: null,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    },
+  ]);
+
+  const result = await getProjectsReadModel(ACTOR, repository, "active", {
+    kind: "area",
+    areaId: "area-1",
+  });
+
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.deepEqual(repository.calls[0].args, {
+    view: "active",
+    areaFilter: { kind: "area", areaId: "area-1" },
+  });
+  assert.equal(result.data.areas[0]?.name, "Job hunt");
 });

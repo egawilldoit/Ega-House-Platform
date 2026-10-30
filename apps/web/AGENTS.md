@@ -51,3 +51,13 @@ green run does not prove those screens rendered. For a changed protected screen,
 drive it with an authenticated browser at relevant viewport sizes and inspect the
 action, resulting UI, and persisted state when applicable; report unavailable
 credentials as a coverage gap.
+
+## Workspace UI work
+
+Before building or changing workspace UI, read
+[`docs/ui-web-v2/GR8R-IMPLEMENTATION-GUIDE.md`](../../docs/ui-web-v2/GR8R-IMPLEMENTATION-GUIDE.md).
+It records the reference boundary, the reuse inventory requirement, the
+React/state/CSS/data/mutation rules, and which shared primitives already exist
+(`Popover`, `MenuList`, `PropertyPill`, `Kbd`, `StatusIcon`, `PriorityIcon`).
+Reuse those before adding a new primitive, and read a picker's semantics from
+that guide — a listbox is not a combobox.

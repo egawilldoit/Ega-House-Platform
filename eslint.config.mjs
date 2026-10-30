@@ -13,11 +13,22 @@ const eslintConfig = defineConfig([
     "**/out/**",
     "**/coverage/**",
     "**/test-results/**",
+    "**/.worktrees/**",
+    "**/.expo/**",
   ]),
   {
     files: ["scripts/ega-runner/**/*.ts"],
     rules: {
       "@typescript-eslint/no-empty-object-type": "off",
+    },
+  },
+  // Scripts keep parameters that callers or a documented V1 interface require
+  // even when the body does not read them. The `_` prefix is the marker; honour
+  // it here instead of relying on `eslint-disable` comments.
+  {
+    files: ["scripts/**/*.{ts,mts,cts,mjs,cjs,js}"],
+    rules: {
+      "@typescript-eslint/no-unused-vars": ["warn", { argsIgnorePattern: "^_" }],
     },
   },
   {
