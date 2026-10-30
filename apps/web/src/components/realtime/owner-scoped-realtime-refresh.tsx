@@ -60,6 +60,8 @@ export function OwnerScopedRealtimeRefresh({
       return undefined;
     }
 
+    // A cleaned-up subscription must stay inactive after the next effect starts.
+    let isSubscriptionActive = true;
     const supabase = createClient();
     const scheduleRefresh = () => {
       if (!isMountedRef.current) {
@@ -129,8 +131,8 @@ export function OwnerScopedRealtimeRefresh({
       tables,
       channelPrefix,
       onPayload: (payload) => {
-        // Skip refresh if component unmounted during debounce
-        if (!isMountedRef.current) {
+        // Ignore callbacks from an unmounted component or retired subscription.
+        if (!isSubscriptionActive || !isMountedRef.current) {
           return;
         }
 
@@ -175,6 +177,7 @@ export function OwnerScopedRealtimeRefresh({
     });
 
     return () => {
+      isSubscriptionActive = false;
       isMountedRef.current = false;
       if (typeof document !== "undefined") {
         document.removeEventListener("visibilitychange", handleVisibilityChange);
