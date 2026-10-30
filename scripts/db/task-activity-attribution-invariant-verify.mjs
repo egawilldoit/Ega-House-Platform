@@ -215,8 +215,8 @@ async function grantProofTableAccess(sql) {
 
 async function seed(sql) {
   await sql`
-    INSERT INTO public.projects (id, name, slug, created_at, updated_at)
-    VALUES (${PROJECT_ID}::uuid, 'Activity proof', 'activity-proof', now(), now())
+    INSERT INTO public.projects (id, owner_user_id, name, slug, created_at, updated_at)
+    VALUES (${PROJECT_ID}::uuid, ${OWNER_A}::uuid, 'Activity proof', 'activity-proof', now(), now())
     ON CONFLICT (id) DO NOTHING
   `;
   // An active MCP grant lets the simulated OAuth session pass the write RLS.
@@ -295,10 +295,12 @@ const agentTokenA = {
 const serviceNoActor = { role: "service_role", jwt: { role: "service_role" } };
 
 async function insertTaskAs(sql, identity, id, title, status = "todo") {
-  await asRole(sql, identity, (tx) => tx`
+  const [task] = await asRole(sql, identity, (tx) => tx`
     INSERT INTO public.tasks (id, project_id, owner_user_id, title, status, created_at, updated_at)
     VALUES (${id}::uuid, ${PROJECT_ID}::uuid, ${OWNER_A}::uuid, ${title}, ${status}, now(), now())
+    RETURNING id
   `);
+  return task.id;
 }
 
 async function activityRows(sql, taskId, eventKind = null) {
@@ -373,8 +375,10 @@ async function runOwnerProof(sql) {
 }
 
 async function runMcpProof(sql) {
-  await insertTaskAs(sql, mcpA, TASK_MCP, "MCP proof");
-  let rows = await activityRows(sql, TASK_MCP, "created");
+  // MCP creates receive a server-generated id from the column fence.
+  const taskId = await insertTaskAs(sql, mcpA, TASK_MCP, "MCP proof");
+  expect(taskId !== TASK_MCP, "MCP_AGENT", "MCP creation must replace the caller-supplied id");
+  let rows = await activityRows(sql, taskId, "created");
   expect(rows.length === 1, "MCP_AGENT", `expected one MCP created event, got ${rows.length}`);
   expect(rows[0].actor_kind === "agent", "MCP_AGENT", `MCP created actor must be agent, got ${rows[0].actor_kind}`);
   expect(rows[0].actor_agent_id === MCP_CLIENT_ID, "MCP_AGENT", "MCP actor must store the stable client id");
@@ -382,18 +386,18 @@ async function runMcpProof(sql) {
   expect(rows[0].actor_user_id === OWNER_A, "MCP_AGENT", "MCP actor must also carry the task owner id");
 
   await asRole(sql, mcpA, (tx) => tx`
-    UPDATE public.tasks SET title = 'MCP renamed', updated_at = now() WHERE id = ${TASK_MCP}::uuid
+    UPDATE public.tasks SET title = 'MCP renamed', updated_at = now() WHERE id = ${taskId}::uuid
   `);
-  rows = await activityRows(sql, TASK_MCP, "field_change");
+  rows = await activityRows(sql, taskId, "field_change");
   expect(rows.length === 1, "MCP_AGENT", `expected one MCP field change, got ${rows.length}`);
   expect(rows[0].actor_kind === "agent", "MCP_AGENT", "MCP field change must stay agent-attributed");
   expect(rows[0].actor_label === "Hermes", "MCP_AGENT", "MCP field change must keep the snapshotted label");
 
   await asRole(sql, mcpA, (tx) => tx`
-    UPDATE public.tasks SET status = 'done', updated_at = now() WHERE id = ${TASK_MCP}::uuid
+    UPDATE public.tasks SET status = 'done', updated_at = now() WHERE id = ${taskId}::uuid
   `);
   const statusRows = await sql`
-    SELECT * FROM public.task_status_events WHERE task_id = ${TASK_MCP}::uuid ORDER BY occurred_at
+    SELECT * FROM public.task_status_events WHERE task_id = ${taskId}::uuid ORDER BY occurred_at
   `;
   expect(statusRows.length === 1 && statusRows[0].to_status === "done", "ANALYTICS", "MCP completion must keep one status event");
   expect(statusRows[0].actor_kind === "agent", "MCP_AGENT", "MCP status event must be agent-attributed");
@@ -405,7 +409,7 @@ async function runMcpProof(sql) {
     SET status = 'revoked', revoked_at = now(), updated_at = now()
     WHERE owner_user_id = ${OWNER_A}::uuid AND oauth_client_id = ${MCP_CLIENT_ID}
   `;
-  const afterRevoke = await activityRows(sql, TASK_MCP, "created");
+  const afterRevoke = await activityRows(sql, taskId, "created");
   expect(
     afterRevoke[0].actor_kind === "agent" && afterRevoke[0].actor_label === "Hermes",
     "CREDENTIAL_ROTATION",
