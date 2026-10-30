@@ -32,7 +32,12 @@ function NotificationRow({
   onToggle: (id: string) => void;
 }) {
   return (
-    <li className="row items-start">
+    <li
+      className={cn(
+        "row items-start transition-colors [@media(hover:hover)]:hover:bg-[var(--ega-surface-hover)]",
+        row.isUnread && "bg-[var(--ega-surface-subtle)]",
+      )}
+    >
       <input
         type="checkbox"
         className="mt-2 h-4 w-4 shrink-0"
@@ -43,8 +48,8 @@ function NotificationRow({
       <span
         aria-hidden="true"
         className={cn(
-          "mt-2 h-1.5 w-1.5 shrink-0 rounded-full",
-          row.isUnread ? "bg-[color:var(--ega-ink)]" : "bg-transparent",
+          "mt-2 h-2 w-2 shrink-0 rounded-full",
+          row.isUnread ? "bg-[color:var(--status-info)]" : "bg-transparent",
         )}
       />
 
@@ -59,14 +64,14 @@ function NotificationRow({
                 type="submit"
                 className={cn(
                   "row-title text-left hover:underline",
-                  row.isUnread && "font-semibold",
+                  row.isUnread && "font-bold",
                 )}
               >
                 {row.title}
               </button>
             </form>
           ) : (
-            <span className={cn("row-title", row.isUnread && "font-semibold")}>
+            <span className={cn("row-title", row.isUnread && "font-bold")}>
               {row.title}
             </span>
           )}

@@ -41,6 +41,17 @@ function ContextStat({ label, value }: { label: string; value: string }) {
 }
 
 export function WorkAnalyticsPageView({ model }: { model: WorkAnalyticsPageModel }) {
+  const retryHref = (() => {
+    if (!model.filters) return "/work-analytics";
+    const params = new URLSearchParams();
+    if (model.filters.range && model.filters.range !== "30d") params.set("range", model.filters.range);
+    if (model.filters.groupBy && model.filters.groupBy !== "day") params.set("groupBy", model.filters.groupBy);
+    if (model.filters.breakdownBy && model.filters.breakdownBy !== "project") params.set("breakdownBy", model.filters.breakdownBy);
+    if (model.filters.includeOpen) params.set("includeOpen", "true");
+    const qs = params.toString();
+    return qs ? `/work-analytics?${qs}` : "/work-analytics";
+  })();
+
   if (model.error || !model.report) {
     return (
       <Card>
@@ -50,8 +61,7 @@ export function WorkAnalyticsPageView({ model }: { model: WorkAnalyticsPageModel
               Analytics could not be loaded
             </h2>
             <p className="mt-1 text-[length:var(--text-body)] leading-[var(--leading-relaxed)] text-[color:var(--ega-text-secondary)]">
-              {model.error ??
-                "The analytics report did not come back. Your tasks and sessions are unaffected."}
+              The analytics report did not come back. Your tasks and sessions are unaffected.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -62,7 +72,7 @@ export function WorkAnalyticsPageView({ model }: { model: WorkAnalyticsPageModel
               Open Today
             </Link>
             <Link
-              href="/work-analytics"
+              href={retryHref}
               className="btn-instrument btn-instrument-muted flex h-8 items-center px-3 text-sm"
             >
               Retry
