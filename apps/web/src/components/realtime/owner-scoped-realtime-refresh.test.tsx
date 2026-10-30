@@ -7,7 +7,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { OwnerScopedRealtimeRefresh } from "./owner-scoped-realtime-refresh";
 import type { RealtimePostgresChangesPayload } from "@supabase/supabase-js";
 
-type AnyPayload = Record<string, any>;
+type AnyPayload = Record<string, unknown>;
 // Track calls to relevant functions
 const routerRefreshCalls: number[] = [];
 const subscribeCalls: {
@@ -17,7 +17,7 @@ const subscribeCalls: {
   onPayload: ((payload: RealtimePostgresChangesPayload<AnyPayload>) => void) | null;
 }[] = [];
 let unsubscribedCount = 0;
-let activeOnPayload: ((payload: any) => void) | null = null;
+let activeOnPayload: ((payload: RealtimePostgresChangesPayload<AnyPayload>) => void) | null = null;
 
 // Mock the dependencies before any imports that use them
 vi.mock("next/navigation", () => ({
@@ -37,12 +37,12 @@ vi.mock("@/lib/supabase/client", () => ({
 vi.mock("@/lib/supabase/realtime", () => {
   return {
     getRealtimePayloadUpdatedAt: (
-      payload: any,
+      payload: RealtimePostgresChangesPayload<AnyPayload>,
     ) => {
-      const newVal = payload.new?.updated_at as string | undefined;
-      if (newVal) return newVal;
-      const oldVal = payload.old?.updated_at as string | undefined;
-      return oldVal ?? null;
+      const newVal = "updated_at" in payload.new ? payload.new.updated_at : undefined;
+      if (typeof newVal === "string" && newVal) return newVal;
+      const oldVal = "updated_at" in payload.old ? payload.old.updated_at : undefined;
+      return typeof oldVal === "string" ? oldVal : null;
     },
     subscribeToOwnerScopedRealtimeChanges: (
       _client: unknown,
@@ -50,7 +50,7 @@ vi.mock("@/lib/supabase/realtime", () => {
         ownerUserId: string;
         tables: readonly string[];
         channelPrefix: string;
-        onPayload: (payload: any) => void;
+        onPayload: (payload: RealtimePostgresChangesPayload<AnyPayload>) => void;
       },
     ) => {
       subscribeCalls.push({
@@ -110,6 +110,8 @@ describe("OwnerScopedRealtimeRefresh", () => {
   });
 
   afterEach(() => {
+    // Always clean up, including when an assertion fails before unmount().
+    act(() => { reactRoot.unmount(); });
     vi.useRealTimers();
     resetMocks();
     document.body.removeChild(rootElement);
@@ -263,6 +265,151 @@ describe("OwnerScopedRealtimeRefresh", () => {
       vi.advanceTimersByTime(501);
     });
     assert.equal(routerRefreshCalls.length, 0);
+
+    unmount();
+  });
+
+  test("visibilitychange catch-up: pending hidden payload triggers refresh when visible", () => {
+    mount({
+      ownerUserId: "user-1",
+      channelPrefix: "dashboard",
+      tables: ["task_sessions"],
+      refreshDebounceMs: 500,
+    });
+
+    // Hidden: payload becomes pending
+    Object.defineProperty(document, "hidden", {
+      configurable: true,
+      value: true,
+    });
+    assert.ok(activeOnPayload);
+    act(() => {
+      activeOnPayload!(createPayload("INSERT", { updated_at: "2026-04-18T00:01:00.000Z" }));
+    });
+    act(() => {
+      vi.advanceTimersByTime(501);
+    });
+    assert.equal(routerRefreshCalls.length, 0);
+
+    // Become visible and fire visibilitychange -> catch-up
+    Object.defineProperty(document, "hidden", {
+      configurable: true,
+      value: false,
+    });
+    act(() => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    act(() => {
+      vi.advanceTimersByTime(1);
+    });
+    assert.equal(routerRefreshCalls.length, 1);
+
+    unmount();
+  });
+
+  test("visibilitychange coalescing: multiple hidden payloads yield one catch-up refresh", () => {
+    mount({
+      ownerUserId: "user-1",
+      channelPrefix: "dashboard",
+      tables: ["task_sessions"],
+      refreshDebounceMs: 500,
+    });
+
+    Object.defineProperty(document, "hidden", {
+      configurable: true,
+      value: true,
+    });
+    assert.ok(activeOnPayload);
+    act(() => {
+      activeOnPayload!(createPayload("INSERT", { updated_at: "2026-04-18T00:01:00.000Z" }));
+      activeOnPayload!(createPayload("UPDATE", { updated_at: "2026-04-18T00:02:00.000Z" }));
+      activeOnPayload!(createPayload("UPDATE", { updated_at: "2026-04-18T00:03:00.000Z" }));
+    });
+
+    Object.defineProperty(document, "hidden", {
+      configurable: true,
+      value: false,
+    });
+    act(() => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    act(() => {
+      vi.advanceTimersByTime(1);
+    });
+    assert.equal(routerRefreshCalls.length, 1);
+
+    unmount();
+  });
+
+  test("visibilitychange: no catch-up refresh after unmount", () => {
+    mount({
+      ownerUserId: "user-1",
+      channelPrefix: "dashboard",
+      tables: ["task_sessions"],
+      refreshDebounceMs: 500,
+    });
+
+    Object.defineProperty(document, "hidden", {
+      configurable: true,
+      value: true,
+    });
+    assert.ok(activeOnPayload);
+    act(() => {
+      activeOnPayload!(createPayload("INSERT"));
+    });
+
+    unmount();
+
+    Object.defineProperty(document, "hidden", {
+      configurable: true,
+      value: false,
+    });
+    // Listener removed; dispatch should not throw or refresh
+    act(() => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    act(() => {
+      vi.advanceTimersByTime(501);
+    });
+    assert.equal(routerRefreshCalls.length, 0);
+  });
+
+  test("visibilitychange coalescing: no duplicate timeout when one already pending", () => {
+    mount({
+      ownerUserId: "user-1",
+      channelPrefix: "dashboard",
+      tables: ["task_sessions"],
+      refreshDebounceMs: 500,
+    });
+
+    // Start a pending refresh while visible
+    assert.ok(activeOnPayload);
+    act(() => {
+      activeOnPayload!(createPayload("INSERT", { updated_at: "2026-04-18T00:01:00.000Z" }));
+    });
+    // Now hide and trigger a hidden payload
+    Object.defineProperty(document, "hidden", {
+      configurable: true,
+      value: true,
+    });
+    act(() => {
+      activeOnPayload!(createPayload("UPDATE", { updated_at: "2026-04-18T00:02:00.000Z" }));
+    });
+    // visible again with an active timeout -> catch-up should not schedule a second
+    Object.defineProperty(document, "hidden", {
+      configurable: true,
+      value: false,
+    });
+    act(() => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    act(() => {
+      vi.advanceTimersByTime(501);
+    });
+    // Only the originally scheduled refresh fires
+    assert.equal(routerRefreshCalls.length, 1);
+
+    unmount();
   });
 
   test("calls router.refresh() when document becomes visible again (subsequent payload)", () => {
@@ -509,5 +656,78 @@ describe("OwnerScopedRealtimeRefresh", () => {
       reactRoot2.unmount();
     });
     document.body.removeChild(rootElement2);
+  });
+  test("same-root resubscription refreshes new events and ignores the old subscription", () => {
+    mount({ ownerUserId: "user-1", channelPrefix: "dashboard", tables: ["task_sessions"], refreshDebounceMs: 100 });
+    const oldOnPayload = subscribeCalls[0]!.onPayload;
+    assert.ok(oldOnPayload);
+
+    // Re-render the existing component: refs survive effect cleanup/setup.
+    mount({ ownerUserId: "user-1", channelPrefix: "dashboard", tables: ["tasks"], refreshDebounceMs: 100 });
+    assert.equal(subscribeCalls.length, 2);
+    assert.equal(unsubscribedCount, 1);
+    assert.deepEqual(subscribeCalls[1]!.tables, ["tasks"]);
+    const newOnPayload = subscribeCalls[1]!.onPayload;
+    assert.ok(newOnPayload);
+    act(() => {
+      newOnPayload(createPayload("INSERT", { updated_at: "2026-04-18T00:02:00.000Z" }, "tasks"));
+      vi.advanceTimersByTime(101);
+    });
+    assert.equal(routerRefreshCalls.length, 1, "new subscription must refresh after effect cleanup/setup");
+
+    act(() => {
+      oldOnPayload(createPayload("UPDATE", { updated_at: "2026-04-18T00:10:00.000Z" }));
+      vi.advanceTimersByTime(101);
+    });
+    assert.equal(routerRefreshCalls.length, 1, "old subscription must not refresh after cleanup");
+    act(() => {
+      newOnPayload(createPayload("UPDATE", { updated_at: "2026-04-18T00:03:00.000Z" }, "tasks"));
+      vi.advanceTimersByTime(101);
+    });
+    assert.equal(routerRefreshCalls.length, 2, "old subscription must not poison timestamp filtering");
+    unmount();
+  });
+
+  test("queued debounce defers refresh when hidden before execution", () => {
+    mount({ ownerUserId: "user-1", channelPrefix: "dashboard", tables: ["task_sessions"], refreshDebounceMs: 100 });
+    assert.ok(activeOnPayload);
+    act(() => { activeOnPayload!(createPayload("INSERT")); });
+    Object.defineProperty(document, "hidden", { configurable: true, value: true });
+    act(() => { vi.advanceTimersByTime(101); });
+    assert.equal(routerRefreshCalls.length, 0, "queued debounce must not refresh a hidden tab");
+
+    Object.defineProperty(document, "hidden", { configurable: true, value: false });
+    act(() => {
+      document.dispatchEvent(new Event("visibilitychange"));
+      document.dispatchEvent(new Event("visibilitychange"));
+      vi.advanceTimersByTime(1);
+    });
+    assert.equal(routerRefreshCalls.length, 1, "pending work must reconcile once on visibility");
+    act(() => { vi.advanceTimersByTime(200); });
+    assert.equal(routerRefreshCalls.length, 1);
+    unmount();
+  });
+
+  test("queued catch-up defers again when hidden before execution", () => {
+    mount({ ownerUserId: "user-1", channelPrefix: "dashboard", tables: ["task_sessions"], refreshDebounceMs: 100 });
+    Object.defineProperty(document, "hidden", { configurable: true, value: true });
+    assert.ok(activeOnPayload);
+    act(() => { activeOnPayload!(createPayload("INSERT")); });
+    Object.defineProperty(document, "hidden", { configurable: true, value: false });
+    act(() => { document.dispatchEvent(new Event("visibilitychange")); });
+    Object.defineProperty(document, "hidden", { configurable: true, value: true });
+    act(() => { vi.advanceTimersByTime(1); });
+    assert.equal(routerRefreshCalls.length, 0, "queued catch-up must not refresh a hidden tab");
+
+    Object.defineProperty(document, "hidden", { configurable: true, value: false });
+    act(() => {
+      document.dispatchEvent(new Event("visibilitychange"));
+      document.dispatchEvent(new Event("visibilitychange"));
+      vi.advanceTimersByTime(1);
+    });
+    assert.equal(routerRefreshCalls.length, 1, "pending catch-up must survive hiding again");
+    act(() => { vi.advanceTimersByTime(200); });
+    assert.equal(routerRefreshCalls.length, 1);
+    unmount();
   });
 });
