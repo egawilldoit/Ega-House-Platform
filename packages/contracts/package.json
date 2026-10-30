@@ -19,7 +19,8 @@
     "./weekly-review": "./src/weekly-review.ts",
     "./health": "./src/health.ts",
     "./projects": "./src/projects.ts",
-    "./goals": "./src/goals.ts"
+    "./goals": "./src/goals.ts",
+    "./task-comments": "./src/task-comments.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",

@@ -36,7 +36,7 @@ export function SidebarCreateButton() {
     >
       <Plus aria-hidden="true" />
       <span className="workspace-nav-label">Create</span>
-      <kbd className="ml-auto shrink-0 text-[10px] font-medium text-white/60" aria-hidden="true">
+      <kbd className="workspace-create-kbd ml-auto shrink-0 text-[10px] font-medium text-[color:var(--ega-on-ink-muted)]" aria-hidden="true">
         ⇧⌘N
       </kbd>
     </button>

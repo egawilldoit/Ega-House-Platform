@@ -9,7 +9,10 @@ export default defineConfig({
     },
   },
   test: {
-    environment: "jsdom",
+    // Pure logic tests default to the `node` environment: jsdom construction was
+    // the dominant cost (≈120 s of a ≈220 s run for 242 files). Files that need
+    // DOM APIs opt in with `// @vitest-environment jsdom` at the top.
+    environment: "node",
     globals: true,
     fileParallelism: false,
     maxConcurrency: 1,
@@ -40,10 +43,8 @@ export default defineConfig({
       // Server transport tests run under node --test via server:test
       // (package convention, like packages/application and packages/data-access).
       "apps/server/test/**",
-      "src/app/tasks/create-task-form.test.ts",
       "src/components/layout/shell-signals.test.tsx",
       "src/components/layout/top-bar.test.tsx",
-      "src/components/review/trend-bar-chart.test.tsx",
       "src/components/review/session-heatmap.test.tsx",
       "src/components/tasks/task-kanban-card.test.ts",
       "src/components/tasks/task-reminder-panel.test.tsx",

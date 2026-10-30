@@ -132,11 +132,22 @@ function readReviewThreads(repoRoot: string, prNumber: number): ReviewThread[] {
     "--field",
     `number=${prNumber}`,
   ]);
-  const data = JSON.parse(raw) as Record<string, any>;
+  const data = JSON.parse(raw) as {
+    data?: {
+      repository?: {
+        pullRequest?: {
+          reviewThreads?: {
+            pageInfo?: { hasNextPage?: boolean };
+            nodes?: Array<Record<string, unknown>>;
+          };
+        };
+      };
+    };
+  };
   const connection = data.data?.repository?.pullRequest?.reviewThreads ?? {};
   const nodes = connection.nodes ?? [];
-  const threads: ReviewThread[] = nodes.map((node: Record<string, any>) => {
-    const comment = node.comments?.nodes?.[0] ?? {};
+  const threads: ReviewThread[] = nodes.map((node) => {
+    const comment = (node.comments as { nodes?: Array<Record<string, unknown>> } | undefined)?.nodes?.[0] ?? ({} as Record<string, unknown>);
     return {
       id: String(node.id),
       isResolved: node.isResolved === true,

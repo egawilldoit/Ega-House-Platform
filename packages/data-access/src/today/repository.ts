@@ -10,6 +10,11 @@ import { getSessionOverlapSeconds } from "@ega/application";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { sanitizeSupabaseError } from "../supabase/errors";
+import {
+  excludeArchivedAncestry,
+  loadArchivedAncestorScope,
+  type ArchivedAncestorScope,
+} from "../tasks/archived-ancestry";
 
 type Row = Record<string, unknown>;
 
@@ -75,7 +80,20 @@ function mapTask(row: Row): TodaySourceTask {
 }
 
 export class SupabaseTodayReadPort implements TodayReadPort {
+  private archivedAncestorScope: Promise<RepositoryResult<ArchivedAncestorScope>> | null = null;
+
   constructor(private readonly supabase: SupabaseClient) {}
+
+  /**
+   * Parent-ancestry scope is request-scoped and identical for every Today
+   * query, so it is loaded once per port instance instead of once per list.
+   */
+  private loadArchivedAncestorScope(
+    actor: AuthenticatedActor,
+  ): Promise<RepositoryResult<ArchivedAncestorScope>> {
+    this.archivedAncestorScope ??= loadArchivedAncestorScope(this.supabase, actor.userId);
+    return this.archivedAncestorScope;
+  }
 
   async listSelectedTasks(
     actor: AuthenticatedActor,
@@ -107,11 +125,17 @@ export class SupabaseTodayReadPort implements TodayReadPort {
       nextDayStartIso = nextDayStart.toISOString();
     }
 
-    const result = await this.supabase
-      .from("tasks")
-      .select(TASK_SELECT)
-      .eq("owner_user_id", actor.userId)
-      .is("archived_at", null)
+    const ancestorScope = await this.loadArchivedAncestorScope(actor);
+    if (!ancestorScope.ok) return { ok: false, error: ancestorScope.error };
+
+    const result = await excludeArchivedAncestry(
+      this.supabase
+        .from("tasks")
+        .select(TASK_SELECT)
+        .eq("owner_user_id", actor.userId)
+        .is("archived_at", null),
+      ancestorScope.value,
+    )
       .or(
         `planned_for_date.eq.${input.today},due_date.eq.${input.today},and(scheduled_start_at.gte.${dayStartIso},scheduled_start_at.lt.${nextDayStartIso})`,
       )
@@ -126,11 +150,17 @@ export class SupabaseTodayReadPort implements TodayReadPort {
     actor: AuthenticatedActor,
     input: Readonly<{ limit: number }>,
   ): Promise<RepositoryResult<TodaySourceTask[]>> {
-    const result = await this.supabase
-      .from("tasks")
-      .select(TASK_SELECT)
-      .eq("owner_user_id", actor.userId)
-      .is("archived_at", null)
+    const ancestorScope = await this.loadArchivedAncestorScope(actor);
+    if (!ancestorScope.ok) return { ok: false, error: ancestorScope.error };
+
+    const result = await excludeArchivedAncestry(
+      this.supabase
+        .from("tasks")
+        .select(TASK_SELECT)
+        .eq("owner_user_id", actor.userId)
+        .is("archived_at", null),
+      ancestorScope.value,
+    )
       .not("focus_rank", "is", null)
       .neq("status", "done")
       .order("focus_rank", { ascending: true })
@@ -145,11 +175,17 @@ export class SupabaseTodayReadPort implements TodayReadPort {
     actor: AuthenticatedActor,
     input: Readonly<{ limit: number }>,
   ): Promise<RepositoryResult<TodaySourceTask[]>> {
-    const result = await this.supabase
-      .from("tasks")
-      .select(TASK_SELECT)
-      .eq("owner_user_id", actor.userId)
-      .is("archived_at", null)
+    const ancestorScope = await this.loadArchivedAncestorScope(actor);
+    if (!ancestorScope.ok) return { ok: false, error: ancestorScope.error };
+
+    const result = await excludeArchivedAncestry(
+      this.supabase
+        .from("tasks")
+        .select(TASK_SELECT)
+        .eq("owner_user_id", actor.userId)
+        .is("archived_at", null),
+      ancestorScope.value,
+    )
       .eq("status", "in_progress")
       .order("updated_at", { ascending: false })
       .limit(input.limit);

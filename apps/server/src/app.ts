@@ -24,6 +24,7 @@ import { createNotificationsRoutes } from "./routes/notifications";
 import { createOperatorRoutes } from "./routes/operator";
 import { createProjectsRoutes } from "./routes/projects";
 import { createTasksRoutes } from "./routes/tasks";
+import { createTaskCommentsRoutes } from "./routes/task-comments";
 import { createTimeContextRoutes } from "./routes/time-context";
 import { createTimerRoutes } from "./routes/timer";
 import { createTodayRoutes } from "./routes/today";
@@ -136,6 +137,7 @@ export function createApp(dependencies: ServerDependencies): Hono<{ Variables: S
   app.route("/api/projects", createProjectsRoutes(dependencies));
   app.route("/api/goals", createGoalsRoutes(dependencies));
   app.route("/api/tasks", createTasksRoutes(dependencies));
+  app.route("/api/tasks", createTaskCommentsRoutes());
   app.route("/api/inbox", createInboxRoutes(dependencies));
   app.route("/api/today", createTodayRoutes(dependencies));
   app.route("/api/timer", createTimerRoutes(dependencies));

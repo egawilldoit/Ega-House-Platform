@@ -708,6 +708,23 @@ test("startTimerForTask rejects archived tasks", async () => {
   assert.equal(mock.insertedSessions.length, 0);
 });
 
+test("startTimerForTask refuses review work until it returns to in progress", async () => {
+  const mock = createTimerStartSupabaseMock({
+    task: { id: "task-1", status: "review", archived_at: null },
+  });
+
+  const result = await startTimerForTask("task-1", {
+    supabase: mock.supabase,
+    nowIso: "2026-04-21T10:00:00.000Z",
+  });
+
+  assert.equal(
+    result.errorMessage,
+    "Move this task to In progress before starting a timer.",
+  );
+  assert.equal(mock.insertedSessions.length, 0);
+});
+
 test("startTimerForTask still starts for todo and in-progress tasks", async () => {
   for (const status of ["todo", "in_progress"]) {
     const mock = createTimerStartSupabaseMock({

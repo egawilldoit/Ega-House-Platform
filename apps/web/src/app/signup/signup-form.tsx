@@ -5,22 +5,18 @@ import {
   CheckCircle2,
   Eye,
   EyeOff,
-  LockKeyhole,
   Mail,
-  ShieldCheck,
   UserRound,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useMemo, useRef, useState, type FormEvent } from "react";
+import { useMemo, useRef, useState, type CSSProperties, type FormEvent } from "react";
 
 import { AuthFeedback } from "@/app/auth-ui/auth-feedback";
 import { AuthField } from "@/app/auth-ui/auth-field";
-import { AuthGeometry } from "@/app/auth-ui/auth-geometry";
 import { AuthHeader } from "@/app/auth-ui/auth-header";
 import { AuthReveal } from "@/app/auth-ui/auth-motion";
 import { AuthShell } from "@/app/auth-ui/auth-shell";
-import { AuthStudyLabel } from "@/app/auth-ui/auth-study-label";
 import { AuthSubmit } from "@/app/auth-ui/auth-submit";
 import {
   resolveSafeAuthDestination,
@@ -197,20 +193,47 @@ export function SignupForm() {
   }
 
   return (
-    <AuthShell theme="signal-cream">
-      <AuthHeader status="AUTH / CREATE" actionHref={loginHref} actionLabel="Sign in" />
+    <AuthShell theme="house-cream">
+      <AuthHeader status="Create account" actionHref={loginHref} actionLabel="Sign in" />
 
       <div className="auth-stage">
-        <AuthStudyLabel number="AUTH 02" title="CREATE" direction="SIGNAL CREAM" />
-
         <div className="auth-layout">
           <section className="auth-story" aria-labelledby="signup-story-title">
-            <AuthGeometry variant="orbit" />
             <AuthReveal>
               <p className="auth-kicker">A workspace starts with one deliberate account.</p>
-              <h1 id="signup-story-title" className="auth-display">
-                Build your
-                <span className="auth-display__accent">control room.</span>
+              <h1
+                id="signup-story-title"
+                className="auth-display"
+                aria-label="Build your control room."
+              >
+                <span className="auth-display__line" aria-hidden="true">
+                  <span
+                    className="auth-word"
+                    style={{ "--auth-w": 200, "--auth-i": 0 } as CSSProperties}
+                  >
+                    Build
+                  </span>{" "}
+                  <span
+                    className="auth-word"
+                    style={{ "--auth-w": 420, "--auth-i": 1 } as CSSProperties}
+                  >
+                    your
+                  </span>
+                </span>
+                <span className="auth-display__line" aria-hidden="true">
+                  <span
+                    className="auth-word"
+                    style={{ "--auth-w": 520, "--auth-i": 2 } as CSSProperties}
+                  >
+                    control
+                  </span>{" "}
+                  <span
+                    className="auth-word"
+                    style={{ "--auth-w": 800, "--auth-i": 3 } as CSSProperties}
+                  >
+                    room.
+                  </span>
+                </span>
               </h1>
               <p className="auth-lead">
                 Turn scattered goals, tasks, focus sessions, and reviews into one operating
@@ -303,11 +326,7 @@ export function SignupForm() {
                             }
                           }}
                         />
-                        <UserRound
-                          aria-hidden="true"
-                          size={17}
-                          style={{ position: "absolute", right: "1rem", top: "1.1rem", opacity: 0.48 }}
-                        />
+                        <UserRound className="auth-field__icon" aria-hidden="true" size={17} />
                         {errors.fullName ? (
                           <span id="signup-name-error" className={styles.srOnly}>
                             {errors.fullName}
@@ -346,11 +365,7 @@ export function SignupForm() {
                             }
                           }}
                         />
-                        <Mail
-                          aria-hidden="true"
-                          size={17}
-                          style={{ position: "absolute", right: "1rem", top: "1.1rem", opacity: 0.48 }}
-                        />
+                        <Mail className="auth-field__icon" aria-hidden="true" size={17} />
                         {errors.email ? (
                           <span id="signup-email-error" className={styles.srOnly}>
                             {errors.email}
@@ -459,6 +474,14 @@ export function SignupForm() {
           </section>
         </div>
       </div>
+
+      <footer className="auth-footer">
+        <span>© 2026 EGA House</span>
+        <nav aria-label="Account">
+          <Link href="/">Home</Link>
+          <Link href={loginHref}>Log in</Link>
+        </nav>
+      </footer>
     </AuthShell>
   );
 }

@@ -11,8 +11,9 @@ does not change product semantics.
 
 ## 1. Principles
 
-1. **Light and quiet.** Neutral canvas, white panels, 1px borders, whitespace
-   over decoration. Shadows only for overlays that float above the page.
+1. **Quiet surfaces.** Neutral canvas, elevated panels, 1px borders, whitespace
+   over decoration. Light is white-on-neutral; dark is charcoal-on-charcoal,
+   never pure black. Shadows only for overlays that float above the page.
 2. **Dense but scannable.** 12–16px panel padding, 32–48px rows, tabular
    numerals, small precise labels.
 3. **One grammar.** Every screen composes the same page header, section, panel,
@@ -22,20 +23,35 @@ does not change product semantics.
 
 ## 2. Tokens
 
-`apps/web/src/styles/tokens.css` is the only token authority.
+`apps/web/src/styles/tokens.css` is the only token authority. Light values live
+in `:root`; the dark palette is a scoped override on
+`html[data-theme="dark"]:has([data-workspace-theme="workspace"])`. Keeping the
+override on `<html>` lets portalled dialogs, menus, and tooltips inherit the
+same values, while `:has()` prevents the dark palette from leaking into the
+public marketing and auth surfaces (they own `--home-*` and `--auth-*`).
 
-| Group | Token | Value |
-|---|---|---|
-| Canvas | `--ega-bg` | `#f2f2f2` |
-| Panel | `--ega-surface` | `#ffffff` |
-| Panel subtle | `--ega-surface-subtle` | `#fafafa` |
-| Hover | `--ega-surface-hover` | `#f5f5f5` |
-| Border | `--ega-border` | `#e5e5e5` |
-| Border strong | `--ega-border-strong` | `#d6d6d6` |
-| Text | `--ega-text` | `#171717` |
-| Text secondary | `--ega-text-secondary` | `#5c5c5c` |
-| Text tertiary | `--ega-text-tertiary` | `#6a6a6a` |
-| Ink (primary action) | `--ega-ink` | `#171717` |
+| Group | Token | Light | Dark |
+|---|---|---|---|
+| Canvas | `--ega-bg` | `#f2f2f2` | `#101114` |
+| Panel | `--ega-surface` | `#ffffff` | `#17181d` |
+| Panel subtle | `--ega-surface-subtle` | `#fafafa` | `#1c1e24` |
+| Hover | `--ega-surface-hover` | `#f5f5f5` | `#21232a` |
+| Selected | `--ega-surface-selected` | `#f0f0f0` | `#262930` |
+| Muted | `--ega-surface-muted` | `#ededed` | `#2a2d35` |
+| Elevated | `--ega-surface-elevated` | `#ffffff` | `#23262d` |
+| Border | `--ega-border` | `#e5e5e5` | `#2c2f37` |
+| Border strong | `--ega-border-strong` | `#d6d6d6` | `#3a3e48` |
+| Control border | `--ega-control-border` | `#767676` | `#6b7280` |
+| Text | `--ega-text` | `#171717` | `#f2f3f5` |
+| Text secondary | `--ega-text-secondary` | `#5c5c5c` | `#b4b8c1` |
+| Text tertiary | `--ega-text-tertiary` | `#6a6a6a` | `#9196a1` |
+| Ink (primary action) | `--ega-ink` | `#171717` | `#f2f3f5` |
+| On ink | `--ega-on-ink` | `#ffffff` | `#101114` |
+
+Structural dividers stay quiet (`--ega-border`, `--ega-divider`). Interactive
+form controls use `--ega-control-border`, measured at 3:1 against the surfaces
+they sit on (WCAG 1.4.11). Status, priority, data, sidebar, focus, overlay,
+skeleton, and shadow tokens all have dark overrides in the same block.
 
 Data categories and status semantics are **separate namespaces**:
 
@@ -48,6 +64,20 @@ with a status colour.
 Focus: `--ega-focus-outline: 2px solid var(--ega-text)` plus
 `--ega-focus-ring` box shadow. Focus styling must never depend on dynamic
 accessible text.
+
+## 2a. Theme preference
+
+The authenticated top bar exposes a native disclosure with **Light**, **Dark**,
+and **System** choices. `System` is the default when no valid preference is
+stored and follows live OS changes. An explicit Light/Dark choice overrides the
+OS and persists in `localStorage` (`ega-workspace-theme`). Unavailable or
+invalid storage degrades to System/in-memory without blocking the switch.
+
+A dependency-free inline script applies the resolved theme before first paint;
+React hydrates against a deterministic `system` server snapshot. The workspace
+root uses `color-scheme` so native controls and scrollbars match. Do not add
+`next-themes`, per-route theme CSS, or `dark:` utility duplication for this
+surface.
 
 ## 3. Typography
 
@@ -92,6 +122,7 @@ Numbers use `tabular-nums`. Uppercase micro-labels use
 | `Tabs` | Segmented view switch |
 | `EmptyState`, `Skeleton`, `ProgressBar`, `StatCard` | State and support surfaces |
 | `Sheet`, `Tooltip` | Overlays |
+| `ThemeControl` | Accessible Light / Dark / System switch in the top bar |
 
 Layout helpers in `apps/web/src/styles/workspace.css`:
 `.app-shell`, `.app-sidebar`, `.app-topbar`, `.app-page`, `.app-page-header`,
@@ -103,7 +134,8 @@ Layout helpers in `apps/web/src/styles/workspace.css`:
 
 Charts are inline SVG with an accessible text or table equivalent.
 
-- Bars: `--ega-data-blue-soft`, active/highlighted `--ega-data-blue`.
+- Bars: `--ega-data-blue-soft`, active/highlighted `--ega-data-blue`. In dark
+  mode the soft tint is a mid-tone, not an inverted pastel.
 - Lines: `--ega-data-blue`, 2px, round joins.
 - Grid: 1px `--ega-divider`; baseline `--ega-border`.
 - Labels: 10px `--ega-text-tertiary`; values in the accompanying metric text.
@@ -113,7 +145,8 @@ Charts are inline SVG with an accessible text or table equivalent.
 
 Empty, loading (`loading.tsx` + skeletons), error/degraded, long content, zero
 metrics, high counts, no-timer/active-timer, unread/no-unread, collapsed
-navigation, mobile drawer, keyboard focus, reduced motion.
+navigation, mobile drawer, keyboard focus, reduced motion, and both Light and
+Dark palettes (including System mode).
 
 ## 8. Responsiveness
 

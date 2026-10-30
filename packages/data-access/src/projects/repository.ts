@@ -1,5 +1,10 @@
 import {
+  type AreaFilter,
+  type AreaRecord,
+  type AreaWriteInput,
   type AuthenticatedActor,
+  type CreateProjectFromTemplateRecordInput,
+  type CreateProjectFromTemplateRecordResult,
   type CreateProjectRecordInput,
   type DeleteArchivedProjectInput,
   type DeleteArchivedProjectResult,
@@ -15,6 +20,7 @@ import {
   type ProjectStatus,
 } from "@ega/application";
 import { PROJECT_ARCHIVE_STATUS } from "@ega/domain";
+import { toGoalHealthOrNull } from "@ega/domain/goals";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import {
@@ -23,8 +29,19 @@ import {
   mcpOperationIdentity,
   sanitizeSupabaseError,
 } from "../supabase/errors";
+import { hasOpenTaskSessionForScope } from "../tasks/open-session";
 
-const PROJECT_SELECT = "id, name, slug, description, status, created_at, updated_at";
+const PROJECT_SELECT =
+  "id, name, slug, description, status, area_id, created_at, updated_at, areas(id, name, color, icon)";
+
+const AREA_SELECT = "id, name, icon, color, description, created_at, updated_at";
+
+type AreaRelationRow = {
+  id: string;
+  name: string;
+  color: string;
+  icon: string;
+};
 
 type ProjectRow = {
   id: string;
@@ -32,6 +49,18 @@ type ProjectRow = {
   slug: string;
   description: string | null;
   status: string;
+  area_id: string | null;
+  created_at: string;
+  updated_at: string;
+  areas: AreaRelationRow | AreaRelationRow[] | null;
+};
+
+type AreaRow = {
+  id: string;
+  name: string;
+  icon: string;
+  color: string;
+  description: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -51,15 +80,36 @@ type GoalRow = {
   id: string;
   title: string;
   project_id: string;
+  health: string | null;
+  next_step: string | null;
 };
 
 function mapProjectRow(row: ProjectRow): ProjectRecord {
+  const area = Array.isArray(row.areas) ? (row.areas[0] ?? null) : row.areas;
+  const areaId = row.area_id ?? area?.id ?? null;
+
   return {
     id: row.id,
     name: row.name,
     slug: row.slug,
     description: row.description,
     status: row.status,
+    areaId,
+    areaName: area?.name ?? null,
+    areaColor: area?.color ?? null,
+    areaIcon: area?.icon ?? null,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function mapAreaRow(row: AreaRow): AreaRecord {
+  return {
+    id: row.id,
+    name: row.name,
+    icon: row.icon,
+    color: row.color,
+    description: row.description,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -124,6 +174,42 @@ function parsePurgeResult(data: unknown): PurgeArchivedProjectResult | null {
   };
 }
 
+/**
+ * Parse the template-creation RPC result without trusting its shape. Counts
+ * must be non-negative integers and the project id must be present before the
+ * application reports success; anything else fails closed to null.
+ */
+function parseCreateFromTemplateResult(
+  data: unknown,
+): CreateProjectFromTemplateRecordResult | null {
+  if (!data || typeof data !== "object" || Array.isArray(data)) {
+    return null;
+  }
+
+  const row = data as Record<string, unknown>;
+
+  if (row.status !== "created" && row.status !== "replayed") {
+    return null;
+  }
+
+  const projectId = typeof row.project_id === "string" ? row.project_id : "";
+  const slug = typeof row.slug === "string" ? row.slug : "";
+  const goalCount = row.goal_count;
+  const taskCount = row.task_count;
+
+  if (!projectId || !slug) return null;
+  if (typeof goalCount !== "number" || !Number.isInteger(goalCount) || goalCount < 0) return null;
+  if (typeof taskCount !== "number" || !Number.isInteger(taskCount) || taskCount < 0) return null;
+
+  return {
+    projectId,
+    slug,
+    goalCount,
+    taskCount,
+    replayed: row.status === "replayed",
+  };
+}
+
 function mapTaskRow(row: TaskRow): ProjectTaskContextRecord {
   return {
     id: row.id,
@@ -149,6 +235,7 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
   async listProjects(
     actor: AuthenticatedActor,
     view: ProjectViewFilter,
+    areaFilter: AreaFilter = null,
   ): Promise<RepositoryResult<ProjectRecord[]>> {
     let query = this.supabase
       .from("projects")
@@ -162,13 +249,150 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
       query = query.eq("status", "archived");
     }
 
+    if (areaFilter?.kind === "area") {
+      query = query.eq("area_id", areaFilter.areaId);
+    } else if (areaFilter?.kind === "unassigned") {
+      query = query.is("area_id", null);
+    }
+
     const { data, error } = await query;
 
     if (error) {
       return { ok: false, error: sanitizeSupabaseError(error) };
     }
 
-    return { ok: true, value: (data ?? []).map(mapProjectRow) };
+    return { ok: true, value: (data ?? []).map((row) => mapProjectRow(row as ProjectRow)) };
+  }
+
+  async listAreas(actor: AuthenticatedActor): Promise<RepositoryResult<AreaRecord[]>> {
+    const { data, error } = await this.supabase
+      .from("areas")
+      .select(AREA_SELECT)
+      .eq("owner_user_id", actor.userId)
+      .order("name", { ascending: true });
+
+    if (error) {
+      return { ok: false, error: sanitizeSupabaseError(error) };
+    }
+
+    return { ok: true, value: (data ?? []).map((row) => mapAreaRow(row as AreaRow)) };
+  }
+
+  async getAreaById(
+    actor: AuthenticatedActor,
+    areaId: string,
+  ): Promise<RepositoryResult<AreaRecord | null>> {
+    const { data, error } = await this.supabase
+      .from("areas")
+      .select(AREA_SELECT)
+      .eq("id", areaId)
+      .eq("owner_user_id", actor.userId)
+      .maybeSingle();
+
+    if (error) {
+      return { ok: false, error: sanitizeSupabaseError(error) };
+    }
+
+    return { ok: true, value: data ? mapAreaRow(data as AreaRow) : null };
+  }
+
+  async createArea(
+    actor: AuthenticatedActor,
+    input: AreaWriteInput,
+  ): Promise<RepositoryResult<AreaRecord>> {
+    const { data, error } = await this.supabase
+      .from("areas")
+      .insert({
+        name: input.name,
+        icon: input.icon,
+        color: input.color,
+        description: input.description,
+        owner_user_id: actor.userId,
+      })
+      .select(AREA_SELECT)
+      .single();
+
+    if (error) {
+      return {
+        ok: false,
+        error: sanitizeSupabaseError(error, {
+          conflictMessageHint: "areas_owner_user_id_name_unique",
+        }),
+      };
+    }
+
+    return { ok: true, value: mapAreaRow(data as AreaRow) };
+  }
+
+  async updateArea(
+    actor: AuthenticatedActor,
+    input: AreaWriteInput & { areaId: string; updatedAt: string },
+  ): Promise<RepositoryResult<AreaRecord | null>> {
+    const { data, error } = await this.supabase
+      .from("areas")
+      .update({
+        name: input.name,
+        icon: input.icon,
+        color: input.color,
+        description: input.description,
+        updated_at: input.updatedAt,
+      })
+      .eq("id", input.areaId)
+      .eq("owner_user_id", actor.userId)
+      .select(AREA_SELECT)
+      .maybeSingle();
+
+    if (error) {
+      return {
+        ok: false,
+        error: sanitizeSupabaseError(error, {
+          conflictMessageHint: "areas_owner_user_id_name_unique",
+        }),
+      };
+    }
+
+    return { ok: true, value: data ? mapAreaRow(data as AreaRow) : null };
+  }
+
+  /**
+   * Delete one owner-scoped Area. The projects.area_id foreign key detaches
+   * projects in the same database statement; no project-owned rows are
+   * touched. A zero-row result is reported as `deleted: false`.
+   */
+  async deleteArea(
+    actor: AuthenticatedActor,
+    input: { areaId: string },
+  ): Promise<RepositoryResult<{ deleted: boolean }>> {
+    const { data, error } = await this.supabase
+      .from("areas")
+      .delete()
+      .eq("id", input.areaId)
+      .eq("owner_user_id", actor.userId)
+      .select("id");
+
+    if (error) {
+      return { ok: false, error: sanitizeSupabaseError(error) };
+    }
+
+    return { ok: true, value: { deleted: (data ?? []).length > 0 } };
+  }
+
+  async assignProjectArea(
+    actor: AuthenticatedActor,
+    input: { projectId: string; areaId: string | null; updatedAt: string },
+  ): Promise<RepositoryResult<{ updated: boolean }>> {
+    const { data, error } = await this.supabase
+      .from("projects")
+      .update({ area_id: input.areaId, updated_at: input.updatedAt })
+      .eq("id", input.projectId)
+      .eq("owner_user_id", actor.userId)
+      .select("id");
+
+    if (error) {
+      return { ok: false, error: sanitizeSupabaseError(error) };
+    }
+
+    return { ok: true, value: { updated: (data ?? []).length > 0 } };
   }
 
   async listProjectStatuses(actor: AuthenticatedActor): Promise<RepositoryResult<string[]>> {
@@ -190,17 +414,23 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
   async listTasksForProjects(
     actor: AuthenticatedActor,
     projectIds: string[],
+    options?: { includeArchived?: boolean },
   ): Promise<RepositoryResult<ProjectTaskContextRecord[]>> {
     if (projectIds.length === 0) {
       return { ok: true, value: [] };
     }
 
-    const { data, error } = await this.supabase
+    let query = this.supabase
       .from("tasks")
       .select("id, project_id, title, status, priority, updated_at")
       .in("project_id", projectIds)
-      .eq("owner_user_id", actor.userId)
-      .order("updated_at", { ascending: false });
+      .eq("owner_user_id", actor.userId);
+
+    if (!options?.includeArchived) {
+      query = query.is("archived_at", null);
+    }
+
+    const { data, error } = await query.order("updated_at", { ascending: false });
 
     if (error) {
       return { ok: false, error: sanitizeSupabaseError(error) };
@@ -251,7 +481,7 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
   ): Promise<RepositoryResult<ProjectGoalRecord[]>> {
     const { data, error } = await this.supabase
       .from("goals")
-      .select("id, title, project_id")
+      .select("id, title, project_id, health, next_step")
       .eq("project_id", projectId)
       .eq("owner_user_id", actor.userId)
       .order("created_at", { ascending: false });
@@ -266,6 +496,8 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
         id: row.id,
         title: row.title,
         projectId: row.project_id,
+        health: toGoalHealthOrNull(row.health),
+        nextStep: row.next_step,
       })),
     };
   }
@@ -279,6 +511,7 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
       name: input.name,
       slug: input.slug,
       description: input.description,
+      area_id: input.areaId ?? null,
       owner_user_id: actor.userId,
       ...(identity
         ? {
@@ -323,6 +556,60 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
     return { ok: true, value: null };
   }
 
+  /**
+   * Create a project plus its template goals and tasks inside one database
+   * function. PostgREST cannot span a transaction across Supabase calls, so
+   * atomicity and the operation-id replay live in
+   * `create_project_from_template` (drizzle/0076_project_templates.sql).
+   *
+   * Identity comes from the request-scoped client (`auth.uid()` inside the
+   * function); no owner id is ever sent. A slug collision is a typed conflict
+   * so the application can phrase it; unexpected shapes fail closed.
+   */
+  async createProjectFromTemplate(
+    actor: AuthenticatedActor,
+    input: CreateProjectFromTemplateRecordInput,
+  ): Promise<RepositoryResult<CreateProjectFromTemplateRecordResult>> {
+    void actor;
+
+    const rpc = await (this.supabase as unknown as {
+      rpc: (
+        name: string,
+        args: Record<string, unknown>,
+      ) => Promise<{ data: unknown; error: { code?: string; message?: string } | null }>;
+    }).rpc("create_project_from_template", {
+      p_operation_id: input.operationId,
+      p_template_id: input.templateId,
+      p_name: input.name,
+      p_slug: input.slug,
+      p_description: input.description,
+      p_area_id: input.areaId ?? null,
+      p_goals: input.goals,
+      p_tasks: input.tasks,
+    });
+
+    if (rpc.error) {
+      return { ok: false, error: sanitizeSupabaseError(rpc.error) };
+    }
+
+    if (
+      rpc.data
+      && typeof rpc.data === "object"
+      && !Array.isArray(rpc.data)
+      && (rpc.data as Record<string, unknown>).status === "slug_conflict"
+    ) {
+      return { ok: false, error: { code: "conflict" } };
+    }
+
+    const parsed = parseCreateFromTemplateResult(rpc.data);
+
+    if (!parsed) {
+      return { ok: false, error: { code: "unknown" } };
+    }
+
+    return { ok: true, value: parsed };
+  }
+
   async updateProjectStatus(
     actor: AuthenticatedActor,
     input: { projectId: string; status: ProjectStatus; updatedAt: string },
@@ -341,6 +628,40 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
     }
 
     return { ok: true, value: null };
+  }
+
+  /**
+   * Archive/restore in one statement. `projects_archive_state_check` (migration
+   * 0073) ties `archived_at` to `status = 'archived'`, so the pair is written
+   * together and can never half-apply.
+   */
+  async updateProjectArchiveState(
+    actor: AuthenticatedActor,
+    input: { projectId: string; archivedAt: string | null; updatedAt: string },
+  ): Promise<RepositoryResult<null>> {
+    const { error } = await this.supabase
+      .from("projects")
+      .update({
+        status: input.archivedAt ? PROJECT_ARCHIVE_STATUS : "active",
+        archived_at: input.archivedAt,
+        archived_by: input.archivedAt ? actor.userId : null,
+        updated_at: input.updatedAt,
+      })
+      .eq("id", input.projectId)
+      .eq("owner_user_id", actor.userId);
+
+    if (error) {
+      return { ok: false, error: sanitizeSupabaseError(error) };
+    }
+
+    return { ok: true, value: null };
+  }
+
+  hasOpenTaskSessionForProject(
+    actor: AuthenticatedActor,
+    projectId: string,
+  ): Promise<RepositoryResult<boolean>> {
+    return hasOpenTaskSessionForScope(this.supabase, actor.userId, { projectId });
   }
 
   /**

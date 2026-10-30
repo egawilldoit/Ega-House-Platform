@@ -1,5 +1,6 @@
 "use client";
 
+import { TASK_TITLE_MAX, TASK_TITLE_LENGTH_ERROR } from "@/lib/task-domain";
 import { useActionState, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -74,6 +75,8 @@ export type QuickTaskSheetPanelProps = {
   onCommandChange?: (command: string) => void;
   selectedProjectId?: string;
   onProjectIdChange?: (projectId: string) => void;
+  /** Column the "Add task here" action was opened from, if any. */
+  selectedStatus?: string;
 };
 
 const DEFAULT_RETURN_TO = "/tasks";
@@ -169,6 +172,8 @@ function getDraftErrors(draft: MultiTaskDraft, goals: QuickTaskSheetGoal[]) {
     errors.push("Task title is required.");
   }
 
+  if (draft.title.trim().length > TASK_TITLE_MAX) errors.push(TASK_TITLE_LENGTH_ERROR);
+
   if (!draft.projectId) {
     errors.push("Project is required.");
   }
@@ -210,6 +215,7 @@ export function QuickTaskSheetPanel({
   onCommandChange,
   selectedProjectId,
   onProjectIdChange,
+  selectedStatus,
 }: QuickTaskSheetPanelProps) {
   const defaultProjectId = selectedProjectId || projects[0]?.id || "";
   const [singleCommand, setSingleCommand] = useState(initialCommand ?? "");
@@ -226,7 +232,9 @@ export function QuickTaskSheetPanel({
     onProjectIdChange?.(val);
   };
   const [singleGoalId, setSingleGoalId] = useState("");
-  const [singleStatus, setSingleStatus] = useState("todo");
+  const [singleStatus, setSingleStatus] = useState<string>(
+    selectedStatus && isTaskStatus(selectedStatus) ? selectedStatus : "todo",
+  );
   const [singleDueDate, setSingleDueDate] = useState("");
   const [singlePriority, setSinglePriority] = useState("medium");
   const [singleEstimateMinutes, setSingleEstimateMinutes] = useState("");
@@ -296,7 +304,9 @@ export function QuickTaskSheetPanel({
     }),
     [singleCommand, projects, goals, singleProjectId, displayTimezone],
   );
+  const titleTooLong = parsedSingleCommand.title.length > TASK_TITLE_MAX;
   const hasCommandError =
+    titleTooLong ||
     Boolean(parsedSingleCommand.projectError)
     || Boolean(parsedSingleCommand.goalError)
     || Boolean(parsedSingleCommand.blockedError);
@@ -331,21 +341,33 @@ export function QuickTaskSheetPanel({
     }
   }, [onSuccess, singleState.success]);
 
-  useEffect(() => {
+  const [previousSingleState, setPreviousSingleState] = useState(singleState);
+  if (singleState !== previousSingleState) {
+    setPreviousSingleState(singleState);
     setSingleStatus(singleState.values.status);
     setSingleDueDate(singleState.values.dueDate);
     setSinglePriority(singleState.values.priority);
     setSingleEstimateMinutes(singleState.values.estimateMinutes);
     setSingleBlockedReason(singleState.values.blockedReason);
-  }, [
-    singleState.values.blockedReason,
-    singleState.values.dueDate,
-    singleState.values.estimateMinutes,
-    singleState.values.priority,
-    singleState.values.status,
-  ]);
+  }
 
-  useEffect(() => {
+  const parsedCommandFields = [
+    parsedSingleCommand.projectId,
+    parsedSingleCommand.goalId,
+    parsedSingleCommand.status,
+    parsedSingleCommand.blockedReason,
+    parsedSingleCommand.blockedError,
+    parsedSingleCommand.dueDate,
+    parsedSingleCommand.priority,
+    parsedSingleCommand.estimateMinutes,
+  ] as const;
+  const [previousParsedCommandFields, setPreviousParsedCommandFields] =
+    useState<typeof parsedCommandFields | null>(null);
+  if (
+    previousParsedCommandFields === null ||
+    parsedCommandFields.some((value, index) => value !== previousParsedCommandFields[index])
+  ) {
+    setPreviousParsedCommandFields(parsedCommandFields);
     if (parsedSingleCommand.projectId) {
       setSingleProjectId(parsedSingleCommand.projectId);
       setSingleGoalId(parsedSingleCommand.goalId ?? "");
@@ -375,16 +397,7 @@ export function QuickTaskSheetPanel({
     if (parsedSingleCommand.estimateMinutes !== null) {
       setSingleEstimateMinutes(String(parsedSingleCommand.estimateMinutes));
     }
-  }, [
-    parsedSingleCommand.dueDate,
-    parsedSingleCommand.estimateMinutes,
-    parsedSingleCommand.goalId,
-    parsedSingleCommand.priority,
-    parsedSingleCommand.projectId,
-    parsedSingleCommand.status,
-    parsedSingleCommand.blockedReason,
-    parsedSingleCommand.blockedError,
-  ]);
+  }
 
   useEffect(() => {
     if (bulkState.success) {
@@ -581,12 +594,16 @@ export function QuickTaskSheetPanel({
                       </label>
                       <Input
                         id="quick-task-command"
+                        aria-invalid={titleTooLong}
+                        aria-describedby="quick-task-title-count quick-task-title-error"
                         required
                         placeholder={commandPlaceholder}
                         value={singleCommand}
                         onChange={(event) => handleCommandChange(event.target.value)}
                         className="h-11 w-full text-[length:var(--text-body-lg)]"
                       />
+                      <p id="quick-task-title-count" className="text-xs text-ega-text-secondary">{parsedSingleCommand.title.length}/{TASK_TITLE_MAX}</p>
+                      <p id="quick-task-title-error" role={titleTooLong ? "alert" : undefined}>{titleTooLong ? TASK_TITLE_LENGTH_ERROR : null}</p>
                       <p className="text-xs leading-5 text-[color:var(--muted-foreground)]">
                         Use #Project, /Goal, today or tomorrow, high or urgent, 45m, and
                         @blocked:reason.
@@ -950,7 +967,7 @@ export function QuickTaskSheetPanel({
                   </div>
                 ) : null}
 
-                <div className="sticky bottom-[-1rem] z-10 -mx-5 flex items-center justify-between border-t border-[var(--ega-border)] bg-[var(--ega-surface)] px-5 py-4 shadow-[0_-8px_18px_rgba(22,31,44,0.04)] sm:-mx-6 sm:px-6">
+                <div className="sticky bottom-[-1rem] z-10 -mx-5 flex items-center justify-between border-t border-[var(--ega-border)] bg-[var(--ega-surface)] px-5 py-4 shadow-[var(--ega-shadow-footer)] sm:-mx-6 sm:px-6">
                   <DialogPrimitive.Close asChild>
                     <Button
                       type="button"
@@ -1057,6 +1074,8 @@ export function QuickTaskSheetPanel({
                             <label htmlFor={`draft-${draft.id}-title`} className={FIELD_LABEL}>Title</label>
                             <Input
                               id={`draft-${draft.id}-title`}
+                              maxLength={TASK_TITLE_MAX}
+                              aria-describedby={`draft-${draft.id}-title-count`}
                               value={draft.title}
                               onChange={(event) =>
                                 updateDraftField(draft.id, "title", event.target.value)
@@ -1064,6 +1083,7 @@ export function QuickTaskSheetPanel({
                               placeholder="What needs to be done?"
                               className="h-11 w-full"
                             />
+                            <p id={`draft-${draft.id}-title-count`} className="text-xs text-ega-text-secondary">{draft.title.length}/{TASK_TITLE_MAX}</p>
                           </div>
 
                           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -1240,7 +1260,7 @@ export function QuickTaskSheetPanel({
                   </div>
                 ) : null}
 
-                <div className="sticky bottom-[-1rem] z-10 -mx-5 flex flex-col items-stretch justify-between gap-2 border-t border-[var(--ega-border)] bg-[var(--ega-surface)] px-5 py-4 shadow-[0_-8px_18px_rgba(22,31,44,0.04)] sm:-mx-6 sm:flex-row sm:items-center sm:gap-3 sm:px-6">
+                <div className="sticky bottom-[-1rem] z-10 -mx-5 flex flex-col items-stretch justify-between gap-2 border-t border-[var(--ega-border)] bg-[var(--ega-surface)] px-5 py-4 shadow-[var(--ega-shadow-footer)] sm:-mx-6 sm:flex-row sm:items-center sm:gap-3 sm:px-6">
                   <p className="text-xs text-[color:var(--muted-foreground)]" aria-live="polite">
                     {invalidDraftCount > 0
                       ? `${invalidDraftCount} of ${drafts.length} task${drafts.length === 1 ? "" : "s"} need attention`
@@ -1351,7 +1371,7 @@ export function QuickTaskSheet({
 
       <DialogPrimitive.Portal>
         <DialogPrimitive.Overlay
-          className="fixed inset-0 z-[90] bg-[rgba(17,17,15,0.58)] backdrop-blur-[1px] transition-opacity"
+          className="fixed inset-0 z-[90] bg-[var(--ega-overlay)] backdrop-blur-[1px] transition-opacity"
         />
         <DialogPrimitive.Content
           id="quick-task-modal"
@@ -1365,7 +1385,7 @@ export function QuickTaskSheet({
             }
             lastFocusedElementRef.current = null;
           }}
-          className="fixed left-1/2 top-1/2 z-[91] flex max-h-[min(50rem,calc(100dvh-2rem))] w-[calc(100vw-1rem)] max-w-[38rem] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-2xl border border-[var(--ega-border)] bg-[var(--ega-surface)] shadow-[0_28px_80px_rgba(17,17,15,0.3)] outline-none"
+          className="fixed left-1/2 top-1/2 z-[91] flex max-h-[min(50rem,calc(100dvh-2rem))] w-[calc(100vw-1rem)] max-w-[38rem] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-2xl border border-[var(--ega-border)] bg-[var(--ega-surface)] shadow-[var(--ega-shadow-lg)] outline-none"
         >
           {open ? (
             <QuickTaskSheetPanel

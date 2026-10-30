@@ -13,3 +13,7 @@ export * from "./weekly-review";
 export * from "./health";
 export * from "./projects";
 export * from "./goals";
+
+export * from "./subtasks";
+export * from "./task-comments";
+export * from "./attachments";

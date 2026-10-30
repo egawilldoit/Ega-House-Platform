@@ -55,6 +55,32 @@ test("tasks list encodes filters and carries the bearer token", async () => {
   assert.equal(calls[0].headers.Authorization, "Bearer token-task");
 });
 
+test("EGA-791: tasks list sends the canonical view definition over the API", async () => {
+  const { client, calls } = makeHarness({ tasks: [] });
+
+  await client.tasks.list({
+    view: {
+      version: 2,
+      filters: [
+        { field: "status", operator: "is_not", values: ["done"] },
+        { field: "priority", operator: "is_any_of", values: ["urgent", "high"] },
+        { field: "due_bucket", operator: "is", values: ["next_7_days"] },
+        { field: "estimate", operator: "between", values: ["15", "120"] },
+      ],
+      groupBy: "priority",
+      sort: { key: "title", direction: "desc" },
+      search: "launch",
+      activeOnly: true,
+    },
+  });
+
+  assert.equal(calls.length, 1);
+  assert.equal(
+    calls[0].url,
+    "https://api.ega.example/api/tasks?filter=status%3Ais_not%3Adone&priority=urgent%2Chigh&due=next_7_days&estimateMin=15&estimateMax=120&q=launch&group=priority&sort=title&dir=desc&tasks=active",
+  );
+});
+
 test("tasks create/update/archive/reminder methods use the Hono transport contract", async () => {
   const { client, calls } = makeHarness({ ok: true, task: { id: "task-1" } });
 

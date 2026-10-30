@@ -1,32 +1,24 @@
 import "./home.css";
-import "./home-polish.css";
 
-import { HomeMotion } from "./components/home-motion";
-import { StudyHeader } from "./components/study-header";
-import { ConversionStudy } from "./sections/conversion-study";
-import { FocusStudy } from "./sections/focus-study";
-import { GoalsStudy } from "./sections/goals-study";
-import { HeroStudy } from "./sections/hero-study";
-import { PlanningStudy } from "./sections/planning-study";
-import { ReviewStudy } from "./sections/review-study";
+import { SiteFooter } from "./components/site-footer";
+import { SiteHeader } from "./components/site-header";
+import { Closing } from "./sections/closing";
+import { Hero } from "./sections/hero";
+import { Loop } from "./sections/loop";
 
 export function HomePage() {
   return (
-    <HomeMotion>
-      <div className="home-page">
-        <a className="home-skip-link" href="#intro">
-          Skip to homepage content
-        </a>
-        <StudyHeader />
-        <main className="home-page__main">
-          <HeroStudy />
-          <GoalsStudy />
-          <PlanningStudy />
-          <FocusStudy />
-          <ReviewStudy />
-          <ConversionStudy />
-        </main>
-      </div>
-    </HomeMotion>
+    <div className="home-page">
+      <a className="home-skip-link" href="#top">
+        Skip to homepage content
+      </a>
+      <SiteHeader />
+      <main>
+        <Hero />
+        <Loop />
+        <Closing />
+      </main>
+      <SiteFooter />
+    </div>
   );
 }

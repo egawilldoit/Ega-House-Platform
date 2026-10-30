@@ -1,7 +1,46 @@
 import { createClient } from "@/lib/supabase/server";
+import {
+  isMissingSupabaseColumn,
+  isMissingSupabaseTable,
+} from "@/lib/supabase-error";
 import type { ExecutionEvidenceSessionRow, ExecutionEvidenceWindow } from "@/lib/services/execution-evidence-service";
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
+
+const ANALYTICS_SESSION_SELECT =
+  "task_id, started_at, ended_at, duration_seconds, tasks(id, title, project_id, estimate_minutes, projects(id, name, areas(id, name)), goals(id, title))";
+
+// Pre-0077 schema: projects have no `areas` relation yet. Sessions still load
+// and the Area breakdown reports them as "No area" instead of failing the page.
+const ANALYTICS_SESSION_SELECT_WITHOUT_AREAS =
+  "task_id, started_at, ended_at, duration_seconds, tasks(id, title, project_id, estimate_minutes, projects(id, name), goals(id, title))";
+
+type SupabaseQueryError = {
+  code?: string | null;
+  message?: string | null;
+  details?: string | null;
+  hint?: string | null;
+} | null;
+
+/**
+ * Detect a database that predates the Areas migration (0077). Only a missing
+ * table, missing FK column, or missing PostgREST relationship qualifies;
+ * permission and transport failures must still fail closed.
+ */
+function isMissingAreasRelation(error: SupabaseQueryError) {
+  if (!error) return false;
+
+  const diagnostic = [error.message, error.details, error.hint]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+
+  return (
+    isMissingSupabaseTable(error, "public.areas") ||
+    isMissingSupabaseColumn(error, "public.projects", "area_id") ||
+    (error.code === "PGRST200" && diagnostic.includes("areas"))
+  );
+}
 
 async function resolveSupabaseClient(supabase?: SupabaseServerClient) {
   if (supabase) return supabase;
@@ -23,19 +62,26 @@ export async function getWorkAnalyticsSessionsForWindow(args: {
     return { data: null, errorMessage: "Invalid window for work analytics." };
   }
   const supabase = await resolveSupabaseClient(args.supabase);
-  const { data, error } = await supabase
-    .from("task_sessions")
-    .select("task_id, started_at, ended_at, duration_seconds, tasks(id, title, project_id, estimate_minutes, projects(id, name), goals(id, title))")
-    .eq("owner_user_id", args.ownerUserId)
-    .lt("started_at", args.window.endIso)
-    .or(`ended_at.is.null,ended_at.gte.${args.window.startIso}`)
-    .order("started_at", { ascending: false });
+  const load = (select: string) =>
+    supabase
+      .from("task_sessions")
+      .select(select)
+      .eq("owner_user_id", args.ownerUserId)
+      .lt("started_at", args.window.endIso)
+      .or(`ended_at.is.null,ended_at.gte.${args.window.startIso}`)
+      .order("started_at", { ascending: false });
+
+  let { data, error } = await load(ANALYTICS_SESSION_SELECT);
+
+  if (error && isMissingAreasRelation(error)) {
+    ({ data, error } = await load(ANALYTICS_SESSION_SELECT_WITHOUT_AREAS));
+  }
 
   if (error) {
     return { data: null, errorMessage: `Failed to load work analytics sessions: ${error.message}` };
   }
 
-  return { data: (data ?? []) as ExecutionEvidenceSessionRow[], errorMessage: null };
+  return { data: (data ?? []) as unknown as ExecutionEvidenceSessionRow[], errorMessage: null };
 }
 
 export type WorkAnalyticsTaskCounts = {
@@ -43,6 +89,35 @@ export type WorkAnalyticsTaskCounts = {
   createdCount: number;
   blockedCount: number;
 };
+
+/**
+ * Count tasks completed inside a canonical window.
+ *
+ * Single owner for the "completed in this window" rule used by Analytics and
+ * Home. It counts the durable `completed_at` timestamp (maintained by the task
+ * status trigger) and deliberately does not filter `archived_at`, so historical
+ * completion totals survive archiving.
+ */
+export async function getCompletedTaskCountForWindow(args: {
+  ownerUserId: string;
+  window: ExecutionEvidenceWindow;
+  supabase?: SupabaseServerClient;
+}): Promise<{ data: number | null; errorMessage: string | null }> {
+  const supabase = await resolveSupabaseClient(args.supabase);
+  const { count, error } = await supabase
+    .from("tasks")
+    .select("id", { count: "exact", head: true })
+    .eq("owner_user_id", args.ownerUserId)
+    .eq("status", "done")
+    .gte("completed_at", args.window.startIso)
+    .lt("completed_at", args.window.endIso);
+
+  if (error) {
+    return { data: null, errorMessage: `Failed to load completed task count: ${error.message}` };
+  }
+
+  return { data: count ?? 0, errorMessage: null };
+}
 
 export async function getWorkAnalyticsTaskCounts(args: {
   ownerUserId: string;
@@ -64,19 +139,22 @@ export async function getWorkAnalyticsTaskCounts(args: {
   }
   const createdCount = createdCountRaw ?? 0;
 
-  // Count tasks completed within the window: completed_at >= start AND completed_at < end AND status = 'done'
-  const { count: completedCountRaw, error: completedError } = await supabase
-    .from("tasks")
-    .select("id", { count: "exact", head: true })
-    .eq("owner_user_id", args.ownerUserId)
-    .eq("status", "done")
-    .gte("completed_at", args.window.startIso)
-    .lt("completed_at", args.window.endIso);
+  // Count tasks completed within the window through the shared rule.
+  const completedResult = await getCompletedTaskCountForWindow({
+    ownerUserId: args.ownerUserId,
+    window: args.window,
+    supabase,
+  });
 
-  if (completedError) {
-    return { data: null, errorMessage: `Failed to load work analytics task counts: ${completedError.message}` };
+  if (completedResult.errorMessage || completedResult.data === null) {
+    return {
+      data: null,
+      errorMessage:
+        completedResult.errorMessage ??
+        "Failed to load work analytics task counts: completed count unavailable.",
+    };
   }
-  const completedCount = completedCountRaw ?? 0;
+  const completedCount = completedResult.data;
 
   // Count tasks that are currently blocked within scope:
   // completed_at IS NULL AND (blocked_reason IS NOT NULL OR status = 'blocked')

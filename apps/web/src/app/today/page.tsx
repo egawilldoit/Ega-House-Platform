@@ -2,6 +2,13 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { clearCompletedFromTodayAction } from "@/app/today/actions";
+import {
+  addTaskDependencyAction,
+  removeTaskDependencyAction,
+  updateTaskFieldAction,
+  updateTaskFieldDraftAction,
+} from "@/app/tasks/actions";
+import { TaskDrawerHost } from "@/components/tasks/drawer/task-drawer-host";
 import { AppShell } from "@/components/layout/app-shell";
 import { OwnerScopedRealtimeRefresh } from "@/components/realtime/owner-scoped-realtime-refresh";
 import {
@@ -26,6 +33,16 @@ import { isTaskCompletedStatus } from "@/lib/task-domain";
 import { getCurrentUser } from "@/lib/services/auth-service";
 import { getOperatorSnapshotData } from "@/lib/services/operator-service";
 import { getActiveTimerSession } from "@/lib/services/timer-service";
+import { getTaskDrawerDetail } from "@/lib/services/task-service";
+import { listTaskSubtasks } from "@/lib/services/subtask-service";
+import { listTaskAttachments } from "@/lib/services/attachment-service";
+import { getTaskActivity } from "@/lib/services/task-activity-service";
+import { getTaskCommentThread } from "@/lib/services/task-comment-service";
+import { isFavorite } from "@/lib/services/favorite-service";
+import { toggleFavoriteAction } from "@/app/favorites/actions";
+import { TASK_SUBTASK_ACTIONS } from "@/lib/task-subtask-actions";
+import { TASK_COMMENT_ACTIONS } from "@/lib/task-comment-actions";
+import { buildTaskDrawerLink } from "@/lib/task-drawer-url";
 import { getHealthSnapshotData } from "@/lib/services/health-snapshot-service";
 import { getFrictionRadar } from "@/lib/services/friction-service";
 import { getOperatorProposalData } from "@/lib/services/operator-proposal-service";
@@ -77,6 +94,11 @@ export default async function TodayPage({
     actionSuccess?: string;
     stoppedTaskId?: string;
     operatorProposalId?: string;
+    task?: string;
+    taskMode?: string;
+    taskUpdateError?: string;
+    taskUpdateSuccess?: string;
+    taskUpdateTaskId?: string;
   }>;
 }) {
   const resolvedSearchParams = await searchParams;
@@ -84,6 +106,10 @@ export default async function TodayPage({
   const actionSuccess = resolvedSearchParams.actionSuccess?.slice(0, 180) ?? null;
   const stoppedTaskId = resolvedSearchParams.stoppedTaskId?.slice(0, 80) ?? null;
   const operatorProposalId = resolvedSearchParams.operatorProposalId?.slice(0, 80) ?? null;
+  const selectedTaskId = resolvedSearchParams.task?.slice(0, 80) ?? null;
+  const taskUpdateError = resolvedSearchParams.taskUpdateError?.slice(0, 180) ?? null;
+  const taskUpdateSuccess = resolvedSearchParams.taskUpdateSuccess?.slice(0, 180) ?? null;
+  const taskUpdateTaskId = resolvedSearchParams.taskUpdateTaskId?.slice(0, 80) ?? null;
 
   const [todayResult, healthResult, frictionResult, user, proposalResult, shellMetrics] =
     await Promise.all([
@@ -177,7 +203,27 @@ export default async function TodayPage({
     signals: snapshot.signals,
   };
 
-  const returnTo = "/today";
+  const returnTo = selectedTaskId ? buildTaskDrawerLink("/today", selectedTaskId) : "/today";
+  const selectedTaskResult = selectedTaskId
+    ? await getTaskDrawerDetail(selectedTaskId)
+    : null;
+  const selectedTask = selectedTaskResult?.kind === "found" ? selectedTaskResult.task : null;
+  const selectedTaskSubtasks = selectedTaskId
+    ? (await listTaskSubtasks(selectedTaskId)).data ?? []
+    : [];
+  const selectedTaskActivityPage = selectedTaskId
+    ? await getTaskActivity(selectedTaskId, { limit: 8 })
+    : { items: [], hasMore: false };
+  const selectedTaskActivity = selectedTaskActivityPage.items;
+  const selectedTaskComments = selectedTaskId
+    ? await getTaskCommentThread(selectedTaskId)
+    : { comments: [], mentionCandidates: [], errorMessage: null };
+  const selectedTaskAttachments = selectedTaskId
+    ? await listTaskAttachments(selectedTaskId)
+    : { data: [], errorMessage: null };
+  const selectedTaskIsFavourite = selectedTaskId
+    ? await isFavorite("task", selectedTaskId)
+    : false;
   const activeTimerSessionId = todayData.activeTimer?.sessionId ?? null;
   const flexibleTodayActionable = todayData.flexibleTasks.filter(
     (task) => task.status !== "blocked" && !isTaskCompletedStatus(task.status),
@@ -233,6 +279,32 @@ export default async function TodayPage({
       ) : null}
 
       <TimerActionFeedback actionError={actionError} actionSuccess={actionSuccess} />
+
+      {selectedTaskId ? (
+        <TaskDrawerHost
+          task={selectedTask}
+          loadFailed={selectedTaskResult?.kind === "error"}
+          updateFieldAction={updateTaskFieldAction}
+          updateDraftAction={updateTaskFieldDraftAction}
+          ownerId={user?.id ?? null}
+          subtasks={selectedTaskSubtasks}
+          attachments={selectedTaskAttachments.data}
+          attachmentsError={selectedTaskAttachments.errorMessage}
+          activity={selectedTaskActivity}
+          activityHasMore={selectedTaskActivityPage.hasMore}
+          comments={selectedTaskComments.comments}
+          commentMentions={selectedTaskComments.mentionCandidates}
+          commentsError={selectedTaskComments.errorMessage}
+          commentActions={TASK_COMMENT_ACTIONS}
+          isFavourite={selectedTaskIsFavourite}
+          favouriteAction={toggleFavoriteAction}
+          subtaskActions={TASK_SUBTASK_ACTIONS}
+          updateError={taskUpdateTaskId === selectedTaskId ? taskUpdateError : null}
+          updateSuccess={taskUpdateTaskId === selectedTaskId ? taskUpdateSuccess : null}
+          addDependencyAction={addTaskDependencyAction}
+          removeDependencyAction={removeTaskDependencyAction}
+        />
+      ) : null}
 
       <TodayKpiRow
         summary={todayData.summary}

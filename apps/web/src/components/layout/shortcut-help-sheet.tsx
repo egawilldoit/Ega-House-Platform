@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { Keyboard, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -10,14 +11,25 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { SHORTCUT_HELP_SECTIONS } from "@/lib/keyboard-shortcuts";
+import {
+  SHORTCUT_HELP_SECTIONS,
+  readCharacterShortcutsEnabled,
+  writeCharacterShortcutsEnabled,
+} from "@/lib/keyboard-shortcuts";
 
 type ShortcutHelpSheetProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  ownerId?: string | null;
 };
 
-export function ShortcutHelpSheet({ open, onOpenChange }: ShortcutHelpSheetProps) {
+export function ShortcutHelpSheet({ open, onOpenChange, ownerId = null }: ShortcutHelpSheetProps) {
+  const [characterShortcutsEnabled, setCharacterShortcutsEnabled] = useState(() =>
+    typeof window === "undefined"
+      ? true
+      : readCharacterShortcutsEnabled(window.localStorage, ownerId),
+  );
+
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent closeLabel="Close keyboard shortcuts" className="flex flex-col" aria-labelledby="shortcut-help-title">
@@ -42,11 +54,30 @@ export function ShortcutHelpSheet({ open, onOpenChange }: ShortcutHelpSheetProps
         </div>
 
         <div className="flex-1 space-y-5 overflow-y-auto px-5 py-5 sm:px-6">
+          <label className="flex items-start gap-3 rounded-[1rem] border border-[var(--border)] bg-[var(--ega-surface-subtle)] p-4">
+            <input
+              type="checkbox"
+              checked={characterShortcutsEnabled}
+              onChange={(event) => {
+                const next = event.target.checked;
+                setCharacterShortcutsEnabled(next);
+                writeCharacterShortcutsEnabled(window.localStorage, ownerId, next);
+              }}
+              className="mt-0.5 h-4 w-4"
+            />
+            <span className="text-sm text-[color:var(--foreground)]">
+              Single-key task shortcuts
+              <span className="mt-1 block text-[length:var(--text-meta)] text-[color:var(--muted-foreground)]">
+                Turn off number and P shortcuts for task actions (WCAG 2.2 character-key
+                shortcuts). Navigation shortcuts and ⌘K keep working.
+              </span>
+            </span>
+          </label>
           {SHORTCUT_HELP_SECTIONS.map((section) => (
             <section
               key={section.title}
               aria-labelledby={`shortcut-section-${section.title.toLowerCase()}`}
-              className="rounded-[1rem] border border-[var(--border)] bg-white/90 p-4"
+              className="rounded-[1rem] border border-[var(--border)] bg-[var(--ega-surface-subtle)] p-4"
             >
               <div className="mb-3 flex items-center gap-2">
                 <span className="flex h-8 w-8 items-center justify-center rounded-[0.8rem] border border-[var(--border)] bg-[color:var(--instrument)] text-[color:var(--muted-foreground)]">
@@ -60,6 +91,11 @@ export function ShortcutHelpSheet({ open, onOpenChange }: ShortcutHelpSheetProps
                 </h3>
               </div>
 
+              {section.title === "Task actions" ? (
+                <p className="mb-2 text-[length:var(--text-meta)] text-[color:var(--muted-foreground)]">
+                  These apply only while the task drawer is open, and never while you are typing.
+                </p>
+              ) : null}
               <ul className="space-y-2" aria-label={`${section.title} shortcuts`}>
                 {section.shortcuts.map((shortcut) => (
                   <li
@@ -67,7 +103,7 @@ export function ShortcutHelpSheet({ open, onOpenChange }: ShortcutHelpSheetProps
                     className="flex items-center justify-between gap-3 rounded-[0.9rem] border border-[var(--border)] bg-[color:var(--instrument)] px-3 py-2.5"
                   >
                     <span className="text-sm text-[color:var(--foreground)]">{shortcut.description}</span>
-                    <kbd className="rounded-md border border-[var(--border)] bg-white px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-[color:var(--muted-foreground)]">
+                    <kbd className="rounded-md border border-[var(--border)] bg-[var(--ega-surface)] px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-[color:var(--muted-foreground)]">
                       {shortcut.combo}
                     </kbd>
                   </li>

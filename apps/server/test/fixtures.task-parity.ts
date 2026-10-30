@@ -211,7 +211,7 @@ export function expectedTodayItem() {
 export function expectedFullCounters() {
   return {
     total: 5,
-    byStatus: { todo: 2, in_progress: 1, done: 1, blocked: 1 },
+    byStatus: { todo: 2, in_progress: 1, review: 0, done: 1, blocked: 1 },
     byPriority: { low: 2, medium: 1, high: 1, urgent: 1 },
     pinned: 2,
     overdue: 1,

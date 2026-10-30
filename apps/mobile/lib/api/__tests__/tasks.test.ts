@@ -34,7 +34,7 @@ function makeFullFakeClient(): EgaApiClient {
     auth: { login: jest.fn(), refresh: jest.fn(), logout: jest.fn() },
     projects: { list: jest.fn(), getBySlug: jest.fn(), create: jest.fn(), updateStatus: jest.fn(), archive: jest.fn(), unarchive: jest.fn(), remove: jest.fn(), getPurgePreview: jest.fn(), purge: jest.fn() },
     goals: { list: jest.fn(), create: jest.fn(), updateStatus: jest.fn(), updateHealth: jest.fn(), updateNextStep: jest.fn(), archive: jest.fn(), unarchive: jest.fn() },
-    tasks: { list, get, create, update, archive, unarchive, createReminder, cancelReminder, setRecurrence: jest.fn(), clearRecurrence: jest.fn(), pin: jest.fn(), unpin: jest.fn() },
+    tasks: { list, get, create, update, archive, unarchive, createReminder, cancelReminder, setRecurrence: jest.fn(), clearRecurrence: jest.fn(), pin: jest.fn(), unpin: jest.fn(), listComments: jest.fn(), createComment: jest.fn(), updateComment: jest.fn(), deleteComment: jest.fn(), toggleCommentReaction: jest.fn() },
     inbox: { list: jest.fn(), get: jest.fn(), create: jest.fn(), update: jest.fn(), archive: jest.fn(), restore: jest.fn(), convert: jest.fn() },
     today: { get: jest.fn(), plan: jest.fn(), remove: jest.fn(), updateStatus: jest.fn(), clearCompleted: jest.fn() },
     operator: { create: jest.fn(), revise: jest.fn(), approve: jest.fn(), apply: jest.fn(), dismiss: jest.fn(), get: jest.fn(), list: jest.fn() },

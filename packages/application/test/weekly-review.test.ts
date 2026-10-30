@@ -373,6 +373,120 @@ test("shared model consumes execution evidence from shared model not web-local a
   assert.equal(result.data.evidence.totalTrackedSeconds, 1800);
 });
 
+test("estimate accuracy uses the weekly window, same clipped totals, and excludes unestimated work from the ratio", async () => {
+  const sessions: ExecutionEvidenceSessionRow[] = [
+    {
+      id: "s-over",
+      task_id: "task-est-over",
+      started_at: "2026-01-13T10:00:00.000Z",
+      ended_at: "2026-01-13T12:00:00.000Z",
+      duration_seconds: 7200,
+      tasks: { id: "task-est-over", title: "Over task", estimate_minutes: 60 },
+    },
+    {
+      id: "s-ok",
+      task_id: "task-est-ok",
+      started_at: "2026-01-14T10:00:00.000Z",
+      ended_at: "2026-01-14T11:50:00.000Z",
+      duration_seconds: 6600,
+      tasks: { id: "task-est-ok", title: "Close task", estimate_minutes: 120 },
+    },
+    {
+      id: "s-no-est",
+      task_id: "task-no-est",
+      started_at: "2026-01-15T10:00:00.000Z",
+      ended_at: "2026-01-15T11:00:00.000Z",
+      duration_seconds: 3600,
+      tasks: { id: "task-no-est", title: "Unestimated", estimate_minutes: null },
+    },
+    {
+      id: "s-open",
+      task_id: "task-open",
+      started_at: "2026-01-13T10:00:00.000Z",
+      ended_at: null,
+      duration_seconds: null,
+      tasks: { id: "task-open", title: "Running", estimate_minutes: 60 },
+    },
+    {
+      // Previous week: must not leak into this week's accuracy.
+      id: "s-outside",
+      task_id: "task-outside",
+      started_at: "2026-01-11T10:00:00.000Z",
+      ended_at: "2026-01-11T11:00:00.000Z",
+      duration_seconds: 3600,
+      tasks: { id: "task-outside", title: "Outside", estimate_minutes: 30 },
+    },
+  ];
+
+  const result = await getWeeklyReviewReadModel(
+    ACTOR,
+    {
+      timeContext: new FakeTimeContextRepo("UTC"),
+      weeklyReview: new FakeWeeklyReviewRepo(),
+      weeklyTasks: new FakeWeeklyTasksRepo(),
+      executionEvidence: new FakeEvidenceRepo(sessions),
+    },
+    { weekOf: "2026-01-12" },
+  );
+
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+
+  const accuracy = result.data.estimateAccuracy;
+  assert.equal(accuracy.estimatedTaskCount, 2);
+  assert.equal(accuracy.evaluatedTaskCount, 2);
+  assert.equal(accuracy.onTargetEvaluatedTaskCount, 1);
+  assert.equal(accuracy.accuracyPercent, 50);
+  // 60m + 120m estimates and 120m + 110m tracked.
+  assert.equal(accuracy.estimateMinutes, 180);
+  assert.equal(accuracy.trackedSeconds, 13800);
+  // Unestimated tracked work is reported but never compared against an
+  // invented estimate.
+  assert.equal(accuracy.trackedSecondsOnAllTasks, 17400);
+
+  assert.ok(accuracy.comparison);
+  assert.equal(accuracy.comparison.state, "over");
+  assert.equal(accuracy.comparison.percent, 28);
+
+  assert.equal(accuracy.topOverRuns.length, 1);
+  assert.equal(accuracy.topOverRuns[0]?.taskId, "task-est-over");
+  assert.equal(accuracy.topOverRuns[0]?.comparison.percent, 100);
+
+  // The open session and the previous-week task stay out of the weekly ratio.
+  assert.equal(accuracy.hasOpenSessions, false);
+  assert.equal(accuracy.trackedTaskCount, 3);
+});
+
+test("estimate accuracy is empty (no comparison) when the week has no estimates", async () => {
+  const sessions: ExecutionEvidenceSessionRow[] = [
+    {
+      task_id: "task-no-est",
+      started_at: "2026-01-13T10:00:00.000Z",
+      ended_at: "2026-01-13T11:00:00.000Z",
+      duration_seconds: 3600,
+      tasks: { id: "task-no-est", title: "Unestimated" },
+    },
+  ];
+
+  const result = await getWeeklyReviewReadModel(
+    ACTOR,
+    {
+      timeContext: new FakeTimeContextRepo("UTC"),
+      weeklyReview: new FakeWeeklyReviewRepo(),
+      weeklyTasks: new FakeWeeklyTasksRepo(),
+      executionEvidence: new FakeEvidenceRepo(sessions),
+    },
+    { weekOf: "2026-01-12" },
+  );
+
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.data.estimateAccuracy.comparison, null);
+  assert.equal(result.data.estimateAccuracy.accuracyPercent, null);
+  assert.deepEqual(result.data.estimateAccuracy.topOverRuns, []);
+  assert.equal(result.data.estimateAccuracy.trackedSecondsOnAllTasks, 3600);
+});
+
 // ---------------------------------------------------------------------------
 // Email compatibility: saved review fields and generated draft remain compatible
 // ---------------------------------------------------------------------------

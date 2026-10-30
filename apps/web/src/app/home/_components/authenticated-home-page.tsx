@@ -29,7 +29,10 @@ import { formatTaskToken } from "@/lib/task-domain";
 import type { HomeGreeting } from "../_lib/home-greeting";
 import type { HomeModel } from "../_lib/home-page-model";
 import { ActivityPulseSection, ActivityPulseSkeleton } from "./activity-pulse-section";
+import { HomeDeadlinesPanel } from "./home-deadlines";
+import { HomeMyTasksPanel } from "./home-my-tasks";
 import { HomeQuickActions } from "./home-quick-actions";
+import { HomeStatsSection } from "./home-stats";
 
 type HomeTask = NonNullable<HomeModel["startHere"]>;
 
@@ -67,8 +70,8 @@ function NowCardIllustration() {
       aria-hidden="true"
       focusable="false"
     >
-      <circle cx="330" cy="52" r="26" fill="#fde68a" opacity="0.85" />
-      <circle cx="330" cy="52" r="40" fill="#fde68a" opacity="0.25" />
+      <circle cx="330" cy="52" r="26" fill="color-mix(in srgb, var(--ega-data-yellow) 55%, var(--ega-surface))" opacity="0.85" />
+      <circle cx="330" cy="52" r="40" fill="color-mix(in srgb, var(--ega-data-yellow) 55%, var(--ega-surface))" opacity="0.25" />
       <path
         d="M-20 220 L120 78 L210 170 L300 60 L440 220 Z"
         fill="color-mix(in srgb, var(--status-healthy) 12%, var(--ega-surface))"
@@ -525,6 +528,8 @@ export function AuthenticatedHomePage({
 
       <HomeHeader greeting={greeting} name={name} />
 
+      <HomeStatsSection stats={model.stats} />
+
       <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-12">
         {/* Left/Main Column: 8 cols (~67%) */}
         <div className="flex flex-col gap-6 lg:col-span-8">
@@ -532,11 +537,13 @@ export function AuthenticatedHomePage({
           <HomeQuickActions />
           <TodayPanel model={model} />
           <NextPanel model={model} />
+          <HomeMyTasksPanel myTasks={model.myTasks} />
         </div>
 
         {/* Right/Rail Column: 4 cols (~33%) */}
         <div className="flex flex-col gap-6 lg:col-span-4">
           <AttentionPanel model={model} />
+          <HomeDeadlinesPanel buckets={model.deadlines} />
           <Suspense fallback={<ActivityPulseSkeleton />}>
             <ActivityPulseSection />
           </Suspense>

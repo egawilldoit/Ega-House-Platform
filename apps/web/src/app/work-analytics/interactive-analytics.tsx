@@ -34,6 +34,7 @@ import {
   collectDrilldownSessionsForBucket,
   type WorkAnalyticsDaily,
   type WorkAnalyticsProjectBreakdown,
+  type WorkAnalyticsAreaBreakdown,
   type WorkAnalyticsGoalBreakdown,
   type WorkAnalyticsTaskBreakdown,
   type DrilldownSessionDTO,
@@ -234,9 +235,11 @@ type BreakdownCardProps = {
   title: string;
   breakdownBy: string;
   projectBreakdown: WorkAnalyticsProjectBreakdown[];
+  areaBreakdown: WorkAnalyticsAreaBreakdown[];
   goalBreakdown: WorkAnalyticsGoalBreakdown[];
   taskBreakdown: WorkAnalyticsTaskBreakdown[];
   projectDrilldownIndex: Record<string, DrilldownSessionDTO[]>;
+  areaDrilldownIndex: Record<string, DrilldownSessionDTO[]>;
   goalDrilldownIndex: Record<string, DrilldownSessionDTO[]>;
   taskDrilldownIndex: Record<string, DrilldownSessionDTO[]>;
   selectedRangeLabel: string;
@@ -246,9 +249,11 @@ function BreakdownAllocation({
   title,
   breakdownBy,
   projectBreakdown,
+  areaBreakdown,
   goalBreakdown,
   taskBreakdown,
   projectDrilldownIndex,
+  areaDrilldownIndex,
   goalDrilldownIndex,
   taskDrilldownIndex,
   selectedRangeLabel,
@@ -256,7 +261,20 @@ function BreakdownAllocation({
   const { openDrilldown } = useAnalyticsDrilldown();
 
   const segments: AllocationSegment[] =
-    breakdownBy === "goal"
+    breakdownBy === "area"
+      ? areaBreakdown.map((entry) => ({
+          key: entry.areaId ?? "__no-area__",
+          label: entry.areaName,
+          value: entry.workedMinutes,
+          detail: formatDisplayDuration(entry.workedMinutes * 60, "minute"),
+          onSelect: () =>
+            openDrilldown({
+              type: "area",
+              label: entry.areaName,
+              sessions: areaDrilldownIndex[entry.areaId ?? "__no-area__"] ?? [],
+            }),
+        }))
+      : breakdownBy === "goal"
       ? goalBreakdown.map((entry) => ({
           key: entry.goalId ?? "__no-goal__",
           label: entry.goalTitle,
@@ -298,7 +316,13 @@ function BreakdownAllocation({
   const totalMinutes = segments.reduce((sum, segment) => sum + segment.value, 0);
 
   const dimension =
-    breakdownBy === "goal" ? "goal" : breakdownBy === "task" ? "task" : "project";
+    breakdownBy === "area"
+      ? "area"
+      : breakdownBy === "goal"
+        ? "goal"
+        : breakdownBy === "task"
+          ? "task"
+          : "project";
 
   return (
     <AnalyticsPanel
@@ -327,6 +351,7 @@ type InteractiveAnalyticsProps = {
   breakdownBy: string;
   breakdownTitle: string;
   projectBreakdown: WorkAnalyticsProjectBreakdown[];
+  areaBreakdown: WorkAnalyticsAreaBreakdown[];
   goalBreakdown: WorkAnalyticsGoalBreakdown[];
   taskBreakdown: WorkAnalyticsTaskBreakdown[];
   selectedRangeLabel: string;
@@ -351,6 +376,7 @@ export function InteractiveAnalytics({
   breakdownBy,
   breakdownTitle,
   projectBreakdown,
+  areaBreakdown,
   goalBreakdown,
   taskBreakdown,
   selectedRangeLabel,
@@ -393,9 +419,11 @@ export function InteractiveAnalytics({
               title={breakdownTitle}
               breakdownBy={breakdownBy}
               projectBreakdown={projectBreakdown}
+              areaBreakdown={areaBreakdown}
               goalBreakdown={goalBreakdown}
               taskBreakdown={taskBreakdown}
               projectDrilldownIndex={drilldownIndexes.project}
+              areaDrilldownIndex={drilldownIndexes.area}
               goalDrilldownIndex={drilldownIndexes.goal}
               taskDrilldownIndex={drilldownIndexes.task}
               selectedRangeLabel={selectedRangeLabel}
@@ -495,6 +523,7 @@ function AnalyticsSection({
         action={<Badge tone="muted">{selectedRangeLabel}</Badge>}
       >
         <FocusTrendChart
+          groupBy={groupBy}
           data={primarySeries}
           variant="bars"
           showTrendLine={showsTrendLine}

@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
@@ -35,6 +36,7 @@ const metrics = buildWorkspaceShellMetrics({
 const projects: SidebarProject[] = [
   { id: "project-1", name: "LIFE", slug: "life", status: "active", activeTaskCount: 12, isPinned: false },
   { id: "project-2", name: "Quiet", slug: "quiet", status: "active", activeTaskCount: 0, isPinned: false },
+  { id: "project-3", name: "Solo", slug: "solo", status: "active", activeTaskCount: 1, isPinned: false },
 ];
 
 describe("workspace sidebar refinement", () => {
@@ -69,6 +71,12 @@ describe("workspace sidebar refinement", () => {
     expect(quiet?.getAttribute("aria-label")).toBe("Quiet");
     expect(quiet?.getAttribute("title")).toBe("Quiet");
     expect(quiet?.textContent).not.toContain("0");
+
+    const solo = container.querySelector<HTMLAnchorElement>('a[href="/tasks?project=project-3"]');
+    expect(solo).not.toBeNull();
+    expect(solo?.getAttribute("aria-label")).toBe("Solo — 1 active task");
+    expect(solo?.getAttribute("title")).toBe("Solo — 1 active task");
+    expect(solo?.textContent).toContain("1");
   });
 
   it("keeps one scroll region between a pinned top and a pinned bottom", () => {
@@ -106,5 +114,49 @@ describe("workspace sidebar refinement", () => {
     expect(projectListRule).toContain("max-height: min(31dvh, 18rem);");
     expect(projectListRule).toContain("overflow-y: auto;");
     expect(projectListRule).toContain("overscroll-behavior: contain;");
+  });
+
+  it("groups sidebar projects by area and keeps unassigned projects reachable", async () => {
+    const groupedProjects: SidebarProject[] = [
+      {
+        id: "project-a",
+        name: "Applications",
+        slug: "applications",
+        status: "active",
+        activeTaskCount: 1,
+        isPinned: false,
+        areaId: "area-job-hunt",
+        areaName: "Job hunt",
+        areaColor: "blue",
+        areaIcon: "briefcase",
+      },
+      {
+        id: "project-b",
+        name: "Loose project",
+        slug: "loose-project",
+        status: "active",
+        activeTaskCount: 0,
+        isPinned: false,
+        areaId: null,
+      },
+    ];
+
+    await act(async () => {
+      root.render(<SidebarNavigation projects={groupedProjects} metrics={metrics} />);
+    });
+
+    expect(container.textContent).toContain("Job hunt");
+    expect(container.textContent).toContain("No area");
+    expect(
+      container.querySelector('a[href="/tasks?project=project-a"]'),
+    ).not.toBeNull();
+    expect(
+      container.querySelector('a[href="/tasks?project=project-b"]'),
+    ).not.toBeNull();
+
+    // The area heading precedes its project, and unassigned stays last.
+    const text = container.textContent ?? "";
+    expect(text.indexOf("Job hunt")).toBeLessThan(text.indexOf("No area"));
+    expect(text.indexOf("Applications")).toBeLessThan(text.indexOf("No area"));
   });
 });

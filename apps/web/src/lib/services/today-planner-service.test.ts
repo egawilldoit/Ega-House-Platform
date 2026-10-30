@@ -36,6 +36,25 @@ function createSupabaseMock(queryResults: QueryResult[], onOrClause?: (value: st
 
   return {
     from(table: string) {
+      if (table === "projects" || table === "goals") {
+        // Archived-ancestry scope read: no archived parents in these fixtures.
+        const scopeChain = {
+          select() {
+            return scopeChain;
+          },
+          eq() {
+            return scopeChain;
+          },
+          not() {
+            return scopeChain;
+          },
+          then<TResult>(onFulfilled?: ((value: unknown) => TResult) | null) {
+            return Promise.resolve({ data: [], error: null }).then(onFulfilled ?? undefined);
+          },
+        };
+        return scopeChain;
+      }
+
       assert.equal(table, "tasks");
 
       return {
@@ -58,6 +77,15 @@ function createSupabaseMock(queryResults: QueryResult[], onOrClause?: (value: st
               return chain;
             },
             order() {
+              return chain;
+            },
+            range() {
+              return chain;
+            },
+            lt() {
+              return chain;
+            },
+            ilike() {
               return chain;
             },
             limit() {
@@ -186,6 +214,24 @@ test("uses the provided scoped client for active timer and summary reads", async
 
   const supabase = {
     from(table: string) {
+      if (table === "projects" || table === "goals") {
+        const scopeChain = {
+          select() {
+            return scopeChain;
+          },
+          eq() {
+            return scopeChain;
+          },
+          not() {
+            return scopeChain;
+          },
+          then<TResult>(onFulfilled?: ((value: unknown) => TResult) | null) {
+            return Promise.resolve({ data: [], error: null }).then(onFulfilled ?? undefined);
+          },
+        };
+        return scopeChain;
+      }
+
       if (table === "tasks") {
         return {
           select() {
@@ -206,6 +252,15 @@ test("uses the provided scoped client for active timer and summary reads", async
                 return chain;
               },
               order() {
+                return chain;
+              },
+              range() {
+                return chain;
+              },
+              lt() {
+                return chain;
+              },
+              ilike() {
                 return chain;
               },
               limit() {
@@ -229,6 +284,15 @@ test("uses the provided scoped client for active timer and summary reads", async
               return chain;
             },
             order() {
+              return chain;
+            },
+            range() {
+              return chain;
+            },
+            lt() {
+              return chain;
+            },
+            ilike() {
               return chain;
             },
             limit() {

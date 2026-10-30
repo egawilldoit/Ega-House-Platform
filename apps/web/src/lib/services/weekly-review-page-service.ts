@@ -4,6 +4,7 @@ import { getDailyTrackedWindow, getRecentDailyTrackedTime } from "@/lib/review-s
 import { createClient } from "@/lib/supabase/server";
 import type { WeeklyReviewDraft } from "@/lib/weekly-review-generator";
 import { createAuthenticatedActor, getWeeklyReviewReadModel } from "@ega/application";
+import type { EstimateVsActualAggregate } from "@ega/application";
 import {
   SupabaseExecutionEvidenceRepository,
   SupabaseTimeContextRepository,
@@ -69,6 +70,7 @@ export type WeeklyReviewPageData = {
   weeklyStats: WeeklyStats;
   sessionHeatmap: Awaited<ReturnType<typeof getRecentDailyTrackedTime>>;
   mostTrackedInsights: MostTrackedInsights;
+  estimateAccuracy: EstimateVsActualAggregate;
   generatedDraft: WeeklyReviewDraft;
   reviewFormDefaults: WeeklyReviewPageFormDefaults;
 };
@@ -189,6 +191,7 @@ export async function getWeeklyReviewPageData({
     weeklyStats,
     sessionHeatmap,
     mostTrackedInsights,
+    estimateAccuracy: data.estimateAccuracy,
     generatedDraft,
     reviewFormDefaults,
   };

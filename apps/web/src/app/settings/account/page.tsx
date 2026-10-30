@@ -23,6 +23,7 @@ import {
   getGoogleCalendarOAuthFailureMessage,
 } from "@/app/api/integrations/google-calendar/oauth";
 import { TimezoneCard } from "@/app/settings/account/timezone-card";
+import { SettingsNav } from "@/app/settings/_components/settings-nav";
 
 export const metadata: Metadata = {
   title: "Account Settings",
@@ -57,6 +58,8 @@ export default async function AccountSettingsPage({
       description="Account controls and integrations."
     >
       <div className="flex max-w-3xl flex-col gap-6">
+        <SettingsNav active="account" />
+
         <TimezoneCard
           timezone={timeContext.timezone}
           persistedTimezone={timeContext.persistedTimezone}
@@ -115,22 +118,33 @@ export default async function AccountSettingsPage({
           </CardHeader>
           <CardContent>
             <form action={updateCalendarDefaultsAction} className="flex flex-col gap-5">
-              <label className="flex items-start gap-3">
+              <div className="flex items-start gap-3">
                 <input
+                  id="scheduledTaskSyncEnabled"
                   type="checkbox"
                   name="scheduledTaskSyncEnabled"
                   defaultChecked={settings.scheduledTaskSyncEnabled}
-                  className="mt-0.5 h-4 w-4 accent-[var(--ega-ink)]"
+                  disabled={!settings.connected}
+                  aria-describedby="scheduledTaskSyncEnabled-help"
+                  className="mt-0.5 h-4 w-4 accent-[var(--ega-ink)] disabled:cursor-not-allowed disabled:opacity-50"
                 />
-                <span>
-                  <span className="block text-[length:var(--text-body)] font-medium text-ega-text">
+                <div className="min-w-0">
+                  <label
+                    htmlFor="scheduledTaskSyncEnabled"
+                    className="block text-[length:var(--text-body)] font-medium text-ega-text"
+                  >
                     Default scheduled tasks to Calendar sync
-                  </span>
-                  <span className="mt-1 block text-[length:var(--text-meta)] text-ega-text-secondary">
-                    Applies only when Calendar is connected and a task has a schedule block.
-                  </span>
-                </span>
-              </label>
+                  </label>
+                  <p
+                    id="scheduledTaskSyncEnabled-help"
+                    className="mt-1 block text-[length:var(--text-meta)] text-ega-text-secondary"
+                  >
+                    {settings.connected
+                      ? "Applies only when Calendar is connected and a task has a schedule block."
+                      : "Connect Google Calendar to enable. Applies only when Calendar is connected and a task has a schedule block."}
+                  </p>
+                </div>
+              </div>
 
               <div className="flex flex-col gap-2">
                 <label

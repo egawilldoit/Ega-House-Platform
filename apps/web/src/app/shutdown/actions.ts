@@ -5,6 +5,7 @@ import {
   saveShutdownReflectionNote,
 } from "@/lib/services/shutdown-service";
 import { getWebTimeContext } from "@/lib/services/time-context-service";
+import { formatTaskDueDate, getTodayLocalIsoDate } from "@/lib/task-due-date";
 import {
   redirectWithWorkspaceFeedback,
   revalidateWorkspaceFor,
@@ -23,18 +24,27 @@ export async function getShutdownReturnPath(rawReturnTo: unknown) {
 export async function carryForwardTaskToTomorrowAction(formData: FormData) {
   const returnPath = await getShutdownReturnPath(formData.get("returnTo"));
   const taskId = String(formData.get("taskId") ?? "").trim();
+  const intent = formData.get("intent") === "carry" ? "carry" : "add";
   const localDate = (await getWebTimeContext().catch(() => null))?.localDate ?? null;
 
-  const result = await queueTaskForTomorrow(taskId, { localDate: localDate ?? undefined });
+  const result = await queueTaskForTomorrow(taskId, {
+    localDate: localDate ?? undefined,
+    intent,
+  });
 
   if (result.errorMessage) {
     redirectWithWorkspaceFeedback(returnPath, { errorMessage: result.errorMessage });
   }
 
   revalidateWorkspaceFor("shutdown", { returnTo: returnPath });
-  redirectWithWorkspaceFeedback(returnPath, {
-    successMessage: "Task queued for tomorrow.",
-  });
+
+  const successMessage = intent === "add"
+    ? "Task queued for tomorrow."
+    : `Carried "${result.title ?? "Task"}" to ${formatTaskDueDate(
+        result.tomorrowDate ?? localDate ?? getTodayLocalIsoDate(),
+      )}`;
+
+  redirectWithWorkspaceFeedback(returnPath, { successMessage });
 }
 
 export async function saveShutdownReflectionNoteAction(formData: FormData) {

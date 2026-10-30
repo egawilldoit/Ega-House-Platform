@@ -33,8 +33,15 @@ class Builder {
   neq(...args: unknown[]) { this.steps.push({ method: "neq", args }); return this; }
   in(...args: unknown[]) { this.steps.push({ method: "in", args }); return this; }
   is(...args: unknown[]) { this.steps.push({ method: "is", args }); return this; }
+  not(...args: unknown[]) { this.steps.push({ method: "not", args }); return this; }
+  or(...args: unknown[]) { this.steps.push({ method: "or", args }); return this; }
   order(...args: unknown[]) { this.steps.push({ method: "order", args }); return this; }
   limit(...args: unknown[]) { this.steps.push({ method: "limit", args }); return this; }
+  range(...args: unknown[]) { this.steps.push({ method: "range", args }); return this; }
+  lt(...args: unknown[]) { this.steps.push({ method: "lt", args }); return this; }
+  ilike(...args: unknown[]) { this.steps.push({ method: "ilike", args }); return this; }
+  gte(...args: unknown[]) { this.steps.push({ method: "gte", args }); return this; }
+  lte(...args: unknown[]) { this.steps.push({ method: "lte", args }); return this; }
   insert(...args: unknown[]) { this.steps.push({ method: "insert", args }); return this; }
   update(...args: unknown[]) { this.steps.push({ method: "update", args }); return this; }
   maybeSingle(...args: unknown[]) { this.steps.push({ method: "maybeSingle", args }); return this; }
@@ -79,6 +86,9 @@ function taskRow() {
 
 test("task list is owner scoped and hydrates reminders and recurrence without privileged access", async () => {
   const fake = new FakeSupabase();
+  // Archived-ancestry scope reads run first for an active list.
+  fake.push("projects", { data: [], error: null });
+  fake.push("goals", { data: [], error: null });
   fake.push("tasks", { data: [taskRow()], error: null });
   fake.push("task_reminders", { data: [], error: null });
   fake.push("task_recurrences", { data: [], error: null });
@@ -86,10 +96,27 @@ test("task list is owner scoped and hydrates reminders and recurrence without pr
   const result = await repository(fake).listTasks(ACTOR, { includeArchived: false });
 
   assert.equal(result.ok, true);
-  assert.equal(fake.calls[0]?.table, "tasks");
-  assert.ok(fake.calls[0]?.steps.some((step) => step.method === "eq" && step.args[0] === "owner_user_id" && step.args[1] === "user-123"));
-  assert.ok(fake.calls[1]?.steps.some((step) => step.method === "eq" && step.args[0] === "owner_user_id" && step.args[1] === "user-123"));
-  assert.ok(fake.calls[2]?.steps.some((step) => step.method === "eq" && step.args[0] === "owner_user_id" && step.args[1] === "user-123"));
+  assert.deepEqual(
+    fake.calls.map((call) => call.table),
+    ["projects", "goals", "tasks", "task_reminders", "task_recurrences", "task_sessions"],
+  );
+  assert.ok(
+    fake.calls.every((call) =>
+      call.steps.some(
+        (step) =>
+          step.method === "eq" &&
+          step.args[0] === "owner_user_id" &&
+          step.args[1] === "user-123",
+      ),
+    ),
+  );
+  const taskSteps = fake.calls[2]?.steps ?? [];
+  assert.ok(taskSteps.some((step) => step.method === "is" && step.args[0] === "archived_at"));
+  assert.ok(
+    fake.calls[0]?.steps.some(
+      (step) => step.method === "not" && step.args[0] === "archived_at",
+    ),
+  );
 });
 
 test("task create sets owner_user_id and returns the inserted task", async () => {

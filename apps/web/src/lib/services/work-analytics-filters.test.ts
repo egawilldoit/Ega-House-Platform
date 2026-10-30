@@ -27,6 +27,7 @@ describe("parseRange", () => {
   it("returns valid range values", () => {
     assert.equal(parseRange("today"), "today");
     assert.equal(parseRange("7d"), "7d");
+    assert.equal(parseRange("this-week"), "this-week");
     assert.equal(parseRange("30d"), "30d");
     assert.equal(parseRange("mtm"), "mtm");
     assert.equal(parseRange("prev-month"), "prev-month");
@@ -66,6 +67,7 @@ describe("parseBreakdownBy", () => {
 
   it("returns valid breakdownBy values", () => {
     assert.equal(parseBreakdownBy("project"), "project");
+    assert.equal(parseBreakdownBy("area"), "area");
     assert.equal(parseBreakdownBy("goal"), "goal");
     assert.equal(parseBreakdownBy("task"), "task");
   });
@@ -141,6 +143,20 @@ describe("computeWindowForRange", () => {
     const w = computeWindowForRange("7d", now);
     assert.equal(w.startIso, "2026-04-20T10:00:00.000Z");
     assert.equal(w.endIso, "2026-04-27T10:00:00.000Z");
+  });
+
+  it("computes this-week (calendar week to date) window", () => {
+    const w = computeWindowForRange("this-week", now);
+    // 2026-04-27 is a Monday; the window starts at local midnight.
+    assert.equal(w.startIso, "2026-04-27T00:00:00.000Z");
+    assert.equal(w.endIso, "2026-04-27T10:00:00.000Z");
+  });
+
+  it("computes this-week from Monday for a mid-week instant", () => {
+    const thursday = new Date("2026-09-24T10:00:00.000Z");
+    const w = computeWindowForRange("this-week", thursday, "UTC");
+    assert.equal(w.startIso, "2026-09-21T00:00:00.000Z");
+    assert.equal(w.endIso, "2026-09-24T10:00:00.000Z");
   });
 
   it("computes 30d window", () => {

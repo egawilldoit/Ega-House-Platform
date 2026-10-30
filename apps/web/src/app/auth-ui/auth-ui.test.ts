@@ -9,8 +9,6 @@ const read = (path: string) => readFileSync(pathFor(path), "utf8");
 const sharedFiles = [
   "src/app/auth-ui/auth-shell.tsx",
   "src/app/auth-ui/auth-header.tsx",
-  "src/app/auth-ui/auth-study-label.tsx",
-  "src/app/auth-ui/auth-geometry.tsx",
   "src/app/auth-ui/auth-motion.tsx",
   "src/app/auth-ui/auth-field.tsx",
   "src/app/auth-ui/auth-submit.tsx",
@@ -19,18 +17,17 @@ const sharedFiles = [
   "src/app/auth-ui/auth-login-viewport.css",
 ] as const;
 
-describe("shared auth editorial system", () => {
+describe("shared auth presentation system", () => {
   it("provides the complete shared auth presentation boundary", () => {
     for (const file of sharedFiles) {
       expect(existsSync(pathFor(file)), `${file} should exist`).toBe(true);
     }
   });
 
-  it("defines both approved auth themes and reduced-motion behavior", () => {
+  it("defines the public-home auth theme and reduced-motion behavior", () => {
     const css = read("src/app/auth-ui/auth.css");
 
-    expect(css).toContain('[data-auth-theme="black-signal"]');
-    expect(css).toContain('[data-auth-theme="signal-cream"]');
+    expect(css).toContain('[data-auth-theme="house-cream"]');
     expect(css).toContain("@media (prefers-reduced-motion: reduce)");
     expect(css).toContain("--auth-signal: #ff4b2b");
     expect(css).toContain("--auth-citrus: #ffd400");
@@ -44,27 +41,43 @@ describe("shared auth editorial system", () => {
     expect(motion).toContain('reducedMotion="user"');
   });
 
-  it("keeps login and signup on complementary editorial themes", () => {
+  it("keeps login and signup on the public home treatment", () => {
     const login = read("src/app/login/login-form.tsx");
     const signup = read("src/app/signup/signup-form.tsx");
 
-    expect(login).toContain('theme="black-signal"');
-    expect(login).toContain("Return to");
-    expect(login).toContain("the system.");
-    expect(login).toContain("AUTH 01");
-    expect(signup).toContain('theme="signal-cream"');
-    expect(signup).toContain("Build your");
-    expect(signup).toContain("control room.");
-    expect(signup).toContain("AUTH 02");
+    expect(login).toContain('theme="house-cream"');
+    expect(login).toContain('aria-label="Return to the system."');
+    expect(login).toContain("--auth-w");
+    expect(login).not.toContain("AUTH 01");
+    expect(signup).toContain('theme="house-cream"');
+    expect(signup).toContain('aria-label="Build your control room."');
+    expect(signup).toContain("--auth-w");
+    expect(signup).not.toContain("AUTH 02");
   });
 
   it("keeps the desktop login story and form inside the safe viewport", () => {
     const css = read("src/app/auth-ui/auth-login-viewport.css");
 
-    expect(css).toContain('[data-auth-theme="black-signal"] .auth-layout');
+    expect(css).toContain('[data-auth-theme="house-cream"] .auth-layout');
     expect(css).toContain("align-items: start");
-    expect(css).toContain('[data-auth-theme="black-signal"] .auth-display');
-    expect(css).toContain('[data-auth-theme="black-signal"] .auth-operation-list');
-    expect(css).toContain('@media (min-width: 861px) and (max-height: 1080px)');
+    expect(css).toContain('[data-auth-theme="house-cream"] .auth-display');
+    expect(css).toContain('[data-auth-theme="house-cream"] .auth-operation-list');
+    expect(css).toContain('@media (min-width: 861px) and (max-height: 900px)');
+  });
+
+  it("shares the scroll-aware navigation frame with the public home", () => {
+    const header = read("src/app/auth-ui/auth-header.tsx");
+    const css = read("src/app/auth-ui/auth.css");
+    const navFrame = read("src/components/marketing/nav-frame.tsx");
+
+    expect(header).toContain("NavFrame");
+    expect(header).toContain("auth-header__inner");
+    expect(navFrame).toContain('"use client"');
+    expect(navFrame).toContain("requestAnimationFrame");
+    expect(navFrame).toContain("data-scrolled");
+    expect(css).toContain("position: sticky");
+    expect(css).toContain('[data-scrolled="true"]');
+    expect(css).toContain("auth-nav-in");
+    expect(css).toContain("auth-field__icon");
   });
 });

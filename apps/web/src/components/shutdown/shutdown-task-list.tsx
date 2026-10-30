@@ -28,6 +28,7 @@ type ShutdownTaskListProps = {
   actionPendingLabel?: string;
   action?: (formData: FormData) => Promise<void>;
   returnTo?: string;
+  intent?: string;
 };
 
 export function ShutdownTaskList({
@@ -39,6 +40,7 @@ export function ShutdownTaskList({
   actionPendingLabel,
   action,
   returnTo = "/shutdown",
+  intent,
 }: ShutdownTaskListProps) {
   return (
     <Card>
@@ -88,6 +90,7 @@ export function ShutdownTaskList({
                   <form action={action}>
                     <input type="hidden" name="taskId" value={task.id} />
                     <input type="hidden" name="returnTo" value={returnTo} />
+                    {intent ? <input type="hidden" name="intent" value={intent} /> : null}
                     <PendingSubmitButton
                       type="submit"
                       size="sm"

@@ -16,12 +16,17 @@
   --ega-surface-hover: #f5f5f5;
   --ega-surface-selected: #f0f0f0;
   --ega-surface-muted: #ededed;
+  /* Controls that sit above a same-coloured panel (active tab, popover). */
+  --ega-surface-elevated: #ffffff;
 
   /* ── Borders ─────────────────────────────────────────── */
   --ega-border: #e5e5e5;
   --ega-border-strong: #d6d6d6;
   --ega-border-subtle: rgba(23, 23, 23, 0.06);
   --ega-divider: #eeeeee;
+  /* Form-control boundaries must remain identifiable at 3:1 against the
+     surfaces they sit on (WCAG 1.4.11). Structural dividers stay quieter. */
+  --ega-control-border: #767676;
 
   /* ── Text ────────────────────────────────────────────── */
   /* Ramp values are contrast-measured against every surface these are used on
@@ -54,18 +59,21 @@
   --status-overdue: #b91c1c;
   --status-pending: #656d7a;
   --status-info: #1d4ed8;
+  --status-review: #6d28d9;
 
   --status-healthy-bg: #f0fdf4;
   --status-risk-bg: #fffbeb;
   --status-overdue-bg: #fef2f2;
   --status-pending-bg: #f5f5f5;
   --status-info-bg: #eff6ff;
+  --status-review-bg: #f5f3ff;
 
   --status-healthy-border: #bbf7d0;
   --status-risk-border: #fde68a;
   --status-overdue-border: #fecaca;
   --status-pending-border: #e5e5e5;
   --status-info-border: #bfdbfe;
+  --status-review-border: #ddd6fe;
 
   /* ── Priority ────────────────────────────────────────── */
   --priority-high: #b91c1c;
@@ -81,6 +89,10 @@
   /* ── Accent (neutral ink; no editorial gold) ─────────── */
   --ega-ink: #171717;
   --ega-ink-hover: #2e2e2e;
+  --ega-on-ink: #ffffff;
+  --ega-on-ink-muted: #d0d0d0;
+  --ega-on-ink-border: rgba(255, 255, 255, 0.18);
+  --ega-on-ink-soft: rgba(255, 255, 255, 0.06);
   --ega-accent: #171717;
   --ega-accent-soft: #f0f0f0;
   --ega-accent-ring: rgba(23, 23, 23, 0.12);
@@ -120,6 +132,9 @@
   --ega-shadow-lg: 0 16px 40px rgba(23, 23, 23, 0.12), 0 4px 10px rgba(23, 23, 23, 0.05);
   --ega-shadow-sidebar: none;
   --ega-shadow-panel: none;
+  --ega-shadow-footer: 0 -8px 18px rgba(22, 31, 44, 0.04);
+  /* Dragged card/row lifted above the board surface. */
+  --ega-shadow-drag: 0 18px 36px rgba(23, 23, 23, 0.18), 0 6px 12px rgba(23, 23, 23, 0.10);
 
   /* ── Radius ──────────────────────────────────────────── */
   --radius-xs: 6px;
@@ -178,9 +193,147 @@
   --content-gutter: 24px;
   --radius-card: var(--radius-lg);
 
+  /* ── Density scale (appearance preference) ───────────── */
+  /* Comfortable is the baseline. The compact override below only tightens
+     repeated rows/navigation; pointer-coarse screens keep touch minimums. */
+  --row-padding-block: 10px;
+  --data-table-cell-padding: 12px;
+  --nav-item-min-height: 32px;
+
   /* ── Legacy shims (kept until last live consumer migrates) ── */
   --workspace-sidebar-width: var(--sidebar-width);
   --workspace-topbar-height: var(--topbar-height);
+}
+
+/* The authenticated workspace opts into a concrete colour scheme. Without
+   this, `color-scheme: normal` follows the OS and an explicit Light choice
+   would still paint dark native controls. Public surfaces are excluded. */
+html:has([data-workspace-theme="workspace"]) {
+  color-scheme: light;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   Dark workspace palette
+   ══════════════════════════════════════════════════════════════
+
+   The theme is scoped to the authenticated workspace by the
+   `data-workspace-theme="workspace"` marker that WorkspaceShell,
+   WorkspaceSkeletonShell, error fallbacks, and the OAuth consent surface
+   already carry. The selector lives on <html> so portalled dialogs,
+   menus, and tooltips inherit the same token values; `:has()` keeps the
+   public marketing and auth surfaces on their independent palettes.
+
+   Values are contrast-measured against the dark surfaces below. Light
+   values remain the authority for the public product; they are not
+   inverted or generated. */
+html[data-theme="dark"]:has([data-workspace-theme="workspace"]) {
+  color-scheme: dark;
+
+  /* Canvas and surfaces: charcoal, never pure black. Each level lifts
+     slightly so panels, controls, and overlays separate without relying
+     on heavy borders. */
+  --ega-bg: #101114;
+  --ega-surface: #17181d;
+  --ega-surface-subtle: #1c1e24;
+  --ega-surface-hover: #21232a;
+  --ega-surface-selected: #262930;
+  --ega-surface-muted: #2a2d35;
+  --ega-surface-elevated: #23262d;
+
+  /* Borders: structural rules stay quiet; control boundaries remain
+     identifiable at 3:1 against the surface. */
+  --ega-border: #2c2f37;
+  --ega-border-strong: #3a3e48;
+  --ega-border-subtle: rgba(242, 243, 245, 0.06);
+  --ega-divider: #252830;
+  --ega-control-border: #6b7280;
+
+  /* Text ramp: 17:1 / 8.9:1 / 4.6:1 on the surfaces each level uses. */
+  --ega-text: #f2f3f5;
+  --ega-text-secondary: #b4b8c1;
+  --ega-text-tertiary: #9196a1;
+
+  /* Data categories stay distinct from status semantics. Soft tints are
+     mid-tone bars, not inverted pastels: charts remain legible on dark. */
+  --ega-data-blue: #60a5fa;
+  --ega-data-blue-soft: #3f6697;
+  --ega-data-orange: #fb923c;
+  --ega-data-orange-soft: #945b2e;
+  --ega-data-yellow: #facc15;
+  --ega-data-yellow-soft: #897219;
+  --ega-data-green: #4ade80;
+  --ega-data-green-soft: #317b4f;
+  --ega-data-purple: #a78bfa;
+  --ega-data-purple-soft: #6d5da2;
+  --ega-data-slate: #94a3b8;
+  --ega-data-slate-soft: #626b7a;
+
+  /* Status: brighter foregrounds on low-luminance tinted backgrounds. */
+  --status-healthy: #4ade80;
+  --status-risk: #fbbf24;
+  --status-overdue: #f87171;
+  --status-pending: #a6adba;
+  --status-info: #93c5fd;
+  --status-review: #c4b5fd;
+
+  --status-healthy-bg: #10281a;
+  --status-risk-bg: #2c2110;
+  --status-overdue-bg: #2d1417;
+  --status-pending-bg: #23262d;
+  --status-info-bg: #17243a;
+  --status-review-bg: #241a3a;
+
+  --status-healthy-border: #1f5133;
+  --status-risk-border: #5a4318;
+  --status-overdue-border: #5b262b;
+  --status-pending-border: #343945;
+  --status-info-border: #28466f;
+  --status-review-border: #46306b;
+
+  --priority-high: #f87171;
+  --priority-high-bg: #2d1417;
+  --priority-high-border: #5b262b;
+  --priority-medium: #fbbf24;
+  --priority-medium-bg: #2c2110;
+  --priority-medium-border: #5a4318;
+  --priority-low: #b4b8c1;
+  --priority-low-bg: #20242b;
+  --priority-low-border: #343945;
+
+  /* Primary actions invert in dark: light ink, charcoal label. */
+  --ega-ink: #f2f3f5;
+  --ega-ink-hover: #ffffff;
+  --ega-on-ink: #101114;
+  --ega-on-ink-muted: #3a3e48;
+  --ega-on-ink-border: rgba(16, 17, 20, 0.2);
+  --ega-on-ink-soft: rgba(16, 17, 20, 0.06);
+  --ega-accent: #f2f3f5;
+  --ega-accent-soft: #262930;
+  --ega-accent-ring: rgba(242, 243, 245, 0.18);
+  --ega-gold-strong: #ffffff;
+
+  --ega-focus-ring: 0 0 0 3px rgba(242, 243, 245, 0.16);
+  --ega-focus-ring-strong: 0 0 0 3px rgba(242, 243, 245, 0.28);
+
+  --ega-overlay: rgba(0, 0, 0, 0.66);
+  --ega-overlay-soft: rgba(0, 0, 0, 0.45);
+
+  --ega-sidebar: var(--ega-bg);
+  --ega-sidebar-hover: #1b1d22;
+  --ega-sidebar-selected: #24272e;
+  --ega-sidebar-text: var(--ega-text);
+  --ega-sidebar-muted: var(--ega-text-secondary);
+  --ega-sidebar-border: var(--ega-border);
+
+  --ega-disabled: #4a4e57;
+  --ega-skeleton: #22252c;
+  --ega-skeleton-shimmer: #2a2d35;
+
+  --ega-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --ega-shadow-md: 0 6px 16px rgba(0, 0, 0, 0.45), 0 1px 3px rgba(0, 0, 0, 0.35);
+  --ega-shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.55), 0 4px 10px rgba(0, 0, 0, 0.35);
+  --ega-shadow-footer: 0 -8px 18px rgba(0, 0, 0, 0.35);
+  --ega-shadow-drag: 0 18px 36px rgba(0, 0, 0, 0.65), 0 6px 12px rgba(0, 0, 0, 0.45);
 }
 
 @media (min-width: 1536px) {
@@ -193,5 +346,110 @@
 @media (min-width: 761px) and (max-width: 1080px) {
   :root {
     --sidebar-width: 240px;
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════
+   Accent variants (appearance preference)
+   ══════════════════════════════════════════════════════════════
+
+   Neutral is the baseline ink above. Each named accent replaces the primary
+   action ink, its hover state, the label colour that sits on it, and the
+   selection/highlight tints. Every pair is contrast-measured by
+   tokens-contrast.test.ts in both themes. Scoped to the authenticated workspace
+   so public surfaces keep their own palettes. */
+
+html[data-accent="blue"]:has([data-workspace-theme="workspace"]) {
+  --ega-ink: #1d4ed8;
+  --ega-ink-hover: #1e40af;
+  --ega-on-ink: #ffffff;
+  --ega-accent: #1d4ed8;
+  --ega-accent-soft: #eff6ff;
+  --ega-accent-ring: rgba(29, 78, 216, 0.18);
+}
+
+html[data-accent="green"]:has([data-workspace-theme="workspace"]) {
+  --ega-ink: #15803d;
+  --ega-ink-hover: #166534;
+  --ega-on-ink: #ffffff;
+  --ega-accent: #15803d;
+  --ega-accent-soft: #f0fdf4;
+  --ega-accent-ring: rgba(21, 128, 61, 0.18);
+}
+
+html[data-accent="violet"]:has([data-workspace-theme="workspace"]) {
+  --ega-ink: #6d28d9;
+  --ega-ink-hover: #5b21b6;
+  --ega-on-ink: #ffffff;
+  --ega-accent: #6d28d9;
+  --ega-accent-soft: #f5f3ff;
+  --ega-accent-ring: rgba(109, 40, 217, 0.18);
+}
+
+html[data-accent="amber"]:has([data-workspace-theme="workspace"]) {
+  --ega-ink: #92400e;
+  --ega-ink-hover: #78350f;
+  --ega-on-ink: #ffffff;
+  --ega-accent: #92400e;
+  --ega-accent-soft: #fffbeb;
+  --ega-accent-ring: rgba(146, 64, 14, 0.18);
+}
+
+/* Dark accents invert the pairing: a light ink block with a charcoal label. */
+html[data-theme="dark"][data-accent="blue"]:has([data-workspace-theme="workspace"]) {
+  --ega-ink: #93c5fd;
+  --ega-ink-hover: #bfdbfe;
+  --ega-on-ink: #101114;
+  --ega-accent: #93c5fd;
+  --ega-accent-soft: #17243a;
+  --ega-accent-ring: rgba(147, 197, 253, 0.22);
+}
+
+html[data-theme="dark"][data-accent="green"]:has([data-workspace-theme="workspace"]) {
+  --ega-ink: #86efac;
+  --ega-ink-hover: #bbf7d0;
+  --ega-on-ink: #101114;
+  --ega-accent: #86efac;
+  --ega-accent-soft: #10281a;
+  --ega-accent-ring: rgba(134, 239, 172, 0.22);
+}
+
+html[data-theme="dark"][data-accent="violet"]:has([data-workspace-theme="workspace"]) {
+  --ega-ink: #c4b5fd;
+  --ega-ink-hover: #ddd6fe;
+  --ega-on-ink: #101114;
+  --ega-accent: #c4b5fd;
+  --ega-accent-soft: #241a3a;
+  --ega-accent-ring: rgba(196, 181, 253, 0.22);
+}
+
+html[data-theme="dark"][data-accent="amber"]:has([data-workspace-theme="workspace"]) {
+  --ega-ink: #fcd34d;
+  --ega-ink-hover: #fde68a;
+  --ega-on-ink: #101114;
+  --ega-accent: #fcd34d;
+  --ega-accent-soft: #2c2110;
+  --ega-accent-ring: rgba(252, 211, 77, 0.22);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   Density variants (appearance preference)
+   ══════════════════════════════════════════════════════════════
+
+   Compact tightens repeated rows, data cells and navigation. It never shrinks
+   a touch target: pointer-coarse screens keep the comfortable scale and a
+   44px navigation minimum so the preference cannot make the app harder to tap. */
+
+html[data-density="compact"]:has([data-workspace-theme="workspace"]) {
+  --row-padding-block: 6px;
+  --data-table-cell-padding: 7px;
+  --nav-item-min-height: 28px;
+}
+
+@media (pointer: coarse) {
+  html[data-density="compact"]:has([data-workspace-theme="workspace"]) {
+    --row-padding-block: 10px;
+    --data-table-cell-padding: 12px;
+    --nav-item-min-height: 44px;
   }
 }

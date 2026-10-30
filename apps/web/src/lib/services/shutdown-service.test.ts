@@ -44,10 +44,32 @@ function createShutdownDataSupabaseMock(options?: {
 
   return {
     from(table: string) {
+      if (table === "projects" || table === "goals") {
+        // Archived-ancestry scope read: no archived parents in this fixture.
+        const scopeChain = {
+          select() {
+            return scopeChain;
+          },
+          eq() {
+            return scopeChain;
+          },
+          not() {
+            return scopeChain;
+          },
+          then<TResult>(onFulfilled?: ((value: unknown) => TResult) | null) {
+            return Promise.resolve({ data: [], error: null }).then(onFulfilled ?? undefined);
+          },
+        };
+        return scopeChain;
+      }
+
       if (table === "tasks") {
         return {
           select() {
             const chain = {
+              eq() {
+                return chain;
+              },
               neq() {
                 return chain;
               },
@@ -60,7 +82,22 @@ function createShutdownDataSupabaseMock(options?: {
               is() {
                 return chain;
               },
+              not() {
+                return chain;
+              },
+              or() {
+                return chain;
+              },
               order() {
+                return chain;
+              },
+              range() {
+                return chain;
+              },
+              lt() {
+                return chain;
+              },
+              ilike() {
                 return chain;
               },
               limit() {
@@ -86,6 +123,15 @@ function createShutdownDataSupabaseMock(options?: {
             order() {
               return chain;
             },
+            range() {
+              return chain;
+            },
+            lt() {
+              return chain;
+            },
+            ilike() {
+              return chain;
+            },
             limit() {
               return chain;
             },
@@ -106,6 +152,9 @@ function createShutdownDataSupabaseMock(options?: {
 
 function createQueueTaskSupabaseMock(options?: {
   ownedTaskId?: string | null;
+  ownedTaskDueDate?: string | null;
+  updateReturnsNoRow?: boolean;
+  updatedTitle?: string;
   onUpdate?: (payload: Record<string, unknown>, taskId: string) => void;
 }) {
   return {
@@ -113,14 +162,17 @@ function createQueueTaskSupabaseMock(options?: {
       assert.equal(table, "tasks");
       return {
         select(columns: string) {
-          assert.equal(columns, "id");
+          assert.equal(columns, "id, due_date");
           return {
             eq(column: string, value: string) {
               assert.equal(column, "id");
               return {
                 maybeSingle() {
                   if (options?.ownedTaskId && value === options.ownedTaskId) {
-                    return Promise.resolve({ data: { id: value }, error: null });
+                    return Promise.resolve({
+                      data: { id: value, due_date: options?.ownedTaskDueDate ?? null },
+                      error: null,
+                    });
                   }
 
                   return Promise.resolve({ data: null, error: null });
@@ -134,7 +186,26 @@ function createQueueTaskSupabaseMock(options?: {
             eq(column: string, value: string) {
               assert.equal(column, "id");
               options?.onUpdate?.(payload, value);
-              return Promise.resolve({ error: null });
+              return {
+                select(columns: string) {
+                  assert.equal(columns, "id, title");
+                  return {
+                    maybeSingle() {
+                      if (options?.updateReturnsNoRow) {
+                        return Promise.resolve({ data: null, error: null });
+                      }
+                      if (options?.ownedTaskId && value === options.ownedTaskId) {
+                        return Promise.resolve({
+                          data: { id: value, title: options?.updatedTitle ?? "Queued task" },
+                          error: null,
+                        });
+                      }
+
+                      return Promise.resolve({ data: null, error: null });
+                    },
+                  };
+                },
+              };
             },
           };
         },
@@ -338,4 +409,155 @@ test("queueTaskForTomorrow blocks unavailable task ids", async () => {
 
   assert.equal(result.errorMessage, "Task is unavailable.");
   assert.equal(updateCalled, false);
+});
+
+test("queueTaskForTomorrow carry moves today and overdue due dates", async () => {
+  for (const dueDate of ["2026-04-21", "2026-04-20"]) {
+    let payload: Record<string, unknown> | null = null;
+    const supabase = createQueueTaskSupabaseMock({
+      ownedTaskId: "task-owned",
+      ownedTaskDueDate: dueDate,
+      updatedTitle: "QA carry today",
+      onUpdate: (value) => {
+        payload = value;
+      },
+    });
+
+    const result = await queueTaskForTomorrow("task-owned", {
+      supabase: supabase as never,
+      now: new Date("2026-04-21T18:00:00.000Z"),
+      localDate: "2026-04-21",
+      intent: "carry",
+    });
+
+    assert.equal(result.errorMessage, null);
+    assert.equal(result.title, "QA carry today");
+    assert.equal(result.tomorrowDate, "2026-04-22");
+    assert.equal(payload?.["planned_for_date"], "2026-04-22");
+    assert.equal(payload?.["due_date"], "2026-04-22");
+  }
+});
+
+test("queueTaskForTomorrow carry preserves null and future due dates", async () => {
+  for (const dueDate of [null, "2026-04-30"]) {
+    let payload: Record<string, unknown> | null = null;
+    const supabase = createQueueTaskSupabaseMock({
+      ownedTaskId: "task-owned",
+      ownedTaskDueDate: dueDate,
+      onUpdate: (value) => {
+        payload = value;
+      },
+    });
+
+    const result = await queueTaskForTomorrow("task-owned", {
+      supabase: supabase as never,
+      now: new Date("2026-04-21T18:00:00.000Z"),
+      localDate: "2026-04-21",
+      intent: "carry",
+    });
+
+    assert.equal(result.errorMessage, null);
+    assert.equal(payload?.["planned_for_date"], "2026-04-22");
+    assert.equal(Object.prototype.hasOwnProperty.call(payload ?? {}, "due_date"), false);
+  }
+});
+
+test("queueTaskForTomorrow add preserves an existing due date", async () => {
+  let payload: Record<string, unknown> | null = null;
+  const supabase = createQueueTaskSupabaseMock({
+    ownedTaskId: "task-owned",
+    ownedTaskDueDate: "2026-04-21",
+    onUpdate: (value) => {
+      payload = value;
+    },
+  });
+
+  const result = await queueTaskForTomorrow("task-owned", {
+    supabase: supabase as never,
+    now: new Date("2026-04-21T18:00:00.000Z"),
+    localDate: "2026-04-21",
+    intent: "add",
+  });
+
+  assert.equal(result.errorMessage, null);
+  assert.equal(payload?.["planned_for_date"], "2026-04-22");
+  assert.equal(Object.prototype.hasOwnProperty.call(payload ?? {}, "due_date"), false);
+});
+
+test("queueTaskForTomorrow fails when the update affects no row", async () => {
+  const supabase = createQueueTaskSupabaseMock({
+    ownedTaskId: "task-owned",
+    ownedTaskDueDate: "2026-04-21",
+    updateReturnsNoRow: true,
+  });
+
+  const result = await queueTaskForTomorrow("task-owned", {
+    supabase: supabase as never,
+    now: new Date("2026-04-21T18:00:00.000Z"),
+    localDate: "2026-04-21",
+    intent: "carry",
+  });
+
+  assert.notEqual(result.errorMessage, null);
+});
+
+test("getShutdownData excludes carry tasks already planned tomorrow", async () => {
+  const todayResult = createTodayPlannerResult({
+    planned: [
+      {
+        id: "task-due-today-planned-tomorrow",
+        title: "Due today but planned tomorrow",
+        description: null,
+        blockedReason: null,
+        status: "todo",
+        priority: "medium",
+        dueDate: "2026-04-21",
+        estimateMinutes: null,
+        focusRank: null,
+        plannedForDate: "2026-04-22",
+        updatedAt: "2026-04-21T10:00:00.000Z",
+        projectName: "Ops",
+        projectSlug: "ops",
+        goalTitle: null,
+        hasActiveTimer: false,
+        isDueToday: true,
+        isPlannedForToday: false,
+      },
+      {
+        id: "task-carry",
+        title: "Carry me",
+        description: null,
+        blockedReason: null,
+        status: "todo",
+        priority: "medium",
+        dueDate: "2026-04-21",
+        estimateMinutes: null,
+        focusRank: null,
+        plannedForDate: "2026-04-21",
+        updatedAt: "2026-04-21T10:30:00.000Z",
+        projectName: "Ops",
+        projectSlug: "ops",
+        goalTitle: null,
+        hasActiveTimer: false,
+        isDueToday: true,
+        isPlannedForToday: true,
+      },
+    ],
+    inProgress: [],
+    blocked: [],
+    completed: [],
+  });
+
+  const supabase = createShutdownDataSupabaseMock();
+  const result = await getShutdownData({
+    supabase: supabase as never,
+    now: new Date("2026-04-21T12:00:00.000Z"),
+    localDate: "2026-04-21",
+    todayPlannerResult: todayResult as never,
+  });
+
+  assert.equal(result.errorMessage, null);
+  assert.equal(result.data?.unfinishedCarryForward.length, 1);
+  assert.equal(result.data?.unfinishedCarryForward[0]?.id, "task-carry");
+  assert.equal(result.data?.summary.unfinishedCount, 1);
 });

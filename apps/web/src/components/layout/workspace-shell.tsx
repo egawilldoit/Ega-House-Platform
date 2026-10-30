@@ -5,12 +5,14 @@ import { usePathname } from "next/navigation";
 
 import type { ShellIdentity, WorkspaceShellMetrics } from "@/lib/workspace-shell";
 import { cn } from "@/lib/utils";
-import { Sidebar, type SidebarProject } from "./sidebar";
+import { OfflineBanner } from "./offline-banner";
+import { Sidebar, type SidebarFavorite, type SidebarProject } from "./sidebar";
 import { SidebarMobileDrawer } from "./sidebar-mobile-drawer";
 import { TopBar } from "./top-bar";
 import { getShellRouteMeta } from "./shell-route-meta";
 
 type WorkspaceShellProps = {
+  favorites?: SidebarFavorite[];
   children: ReactNode;
   projects?: SidebarProject[];
   metrics: WorkspaceShellMetrics;
@@ -40,6 +42,7 @@ function buildBreadcrumb(pathname: string) {
  */
 export function WorkspaceShell({
   children,
+  favorites = [],
   projects = [],
   metrics,
   identity,
@@ -60,6 +63,7 @@ export function WorkspaceShell({
       data-collapsed={collapsed ? "true" : "false"}
     >
       <Sidebar
+        favorites={favorites}
         projects={projects}
         metrics={metrics}
         collapsed={collapsed}
@@ -67,6 +71,7 @@ export function WorkspaceShell({
       />
 
       <main className="app-main workspace-main">
+        <OfflineBanner />
         <TopBar
           metrics={metrics}
           identity={identity}

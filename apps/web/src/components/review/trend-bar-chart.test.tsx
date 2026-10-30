@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 /// <reference types="vitest/globals" />
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -21,10 +22,19 @@ test("renders chart with daily data", () => {
 
   const markup = renderToStaticMarkup(<TrendBarChart data={data} title="Last 7 days" />);
 
+  const container = document.createElement("div");
+  container.innerHTML = markup;
+  const rows = [...container.querySelectorAll("button")].map(row => row.textContent);
+  assert.ok(rows.some(row => row?.includes("1h · 2 sessions")));
+  assert.ok(rows.some(row => row?.includes("30m · 1 session")));
+  assert.ok(rows.some(row => row?.includes("0m · 0 sessions")));
   assert.match(markup, /Last 7 days/);
   assert.match(markup, /active days/);
   assert.match(markup, /1h 30m/); // Total: 90 minutes
   assert.match(markup, /tracked/);
+  assert.match(markup, /aria-label="Tue, Apr 21 · 0m · 0 sessions"/);
+  assert.match(markup, /aria-label="Wed, Apr 22 · 30m · 1 session"/);
+  assert.match(markup, /aria-label="Mon, Apr 20 · 1h · 2 sessions"/);
   assert.match(markup, /Mon, Apr 20/);
   assert.match(markup, /1h/);
   assert.match(markup, /30m/);

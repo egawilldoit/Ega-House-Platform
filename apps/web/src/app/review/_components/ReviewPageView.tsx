@@ -9,12 +9,14 @@ import { DashboardSection } from "@/components/ui/dashboard-section";
 import { StatCard } from "@/components/ui/stat-card";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { formatDateTime, formatIsoDate, shiftIsoDateByDays } from "@/lib/review-week";
-import { formatDisplayDuration } from "@/lib/presentation-format";
+import { formatDisplayDuration, formatDisplayEstimate } from "@/lib/presentation-format";
 import { formatTaskToken } from "@/lib/task-domain";
 import { ReviewEmailPreviewForm } from "../review-email-preview-form";
 import { ReviewForm } from "../review-form";
 import { WeekSelector } from "../week-selector";
 import { WeeklyIntelligenceSummary } from "@/components/review/weekly-intelligence-summary";
+import { EstimateVsActualBadge } from "@/components/tasks/estimate-vs-actual-badge";
+import { ESTIMATE_ACCURACY_TOLERANCE_PERCENT } from "@ega/application/timer/tracked-time";
 import type { HealthSnapshotServiceResult } from "@/lib/services/health-snapshot-service";
 import type { FrictionRadarResponse } from "@ega/contracts/friction";
 import type { ReviewPageModel } from "../_lib/review-page-model";
@@ -94,9 +96,12 @@ export function ReviewPageView({
     weeklyStats,
     sessionHeatmap,
     mostTrackedInsights,
+    estimateAccuracy,
     reviewFormDefaults,
     generatedDraft,
   } = model.data;
+
+  const reviewTimezone = model.timezone;
 
   const selectedWeekOf = model.weekOf;
   const previousWeekOf = shiftIsoDateByDays(selectedWeekOf, -7);
@@ -219,6 +224,77 @@ export function ReviewPageView({
               <MostTrackedList title="Goals" rows={mostTrackedInsights.goals} />
             </CardContent>
           </Card>
+
+          <Card
+            label="Estimation"
+            title="Estimate vs actual"
+            action={
+              <Badge tone={estimateAccuracy.comparison ? "info" : "muted"}>
+                {estimateAccuracy.accuracyPercent !== null
+                  ? `${estimateAccuracy.accuracyPercent}% on target`
+                  : "No ratio yet"}
+              </Badge>
+            }
+          >
+            <CardContent className="flex flex-col gap-4" data-testid="review-estimate-accuracy">
+              {estimateAccuracy.comparison ? (
+                <>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <EstimateVsActualBadge
+                      estimateMinutes={estimateAccuracy.estimateMinutes}
+                      trackedSeconds={estimateAccuracy.trackedSeconds}
+                      hasOpenSession={estimateAccuracy.hasOpenSessions}
+                    />
+                    <span className="text-[length:var(--text-meta)] text-ega-text-tertiary">
+                      On estimated tasks · within ±{ESTIMATE_ACCURACY_TOLERANCE_PERCENT}% counts as on target
+                    </span>
+                  </div>
+
+                  <p className="text-[length:var(--text-meta-lg)] text-ega-text-secondary">
+                    {estimateAccuracy.evaluatedTaskCount > 0
+                      ? `${estimateAccuracy.onTargetEvaluatedTaskCount} of ${estimateAccuracy.evaluatedTaskCount} estimated tasks with tracked time landed within ±${ESTIMATE_ACCURACY_TOLERANCE_PERCENT}%.`
+                      : "No estimated task had tracked time in this window, so there is no accuracy ratio yet."}
+                    {estimateAccuracy.estimatedTaskCount > estimateAccuracy.evaluatedTaskCount
+                      ? ` ${estimateAccuracy.estimatedTaskCount - estimateAccuracy.evaluatedTaskCount} estimated task(s) had no tracked time and are not rated.`
+                      : ""}
+                  </p>
+
+                  <div className="min-w-0">
+                    <p className="glass-label">Top over-runs</p>
+                    {estimateAccuracy.topOverRuns.length > 0 ? (
+                      <ul className="rows mt-1">
+                        {estimateAccuracy.topOverRuns.map((run) => (
+                          <li key={run.taskId} className="row px-0!">
+                            <span className="row-main min-w-0">
+                              <span className="row-title truncate">{run.title}</span>
+                              <span className="row-meta">
+                                {formatDisplayEstimate(run.comparison.estimateMinutes)} est ·{" "}
+                                {formatDisplayDuration(run.comparison.trackedSeconds, "minute")} tracked
+                              </span>
+                            </span>
+                            <span className="shrink-0 text-right text-[length:var(--text-body)] font-medium tabular-nums text-[color:var(--status-overdue)]">
+                              {run.comparison.percent !== null
+                                ? `+${run.comparison.percent}%`
+                                : "over"}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="mt-1 text-[length:var(--text-meta-lg)] text-ega-text-secondary">
+                        No estimated task ran over its estimate this week.
+                      </p>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <p className="text-[length:var(--text-meta-lg)] leading-[var(--leading-snug)] text-ega-text-secondary">
+                  No task in this week has an estimate yet. Add estimates to tasks to compare
+                  planned time with tracked time.
+                </p>
+              )}
+            </CardContent>
+          </Card>
         </div>
 
         <div className="workspace-secondary-rail">
@@ -237,7 +313,7 @@ export function ReviewPageView({
                     {selectedReview ? (
                       <>
                         Saved{" "}
-                        {formatDateTime(selectedReview.updated_at ?? selectedReview.created_at)}
+                        {formatDateTime(selectedReview.updated_at ?? selectedReview.created_at, reviewTimezone)}
                       </>
                     ) : (
                       "Not saved yet"
@@ -293,7 +369,7 @@ export function ReviewPageView({
                           {task.blockedReason?.trim() || "Blocked with no reason recorded yet."}
                         </span>
                         <span className="text-[length:var(--text-meta)] text-ega-text-tertiary">
-                          Updated {formatDateTime(task.updatedAt)}
+                          Updated {formatDateTime(task.updatedAt, reviewTimezone)}
                         </span>
                       </span>
                     </li>
@@ -329,7 +405,7 @@ export function ReviewPageView({
                   <span className="row-meta">{toSummaryPreview(review.summary, 140)}</span>
                 </Link>
                 <span className="shrink-0 text-[length:var(--text-meta)] tabular-nums text-ega-text-tertiary">
-                  {formatDateTime(review.updated_at ?? review.created_at)}
+                  {formatDateTime(review.updated_at ?? review.created_at, reviewTimezone)}
                 </span>
               </li>
             ))}

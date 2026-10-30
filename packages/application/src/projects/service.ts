@@ -2,7 +2,6 @@ import {
   PROJECT_ARCHIVE_STATUS,
   isProjectArchivedStatus,
   isProjectStatus,
-  type ProjectStatus,
 } from "@ega/domain";
 
 import type { AuthenticatedActor } from "../auth/actor";
@@ -12,7 +11,22 @@ import {
   type ApplicationErrorCode,
   type ApplicationResult,
 } from "../shared/result";
-import type { ProjectPurgePreview, ProjectsRepository } from "./ports";
+import {
+  resolveTimeContext,
+  type TimeContextRepository,
+} from "../shared/time-context";
+import type {
+  CreateProjectFromTemplateRecordInput,
+  CreateProjectFromTemplateTaskInput,
+  ProjectPurgePreview,
+  ProjectsRepository,
+} from "./ports";
+import {
+  PROJECT_TEMPLATE_GOAL_STATUS,
+  isProjectTemplateId,
+  resolveProjectTemplatePreview,
+  type ProjectTemplatePreview,
+} from "./templates";
 
 /**
  * A repository refusal carries either a class ("conflict") or none ("unknown").
@@ -27,6 +41,7 @@ export type ProjectFormValues = {
   name: string;
   slug: string;
   description: string;
+  areaId?: string;
 };
 
 export type CreateProjectResult =
@@ -42,6 +57,35 @@ export function normalizeProjectSlug(value: string) {
     .replace(/^-|-$/g, "");
 }
 
+/**
+ * Canonical project form validation. `createProject` and
+ * `createProjectFromTemplate` both read untrusted project fields through this
+ * one function, so the two creation paths cannot drift on name/slug rules.
+ */
+export function readProjectFormValues(input: {
+  name: unknown;
+  slug: unknown;
+  description: unknown;
+  areaId?: unknown;
+}): { values: ProjectFormValues; errorMessage: string | null } {
+  const name = String(input.name ?? "").trim();
+  const slug = normalizeProjectSlug(String(input.slug ?? ""));
+  const description = String(input.description ?? "").trim();
+  const areaId = String(input.areaId ?? "").trim();
+  const values = { name, slug, description, areaId };
+
+  if (!name) return { values, errorMessage: "Project name is required." };
+  if (!slug) return { values, errorMessage: "Slug is required." };
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) {
+    return {
+      values,
+      errorMessage: "Slug can only contain lowercase letters, numbers, and hyphens.",
+    };
+  }
+
+  return { values, errorMessage: null };
+}
+
 export async function createProject(
   actor: AuthenticatedActor,
   repository: ProjectsRepository,
@@ -49,29 +93,40 @@ export async function createProject(
     name: unknown;
     slug: unknown;
     description: unknown;
+    areaId?: unknown;
     mcpOperationId?: string;
     mcpClientId?: string;
   },
 ): Promise<CreateProjectResult> {
-  const name = String(input.name ?? "").trim();
-  const slug = normalizeProjectSlug(String(input.slug ?? ""));
-  const description = String(input.description ?? "").trim();
-  const values = { name, slug, description };
+  const { values, errorMessage } = readProjectFormValues(input);
 
-  if (!name) return { ok: false, errorMessage: "Project name is required.", values };
-  if (!slug) return { ok: false, errorMessage: "Slug is required.", values };
-  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) {
-    return {
-      ok: false,
-      errorMessage: "Slug can only contain lowercase letters, numbers, and hyphens.",
-      values,
-    };
+  if (errorMessage) return { ok: false, errorMessage, values };
+
+  const { name, slug, description, areaId = "" } = values;
+
+  if (areaId) {
+    if (!PROJECT_ID_PATTERN.test(areaId)) {
+      return { ok: false, errorMessage: "Choose a valid area.", values };
+    }
+
+    const areaResult = await repository.getAreaById(actor, areaId);
+    if (!areaResult.ok) {
+      return {
+        ok: false,
+        errorMessage: "Unable to verify the area right now.",
+        values,
+      };
+    }
+    if (!areaResult.value) {
+      return { ok: false, errorMessage: "Area not found.", values };
+    }
   }
 
   const createInput = {
     name,
     slug,
     description: description || null,
+    areaId: areaId || null,
     ...(input.mcpOperationId && input.mcpClientId
       ? { mcpOperationId: input.mcpOperationId, mcpClientId: input.mcpClientId }
       : {}),
@@ -95,6 +150,199 @@ export async function createProject(
   return { ok: true, data: null, values };
 }
 
+export type CreateProjectFromTemplateFormValues = ProjectFormValues & {
+  templateId: string;
+};
+
+export type CreateProjectFromTemplateSummary = Readonly<{
+  projectId: string;
+  slug: string;
+  goalCount: number;
+  taskCount: number;
+  replayed: boolean;
+}>;
+
+export type CreateProjectFromTemplateResult =
+  | Readonly<{
+      ok: true;
+      data: CreateProjectFromTemplateSummary;
+      values: CreateProjectFromTemplateFormValues;
+    }>
+  | Readonly<{
+      ok: false;
+      errorMessage: string;
+      values: CreateProjectFromTemplateFormValues;
+    }>;
+
+const OPERATION_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Build the repository payload from an already-resolved preview.
+ *
+ * The preview and the insert payload come from the same resolution, so every
+ * due date the owner reviewed is the due date that is persisted. No repository
+ * or template-specific task store is introduced: the payload lands in the
+ * canonical projects/goals/tasks tables inside one database transaction.
+ */
+export function toCreateProjectFromTemplateRecord(input: {
+  preview: ProjectTemplatePreview;
+  operationId: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  areaId: string | null;
+}): CreateProjectFromTemplateRecordInput {
+  const goals = input.preview.goals.map((goal) => ({
+    title: goal.title,
+    description: goal.description,
+    status: PROJECT_TEMPLATE_GOAL_STATUS,
+  }));
+
+  const tasks: CreateProjectFromTemplateTaskInput[] = [];
+
+  input.preview.goals.forEach((goal, goalIndex) => {
+    for (const task of goal.tasks) {
+      tasks.push({
+        goalIndex,
+        title: task.title,
+        description: task.description,
+        priority: task.priority,
+        estimateMinutes: task.estimateMinutes,
+        dueDate: task.dueDate,
+      });
+    }
+  });
+
+  return {
+    operationId: input.operationId,
+    templateId: input.preview.templateId,
+    name: input.name,
+    slug: input.slug,
+    description: input.description,
+    areaId: input.areaId,
+    goals,
+    tasks,
+  };
+}
+
+/**
+ * Create a project from a typed template in one bounded repository operation.
+ *
+ * Business rules owned here: template selection, canonical project field
+ * validation, server-issued operation identity, the owner's local-date
+ * resolution, and the resolved preview itself. Atomicity and idempotency are
+ * owned by the database function (`create_project_from_template`): a failure
+ * anywhere inside it leaves no project, goal or task row, and repeating the
+ * same operation id returns the project created by the first attempt.
+ */
+export async function createProjectFromTemplate(
+  actor: AuthenticatedActor,
+  repository: ProjectsRepository,
+  timeContextRepository: TimeContextRepository,
+  input: {
+    templateId: unknown;
+    operationId: unknown;
+    name: unknown;
+    slug: unknown;
+    description: unknown;
+    areaId?: unknown;
+    now?: Date;
+  },
+): Promise<CreateProjectFromTemplateResult> {
+  const templateIdRaw = String(input.templateId ?? "").trim();
+  const operationId = String(input.operationId ?? "").trim();
+  const { values, errorMessage } = readProjectFormValues(input);
+  const formValues: CreateProjectFromTemplateFormValues = {
+    ...values,
+    templateId: templateIdRaw,
+  };
+
+  if (!isProjectTemplateId(templateIdRaw)) {
+    return {
+      ok: false,
+      errorMessage: "Choose a project template.",
+      values: formValues,
+    };
+  }
+
+  if (errorMessage) {
+    return { ok: false, errorMessage, values: formValues };
+  }
+
+  if (!OPERATION_ID_PATTERN.test(operationId)) {
+    return {
+      ok: false,
+      errorMessage: "This form is no longer valid. Reload the page and try again.",
+      values: formValues,
+    };
+  }
+
+  const areaId = values.areaId ?? "";
+
+  if (areaId) {
+    if (!PROJECT_ID_PATTERN.test(areaId)) {
+      return { ok: false, errorMessage: "Choose a valid area.", values: formValues };
+    }
+
+    const areaResult = await repository.getAreaById(actor, areaId);
+    if (!areaResult.ok) {
+      return {
+        ok: false,
+        errorMessage: "Unable to verify the area right now.",
+        values: formValues,
+      };
+    }
+    if (!areaResult.value) {
+      return { ok: false, errorMessage: "Area not found.", values: formValues };
+    }
+  }
+
+  const timeContext = await resolveTimeContext(actor, timeContextRepository, {
+    now: input.now ?? new Date(),
+  });
+
+  if (!timeContext.ok) {
+    return {
+      ok: false,
+      errorMessage: "Unable to load your time zone right now. Please try again.",
+      values: formValues,
+    };
+  }
+
+  const previewResult = resolveProjectTemplatePreview({
+    templateId: templateIdRaw,
+    localDate: timeContext.data.localDate,
+  });
+
+  if (!previewResult.ok) {
+    return { ok: false, errorMessage: previewResult.errorMessage, values: formValues };
+  }
+
+  const record = toCreateProjectFromTemplateRecord({
+    preview: previewResult.data,
+    operationId,
+    name: values.name,
+    slug: values.slug,
+    description: values.description || null,
+    areaId: areaId || null,
+  });
+
+  const result = await repository.createProjectFromTemplate(actor, record);
+
+  if (!result.ok) {
+    return {
+      ok: false,
+      errorMessage:
+        result.error.code === "conflict"
+          ? "That slug is already in use. Choose a different slug."
+          : "Unable to create the project from this template right now. Please try again.",
+      values: formValues,
+    };
+  }
+
+  return { ok: true, data: result.value, values: formValues };
+}
+
 export async function updateProjectStatus(
   actor: AuthenticatedActor,
   repository: ProjectsRepository,
@@ -103,7 +351,14 @@ export async function updateProjectStatus(
   const projectId = String(input.projectId ?? "").trim();
   const status = String(input.status ?? "").trim();
 
-  if (!projectId || !isProjectStatus(status)) {
+  // Archived is not a lifecycle status: it is archival metadata owned by
+  // archiveProject/unarchiveProject, and the database ties `status =
+  // 'archived'` to `archived_at`. A status write must never be the way in.
+  if (
+    !projectId ||
+    !isProjectStatus(status) ||
+    status === PROJECT_ARCHIVE_STATUS
+  ) {
     return applicationFailure("Project update request is invalid.");
   }
 
@@ -121,15 +376,28 @@ export async function updateProjectStatus(
 async function setProjectArchiveState(
   actor: AuthenticatedActor,
   repository: ProjectsRepository,
-  input: { projectId: unknown; status: ProjectStatus; now?: Date },
+  input: { projectId: unknown; archived: boolean; now?: Date },
 ) {
   const projectId = String(input.projectId ?? "").trim();
   if (!projectId) return applicationFailure("Project update request is invalid.");
 
-  const result = await repository.updateProjectStatus(actor, {
+  // Archiving a project hides its active tasks from active surfaces, so it
+  // must not detach currently running work. Mirrors the task archive rule.
+  if (input.archived) {
+    const timerResult = await repository.hasOpenTaskSessionForProject(actor, projectId);
+    if (!timerResult.ok) {
+      return applicationFailure("Unable to validate timer sessions for this project right now.");
+    }
+    if (timerResult.value) {
+      return applicationFailure("Stop the active timer before archiving this project.");
+    }
+  }
+
+  const nowIso = (input.now ?? new Date()).toISOString();
+  const result = await repository.updateProjectArchiveState(actor, {
     projectId,
-    status: input.status,
-    updatedAt: (input.now ?? new Date()).toISOString(),
+    archivedAt: input.archived ? nowIso : null,
+    updatedAt: nowIso,
   });
 
   return result.ok
@@ -143,8 +411,9 @@ export function archiveProject(
   input: { projectId: unknown; now?: Date },
 ) {
   return setProjectArchiveState(actor, repository, {
-    ...input,
-    status: PROJECT_ARCHIVE_STATUS,
+    projectId: input.projectId,
+    archived: true,
+    now: input.now,
   });
 }
 
@@ -154,8 +423,9 @@ export function unarchiveProject(
   input: { projectId: unknown; now?: Date },
 ) {
   return setProjectArchiveState(actor, repository, {
-    ...input,
-    status: "active",
+    projectId: input.projectId,
+    archived: false,
+    now: input.now,
   });
 }
 
@@ -212,7 +482,7 @@ export async function deleteArchivedProject(
   }
 
   const [tasksResult, goalsResult] = await Promise.all([
-    repository.listTasksForProjects(actor, [projectId]),
+    repository.listTasksForProjects(actor, [projectId], { includeArchived: true }),
     repository.listGoalsForProject(actor, projectId),
   ]);
 

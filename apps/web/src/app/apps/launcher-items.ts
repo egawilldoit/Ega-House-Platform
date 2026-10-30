@@ -1,5 +1,5 @@
 export type AppsLauncherIconKey =
-  | "dashboard"
+  | "home"
   | "tasks"
   | "timer"
   | "goals"
@@ -16,11 +16,11 @@ export type AppsLauncherItem = {
 
 export const APPS_LAUNCHER_ITEMS: AppsLauncherItem[] = [
   {
-    id: "dashboard",
-    label: "Dashboard",
-    description: "Operational snapshot for today and this week.",
-    href: "/dashboard",
-    icon: "dashboard",
+    id: "home",
+    label: "Home",
+    description: "Workspace overview.",
+    href: "/home",
+    icon: "home",
     available: true,
   },
   {

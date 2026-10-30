@@ -29,6 +29,9 @@ describe("EGA House workspace tokens — single authority", () => {
     expect(tokens).toContain("--status-healthy");
     expect(tokens).toContain("--status-risk");
     expect(tokens).toContain("--status-overdue");
+    expect(tokens).toContain("--status-review: #6d28d9");
+    expect(tokens).toContain("--status-review-bg: #f5f3ff");
+    expect(tokens).toContain("--status-review-border: #ddd6fe");
 
     // Shell geometry
     expect(tokens).toContain("--sidebar-width: 264px");
@@ -44,6 +47,47 @@ describe("EGA House workspace tokens — single authority", () => {
     expect(tokens).not.toContain("#E0A23A");
     expect(tokens).not.toContain("#E8E2D3");
     expect(tokens).not.toContain("--category-deep-work");
+  });
+
+  it("defines the scoped dark workspace palette without a second authority", () => {
+    const tokens = read("src/styles/tokens.css");
+
+    expect(tokens).toContain(
+      'html[data-theme="dark"]:has([data-workspace-theme="workspace"])',
+    );
+    expect(tokens).toContain("--ega-bg: #101114");
+    expect(tokens).toContain("--ega-surface: #17181d");
+    expect(tokens).toContain("--ega-surface-subtle: #1c1e24");
+    expect(tokens).toContain("--ega-surface-hover: #21232a");
+    expect(tokens).toContain("--ega-border: #2c2f37");
+    expect(tokens).toContain("--ega-border-strong: #3a3e48");
+    expect(tokens).toContain("--ega-control-border: #6b7280");
+    expect(tokens).toContain("--ega-text: #f2f3f5");
+    expect(tokens).toContain("--ega-text-secondary: #b4b8c1");
+    expect(tokens).toContain("--ega-text-tertiary: #9196a1");
+    expect(tokens).toContain("--ega-on-ink: #101114");
+
+    // Dark status and data namespaces remain separate.
+    expect(tokens).toContain("--status-healthy: #4ade80");
+    expect(tokens).toContain("--status-overdue: #f87171");
+    expect(tokens).toContain("--ega-data-blue: #60a5fa");
+    expect(tokens).toContain("--ega-data-green: #4ade80");
+  });
+
+  it("keeps the public marketing and auth stylesheets outside the workspace theme", () => {
+    const tokens = read("src/styles/tokens.css");
+    const marketing = read("src/app/home/home.css");
+    const auth = read("src/app/auth-ui/auth.css");
+
+    // `:has()` is the isolation boundary: without the authenticated marker the
+    // dark tokens never resolve, regardless of the document data-theme.
+    expect(tokens).toContain(':has([data-workspace-theme="workspace"])');
+    expect(marketing).toContain("@media (prefers-color-scheme: dark)");
+    expect(marketing).toContain("--home-bg");
+    expect(auth).toContain("@media (prefers-color-scheme: dark)");
+    expect(auth).toContain('--auth-bg');
+    expect(tokens).not.toContain("--home-bg");
+    expect(tokens).not.toContain("--auth-bg");
   });
 
   it("does not contain self-referential cycles in globals.css", () => {
@@ -69,6 +113,50 @@ describe("EGA House workspace tokens — single authority", () => {
     const rootBlock = globals.split("@theme")[0];
     const violations = rootBlock.split("\n").filter((l) => selfRefPattern.test(l));
     expect(violations, `self-referential lines: ${violations.join("; ")}`).toEqual([]);
+  });
+
+  it("defines the accent and density preference variants without a second authority", () => {
+    const tokens = read("src/styles/tokens.css");
+
+    for (const accent of ["blue", "green", "violet", "amber"]) {
+      expect(tokens).toContain(`html[data-accent="${accent}"]:has([data-workspace-theme="workspace"])`);
+      expect(tokens).toContain(
+        `html[data-theme="dark"][data-accent="${accent}"]:has([data-workspace-theme="workspace"])`,
+      );
+    }
+
+    expect(tokens).toContain('html[data-density="compact"]:has([data-workspace-theme="workspace"])');
+    expect(tokens).toContain("--row-padding-block:");
+    expect(tokens).toContain("--data-table-cell-padding:");
+    expect(tokens).toContain("--nav-item-min-height:");
+    // Compact never removes the pointer-coarse touch minimum.
+    expect(tokens).toContain("@media (pointer: coarse)");
+  });
+
+  it("defines the explicit reduced-motion override for the app preference", () => {
+    const motion = read("src/styles/motion.css");
+
+    expect(motion).toContain('html[data-reduce-motion="true"] *');
+    expect(motion).toContain("transition-duration: 0.01ms !important");
+    expect(motion).toContain('html[data-reduce-motion="true"] .motion-check');
+    expect(motion).toContain("@media (prefers-reduced-motion: reduce)");
+  });
+
+  it("defines the drag shadow in both palettes", () => {
+    const tokens = read("src/styles/tokens.css");
+    const darkSelector = 'html[data-theme="dark"]:has([data-workspace-theme="workspace"]) {';
+    const darkStart = tokens.indexOf(darkSelector);
+    expect(darkStart).toBeGreaterThan(0);
+
+    const lightBlock = tokens.slice(0, darkStart);
+    const darkBlock = tokens.slice(darkStart);
+
+    // Each palette must declare the token itself; counting occurrences would
+    // pass even if the dark block lost it and the light one duplicated it.
+    expect(lightBlock).toContain("--ega-shadow-drag:");
+    expect(darkBlock).toContain("--ega-shadow-drag:");
+    expect(lightBlock).toContain("rgba(23, 23, 23, 0.18)");
+    expect(darkBlock).toContain("rgba(0, 0, 0, 0.65)");
   });
 
   it("resolves computed vars via jsdom (browser regression)", async () => {

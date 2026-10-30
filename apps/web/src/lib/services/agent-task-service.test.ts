@@ -47,6 +47,14 @@ vi.mock("@/lib/supabase/service", () => ({
       return currentChain.chain;
     }),
   })),
+  createActorScopedServiceClient: vi.fn(() => ({
+    from: vi.fn((table: string) => {
+      if (tableChains && tableChains.has(table)) {
+        return tableChains.get(table)!.chain;
+      }
+      return currentChain.chain;
+    }),
+  })),
 }));
 
 vi.mock("@/lib/services/task-service", () => ({
@@ -54,7 +62,7 @@ vi.mock("@/lib/services/task-service", () => ({
   getTaskScopeSnapshot: vi.fn(),
 }));
 
-import { getSupabaseServiceClient } from "@/lib/supabase/service";
+import { getSupabaseServiceClient, createActorScopedServiceClient } from "@/lib/supabase/service";
 import {
   getProjects,
   getGoals,
@@ -73,6 +81,7 @@ beforeEach(() => {
   // Make from() return the chain by default
   const mockClient = { from: vi.fn(() => currentChain.chain) } as unknown;
   vi.mocked(getSupabaseServiceClient).mockReturnValue(mockClient as ReturnType<typeof getSupabaseServiceClient>);
+  vi.mocked(createActorScopedServiceClient).mockReturnValue(mockClient as ReturnType<typeof createActorScopedServiceClient>);
 });
 
 describe("agent-task-service", () => {
@@ -196,6 +205,7 @@ describe("agent-task-service", () => {
               focus_rank: null,
               due_date: null,
               planned_for_date: null,
+              start_date: null,
               scheduled_start_at: null,
               scheduled_end_at: null,
               completed_at: null,
@@ -262,6 +272,7 @@ describe("agent-task-service", () => {
 
       const mockClient = { from: mockFromFn } as unknown;
       vi.mocked(getSupabaseServiceClient).mockReturnValue(mockClient as ReturnType<typeof getSupabaseServiceClient>);
+      vi.mocked(createActorScopedServiceClient).mockReturnValue(mockClient as ReturnType<typeof createActorScopedServiceClient>);
 
       const result = await validateTaskScope(OWNER_USER_ID, "proj-1", "goal-1");
 
@@ -368,6 +379,7 @@ describe("agent-task-service", () => {
       });
       const mockClient = { from: mockFromFn } as unknown;
       vi.mocked(getSupabaseServiceClient).mockReturnValue(mockClient as ReturnType<typeof getSupabaseServiceClient>);
+      vi.mocked(createActorScopedServiceClient).mockReturnValue(mockClient as ReturnType<typeof createActorScopedServiceClient>);
 
       vi.mocked(getTaskInsertScopeError).mockReturnValue(null);
     }
@@ -389,6 +401,7 @@ describe("agent-task-service", () => {
             focus_rank: null,
             due_date: null,
             planned_for_date: null,
+            start_date: null,
             scheduled_start_at: null,
             scheduled_end_at: null,
             completed_at: null,
@@ -431,6 +444,7 @@ describe("agent-task-service", () => {
             focus_rank: null,
             due_date: null,
             planned_for_date: null,
+            start_date: null,
             scheduled_start_at: null,
             scheduled_end_at: null,
             completed_at: null,
@@ -522,6 +536,7 @@ describe("agent-task-service", () => {
       });
       const mockClient = { from: mockFromFn } as unknown;
       vi.mocked(getSupabaseServiceClient).mockReturnValue(mockClient as ReturnType<typeof getSupabaseServiceClient>);
+      vi.mocked(createActorScopedServiceClient).mockReturnValue(mockClient as ReturnType<typeof createActorScopedServiceClient>);
 
       vi.mocked(getTaskInsertScopeError).mockReturnValue("Selected project is unavailable.");
 
@@ -565,6 +580,7 @@ describe("agent-task-service", () => {
             focus_rank: null,
             due_date: null,
             planned_for_date: null,
+            start_date: null,
             scheduled_start_at: null,
             scheduled_end_at: null,
             completed_at: new Date().toISOString(),
@@ -604,6 +620,7 @@ describe("agent-task-service", () => {
             focus_rank: null,
             due_date: null,
             planned_for_date: null,
+            start_date: null,
             scheduled_start_at: null,
             scheduled_end_at: null,
             completed_at: null,
@@ -666,6 +683,7 @@ describe("agent-task-service", () => {
       });
       const mockClient = { from: mockFromFn } as unknown;
       vi.mocked(getSupabaseServiceClient).mockReturnValue(mockClient as ReturnType<typeof getSupabaseServiceClient>);
+      vi.mocked(createActorScopedServiceClient).mockReturnValue(mockClient as ReturnType<typeof createActorScopedServiceClient>);
 
       vi.mocked(getTaskInsertScopeError).mockReturnValue("Selected goal does not belong to the chosen project.");
 
@@ -677,6 +695,21 @@ describe("agent-task-service", () => {
       expect(result.created).toHaveLength(0);
       expect(result.errors).toHaveLength(1);
       expect(result.errors[0]!.error).toBe("Selected goal does not belong to the chosen project.");
+    });
+
+    it("attributes writes to the verified token id, not request fields", async () => {
+      setupQueryChains({ insertData: [], tasksData: [] });
+
+      await createTasks(
+        OWNER_USER_ID,
+        TOKEN_ID,
+        [{ title: "Attributed", projectId: "proj-1" }],
+      );
+
+      expect(createActorScopedServiceClient).toHaveBeenCalledWith({
+        kind: "agent",
+        agentId: TOKEN_ID,
+      });
     });
   });
 });

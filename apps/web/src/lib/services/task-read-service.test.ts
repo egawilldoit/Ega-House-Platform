@@ -19,6 +19,7 @@ type MockTask = {
   blocked_reason?: string | null;
   status: string;
   priority: string;
+  start_date?: string | null;
   due_date: string | null;
   scheduled_start_at?: string | null;
   scheduled_end_at?: string | null;
@@ -50,6 +51,28 @@ function createTaskReadSupabaseMock(
 
   return {
     from(table: string) {
+      if (table === "projects" || table === "goals") {
+        // Archived-ancestry scope read: this fixture has no archived parents.
+        return {
+          select() {
+            return {
+              eq() {
+                return this;
+              },
+              not(column: string, operator: string, value: unknown) {
+                assert.equal(column, "archived_at");
+                assert.equal(operator, "is");
+                assert.equal(value, null);
+                return this;
+              },
+              then<TResult>(onFulfilled?: ((value: unknown) => TResult) | null) {
+                return Promise.resolve({ data: [], error: null }).then(onFulfilled ?? undefined);
+              },
+            };
+          },
+        };
+      }
+
       assert.equal(table, "tasks");
 
       return {
@@ -136,7 +159,16 @@ function createTaskReadSupabaseMock(
               state.onlyActive = true;
               return this;
             },
-            not(column: keyof MockTask, operator: string, value: null) {
+            not(column: keyof MockTask, operator: string, value: string | null) {
+              if (operator === "in" && column === "project_id") {
+                const ids = String(value)
+                  .replace(/[()]/g, "")
+                  .split(",")
+                  .filter(Boolean);
+                state.filters.push((task) => !ids.includes(task.project_id));
+                return this;
+              }
+
               assert.equal(operator, "is");
               assert.equal(value, null);
               state.filters.push((task) => task[column] !== null && task[column] !== undefined);
@@ -167,6 +199,19 @@ function createTaskReadSupabaseMock(
                     });
                   }
 
+                  if (clause === "goal_id.is.null") {
+                    return task.goal_id === null;
+                  }
+
+                  if (clause.startsWith("goal_id.not.in.")) {
+                    const ids = clause
+                      .slice("goal_id.not.in.".length)
+                      .replace(/[()]/g, "")
+                      .split(",")
+                      .filter(Boolean);
+                    return task.goal_id !== null && !ids.includes(task.goal_id);
+                  }
+
                   const [column, operator, value] = clause.split(".");
                   assert.equal(operator, "eq");
                   return task[column as keyof MockTask] === value;
@@ -176,6 +221,15 @@ function createTaskReadSupabaseMock(
             },
             order(column: keyof MockTask, options?: { ascending?: boolean }) {
               state.orders.push({ column, ascending: options?.ascending ?? true });
+              return this;
+            },
+            range() {
+              return this;
+            },
+            lt() {
+              return this;
+            },
+            ilike() {
               return this;
             },
             limit(count: number) {
@@ -221,6 +275,7 @@ function createMockTask(overrides: Partial<MockTask> & Pick<MockTask, "id" | "ti
     status: "todo",
     priority: "medium",
     due_date: null,
+    start_date: null,
     scheduled_start_at: null,
     scheduled_end_at: null,
     estimate_minutes: null,
@@ -272,9 +327,11 @@ test("getTaskForOwner returns a normalized task row when modern task columns exi
     title: "Plan launch",
     description: "Draft checklist",
     blocked_reason: "Waiting on review",
+    board_rank: null,
     status: "blocked",
     priority: "high",
     due_date: "2026-05-01",
+    start_date: null,
     scheduled_start_at: null,
     scheduled_end_at: null,
     calendar_sync_enabled: false,
@@ -286,6 +343,7 @@ test("getTaskForOwner returns a normalized task row when modern task columns exi
     goal_id: "goal-1",
     focus_rank: 2,
     planned_for_date: "2026-04-29",
+    created_at: null,
     archived_at: "2026-04-29T11:00:00.000Z",
     archived_by: "user-1",
     projects: { name: "EGA House", slug: "ega-house" },
@@ -329,6 +387,21 @@ test("getTaskForOwner falls back when blocked reason is unavailable", async () =
   assert.equal(result.data?.completed_at, null);
   assert.equal(result.data?.archived_at, null);
   assert.equal(result.data?.archived_by, null);
+});
+
+test("getActiveTasksForOwner falls back when start_date is unavailable", async () => {
+  const supabase = createTaskReadSupabaseMock(
+    [createMockTask({ id: "task-1", title: "Active" })],
+    { missingColumns: ["start_date"] },
+  );
+
+  const result = await getActiveTasksForOwner({
+    supabase: supabase as unknown as never,
+  });
+
+  assert.equal(result.errorMessage, null);
+  assert.equal(result.data[0]?.id, "task-1");
+  assert.equal(result.data[0]?.start_date, null);
 });
 
 test("getActiveTasksForOwner excludes archived tasks by default", async () => {

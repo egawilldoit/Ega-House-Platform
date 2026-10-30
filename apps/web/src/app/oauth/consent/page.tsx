@@ -53,7 +53,10 @@ function parsePreviouslyApprovedRedirect(data: unknown): string {
 
 function ConsentError({ message }: { message: string }) {
   return (
-    <main className="flex min-h-screen items-center justify-center bg-[var(--ega-bg)] px-6 py-16 text-[color:var(--ega-text)]">
+    <main
+      data-workspace-theme="workspace"
+      className="flex min-h-screen items-center justify-center bg-[var(--ega-bg)] px-6 py-16 text-[color:var(--ega-text)]"
+    >
       <section className="w-full max-w-xl rounded-[var(--radius-xl)] border border-[var(--ega-border)] bg-[color:var(--ega-surface)] p-8">
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--status-overdue)]">
           Authorization unavailable
@@ -112,24 +115,27 @@ export default async function OAuthConsentPage({
   const writesEnabled = process.env.MCP_WRITES_ENABLED === "true";
 
   return (
-    <main className="min-h-screen bg-[var(--ega-bg)] px-6 py-14 text-[color:var(--ega-text)]">
+    <main
+      data-workspace-theme="workspace"
+      className="min-h-screen bg-[var(--ega-bg)] px-6 py-14 text-[color:var(--ega-text)]"
+    >
       <div className="mx-auto grid w-full max-w-5xl gap-8 lg:grid-cols-[1fr_1.15fr]">
-        <section className="flex flex-col justify-between rounded-[var(--radius-xl)] border border-[var(--ega-ink)] bg-[color:var(--ega-ink)] p-8 text-white lg:p-10">
+        <section className="flex flex-col justify-between rounded-[var(--radius-xl)] border border-[var(--ega-ink)] bg-[color:var(--ega-ink)] p-8 text-[color:var(--ega-on-ink)] lg:p-10">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[white/70">
+            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--ega-on-ink-muted)]">
               EGA House MCP
             </p>
             <h1 className="mt-5 text-[length:var(--text-page)] font-semibold leading-tight lg:text-[length:var(--text-page)]">
               {writesEnabled ? "Choose workspace access level." : "Approve read-only workspace access."}
             </h1>
-            <p className="mt-5 max-w-md leading-7 text-[white/75">
+            <p className="mt-5 max-w-md leading-7 text-[color:var(--ega-on-ink-muted)]">
               {writesEnabled
                 ? "Grant read-only inspection or full workspace management. Workspace management can create and update projects, goals, tasks, Today and timers — still scoped to your account and client."
                 : "The requesting client will be able to inspect your projects, goals, tasks, Today plan, and timer sessions. It cannot create, edit, archive, merge, deploy, or run commands through this authorization."}
             </p>
           </div>
 
-          <div className="mt-10 rounded-[var(--radius-lg)] border border-white/20 bg-white/5 p-5 text-sm leading-6 text-white/80">
+          <div className="mt-10 rounded-[var(--radius-lg)] border border-[var(--ega-on-ink-border)] bg-[var(--ega-on-ink-soft)] p-5 text-sm leading-6 text-[color:var(--ega-on-ink-muted)]">
             Access is bound to your account, this OAuth client, and the exact EGA
             House MCP resource. You can revoke the connection later.
           </div>
@@ -199,7 +205,7 @@ export default async function OAuthConsentPage({
                 </h3>
                 <ul className="mt-3 space-y-2 text-sm text-[color:var(--ega-text-secondary)]">
                   {details.scopes.map((scope) => (
-                    <li key={scope} className="flex gap-3 rounded-[var(--radius-sm)] bg-black/[0.035] px-4 py-3">
+                    <li key={scope} className="flex gap-3 rounded-[var(--radius-sm)] bg-[var(--ega-surface-subtle)] px-4 py-3">
                       <span aria-hidden className="mt-0.5 text-[color:var(--status-overdue)]">•</span>
                       <span>{SCOPE_DESCRIPTIONS[scope] ?? `Requested OAuth scope: ${scope}`}</span>
                     </li>
@@ -209,7 +215,7 @@ export default async function OAuthConsentPage({
             ) : null}
 
             {details.redirectUri ? (
-              <div className="rounded-[var(--radius-lg)] border border-[var(--ega-border)] bg-black/[0.025] p-4">
+              <div className="rounded-[var(--radius-lg)] border border-[var(--ega-border)] bg-[var(--ega-surface-subtle)] p-4">
                 <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[color:var(--ega-text-tertiary)]">
                   Return address
                 </p>
@@ -224,7 +230,7 @@ export default async function OAuthConsentPage({
                 type="submit"
                 name="decision"
                 value="deny"
-                className="rounded-[var(--radius-sm)] border border-black/15 px-5 py-3.5 font-semibold transition hover:bg-black/5"
+                className="rounded-[var(--radius-sm)] border border-[var(--ega-border-strong)] px-5 py-3.5 font-semibold transition hover:bg-[var(--ega-surface-hover)]"
               >
                 Deny
               </button>

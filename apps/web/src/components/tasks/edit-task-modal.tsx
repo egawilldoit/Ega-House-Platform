@@ -1,5 +1,6 @@
 "use client";
 
+import { TASK_TITLE_MAX, TASK_TITLE_LENGTH_ERROR } from "@/lib/task-domain";
 import {
   type ReactNode,
   type RefObject,
@@ -11,6 +12,7 @@ import {
 } from "react";
 import { useRouter } from "next/navigation";
 import { Archive as ArchiveIcon, CalendarClock, Pencil, X } from "lucide-react";
+import { ConfirmDeleteTaskButton } from "./confirm-delete-task-button";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 
 import type { UpdateTaskEditorFormState } from "@/app/tasks/actions";
@@ -298,7 +300,7 @@ export function EditTaskModal({
       ) : null}
 
       <DialogPrimitive.Portal>
-        <DialogPrimitive.Overlay className="fixed inset-0 z-[90] bg-[rgba(17,17,15,0.58)] transition-opacity" />
+        <DialogPrimitive.Overlay className="fixed inset-0 z-[90] bg-[var(--ega-overlay)] transition-opacity" />
         <DialogPrimitive.Content
           aria-label={`Edit task ${panelProps.taskTitle}`}
           onCloseAutoFocus={(event) => {
@@ -307,7 +309,7 @@ export function EditTaskModal({
             event.preventDefault();
             focusTarget.focus();
           }}
-          className="fixed left-1/2 top-1/2 z-[91] flex max-h-[min(50rem,calc(100dvh-2rem))] w-[calc(100vw-2rem)] max-w-[53rem] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-2xl border border-[var(--ega-border)] bg-[var(--ega-surface)] shadow-[0_28px_80px_rgba(17,17,15,0.3)] outline-none"
+          className="fixed left-1/2 top-1/2 z-[91] flex max-h-[min(50rem,calc(100dvh-2rem))] w-[calc(100vw-2rem)] max-w-[53rem] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-2xl border border-[var(--ega-border)] bg-[var(--ega-surface)] shadow-[var(--ega-shadow-lg)] outline-none"
         >
           {open ? (
             <TaskEditorPanel
@@ -355,6 +357,7 @@ function TaskEditorPanel({
 }: Omit<EditTaskModalProps, "open" | "onOpenChange" | "trigger"> & { onClose: () => void }) {
   const router = useRouter();
   const saveErrorRef = useRef<HTMLParagraphElement | null>(null);
+  const deleteFormRef = useRef<HTMLFormElement | null>(null);
   const [state, formAction, isPending] = useActionState<UpdateTaskEditorFormState, FormData>(
     updateAction,
     {
@@ -364,6 +367,7 @@ function TaskEditorPanel({
     },
   );
 
+  const [titleLength, setTitleLength] = useState(taskTitle.length);
   const [selectedProjectId, setSelectedProjectId] = useState(defaultProjectId);
   const [selectedGoalId, setSelectedGoalId] = useState(defaultGoalId ?? "");
   const [selectedStatus, setSelectedStatus] = useState(defaultStatus);
@@ -465,10 +469,15 @@ function TaskEditorPanel({
                         </span>
                         <Input
                           name="title"
+                          maxLength={TASK_TITLE_MAX}
+                          onChange={event => setTitleLength(event.target.value.length)}
+                          aria-describedby={`task-title-count-${taskId}${state.errorMessage === TASK_TITLE_LENGTH_ERROR ? ` ${saveErrorId}` : ""}`}
+                          aria-invalid={state.errorMessage === TASK_TITLE_LENGTH_ERROR}
                           required
                           defaultValue={taskTitle}
                           className="min-h-11 w-full"
                         />
+                        <span id={`task-title-count-${taskId}`} className="block text-xs text-ega-text-secondary">{titleLength}/{TASK_TITLE_MAX}</span>
                       </label>
 
                       <div className="grid gap-3 sm:grid-cols-2">
@@ -800,30 +809,15 @@ function TaskEditorPanel({
                     timer history and cannot be undone.
                   </p>
                   <div>
-                    <form
-                      action={deleteAction}
-                      onSubmit={(event) => {
-                        if (
-                          !window.confirm(
-                            `Delete "${taskTitle}"? This is permanent and is blocked if the task has timer history.`,
-                          )
-                        ) {
-                          event.preventDefault();
-                        }
-                      }}
-                    >
+                    <form action={deleteAction} ref={deleteFormRef}>
                       <input type="hidden" name="taskId" value={taskId} />
                       <input type="hidden" name="returnTo" value={returnTo} />
                       <input type="hidden" name="confirmDelete" value="true" />
-                      <PendingSubmitButton
-                        type="submit"
-                        size="sm"
-                        variant="danger"
-                        pendingLabel="Deleting…"
-                        data-testid={`task-editor-delete-${taskId}`}
-                      >
-                        Delete task
-                      </PendingSubmitButton>
+                      <ConfirmDeleteTaskButton
+                        taskTitle={taskTitle}
+                        formRef={deleteFormRef}
+                        dataTestId={`task-editor-delete-${taskId}`}
+                      />
                     </form>
                   </div>
                 </EditorCard>

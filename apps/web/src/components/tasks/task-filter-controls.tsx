@@ -10,8 +10,11 @@ import {
   TASK_DUE_FILTER_VALUES,
   TASK_SORT_VALUES,
   DEFAULT_TASK_DENSITY,
+  type TaskCalendarDateField,
+  type TaskCalendarView,
   type TaskDensity,
   type TaskLayoutMode,
+  type TaskBoardOrder,
   type TaskDueFilter,
   type TaskSortValue,
 } from "@/lib/task-list";
@@ -38,10 +41,15 @@ type TaskFilterControlsProps = {
   activeView?: string | null;
   activeLayout?: TaskLayoutMode;
   activeDensity?: TaskDensity;
+  activeBoardOrder?: TaskBoardOrder | null;
+  activeCalendarView?: TaskCalendarView;
+  activeCalendarDate?: string | null;
+  activeCalendarDateField?: TaskCalendarDateField;
   activeEstimateMin?: number | string | null;
   activeEstimateMax?: number | string | null;
   activeDueWithin?: number | string | null;
   activeTasksOnly?: boolean | null;
+  activeTab?: string | null;
   projectOptions?: Array<{ id: string; name: string }>;
   goalOptions?: Array<{ id: string; title: string }>;
   includePriority?: boolean;
@@ -96,10 +104,15 @@ export function TaskFilterControls({
   activeView = null,
   activeLayout = "list",
   activeDensity,
+  activeBoardOrder = null,
+  activeCalendarView = "month",
+  activeCalendarDate = null,
+  activeCalendarDateField = "due",
   activeEstimateMin = null,
   activeEstimateMax = null,
   activeDueWithin = null,
   activeTasksOnly = null,
+  activeTab = null,
   projectOptions = [],
   goalOptions = [],
   includePriority = false,
@@ -121,6 +134,11 @@ export function TaskFilterControls({
     view: activeView,
     layout: activeLayout,
     density: activeDensity ?? DEFAULT_TASK_DENSITY,
+    boardOrder: activeBoardOrder,
+    tab: activeTab,
+    cal: activeCalendarView,
+    date: activeCalendarDate,
+    dateField: activeCalendarDateField,
   };
 
   const hrefFor = (overrides: TaskFilterState) => mergeTaskFilterUrl(basePath, filterState, overrides);
