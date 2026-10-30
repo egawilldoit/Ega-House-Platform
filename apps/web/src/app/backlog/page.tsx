@@ -21,6 +21,7 @@ import {
   type IdeaNoteProjectOption,
 } from "@/lib/services/idea-note-service";
 import { cn } from "@/lib/utils";
+import { getBacklogClearSearchHref } from "./backlog-search-href";
 
 export const metadata: Metadata = {
   title: "Backlog",
@@ -253,6 +254,8 @@ export default async function BacklogPage({ searchParams }: BacklogPageProps) {
                 icon={Inbox}
                 title={hasSearch ? "No items match your search" : copy.emptyTitle}
                 description={hasSearch ? "Try a different search term." : copy.emptyDescription}
+                actionLabel={hasSearch ? "Clear search" : undefined}
+                actionHref={hasSearch ? getBacklogClearSearchHref(resolvedSearchParams) : undefined}
               />
             ) : (
               <ul className="rows">

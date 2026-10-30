@@ -7,6 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 
 type WorkspaceErrorFallbackProps = {
   reset: () => void;
+  retry?: () => void;
   scopeLabel: string;
   homeHref?: `/${string}`;
 };
@@ -26,6 +27,7 @@ const WORKSPACE_LINKS: Array<{ href: `/${string}`; label: string; description: s
  */
 export function WorkspaceErrorFallback({
   reset,
+  retry,
   scopeLabel,
   homeHref = "/",
 }: WorkspaceErrorFallbackProps) {
@@ -52,7 +54,7 @@ export function WorkspaceErrorFallback({
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
-              <Button onClick={reset}>Try again</Button>
+              <Button onClick={retry ?? reset}>Try again</Button>
               <Link
                 href={homeHref}
                 className="btn-instrument btn-instrument-muted flex h-8 items-center px-3 text-sm"

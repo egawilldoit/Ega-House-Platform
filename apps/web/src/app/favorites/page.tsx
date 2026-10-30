@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Star } from "lucide-react";
 
 import { AppShell } from "@/components/layout/app-shell";
+import { MoveButton, RemoveButton } from "./favourite-row-actions";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { listFavorites, type FavoriteItem } from "@/lib/services/favorite-service";
@@ -33,39 +34,19 @@ function FavouriteRow({ item, index, count }: { item: FavoriteItem; index: numbe
           <input type="hidden" name="kind" value={item.kind} />
           <input type="hidden" name="entityId" value={item.entityId} />
           <input type="hidden" name="direction" value="up" />
-          <button
-            type="submit"
-            disabled={index === 0}
-            aria-label={`Move ${item.label} up`}
-            className="px-1 text-[length:var(--text-meta)] disabled:opacity-40"
-          >
-            ↑
-          </button>
+          <MoveButton direction="up" disabled={index === 0} label={`Move ${item.label} up`} />
         </form>
         <form action={moveFavoriteAction}>
           <input type="hidden" name="kind" value={item.kind} />
           <input type="hidden" name="entityId" value={item.entityId} />
           <input type="hidden" name="direction" value="down" />
-          <button
-            type="submit"
-            disabled={index === count - 1}
-            aria-label={`Move ${item.label} down`}
-            className="px-1 text-[length:var(--text-meta)] disabled:opacity-40"
-          >
-            ↓
-          </button>
+          <MoveButton direction="down" disabled={index === count - 1} label={`Move ${item.label} down`} />
         </form>
         <form action={toggleFavoriteAction}>
           <input type="hidden" name="kind" value={item.kind} />
           <input type="hidden" name="entityId" value={item.entityId} />
           <input type="hidden" name="returnTo" value="/favorites" />
-          <button
-            type="submit"
-            aria-label={`Remove ${item.label} from favourites`}
-            className="px-1 text-[color:var(--ega-text-secondary)]"
-          >
-            <Star className="h-3.5 w-3.5" aria-hidden="true" />
-          </button>
+          <RemoveButton label={`Remove ${item.label} from favourites`} />
         </form>
       </span>
     </li>
