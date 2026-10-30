@@ -36,18 +36,22 @@ const getSidebarProjects = cache(async (): Promise<SidebarProject[]> => {
     }
 
     const projectIds = projectRows.map((project) => project.id);
+
     const { data: taskRows } = await supabase
       .from("tasks")
-      .select("project_id, status")
+      .select("project_id")
       .in("project_id", projectIds)
       .neq("status", "done")
       .limit(1000);
 
     const activeTaskCounts = new Map<string, number>();
-    for (const task of taskRows ?? []) {
+    for (const row of taskRows ?? []) {
+      if (!row.project_id) {
+        continue;
+      }
       activeTaskCounts.set(
-        task.project_id,
-        (activeTaskCounts.get(task.project_id) ?? 0) + 1,
+        row.project_id,
+        (activeTaskCounts.get(row.project_id) ?? 0) + 1,
       );
     }
 
