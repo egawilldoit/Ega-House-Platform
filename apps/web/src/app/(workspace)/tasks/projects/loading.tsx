@@ -4,14 +4,13 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 function ProjectRowSkeleton() {
   return (
-    <div className="row">
-      <div className="row-main">
-        <Skeleton className="h-4 w-48 max-w-full" />
-        <Skeleton className="h-3 w-24 max-w-full" />
+    <div className="flex items-center gap-3 px-6 py-4">
+      <Skeleton className="h-9 w-9 rounded-full" />
+      <div className="flex flex-1 flex-col gap-2">
+        <Skeleton className="h-4 w-48" />
+        <Skeleton className="h-3 w-32" />
       </div>
-      <Skeleton className="h-5 w-20" />
-      <Skeleton className="hidden h-5 w-24 md:block" />
-      <Skeleton className="hidden h-5 w-32 sm:block" />
+      <Skeleton className="h-4 w-16" />
     </div>
   );
 }
@@ -19,8 +18,6 @@ function ProjectRowSkeleton() {
 export default function TasksProjectsLoadingPage() {
   return (
     <WorkspaceContentSkeleton>
-}
-    >
       <div className="flex flex-col gap-6">
         <div className="kpi-grid">
           {[0, 1, 2].map((index) => (
@@ -41,6 +38,6 @@ export default function TasksProjectsLoadingPage() {
           </div>
         </Card>
       </div>
-</WorkspaceContentSkeleton>
+    </WorkspaceContentSkeleton>
   );
 }
