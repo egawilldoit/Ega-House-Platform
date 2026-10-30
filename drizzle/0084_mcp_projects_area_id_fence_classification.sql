@@ -23,15 +23,18 @@ BEGIN
     ]
     WHEN 'goals' THEN ARRAY[
       'id', 'owner_user_id', 'project_id', 'title', 'slug', 'description', 'status',
-      'created_at', 'updated_at', 'next_step', 'health', 'mcp_operation_id', 'mcp_client_id'
+      'created_at', 'updated_at', 'next_step', 'health', 'archived_at', 'archived_by',
+      'mcp_operation_id', 'mcp_client_id'
     ]
     WHEN 'projects' THEN ARRAY[
       'id', 'owner_user_id', 'name', 'slug', 'description', 'status', 'area_id',
-      'created_at', 'updated_at', 'mcp_operation_id', 'mcp_client_id'
+      'created_at', 'updated_at', 'archived_at', 'archived_by',
+      'mcp_operation_id', 'mcp_client_id'
     ]
     WHEN 'task_sessions' THEN ARRAY[
       'id', 'owner_user_id', 'task_id', 'started_at', 'ended_at', 'duration_seconds',
-      'created_at', 'updated_at', 'mcp_operation_id', 'mcp_client_id'
+      'created_at', 'updated_at', 'actor_kind', 'actor_user_id', 'actor_agent_id',
+      'actor_label', 'mcp_operation_id', 'mcp_client_id'
     ]
     WHEN 'task_reminders' THEN ARRAY[
       'id', 'owner_user_id', 'task_id', 'remind_at', 'channel', 'status', 'sent_at',
