@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import { Suspense } from "react";
 
-import { completeTodayTaskAction } from "@/app/today/actions";
+import { completeTodayTaskAction } from "@/app/(workspace)/today/actions";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { PendingSubmitButton } from "@/components/ui/pending-submit-button";

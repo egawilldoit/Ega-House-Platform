@@ -28,7 +28,7 @@ import {
   updateTaskFieldAction,
   updateTaskFieldDraftAction,
   updateTaskInlineAction,
-} from "@/app/tasks/actions";
+} from "@/app/(workspace)/tasks/actions";
 import {
   getCalendarIntegrationSettings,
   getCalendarTaskFormDefaults,
@@ -56,7 +56,7 @@ import { getProjectTaskActivity, getTaskActivity } from "@/lib/services/task-act
 import { getTaskCommentThread } from "@/lib/services/task-comment-service";
 import { listTaskAttachments } from "@/lib/services/attachment-service";
 import { isFavorite } from "@/lib/services/favorite-service";
-import { toggleFavoriteAction } from "@/app/favorites/actions";
+import { toggleFavoriteAction } from "@/app/(workspace)/favorites/actions";
 import { TASK_SUBTASK_ACTIONS } from "@/lib/task-subtask-actions";
 import { TASK_COMMENT_ACTIONS } from "@/lib/task-comment-actions";
 import {

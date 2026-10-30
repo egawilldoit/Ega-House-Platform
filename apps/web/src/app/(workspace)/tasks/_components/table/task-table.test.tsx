@@ -13,7 +13,7 @@ vi.mock("next/navigation", () => ({
 }));
 
 import type { TaskRecord } from "@/lib/services/task-service";
-import type { UpdateTaskEditorFormState } from "@/app/tasks/actions";
+import type { UpdateTaskEditorFormState } from "@/app/(workspace)/tasks/actions";
 import { normalizeTaskTableColumns } from "@ega/contracts/common/task-list";
 
 import { ToastProvider } from "@/components/ui/toast-provider";

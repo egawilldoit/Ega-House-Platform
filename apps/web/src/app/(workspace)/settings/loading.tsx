@@ -1,14 +1,11 @@
-import { WorkspaceSkeletonShell } from "@/components/layout/workspace-skeleton-shell";
+import { WorkspaceContentSkeleton } from "@/components/layout/workspace-content-skeleton";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export default function SettingsLoadingPage() {
   return (
-    <WorkspaceSkeletonShell
-      title="Settings"
-      description="Account and calendar controls."
-    >
-      <div className="flex max-w-3xl flex-col gap-6">
+    <WorkspaceContentSkeleton>
+<div className="flex max-w-3xl flex-col gap-6">
         {Array.from({ length: 3 }).map((_, index) => (
           <Card key={index}>
             <CardContent className="flex flex-col gap-3">
@@ -19,6 +16,6 @@ export default function SettingsLoadingPage() {
           </Card>
         ))}
       </div>
-    </WorkspaceSkeletonShell>
+</WorkspaceContentSkeleton>
   );
 }

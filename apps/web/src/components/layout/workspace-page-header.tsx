@@ -20,9 +20,9 @@ export function WorkspacePageHeader({
 }: WorkspacePageHeaderProps) {
   const pathname = usePathname();
   const meta = getShellRouteMeta(pathname);
-  const resolvedTitle = title ?? meta.title;
+  const resolvedTitle = title ?? meta.label;
   const resolvedDescription = description ?? meta.description;
-  const breadcrumb = meta.breadcrumb;
+  const breadcrumb = meta.group === "primary" && meta.href === "/home" ? "Home" : meta.label;
 
   if (hideHeader) {
     return null;
@@ -35,7 +35,7 @@ export function WorkspacePageHeader({
   return (
     <header className="app-page-header">
       <div className="app-page-heading">
-        {breadcrumb ? <div className="app-page-eyebrow">{breadcrumb}</div> : null}
+        <div className="app-page-eyebrow">{breadcrumb}</div>
         <h1 tabIndex={-1} data-shell-page-title className="app-page-title focus:outline-none">
           {resolvedTitle}
         </h1>

@@ -11,20 +11,33 @@ export const metadata: Metadata = {
   description: "Weekly review reflection workflow.",
 };
 
-export default async function ReviewPage({ searchParams }: { searchParams: Promise<{ draft?: string; weekOf?: string }> }) {
+export default async function ReviewPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ draft?: string; weekOf?: string }>;
+}) {
   const resolvedSearchParams = await searchParams;
   const [model, health, friction] = await Promise.all([
     getReviewPageModel(resolvedSearchParams),
-    getHealthSnapshotData().catch(() => ({ errorMessage: "Health evidence is unavailable.", data: null, recommendations: [] })),
-    getFrictionRadar().catch(() => ({ errorMessage: "Friction evidence is unavailable.", data: null })),
+    getHealthSnapshotData().catch(() => ({
+      errorMessage: "Health evidence is unavailable.",
+      data: null,
+      recommendations: [],
+    })),
+    getFrictionRadar().catch(() => ({
+      errorMessage: "Friction evidence is unavailable.",
+      data: null,
+    })),
   ]);
+
   return (
     <>
-Export CSV
-        </ExportCsvButton>
-      }
-    >
+      <WorkspacePageHeader
+        title="Review"
+        description="Weekly review reflection workflow."
+        actions={<ExportCsvButton exportUrl="/api/review/export">Export CSV</ExportCsvButton>}
+      />
       <ReviewPageView model={model} health={health} friction={friction} />
-</>
+    </>
   );
 }

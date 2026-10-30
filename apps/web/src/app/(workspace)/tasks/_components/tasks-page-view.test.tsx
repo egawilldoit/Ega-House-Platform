@@ -69,7 +69,7 @@ import { QUICK_TASK_EVENT } from "@/lib/workspace-events";
 import type { TaskRecord } from "@/lib/services/task-service";
 // Imports the mocked factory above, so assertions observe what the server
 // component actually submits.
-import { archiveManyCompletedTasksAction } from "@/app/tasks/actions";
+import { archiveManyCompletedTasksAction } from "@/app/(workspace)/tasks/actions";
 
 import { ToastProvider } from "@/components/ui/toast-provider";
 import { TasksPageView } from "./TasksPageView";

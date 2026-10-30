@@ -7,7 +7,7 @@ import {
   promoteSubtaskAction,
   renameSubtaskAction,
   toggleSubtaskAction,
-} from "@/app/tasks/actions";
+} from "@/app/(workspace)/tasks/actions";
 
 /** Server action bundle for the drawer checklist; pages pass it to the client host. */
 export const TASK_SUBTASK_ACTIONS = {

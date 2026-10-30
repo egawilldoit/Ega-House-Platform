@@ -8,7 +8,7 @@ import {
   pinTaskAction,
   unpinTaskAction,
   updateTaskInlineAction,
-} from "@/app/tasks/actions";
+} from "@/app/(workspace)/tasks/actions";
 import { CreateTaskForm } from "@/app/tasks/create-task-form";
 import { EstimateVsActualBadge } from "@/components/tasks/estimate-vs-actual-badge";
 import { FocusPinToggleForm } from "@/components/tasks/focus-pin-toggle-form";

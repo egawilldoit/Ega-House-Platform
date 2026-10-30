@@ -1,13 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
-import { clearCompletedFromTodayAction } from "@/app/today/actions";
+import { clearCompletedFromTodayAction } from "@/app/(workspace)/today/actions";
 import {
   addTaskDependencyAction,
   removeTaskDependencyAction,
   updateTaskFieldAction,
   updateTaskFieldDraftAction,
-} from "@/app/tasks/actions";
+} from "@/app/(workspace)/tasks/actions";
 import { TaskDrawerHost } from "@/components/tasks/drawer/task-drawer-host";
 
 import { OwnerScopedRealtimeRefresh } from "@/components/realtime/owner-scoped-realtime-refresh";
@@ -40,7 +40,7 @@ import { listTaskAttachments } from "@/lib/services/attachment-service";
 import { getTaskActivity } from "@/lib/services/task-activity-service";
 import { getTaskCommentThread } from "@/lib/services/task-comment-service";
 import { isFavorite } from "@/lib/services/favorite-service";
-import { toggleFavoriteAction } from "@/app/favorites/actions";
+import { toggleFavoriteAction } from "@/app/(workspace)/favorites/actions";
 import { TASK_SUBTASK_ACTIONS } from "@/lib/task-subtask-actions";
 import { TASK_COMMENT_ACTIONS } from "@/lib/task-comment-actions";
 import { buildTaskDrawerLink } from "@/lib/task-drawer-url";

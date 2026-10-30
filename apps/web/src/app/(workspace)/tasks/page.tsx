@@ -5,7 +5,7 @@ import { FolderKanban } from "lucide-react";
 import { TasksWorkspaceShell } from "@/components/tasks/tasks-workspace-shell";
 import { getCurrentUser } from "@/lib/services/auth-service";
 import { getWebUserPreferences } from "@/lib/services/user-preferences-service";
-import { toggleFavoriteAction } from "@/app/favorites/actions";
+import { toggleFavoriteAction } from "@/app/(workspace)/favorites/actions";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { getTasksPageModel } from "./_lib/tasks-page-model";

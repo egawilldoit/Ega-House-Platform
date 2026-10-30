@@ -21,7 +21,7 @@ import {
   moveTaskOnBoardAction,
   updateTaskTimelineScheduleAction,
   rescheduleTaskCalendarAction,
-} from "@/app/tasks/actions";
+} from "@/app/(workspace)/tasks/actions";
 import { startTimerAction } from "@/app/timer/actions";
 import { BulkArchiveCompletedTasksForm } from "@/components/tasks/bulk-archive-completed-tasks-form";
 import { TaskViewToolbar } from "@/components/tasks/view-toolbar/task-view-toolbar";
@@ -43,7 +43,7 @@ import { normalizeTaskTableColumns } from "@ega/contracts/common/task-list";
 import { TaskCalendar } from "./calendar/task-calendar";
 import type { CalendarNavigation } from "./calendar/calendar-toolbar";
 import { TaskDrawerHost } from "@/components/tasks/drawer/task-drawer-host";
-import { updateTaskFieldAction } from "@/app/tasks/actions";
+import { updateTaskFieldAction } from "@/app/(workspace)/tasks/actions";
 import { TASK_SUBTASK_ACTIONS } from "@/lib/task-subtask-actions";
 import { TASK_COMMENT_ACTIONS } from "@/lib/task-comment-actions";
 import { KanbanBoard, type KanbanBulkActions, type KanbanCardActions } from "./kanban/kanban-board";

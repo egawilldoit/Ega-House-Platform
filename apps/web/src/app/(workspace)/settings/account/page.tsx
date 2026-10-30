@@ -4,7 +4,7 @@ import type { Metadata } from "next";
 import {
   disconnectGoogleCalendarAction,
   updateCalendarDefaultsAction,
-} from "@/app/settings/account/actions";
+} from "@/app/(workspace)/settings/account/actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -22,8 +22,8 @@ import {
   type GoogleCalendarOAuthFailureCode,
   getGoogleCalendarOAuthFailureMessage,
 } from "@/app/api/integrations/google-calendar/oauth";
-import { TimezoneCard } from "@/app/settings/account/timezone-card";
-import { SettingsNav } from "@/app/settings/_components/settings-nav";
+import { TimezoneCard } from "@/app/(workspace)/settings/account/timezone-card";
+import { SettingsNav } from "@/app/(workspace)/settings/_components/settings-nav";
 
 export const metadata: Metadata = {
   title: "Account Settings",

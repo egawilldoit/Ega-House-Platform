@@ -24,7 +24,7 @@ import {
   createTasksBulkAction,
   type CreateTaskFormState,
   type CreateTasksBulkFormState,
-} from "@/app/tasks/actions";
+} from "@/app/(workspace)/tasks/actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
