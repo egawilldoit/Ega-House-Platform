@@ -1229,6 +1229,8 @@ async function assertColumnFence(sql) {
   // Denied: columns no ega_* tool exposes. Each of these was reproduced as
   // writable on main at 23317517.
   const fenced = [
+    ["board_rank", `UPDATE public.tasks SET board_rank = 'ZZZ' WHERE id = $1::uuid`],
+    ["start_date", `UPDATE public.tasks SET start_date = current_date WHERE id = $1::uuid`],
     ["scheduled_start_at", `UPDATE public.tasks SET scheduled_start_at = now() + interval '1 day' WHERE id = $1::uuid`],
     ["scheduled_end_at", `UPDATE public.tasks SET scheduled_end_at = now() + interval '2 days' WHERE id = $1::uuid`],
     ["calendar_sync_enabled", `UPDATE public.tasks SET calendar_sync_enabled = true WHERE id = $1::uuid`],
@@ -1245,6 +1247,27 @@ async function assertColumnFence(sql) {
     );
   }
   log("COLUMN-FENCE", `All ${fenced.length} out-of-contract task columns were refused at the database.`);
+
+  for (const [column, value] of [["board_rank", "'ZZZ'"], ["start_date", "current_date"]]) {
+    await expectDenied(`tasks.${column} caller-supplied INSERT`, () =>
+      session.run((tx) => tx.unsafe(
+        `INSERT INTO public.tasks (project_id, title, ${column}) VALUES ($1::uuid, 'forbidden column probe', ${value})`,
+        [PROJECT_A],
+      )),
+    );
+  }
+  for (const column of ["area_id", "template_operation_id"]) {
+    await expectDenied(`projects.${column} caller-supplied INSERT`, () =>
+      session.run((tx) => tx.unsafe(
+        `INSERT INTO public.projects (name, ${column}) VALUES ('forbidden column probe', gen_random_uuid())`,
+      )),
+    );
+    await expectDenied(`projects.${column} out-of-contract UPDATE`, () =>
+      session.run((tx) => tx.unsafe(
+        `UPDATE public.projects SET ${column} = gen_random_uuid() WHERE id = $1::uuid`, [PROJECT_A],
+      )),
+    );
+  }
 
   // The caller's own operation identity is still writable AT INSERT: the caller
   // chooses the idempotency key it creates the row under, which is what the
@@ -2334,7 +2357,9 @@ async function assertOperationIdentity(sql) {
                VALUES ($1, $2, $3, $4::uuid)`,
       params: (label) => [`identity probe ${label}`, `identity-probe-${label}`],
       twinColumn: "status",
-      twinValue: "'archived'",
+      // Archiving additionally requires archived_at under main's lifecycle
+      // constraint. Exercise an ordinary status edit, not an incomplete archive.
+      twinValue: "'active'",
       twinNote: "projects.status is ega_update_project's advertised column",
     },
     {
@@ -2958,15 +2983,15 @@ async function assertDirectUserParity(sql) {
         WHERE id = $2::uuid RETURNING id`, [OWNER_A, TASK_A]],
     ["tasks unarchive", `UPDATE public.tasks SET archived_at = NULL, archived_by = NULL
         WHERE id = $1::uuid RETURNING id`, [TASK_A]],
-    // Tasks: back-dating creation and forcing the primary key stay owner-only.
+    // Tasks: back-dating creation stays owner-only.
     ["tasks created_at backdated", `UPDATE public.tasks SET created_at = '2020-01-01T00:00:00Z'::timestamptz
         WHERE id = $1::uuid RETURNING id`, [TASK_A]],
-    // Rewriting the primary key is owner-only. On a task with children the FK
-    // legitimately refuses it, so prove it on a row the owner just created.
+    // Main records activity even for a newly inserted task, so its primary key
+    // is referenced immediately. Exercise a supported owner edit instead.
     ["tasks inserted by owner", `INSERT INTO public.tasks (id, owner_user_id, project_id, title)
         VALUES ($1::uuid, $2::uuid, $3::uuid, 'owner-created') RETURNING id`, [TASK_NEW, OWNER_A, PROJECT_A]],
-    ["tasks primary key rewritten", `UPDATE public.tasks SET id = $1::uuid WHERE id = $2::uuid RETURNING id`,
-      ["66666666-6666-4666-8666-6666666666ff", TASK_NEW]],
+    ["owner-created task edited", `UPDATE public.tasks SET title = $1 WHERE id = $2::uuid RETURNING id`,
+      ["owner-updated", TASK_NEW]],
     // Referential moves that stay inside the owner's own hierarchy.
     ["tasks reassigned within owner", `UPDATE public.tasks SET project_id = $1::uuid WHERE id = $2::uuid RETURNING id`,
       [PROJECT_A2, TASK_A]],
@@ -2977,7 +3002,7 @@ async function assertDirectUserParity(sql) {
 
     // Projects and goals: the owner renames and re-parents their own rows.
     ["projects renamed", `UPDATE public.projects SET name = 'renamed', slug = 'renamed-slug',
-        description = 'changed', status = 'archived' WHERE id = $1::uuid RETURNING id`, [PROJECT_A]],
+        description = 'changed', status = 'active' WHERE id = $1::uuid RETURNING id`, [PROJECT_A]],
     ["goals edited and re-parented", `UPDATE public.goals SET title = 'renamed', slug = 'renamed-slug',
         description = 'changed', health = 'on_track', next_step = 'do it', status = 'active',
         project_id = $1::uuid WHERE id = $2::uuid RETURNING id`, [PROJECT_A2, GOAL_A]],
@@ -3232,6 +3257,26 @@ async function computeAuthenticatedRpcs(sql) {
 }
 
 async function assertRpcSurface(sql) {
+  // These direct-user RPCs are not part of any advertised MCP capability.
+  // Guard refusal must precede input validation, including for a workspace grant.
+  const directRpcProbes = [
+    ["list_task_comment_mentions", "NULL::uuid"],
+    ["create_task_comment", "NULL::uuid, 'probe', 'mcp-rpc-probe', 'owner'"],
+    ["update_task_comment", "NULL::uuid, 'probe', 'owner'"],
+    ["delete_task_comment", "NULL::uuid, 'owner'"],
+    ["toggle_task_comment_reaction", "NULL::uuid, 'like', 'owner'"],
+    ["promote_task_subtask", "NULL::uuid, NULL::uuid"],
+    ["create_task_attachment_upload", "NULL::uuid, 'probe.txt', 'text/plain', 1::bigint, 'txt', 'mcp-rpc-probe'"],
+    ["finalize_task_attachment", "NULL::uuid, 1::bigint"],
+    ["fail_task_attachment", "NULL::uuid, 'probe'"],
+    ["delete_task_attachment", "NULL::uuid"],
+  ];
+  for (const [name, args] of directRpcProbes) {
+    await expectDenied(`${name} MCP RPC boundary`, () =>
+      mcpSession(sql, { clientId: V1_WORKSPACE_CLIENT }).run((tx) =>
+        tx.unsafe(`SELECT public.${name}(${args})`)),
+    );
+  }
   // Classification. Enumerated from the catalog above so the inventory cannot
   // silently fall behind the schema; the sets below are the intent, and the
   // exhaustiveness assertion below is what forces every new function to be
@@ -3247,9 +3292,21 @@ async function assertRpcSurface(sql) {
   const DIRECT_USER_ONLY = [
     "public.claim_notification_device",
     "public.purge_archived_project",
+    "public.create_project_from_template",
+    "public.promote_task_subtask",
+    "public.list_task_comment_mentions",
+    "public.create_task_comment",
+    "public.update_task_comment",
+    "public.delete_task_comment",
+    "public.toggle_task_comment_reaction",
+    "public.create_task_attachment_upload",
+    "public.finalize_task_attachment",
+    "public.fail_task_attachment",
+    "public.delete_task_attachment",
+
   ];
-  // private.* helpers are reachable only as authenticated, never exposed by
-  // PostgREST, and carry no independent authority of their own.
+  // Private-schema helpers are not exposed by PostgREST; the public trigger
+  // function can only execute as a trigger, not as a standalone RPC.
   const PRIVATE_HELPERS = [
     "private.has_active_mcp_permission",
     "private.has_any_active_mcp_permission",
@@ -3261,13 +3318,14 @@ async function assertRpcSurface(sql) {
     "private.user_owns_project",
     "private.user_owns_goal",
     "private.user_owns_task",
+    "public.enforce_project_area_owner",
   ];
 
   // Fence internals that must stay uncallable by an authenticated principal.
   // They are only reachable from the SECURITY DEFINER trigger, which runs as the
   // migration role, so granting EXECUTE to authenticated would be unnecessary
   // surface rather than a convenience.
-  const PRIVATE_INTERNAL = ["private.mcp_known_fenced_columns"];
+  const PRIVATE_INTERNAL = ["private.mcp_known_fenced_columns", "private.guard_mcp_main_columns"];
 
   const unclassified = [...authenticatedRpcs.keys()].filter(
     (name) => ![...MCP_INTERNAL_ALLOWED, ...DIRECT_USER_ONLY, ...PRIVATE_HELPERS, ...PRIVATE_INTERNAL].includes(name),

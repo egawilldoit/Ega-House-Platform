@@ -19,6 +19,13 @@ import {
 
 const REPO_ROOT = fileURLToPath(new URL('../../', import.meta.url));
 const GATE_CLI = fileURLToPath(new URL('./audit-production.mjs', import.meta.url));
+// Synthetic acceptance for policy sensitivity tests, never shipped by the gate.
+const BRACES_EXCEPTION_FIXTURE = {
+  source: 1240992, advisory: 'GHSA-vfj7-8cjw-p6xm', package: 'braces',
+  reason: 'Synthetic temporary acceptance used only to exercise expiry and scope checks',
+  reviewBy: '2026-11-05', allowDirect: true,
+};
+
 
 function timeoutResult() {
   return {
@@ -432,7 +439,7 @@ test('evaluateAuditReport blocks direct high/critical dependencies unless allowD
 
 test('evaluateAuditReport blocks the pre-upgrade next advisory even when it is direct', () => {
   // Guards the actual fix: GHSA-vcvr-r3jv-pc5j must never be accepted by an
-  // exception. `next` 16.3.8 is pinned in apps/web/package.json instead, so if
+  // exception. `next` 16.4.3 is pinned in apps/web/package.json instead, so if
   // someone tries to silence this advisory with an exception the gate refuses.
   const report = {
     vulnerabilities: {
@@ -473,7 +480,7 @@ test('evaluateAuditReport blocks the pre-upgrade next advisory even when it is d
   assert.equal(wrongKey.blockingHighCritical.length, 1, 'a braces exception must not accept a next advisory');
 });
 
-test('the shipped exception registry accepts only the two advisories it names', () => {
+test('the shipped exception registry has concrete governance and no backport exceptions', () => {
   // Structural guard against the registry growing into a catch-all. Every entry
   // must name exactly one concrete advisory and one concrete package; anything
   // that looks like a wildcard or an aggregate is a policy failure.
@@ -495,15 +502,11 @@ test('the shipped exception registry accepts only the two advisories it names', 
     assert.ok(exception.reason.length > 20, 'reason is substantive');
     assert.ok(isValidReviewByFormat(exception.reviewBy), `exception ${exception.package} has a reviewBy date`);
   }
-  // The two advisories carried after the 2026-10-05 publication carry the extra
-  // governance fields a temporary acceptance must have.
   for (const source of [1240992, 1240912]) {
-    const entry = SECURITY_AUDIT_EXCEPTIONS.find((e) => e.source === source);
-    assert.ok(entry, `exception for source ${source} exists`);
-    assert.ok(entry.affectedSurface, 'exception states the affected surface');
-    assert.ok(entry.whyNotFixableNow, 'exception states why it cannot be fixed now');
-    assert.ok(entry.owner, 'exception names an owner');
+    assert.equal(SECURITY_AUDIT_EXCEPTIONS.some((e) => e.source === source), false,
+      `verified backport ${source} must not also have a bypassing exception`);
   }
+
 });
 
 test('evaluateAuditReport blocks an exception that names no concrete package', () => {
@@ -562,7 +565,7 @@ test('evaluateAuditReport reports a shipped entry with a blank package as blocki
   // package on a carried entry must block on its own, without any report
   // naming its advisory.
   const evalResult = evaluateAuditReport(cleanReport(), {
-    exceptions: [{ ...SECURITY_AUDIT_EXCEPTIONS[0], package: '   ' }],
+    exceptions: [{ ...BRACES_EXCEPTION_FIXTURE, package: '   ' }],
     checkWs: false,
   });
 
@@ -590,7 +593,7 @@ const REMEDIATED_2026_10_05 = [
   { source: 1240108, package: 'brace-expansion', advisory: 'GHSA-6j4f-fj2g-mc7p', patched: '1.1.21' },
   { source: 1240109, package: 'brace-expansion', advisory: 'GHSA-6j4f-fj2g-mc7p', patched: '2.1.7' },
   { source: 1240111, package: 'brace-expansion', advisory: 'GHSA-6j4f-fj2g-mc7p', patched: '5.0.12' },
-  { source: 1240042, package: 'undici', advisory: 'GHSA-rfgv-xxqx-mfg5', patched: '6.29.0' },
+  { source: 1240042, package: 'undici', advisory: 'GHSA-rfgv-xxqx-mfg5', patched: '6.29.1' },
 ];
 
 test('the registry does not carry any of the seven advisories remediated by override', () => {
@@ -616,7 +619,7 @@ test('the overrides that remediate brace-expansion and undici are still declared
   assert.equal(overrides['brace-expansion@^1'], '1.1.21', 'brace-expansion 1.x is pinned past GHSA-6j4f-fj2g-mc7p and GHSA-qhr7-859c-m2p7');
   assert.equal(overrides['brace-expansion@^2'], '2.1.7', 'brace-expansion 2.x is pinned past GHSA-6j4f-fj2g-mc7p and GHSA-qhr7-859c-m2p7');
   assert.equal(overrides['brace-expansion@^5'], '5.0.12', 'brace-expansion 5.x is pinned past GHSA-6j4f-fj2g-mc7p and GHSA-qhr7-859c-m2p7');
-  assert.equal(overrides['undici@^6'], '6.29.0', 'undici 6.x is pinned past GHSA-rfgv-xxqx-mfg5');
+  assert.equal(overrides['undici@^6'], '6.29.1', 'undici 6.x is pinned past GHSA-rfgv-xxqx-mfg5');
 });
 
 /**
@@ -652,7 +655,7 @@ test('every scoped override for a remediated package sits inside the parent rang
     { node: 'node_modules/test-exclude/node_modules/minimatch', dep: 'brace-expansion', override: '1.1.21' },
     { node: 'node_modules/expo/node_modules/minimatch', dep: 'brace-expansion', override: '2.1.7' },
     { node: 'node_modules/minimatch', dep: 'brace-expansion', override: '5.0.12' },
-    { node: 'node_modules/expo/node_modules/@expo/cli', dep: 'undici', override: '6.29.0' },
+    { node: 'node_modules/expo/node_modules/@expo/cli', dep: 'undici', override: '6.29.1' },
   ];
 
   for (const { node, dep, override } of parents) {
@@ -697,7 +700,7 @@ test('the lockfile RESOLVES the remediated versions, not only declares them', ()
     { node: 'node_modules/test-exclude/node_modules/minimatch', dep: 'brace-expansion', expect: '1.1.21' },
     { node: 'node_modules/expo/node_modules/minimatch', dep: 'brace-expansion', expect: '2.1.7' },
     { node: 'node_modules/minimatch', dep: 'brace-expansion', expect: '5.0.12' },
-    { node: 'node_modules/expo/node_modules/@expo/cli', dep: 'undici', expect: '6.29.0' },
+    { node: 'node_modules/expo/node_modules/@expo/cli', dep: 'undici', expect: '6.29.1' },
   ];
 
   for (const { node, dep, expect } of resolved) {
@@ -714,7 +717,7 @@ test('the lockfile RESOLVES the remediated versions, not only declares them', ()
   // The two hoisted entries the other tests reason about directly, so a
   // downgrade of the root copy cannot hide behind a nested one.
   assert.equal(lock.packages['node_modules/brace-expansion'].version, '5.0.12');
-  assert.equal(lock.packages['node_modules/undici'].version, '6.29.0');
+  assert.equal(lock.packages['node_modules/undici'].version, '6.29.1');
 });
 
 test('no remediated package resolves anywhere in the lockfile to a vulnerable version', () => {
@@ -726,7 +729,7 @@ test('no remediated package resolves anywhere in the lockfile to a vulnerable ve
   const lock = JSON.parse(readFileSync(new URL('../../package-lock.json', import.meta.url), 'utf8'));
   const patched = new Map([
     ['brace-expansion', new Set(['1.1.21', '2.1.7', '5.0.12'])],
-    ['undici', new Set(['6.29.0'])],
+    ['undici', new Set(['6.29.1'])],
   ]);
 
   const found = new Map([...patched.keys()].map((name) => [name, 0]));
@@ -804,14 +807,14 @@ test('the registry does not accept the next critical RCE advisory', () => {
   assert.equal(nextSources.length, 0, 'next/GHSA-vcvr-r3jv-pc5j must never be excepted');
 
   const manifest = JSON.parse(readFileSync(new URL('../../apps/web/package.json', import.meta.url), 'utf8'));
-  assert.equal(manifest.dependencies.next, '16.3.8', 'web pins the patched next release');
+  assert.equal(manifest.dependencies.next, '16.4.3', 'web pins the patched next release');
 });
 
 test('evaluateAuditReport blocks an expired 2026-10-05 registry entry', () => {
   // Sensitivity: the temporary acceptances must actually expire. Simulate the
   // reviewBy date passing and prove the gate re-blocks rather than accepting
   // indefinitely.
-  const bracesException = SECURITY_AUDIT_EXCEPTIONS.find((e) => e.source === 1240992);
+  const bracesException = BRACES_EXCEPTION_FIXTURE;
   const report = {
     vulnerabilities: {
       micromatch: {
@@ -850,7 +853,7 @@ test('evaluateAuditReport blocks a direct advisory when allowDirect is absent', 
   // Sensitivity: allowDirect:true is what admits braces/node-forge through the
   // direct `expo` / `react-native` parents. Remove it and the same report must
   // block, proving the flag is load-bearing rather than decorative.
-  const bracesException = { ...SECURITY_AUDIT_EXCEPTIONS.find((e) => e.source === 1240992) };
+  const bracesException = { ...BRACES_EXCEPTION_FIXTURE };
   delete bracesException.allowDirect;
   const report = {
     vulnerabilities: {

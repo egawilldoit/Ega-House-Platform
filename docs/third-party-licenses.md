@@ -22,9 +22,9 @@ install. Re-verify with the commands in the last section.
 
 Direct runtime dependencies of the workspaces, limited to packages whose licence
 status is non-obvious from the name. Transitive licences are the
-corresponding packages' own responsibility and are not enumerated here; the two
-exception-carrying transitives are named in the dependency-audit section of
-[`ARCHITECTURE.md`](../ARCHITECTURE.md).
+corresponding packages' own responsibility and are not enumerated here; the
+source-pinned security backports are described in the dependency-audit section
+of [`ARCHITECTURE.md`](../ARCHITECTURE.md).
 
 ## Model Context Protocol SDK
 
