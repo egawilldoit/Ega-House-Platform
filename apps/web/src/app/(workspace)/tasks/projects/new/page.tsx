@@ -11,7 +11,6 @@ import {
 } from "@ega/application";
 import { SupabaseProjectsRepository } from "@ega/data-access";
 
-import { AppShell } from "@/components/layout/app-shell";
 import {
   Card,
   CardContent,
@@ -91,10 +90,7 @@ export default async function NewProjectPage() {
   });
 
   return (
-    <AppShell
-      title="New project"
-      description="Add a project to anchor goals and tasks in the workspace."
-    >
+    <>
       <div className="mx-auto w-full max-w-3xl">
         <Card>
           <CardHeader>
@@ -121,6 +117,6 @@ export default async function NewProjectPage() {
           </CardContent>
         </Card>
       </div>
-    </AppShell>
+    </>
   );
 }

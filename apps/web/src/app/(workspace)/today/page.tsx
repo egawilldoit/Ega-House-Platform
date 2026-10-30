@@ -9,7 +9,7 @@ import {
   updateTaskFieldDraftAction,
 } from "@/app/tasks/actions";
 import { TaskDrawerHost } from "@/components/tasks/drawer/task-drawer-host";
-import { AppShell } from "@/components/layout/app-shell";
+
 import { OwnerScopedRealtimeRefresh } from "@/components/realtime/owner-scoped-realtime-refresh";
 import {
   ActiveTimerPanel,
@@ -25,6 +25,7 @@ import { TodayTaskCard } from "@/components/today/today-task-card";
 import { TodayHeaderActions } from "@/components/today/today-header-actions";
 import { TimerActionFeedback } from "@/components/timer/timer-action-feedback";
 import { TimerStopOutcomePrompt } from "@/components/timer/timer-stop-outcome-prompt";
+import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
 import { Card, CardContent } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
@@ -136,14 +137,7 @@ export default async function TodayPage({
     ]);
 
   if (todayResult.errorMessage || !todayResult.data) {
-    return (
-      <AppShell
-        title="Today"
-        description="Focus on what matters today. Make progress, one step at a time."
-      >
-        <PlannerErrorState actionError={actionError} />
-      </AppShell>
-    );
+    return <PlannerErrorState actionError={actionError} />;
   }
 
   const snapshot = todayResult.data;
@@ -259,11 +253,12 @@ export default async function TodayPage({
     todayData.completed.length > 0;
 
   return (
-    <AppShell
-      title="Today"
-      description={`${formatDisplayDate(todayData.date, "detail")} · Focus on what matters today. Make progress, one step at a time.`}
-      actions={<TodayHeaderActions />}
-    >
+    <>
+      <WorkspacePageHeader
+        title="Today"
+        description={`${formatDisplayDate(todayData.date, "detail")} · Focus on what matters today. Make progress, one step at a time.`}
+        actions={<TodayHeaderActions />}
+      />
       <OwnerScopedRealtimeRefresh
         ownerUserId={user?.id ?? null}
         channelPrefix="today"
@@ -505,6 +500,6 @@ export default async function TodayPage({
           />
         </div>
       </div>
-    </AppShell>
+    </>
   );
 }

@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 
-import { AppShell } from "@/components/layout/app-shell";
 import { OwnerScopedRealtimeRefresh } from "@/components/realtime/owner-scoped-realtime-refresh";
 import { getCurrentUser } from "@/lib/services/auth-service";
 import { getOperatorSnapshotData } from "@/lib/services/operator-service";
@@ -75,17 +74,13 @@ export default async function HomeRoute({
     : null;
 
   return (
-    <AppShell
-      title={greeting?.greeting ?? `Good morning, ${identity.name}`}
-      description={greeting ? `${greeting.fullDateLine} · ${greeting.subtitle}` : "What to do now, what needs attention, and what to start next."}
-      hideHeader
-    >
+    <>
       <OwnerScopedRealtimeRefresh
         ownerUserId={user?.id ?? null}
         channelPrefix="home"
         tables={["tasks", "task_sessions", "week_reviews"]}
       />
       <AuthenticatedHomePage model={model} greeting={greeting} name={identity.name} />
-    </AppShell>
+    </>
   );
 }

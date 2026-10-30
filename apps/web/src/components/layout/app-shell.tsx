@@ -4,7 +4,6 @@ import { createClient } from "@/lib/supabase/server";
 import { getShellIdentity, getWorkspaceShellMetrics } from "@/lib/workspace-shell";
 import { listFavorites } from "@/lib/services/favorite-service";
 
-import { cn } from "@/lib/utils";
 import type { SidebarGoal, SidebarProject } from "./sidebar";
 import { WorkspaceShell } from "./workspace-shell";
 import { WorkspaceKeyboardShortcuts } from "./workspace-keyboard-shortcuts";
@@ -13,12 +12,6 @@ import { ToastProvider } from "@/components/ui/toast-provider";
 
 type AppShellProps = {
   children: ReactNode;
-  title: string;
-  description?: string;
-  actions?: ReactNode;
-  className?: string;
-  contentClassName?: string;
-  hideHeader?: boolean;
 };
 
 // Request-level only — see SHELL-PERSISTENCE-EVALUATION.md
@@ -100,15 +93,7 @@ const getSidebarGoals = cache(async (): Promise<SidebarGoal[]> => {
   }
 });
 
-export async function AppShell({
-  children,
-  title,
-  description,
-  actions,
-  className,
-  contentClassName,
-  hideHeader = false,
-}: AppShellProps) {
+export async function AppShell({ children }: AppShellProps) {
   const [projects, goals, metrics, identity, favoritesResult] = await Promise.all([
     getSidebarProjects(),
     getSidebarGoals(),
@@ -133,12 +118,6 @@ export async function AppShell({
         projects={projects}
         metrics={metrics}
         identity={identity}
-        title={title}
-        description={description}
-        actions={actions}
-        className={cn(className)}
-        contentClassName={contentClassName}
-        hideHeader={hideHeader}
       >
         {children}
       </WorkspaceShell>
