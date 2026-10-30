@@ -17,9 +17,9 @@ Wave 0: Setup complete. Branch created from origin/main, docs initialized.
 
 ## Wave 1 - Realtime correctness + catch-up
 - Fix: OwnerScopedRealtimeRefresh now tracks pending refreshes while hidden and triggers catch-up on visibilitychange. Preserves debounce/coalescing and unmount safety.
-- Tests: owner-scoped-realtime-refresh.test.tsx passed (18/18).
+- Tests: owner-scoped-realtime-refresh.test.tsx passed (19/19).
 
 ## Wave 2 - App shell query optimization
 - Change: On main the sidebar already fetched all non-done tasks for the selected projects in a single query and counted them in JS with `.limit(1000)`. The PR delta is dropping the unused `status` column from `select("project_id", "status")` to `select("project_id")` and adding a null-guard for `project_id`. No query fan-out change (N→1) was introduced by this PR (that was an intermediate implementation reverted). No RPC/schema change.
 - Correctness note: the limit is `1000` total rows across all selected projects (not per project). With multiple projects the combined set can reach 1000 before any single project exceeds it, so counts can be undercounted. Treat counts as a lower bound under cap; exact counts beyond the cap are not claimed. No measured CPU benefit yet (target pending; no production deployment authorized).
-- Tests: workspace-shell.test.tsx (13/13), home-routing.test.ts, home-dashboard/task-read-home. Realtime tests now 19/19 (added resubscription regression).
+- Tests: workspace-shell.test.tsx (13/13), home-routing.test.ts, home-dashboard/task-read-home. Realtime tests 19/19 (same-root rerender regression for effect resubscription). Tested revision: 613bc5d1312e7f0ee9814759c53d05a021f68f82; diff hygiene clean.
