@@ -202,22 +202,57 @@ export default async function TodayPage({
     ? await getTaskDrawerDetail(selectedTaskId)
     : null;
   const selectedTask = selectedTaskResult?.kind === "found" ? selectedTaskResult.task : null;
-  const selectedTaskSubtasks = selectedTaskId
-    ? (await listTaskSubtasks(selectedTaskId)).data ?? []
-    : [];
-  const selectedTaskActivityPage = selectedTaskId
-    ? await getTaskActivity(selectedTaskId, { limit: 8 })
-    : { items: [], hasMore: false };
-  const selectedTaskActivity = selectedTaskActivityPage.items;
-  const selectedTaskComments = selectedTaskId
-    ? await getTaskCommentThread(selectedTaskId)
-    : { comments: [], mentionCandidates: [], errorMessage: null };
-  const selectedTaskAttachments = selectedTaskId
-    ? await listTaskAttachments(selectedTaskId)
-    : { data: [], errorMessage: null };
-  const selectedTaskIsFavourite = selectedTaskId
-    ? await isFavorite("task", selectedTaskId)
-    : false;
+
+  let selectedTaskSubtasks: Awaited<ReturnType<typeof listTaskSubtasks>>["data"] = [];
+  let selectedTaskActivityPage: Awaited<ReturnType<typeof getTaskActivity>> = {
+    items: [],
+    hasMore: false,
+  };
+  let selectedTaskActivity: Awaited<ReturnType<typeof getTaskActivity>>["items"] = [];
+  let selectedTaskComments: Awaited<ReturnType<typeof getTaskCommentThread>> = {
+    comments: [],
+    mentionCandidates: [],
+    errorMessage: null,
+  };
+  let selectedTaskAttachments: Awaited<ReturnType<typeof listTaskAttachments>> = {
+    data: [],
+    errorMessage: null,
+  };
+  let selectedTaskIsFavourite = false;
+
+  if (selectedTaskId && selectedTaskResult?.kind === "found") {
+    const [subtasksResult, activityPageResult, commentsResult, attachmentsResult, isFavouriteResult] =
+      await Promise.all([
+        listTaskSubtasks(selectedTaskId),
+        getTaskActivity(selectedTaskId, { limit: 8 }),
+        getTaskCommentThread(selectedTaskId),
+        listTaskAttachments(selectedTaskId),
+        isFavorite("task", selectedTaskId),
+      ]);
+
+    selectedTaskSubtasks = subtasksResult.data ?? [];
+    selectedTaskActivityPage = activityPageResult;
+    selectedTaskActivity = activityPageResult.items;
+    selectedTaskComments = commentsResult;
+    selectedTaskAttachments = attachmentsResult;
+    selectedTaskIsFavourite = isFavouriteResult;
+  } else if (selectedTaskId) {
+    const [subtasksResult, activityPageResult, commentsResult, attachmentsResult, isFavouriteResult] =
+      await Promise.all([
+        listTaskSubtasks(selectedTaskId),
+        getTaskActivity(selectedTaskId, { limit: 8 }),
+        getTaskCommentThread(selectedTaskId),
+        listTaskAttachments(selectedTaskId),
+        isFavorite("task", selectedTaskId),
+      ]);
+
+    selectedTaskSubtasks = subtasksResult.data ?? [];
+    selectedTaskActivityPage = activityPageResult;
+    selectedTaskActivity = activityPageResult.items;
+    selectedTaskComments = commentsResult;
+    selectedTaskAttachments = attachmentsResult;
+    selectedTaskIsFavourite = isFavouriteResult;
+  }
   const activeTimerSessionId = todayData.activeTimer?.sessionId ?? null;
   const flexibleTodayActionable = todayData.flexibleTasks.filter(
     (task) => task.status !== "blocked" && !isTaskCompletedStatus(task.status),
