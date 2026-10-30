@@ -81,6 +81,13 @@ class FakeProjectsRepository {
     this.calls.push({ method: "updateProjectStatus" });
     return this.updateResult;
   }
+  async hasOpenTaskSessionForProject(_actor: unknown, _projectId: string) {
+    return ok(false);
+  }
+  async updateProjectArchiveState(_actor: unknown, _input: unknown) {
+    this.calls.push({ method: "updateProjectArchiveState" });
+    return this.updateResult;
+  }
 }
 
 test("project mutations forward the repository class, not a bare message", async () => {
@@ -162,6 +169,13 @@ class FakeGoalsRepository {
   }
   async updateGoalNextStep(_actor: unknown, _input: unknown) {
     this.calls.push({ method: "updateGoalNextStep" });
+    return this.updateResult;
+  }
+  async hasOpenTaskSessionForGoal(_actor: unknown, _goalId: string) {
+    return ok(false);
+  }
+  async updateGoalArchiveState(_actor: unknown, _input: unknown) {
+    this.calls.push({ method: "updateGoalArchiveState" });
     return this.updateResult;
   }
 }
