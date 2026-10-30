@@ -687,6 +687,20 @@
       "when": 1787880000047,
       "tag": "0084_mcp_projects_area_id_fence_classification",
       "breakpoints": true
+    },
+    {
+      "idx": 98,
+      "version": "7",
+      "when": 1787880000048,
+      "tag": "0085_mcp_main_column_authority",
+      "breakpoints": true
+    },
+    {
+      "idx": 99,
+      "version": "7",
+      "when": 1787880000049,
+      "tag": "0086_mcp_direct_rpc_boundary",
+      "breakpoints": true
     }
   ]
 }

@@ -2359,11 +2359,21 @@ async function assertTailArtifactsInstalled(sql) {
  * in this file's header. The drift is measured and logged so it stays visible.
  */
 async function assertTailReapplyIsDataSafe(sql, tags, boundary, tables, digestsBefore, catalogBefore) {
-  const duplicateObjectCodes = new Set(["42710", "42P07", "42701", "42P06"]);
+  // 0077 renames the template RPC; replay encounters its existing target
+  // signature (duplicate_function), another duplicate-object refusal.
+  const duplicateObjectCodes = new Set(["42710", "42P07", "42701", "42P06", "42723"]);
   const knownNonIdempotent = new Set([
     "0053_mcp_task_sessions_split",
     "0064_mcp_write_column_fence",
     "0065_mcp_oauth_table_scope_hardening",
+    // Main feature migrations and the new fence use one-time DDL too.
+    "0064_task_operation_receipts",
+    "0065_task_subtasks",
+    "0066_task_activity_events",
+    "0070_task_comments",
+    "0074_task_attachments",
+    "0077_areas",
+    "0085_mcp_main_column_authority",
   ]);
   const rejected = [];
   const boundaryIndex = tags.indexOf(boundary);
