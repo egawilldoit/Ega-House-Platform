@@ -1,0 +1,11 @@
+{
+  "name": "decode-uri-component",
+  "version": "0.5.1",
+  "private": true,
+  "description": "CommonJS adaptation of upstream decode-uri-component v0.5.1 (GHSA-qr28-fpjm-wq7f)",
+  "license": "MIT",
+  "main": "./index.cjs",
+  "engines": {
+    "node": ">=14.16"
+  }
+}
