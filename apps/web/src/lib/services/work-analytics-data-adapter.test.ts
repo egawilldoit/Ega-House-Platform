@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { getCompletedTaskCountForWindow, getWorkAnalyticsTaskCounts } from "./work-analytics-data-adapter";
+import { getCompletedTaskCountForWindow, getWorkAnalyticsSessionsForWindow, getWorkAnalyticsTaskCounts } from "./work-analytics-data-adapter";
 
 type QueryResult = {
   data: unknown[] | null;
   count: number | null;
-  error: { message: string } | null;
+  error: { code?: string; message: string } | null;
 };
 
 /**
@@ -24,6 +24,7 @@ type QueryResult = {
  */
 function createSupabaseMock(queryResults: QueryResult[]) {
   let index = 0;
+  const selects: string[] = [];
 
   function createChain() {
     const result = queryResults[index];
@@ -57,9 +58,11 @@ function createSupabaseMock(queryResults: QueryResult[]) {
   }
 
   return {
+    selects,
     from(_table: string) {
       return {
-        select(_columns: string, _opts?: unknown) {
+        select(columns: string, _opts?: unknown) {
+          selects.push(columns);
           return createChain();
         },
       };
@@ -351,4 +354,63 @@ test("EGA-805: completed-in-window count fails closed", async () => {
 
   assert.equal(result.data, null);
   assert.match(result.errorMessage ?? "", /permission denied/);
+});
+
+test("work analytics sessions fall back when the areas relation is missing", async () => {
+  const supabase = createSupabaseMock([
+    {
+      data: null,
+      count: null,
+      error: {
+        code: "PGRST200",
+        message:
+          "Could not find a relationship between 'projects' and 'areas' in the schema cache",
+      },
+    },
+    {
+      data: [
+        {
+          task_id: "task-1",
+          started_at: "2026-04-20T09:00:00.000Z",
+          ended_at: "2026-04-20T09:30:00.000Z",
+          duration_seconds: 1800,
+          tasks: { id: "task-1", title: "Plan", projects: { id: "project-1", name: "Work" } },
+        },
+      ],
+      count: null,
+      error: null,
+    },
+  ]);
+
+  const result = await getWorkAnalyticsSessionsForWindow({
+    ownerUserId: "user-1",
+    window,
+    supabase: supabase as never,
+  });
+
+  assert.equal(result.errorMessage, null);
+  assert.equal(result.data?.length, 1);
+  assert.equal(supabase.selects.length, 2);
+  assert.match(supabase.selects[0] ?? "", /areas\(id, name\)/);
+  assert.doesNotMatch(supabase.selects[1] ?? "", /areas/);
+});
+
+test("work analytics sessions do not hide unrelated query failures", async () => {
+  const supabase = createSupabaseMock([
+    {
+      data: null,
+      count: null,
+      error: { code: "42501", message: "permission denied for table task_sessions" },
+    },
+  ]);
+
+  const result = await getWorkAnalyticsSessionsForWindow({
+    ownerUserId: "user-1",
+    window,
+    supabase: supabase as never,
+  });
+
+  assert.equal(result.data, null);
+  assert.match(result.errorMessage ?? "", /permission denied/);
+  assert.equal(supabase.selects.length, 1);
 });

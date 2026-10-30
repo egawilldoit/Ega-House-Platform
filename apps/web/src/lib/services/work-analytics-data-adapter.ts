@@ -1,7 +1,46 @@
 import { createClient } from "@/lib/supabase/server";
+import {
+  isMissingSupabaseColumn,
+  isMissingSupabaseTable,
+} from "@/lib/supabase-error";
 import type { ExecutionEvidenceSessionRow, ExecutionEvidenceWindow } from "@/lib/services/execution-evidence-service";
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
+
+const ANALYTICS_SESSION_SELECT =
+  "task_id, started_at, ended_at, duration_seconds, tasks(id, title, project_id, estimate_minutes, projects(id, name, areas(id, name)), goals(id, title))";
+
+// Pre-0077 schema: projects have no `areas` relation yet. Sessions still load
+// and the Area breakdown reports them as "No area" instead of failing the page.
+const ANALYTICS_SESSION_SELECT_WITHOUT_AREAS =
+  "task_id, started_at, ended_at, duration_seconds, tasks(id, title, project_id, estimate_minutes, projects(id, name), goals(id, title))";
+
+type SupabaseQueryError = {
+  code?: string | null;
+  message?: string | null;
+  details?: string | null;
+  hint?: string | null;
+} | null;
+
+/**
+ * Detect a database that predates the Areas migration (0077). Only a missing
+ * table, missing FK column, or missing PostgREST relationship qualifies;
+ * permission and transport failures must still fail closed.
+ */
+function isMissingAreasRelation(error: SupabaseQueryError) {
+  if (!error) return false;
+
+  const diagnostic = [error.message, error.details, error.hint]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+
+  return (
+    isMissingSupabaseTable(error, "public.areas") ||
+    isMissingSupabaseColumn(error, "public.projects", "area_id") ||
+    (error.code === "PGRST200" && diagnostic.includes("areas"))
+  );
+}
 
 async function resolveSupabaseClient(supabase?: SupabaseServerClient) {
   if (supabase) return supabase;
@@ -23,19 +62,26 @@ export async function getWorkAnalyticsSessionsForWindow(args: {
     return { data: null, errorMessage: "Invalid window for work analytics." };
   }
   const supabase = await resolveSupabaseClient(args.supabase);
-  const { data, error } = await supabase
-    .from("task_sessions")
-    .select("task_id, started_at, ended_at, duration_seconds, tasks(id, title, project_id, estimate_minutes, projects(id, name, areas(id, name)), goals(id, title))")
-    .eq("owner_user_id", args.ownerUserId)
-    .lt("started_at", args.window.endIso)
-    .or(`ended_at.is.null,ended_at.gte.${args.window.startIso}`)
-    .order("started_at", { ascending: false });
+  const load = (select: string) =>
+    supabase
+      .from("task_sessions")
+      .select(select)
+      .eq("owner_user_id", args.ownerUserId)
+      .lt("started_at", args.window.endIso)
+      .or(`ended_at.is.null,ended_at.gte.${args.window.startIso}`)
+      .order("started_at", { ascending: false });
+
+  let { data, error } = await load(ANALYTICS_SESSION_SELECT);
+
+  if (error && isMissingAreasRelation(error)) {
+    ({ data, error } = await load(ANALYTICS_SESSION_SELECT_WITHOUT_AREAS));
+  }
 
   if (error) {
     return { data: null, errorMessage: `Failed to load work analytics sessions: ${error.message}` };
   }
 
-  return { data: (data ?? []) as ExecutionEvidenceSessionRow[], errorMessage: null };
+  return { data: (data ?? []) as unknown as ExecutionEvidenceSessionRow[], errorMessage: null };
 }
 
 export type WorkAnalyticsTaskCounts = {
