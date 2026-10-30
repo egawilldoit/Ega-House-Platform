@@ -218,7 +218,7 @@ BEGIN
       'created_at', 'updated_at', 'next_step', 'health', 'mcp_operation_id', 'mcp_client_id'
     ]
     WHEN 'projects' THEN ARRAY[
-      'id', 'owner_user_id', 'name', 'slug', 'description', 'status',
+      'id', 'owner_user_id', 'name', 'slug', 'description', 'status', 'area_id',
       'created_at', 'updated_at', 'mcp_operation_id', 'mcp_client_id'
     ]
     WHEN 'task_sessions' THEN ARRAY[
