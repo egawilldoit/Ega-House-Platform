@@ -76,6 +76,12 @@ export function OwnerScopedRealtimeRefresh({
 
       refreshTimeoutRef.current = setTimeout(() => {
         if (!isMountedRef.current) {
+          refreshTimeoutRef.current = null;
+          return;
+        }
+        if (typeof document !== "undefined" && document.hidden) {
+          refreshTimeoutRef.current = null;
+          hasPendingWhileHiddenRef.current = true;
           return;
         }
         refreshTimeoutRef.current = null;
@@ -97,6 +103,12 @@ export function OwnerScopedRealtimeRefresh({
         if (!refreshTimeoutRef.current) {
           refreshTimeoutRef.current = setTimeout(() => {
             if (!isMountedRef.current) {
+              refreshTimeoutRef.current = null;
+              return;
+            }
+            if (typeof document !== "undefined" && document.hidden) {
+              refreshTimeoutRef.current = null;
+              hasPendingWhileHiddenRef.current = true;
               return;
             }
             refreshTimeoutRef.current = null;
