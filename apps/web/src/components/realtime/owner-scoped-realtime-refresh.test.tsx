@@ -656,3 +656,70 @@ describe("OwnerScopedRealtimeRefresh", () => {
     document.body.removeChild(rootElement2);
   });
 });
+
+  test("isMountedRef reset on effect dependency change allows refresh after remount/re-subscribe", () => {
+    vi.useFakeTimers();
+    const el1 = document.createElement("div");
+    document.body.appendChild(el1);
+    const root1 = createRoot(el1);
+    act(() => {
+      root1.render(
+        React.createElement(OwnerScopedRealtimeRefresh, {
+          ownerUserId: "user-1",
+          channelPrefix: "dashboard",
+          tables: ["task_sessions"],
+          refreshDebounceMs: 100,
+        }),
+      );
+    });
+
+    const onPayload1 = activeOnPayload;
+    assert.ok(onPayload1);
+    act(() => {
+      root1.unmount();
+    });
+    if (document.body.contains(el1)) {
+      document.body.removeChild(el1);
+    }
+
+    act(() => {
+      onPayload1!(createPayload("INSERT", { updated_at: "2026-04-18T00:10:00.000Z" }));
+    });
+    act(() => {
+      vi.advanceTimersByTime(200);
+    });
+    const countAfterStale = routerRefreshCalls.length;
+
+    const el2 = document.createElement("div");
+    document.body.appendChild(el2);
+    const root2 = createRoot(el2);
+    act(() => {
+      root2.render(
+        React.createElement(OwnerScopedRealtimeRefresh, {
+          ownerUserId: "user-1",
+          channelPrefix: "dashboard",
+          tables: ["tasks"],
+          refreshDebounceMs: 100,
+        }),
+      );
+    });
+
+    assert.ok(activeOnPayload);
+    act(() => {
+      activeOnPayload!(createPayload("INSERT", { updated_at: "2026-04-18T00:11:00.000Z" }, "tasks"));
+    });
+    act(() => {
+      vi.advanceTimersByTime(200);
+    });
+
+    assert.equal(countAfterStale, 0);
+    assert.equal(routerRefreshCalls.length, 1);
+
+    act(() => {
+      root2.unmount();
+    });
+    if (document.body.contains(el2)) {
+      document.body.removeChild(el2);
+    }
+  });
+
