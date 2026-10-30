@@ -16,10 +16,11 @@
 Wave 0: Setup complete. Branch created from origin/main, docs initialized.
 
 ## Wave 1 - Realtime correctness + catch-up
-- Fix: OwnerScopedRealtimeRefresh now tracks pending refreshes while hidden and triggers catch-up on visibilitychange. Preserves debounce/coalescing and unmount safety.
-- Tests: owner-scoped-realtime-refresh.test.tsx passed (19/19); same-root rerender regression verifies effect resubscription/mounted-ref reset.
+- Fix: OwnerScopedRealtimeRefresh now tracks pending refreshes while hidden and triggers catch-up on visibilitychange. Preserves debounce/coalescing and unmount safety. Both queued callbacks recheck visibility at execution and retain pending work if hidden. A subscription-local guard ignores callbacks from a cleaned-up subscription after same-root resubscription.
+- Tests: owner-scoped-realtime-refresh.test.tsx passed (21/21). Same-root rerender proves the new subscription refreshes, the old callback is ignored, and stale callbacks cannot poison timestamp filtering. Two queued-callback regressions verify no refresh while hidden and exactly one catch-up when visible again. All four mutation checks fail at the intended assertion when the mounted-ref reset, subscription guard, debounce visibility guard, or catch-up visibility guard is removed.
 
 ## Wave 2 - App shell query optimization
 - Change: On main the sidebar already fetched all non-done tasks for the selected projects in a single query and counted them in JS with `.limit(1000)`. The PR delta is dropping the unused `status` column from `select("project_id", "status")` to `select("project_id")` and adding a null-guard for `project_id`. No query fan-out change (N→1) was introduced by this PR (that was an intermediate implementation reverted). No RPC/schema change.
 - Correctness note: the limit is `1000` total rows across all selected projects (not per project). With multiple projects the combined set can reach 1000 before any single project exceeds it, so counts can be undercounted. Treat counts as a lower bound under cap; exact counts beyond the cap are not claimed. No measured CPU benefit yet (target pending; no production deployment authorized).
-- Tests: workspace-shell.test.tsx (13/13), home-routing.test.ts, home-dashboard/task-read-home. Realtime tests 19/19 (same-root rerender regression for effect resubscription). Tested revision: 726193d4be44e4eec4ff74fd6c3e90049585df6b; diff hygiene clean.
+- Current readiness validation: realtime 21/21 and workspace-shell.test.ts 13/13 (34/34 total); changed-file ESLint and `git diff --check` passed. These checks cover the code and tests in this commit. Earlier home-routing/home-dashboard/task-read-home results are historical, not rerun in this readiness pass.
+- Readiness boundary: CPU savings remain unmeasured. The shared `decode-uri-component` audit failure is separate from these runtime/test fixes; required exact-head CI must pass before merge.
