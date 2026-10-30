@@ -1,4 +1,4 @@
-import { WorkspaceSkeletonShell } from "@/components/layout/workspace-skeleton-shell";
+import { WorkspaceContentSkeleton } from "@/components/layout/workspace-content-skeleton";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -90,10 +90,7 @@ function ActivityPulseSkeleton() {
  */
 export default function HomeLoadingPage() {
   return (
-    <WorkspaceSkeletonShell
-      title="Home"
-      description="What to do now, what needs attention, and what to start quickly."
-    >
+    <WorkspaceContentSkeleton>
       <div className="flex flex-col gap-8">
         <HomeGreetingSkeleton />
         <StatsRowSkeleton />
@@ -106,6 +103,6 @@ export default function HomeLoadingPage() {
         </div>
         <ActivityPulseSkeleton />
       </div>
-    </WorkspaceSkeletonShell>
+    </WorkspaceContentSkeleton>
   );
 }

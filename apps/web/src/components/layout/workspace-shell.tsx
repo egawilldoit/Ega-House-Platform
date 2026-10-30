@@ -17,12 +17,6 @@ type WorkspaceShellProps = {
   projects?: SidebarProject[];
   metrics: WorkspaceShellMetrics;
   identity: ShellIdentity;
-  title: string;
-  description?: string;
-  actions?: ReactNode;
-  className?: string;
-  contentClassName?: string;
-  hideHeader?: boolean;
 };
 
 function buildBreadcrumb(pathname: string) {
@@ -46,12 +40,6 @@ export function WorkspaceShell({
   projects = [],
   metrics,
   identity,
-  title,
-  description,
-  actions,
-  className,
-  contentClassName,
-  hideHeader = false,
 }: WorkspaceShellProps) {
   const [collapsed, setCollapsed] = useState(false);
   const pathname = usePathname();
@@ -59,7 +47,8 @@ export function WorkspaceShell({
   return (
     <div
       data-workspace-theme="workspace"
-      className={cn("ega-app-shell app-shell", className)}
+      data-ega-shell-root
+      className="ega-app-shell app-shell"
       data-collapsed={collapsed ? "true" : "false"}
     >
       <Sidebar
