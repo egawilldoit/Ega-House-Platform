@@ -8,9 +8,10 @@ import { WorkspaceErrorFallback } from "@/components/layout/workspace-error-fall
 type AreasErrorPageProps = {
   error: Error & { digest?: string };
   reset: () => void;
+  retry: () => void;
 };
 
-export default function AreasErrorPage({ error, reset }: AreasErrorPageProps) {
+export default function AreasErrorPage({ error, reset, retry }: AreasErrorPageProps) {
   useEffect(() => {
     Sentry.captureException(error);
   }, [error]);
@@ -18,8 +19,8 @@ export default function AreasErrorPage({ error, reset }: AreasErrorPageProps) {
   return (
     <WorkspaceErrorFallback
       reset={reset}
+      retry={retry}
       scopeLabel="Areas"
-      homeHref="/settings/areas"
     />
   );
 }

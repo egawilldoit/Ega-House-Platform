@@ -21,6 +21,7 @@ import {
   type IdeaNoteProjectOption,
 } from "@/lib/services/idea-note-service";
 import { cn } from "@/lib/utils";
+import { getBacklogClearSearchHref } from "./backlog-search-href";
 
 export const metadata: Metadata = {
   title: "Backlog",
@@ -87,18 +88,6 @@ function getBacklogViewHref(
     nextParams.set("q", search.trim());
   }
 
-  const query = nextParams.toString();
-  return query ? `/backlog?${query}` : "/backlog";
-}
-
-function getBacklogClearSearchHref(params: Awaited<BacklogPageProps["searchParams"]>) {
-  const nextParams = new URLSearchParams();
-  for (const [key, value] of Object.entries(params)) {
-    if (key === "q" || key === "search") continue;
-    if (typeof value === "string" && value.trim()) {
-      nextParams.set(key, value);
-    }
-  }
   const query = nextParams.toString();
   return query ? `/backlog?${query}` : "/backlog";
 }
