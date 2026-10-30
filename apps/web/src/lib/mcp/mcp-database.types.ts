@@ -120,10 +120,12 @@ export type McpDatabase = Omit<Database, "public"> & {
     };
     Functions: PublicSchema["Functions"] & {
       consume_mcp_rate_limit: {
+        // Single argument by design (drizzle/0071): the allowance and the window
+        // length are derived server-side from the window name, because an MCP
+        // bearer holds the credential the limiter protects and could otherwise
+        // widen its own allowance or reset the counter.
         Args: {
-          p_tool_name: string;
-          p_limit?: number;
-          p_window_seconds?: number;
+          p_window_name: string;
         };
         Returns: Array<{
           allowed: boolean;

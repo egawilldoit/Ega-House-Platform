@@ -2,6 +2,7 @@ import type { AuthInfo } from "@modelcontextprotocol/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { getPermissionsForProfile } from "@/lib/mcp/permissions";
 import {
   applicationFailure,
   applicationSuccess,
@@ -56,7 +57,7 @@ const PRINCIPAL: McpPrincipal = {
 const READ_ONLY_PRINCIPAL: McpPrincipal = {
   ...PRINCIPAL,
   permissionProfile: "read_only",
-  permissions: ["projects.read", "goals.read", "tasks.read"],
+  permissions: getPermissionsForProfile("read_only", 1),
 };
 
 const TASK_RECORD: TaskRecord = {

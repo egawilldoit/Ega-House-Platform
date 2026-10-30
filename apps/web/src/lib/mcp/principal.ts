@@ -1,8 +1,10 @@
 import {
   getPermissionsForProfile,
   parsePermissionProfile,
+  parsePermissionVersion,
   type McpPermission,
   type McpPermissionProfile,
+  type McpPermissionVersion,
 } from "@/lib/mcp/permissions";
 
 export type McpGrantStatus = "pending" | "active" | "failed" | "revoked";
@@ -15,7 +17,7 @@ export type McpGrantRecord = {
   status: McpGrantStatus;
   permissionProfile: string;
   permissions: unknown;
-  permissionsVersion: number;
+  permissionsVersion: McpPermissionVersion;
 };
 
 export type McpPrincipal = {
@@ -23,7 +25,7 @@ export type McpPrincipal = {
   oauthClientId: string;
   grantId: string;
   permissionProfile: McpPermissionProfile;
-  permissionsVersion: number;
+  permissionsVersion: McpPermissionVersion;
   permissions: McpPermission[];
 };
 
@@ -103,16 +105,20 @@ export function isValidMcpPrincipal(value: unknown): value is McpPrincipal {
     typeof principal.ownerUserId !== "string" || principal.ownerUserId.trim() === ""
     || typeof principal.oauthClientId !== "string" || principal.oauthClientId.trim() === ""
     || typeof principal.grantId !== "string" || principal.grantId.trim() === ""
-    || !Number.isInteger(principal.permissionsVersion) || (principal.permissionsVersion as number) < 1
   ) return false;
 
-  let profile: McpPermissionProfile;
   try {
-    profile = parsePermissionProfile(principal.permissionProfile);
+    const profile = parsePermissionProfile(principal.permissionProfile);
+    const version = parsePermissionVersion(principal.permissionsVersion);
+    return permissionsMatchProfile(
+      principal.permissions,
+      getPermissionsForProfile(profile, version),
+    );
   } catch {
+    // Includes an invalid (profile, version) pairing, not just an unknown
+    // profile or version.
     return false;
   }
-  return permissionsMatchProfile(principal.permissions, getPermissionsForProfile(profile));
 }
 
 export function resolveMcpPrincipal(
@@ -135,10 +141,14 @@ export function resolveMcpPrincipal(
     return denyInactiveGrant();
   }
 
-  if (
-    !Number.isInteger(grant.permissionsVersion)
-    || grant.permissionsVersion < 1
-  ) {
+  // An unknown permissions_version fails closed. It used to be validated only
+  // as "integer >= 1", which meant a row claiming a future or foreign version
+  // authenticated normally and propagated an unvalidated version into the MRTR
+  // confirmation binding.
+  let permissionsVersion: McpPermissionVersion;
+  try {
+    permissionsVersion = parsePermissionVersion(grant.permissionsVersion);
+  } catch {
     return denyInactiveGrant();
   }
 
@@ -149,7 +159,17 @@ export function resolveMcpPrincipal(
     return denyInactiveGrant();
   }
 
-  const permissions = getPermissionsForProfile(permissionProfile);
+  // Authority comes from the grant's own (profile, version) document, not from
+  // whatever the profile happens to contain today. A permissions_version 1 row
+  // keeps exactly the 14 permissions it was approved for.
+  let permissions: McpPermission[];
+  try {
+    permissions = getPermissionsForProfile(permissionProfile, permissionsVersion);
+  } catch {
+    // An invalid (profile, version) pairing is a fail-closed deny, never a
+    // thrown internal error: there is no document that authorises it.
+    return denyInactiveGrant();
+  }
   if (!permissionsMatchProfile(grant.permissions, permissions)) {
     return denyInactiveGrant();
   }
@@ -159,7 +179,7 @@ export function resolveMcpPrincipal(
     oauthClientId,
     grantId: grant.id,
     permissionProfile,
-    permissionsVersion: grant.permissionsVersion,
+    permissionsVersion,
     permissions,
   };
 }

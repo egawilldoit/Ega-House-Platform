@@ -8,6 +8,7 @@ import {
   planTaskForToday,
   removeTaskFromToday,
   updateTodayTaskStatus,
+  type ApplicationErrorCode,
   type TaskRecord,
   type TodayPlan,
   type TodayTaskRepository,
@@ -18,6 +19,7 @@ import {
   SupabaseTodayReadPort,
 } from "@ega/data-access";
 
+import { mcpApplicationFailurePayload } from "@/lib/mcp/application-failure";
 import { readPrincipalFromAuthInfo } from "@/lib/mcp/auth-info";
 import type { McpDatabase } from "@/lib/mcp/mcp-database.types";
 import type { McpPrincipal } from "@/lib/mcp/principal";
@@ -71,10 +73,19 @@ function errorResult(error: unknown): CallToolResult {
   return { ...resultFromPayload(payload as unknown as ToolPayload), isError: true };
 }
 
-function applicationErrorResult(errorMessage: string): CallToolResult {
+/**
+ * Carries the canonical ApplicationResult class through to the protocol code
+ * (apps/web/src/lib/mcp/application-failure.ts) so a transient dependency
+ * failure is retryable instead of being frozen as a permanent receipt.
+ *
+ * The previous single APPLICATION_ERROR code was in neither the permanent nor
+ * the retryable set, so a Today validation failure could not be told from an
+ * outage at all.
+ */
+function applicationErrorResult(errorMessage: string, code?: ApplicationErrorCode): CallToolResult {
   const payload: ToolErrorPayload = {
     ok: false,
-    error: { code: "APPLICATION_ERROR", message: errorMessage },
+    error: mcpApplicationFailurePayload(errorMessage, code),
   };
   return { ...resultFromPayload(payload as unknown as ToolPayload), isError: true };
 }
@@ -161,7 +172,7 @@ export function createMcpTodayWriteHandlers(deps: McpWriteModuleDeps) {
           new SupabaseTimeContextRepository(client as never),
           { date: input.date },
         );
-        if (!result.ok) return applicationErrorResult(result.errorMessage);
+        if (!result.ok) return applicationErrorResult(result.errorMessage, result.code);
         return resultFromPayload(toPlanPayload(result.data));
       } catch (error) {
         return errorResult(error);
@@ -180,7 +191,7 @@ export function createMcpTodayWriteHandlers(deps: McpWriteModuleDeps) {
           taskId: input.taskId,
           date: input.date,
         });
-        if (!result.ok) return applicationErrorResult(result.errorMessage);
+        if (!result.ok) return applicationErrorResult(result.errorMessage, result.code);
         return resultFromPayload({ ok: true, task: toTaskPayload(result.data) });
       } catch (error) {
         return errorResult(error);
@@ -198,7 +209,7 @@ export function createMcpTodayWriteHandlers(deps: McpWriteModuleDeps) {
         const result = await removeTaskFromToday(actorFor(principal), repository, {
           taskId: input.taskId,
         });
-        if (!result.ok) return applicationErrorResult(result.errorMessage);
+        if (!result.ok) return applicationErrorResult(result.errorMessage, result.code);
         return resultFromPayload({ ok: true, task: toTaskPayload(result.data) });
       } catch (error) {
         return errorResult(error);
@@ -218,7 +229,7 @@ export function createMcpTodayWriteHandlers(deps: McpWriteModuleDeps) {
           status: input.status,
           blockedReason: input.blockedReason,
         });
-        if (!result.ok) return applicationErrorResult(result.errorMessage);
+        if (!result.ok) return applicationErrorResult(result.errorMessage, result.code);
         return resultFromPayload({ ok: true, task: toTaskPayload(result.data) });
       } catch (error) {
         return errorResult(error);
@@ -251,7 +262,7 @@ export function createMcpTodayWriteHandlers(deps: McpWriteModuleDeps) {
         const result = await clearCompletedToday(actorFor(principal), repository, {
           date: input.date,
         });
-        if (!result.ok) return applicationErrorResult(result.errorMessage);
+        if (!result.ok) return applicationErrorResult(result.errorMessage, result.code);
         return resultFromPayload({ ok: true, clearedCount: result.data.clearedCount });
       } catch (error) {
         return errorResult(error);

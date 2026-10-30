@@ -8,10 +8,12 @@ import {
   updateGoalHealth as updateGoalHealthInApplication,
   updateGoalNextStep as updateGoalNextStepInApplication,
   updateGoalStatus as updateGoalStatusInApplication,
+  type ApplicationErrorCode,
   type AuthenticatedActor,
 } from "@ega/application";
 import { SupabaseGoalsRepository } from "@ega/data-access";
 
+import { mcpApplicationFailurePayload } from "@/lib/mcp/application-failure";
 import type { McpWriteModuleDeps } from "@/lib/mcp/write/projects";
 import { requireMcpPermission } from "@/lib/mcp/tool-authorization";
 
@@ -32,9 +34,14 @@ function toCallToolResult(payload: ToolPayload, isError = false): CallToolResult
   return result;
 }
 
-function applicationErrorResult(message: string): CallToolResult {
+/**
+ * Carries the canonical ApplicationResult class through to the protocol code
+ * (apps/web/src/lib/mcp/application-failure.ts) so a transient dependency
+ * failure is retryable instead of being frozen as a permanent receipt.
+ */
+function applicationErrorResult(message: string, code?: ApplicationErrorCode): CallToolResult {
   return toCallToolResult(
-    { ok: false, error: { code: "INVALID_ARGUMENT", message } },
+    { ok: false, error: mcpApplicationFailurePayload(message, code) },
     true,
   );
 }
@@ -83,7 +90,7 @@ export async function createGoal(
   });
 
   if (!result.ok) {
-    return applicationErrorResult(result.errorMessage);
+    return applicationErrorResult(result.errorMessage, result.code);
   }
 
   return toCallToolResult({ ok: true, goal: result.data ?? result.values });
@@ -103,7 +110,7 @@ export async function updateGoalStatus(
   });
 
   if (!result.ok) {
-    return applicationErrorResult(result.errorMessage);
+    return applicationErrorResult(result.errorMessage, result.code);
   }
 
   return toCallToolResult({
@@ -126,7 +133,7 @@ export async function updateGoalHealth(
   });
 
   if (!result.ok) {
-    return applicationErrorResult(result.errorMessage);
+    return applicationErrorResult(result.errorMessage, result.code);
   }
 
   return toCallToolResult({ ok: true, goal: { id: input.goalId ?? "" } });
@@ -146,7 +153,7 @@ export async function updateGoalNextStep(
   });
 
   if (!result.ok) {
-    return applicationErrorResult(result.errorMessage);
+    return applicationErrorResult(result.errorMessage, result.code);
   }
 
   return toCallToolResult({ ok: true, goal: { id: input.goalId ?? "" } });
@@ -165,7 +172,7 @@ export async function archiveGoal(
   });
 
   if (!result.ok) {
-    return applicationErrorResult(result.errorMessage);
+    return applicationErrorResult(result.errorMessage, result.code);
   }
 
   return toCallToolResult({
@@ -187,7 +194,7 @@ export async function unarchiveGoal(
   });
 
   if (!result.ok) {
-    return applicationErrorResult(result.errorMessage);
+    return applicationErrorResult(result.errorMessage, result.code);
   }
 
   return toCallToolResult({

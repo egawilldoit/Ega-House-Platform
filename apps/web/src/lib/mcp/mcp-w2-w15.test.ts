@@ -8,6 +8,7 @@ import { createRequestStateCodec } from "@/lib/mcp/request-state";
 import { createWebMcpHandler } from "@/lib/mcp/web-transport-handler";
 import { createMcpWriteToolHandlers } from "@/lib/mcp/write-tool-handlers";
 import { createMcpAuthInfo } from "@/lib/mcp/auth-info";
+import { getPermissionsForProfile } from "@/lib/mcp/permissions";
 import type { McpPrincipal } from "@/lib/mcp/principal";
 
 // W2: createMcpHandler auth propagation
@@ -91,8 +92,7 @@ describe("W3 Host/Origin", () => {
   it("rejects bad Host", async () => {
     const handler = createWebMcpHandler(
       () => {},
-      {},
-      { basePath: "/api", maxDuration: 60, verboseLogs: false, resourceUrl: "https://ega.example.com/api/mcp" },
+      { resourceUrl: "https://ega.example.com/api/mcp" },
     );
     const request = new Request("https://evil.com/api/mcp", {
       method: "POST",
@@ -106,8 +106,7 @@ describe("W3 Host/Origin", () => {
   it("rejects bad Origin", async () => {
     const handler = createWebMcpHandler(
       () => {},
-      {},
-      { basePath: "/api", maxDuration: 60, verboseLogs: false, resourceUrl: "https://ega.example.com/api/mcp" },
+      { resourceUrl: "https://ega.example.com/api/mcp" },
     );
     const request = new Request("https://ega.example.com/api/mcp", {
       method: "POST",
@@ -196,8 +195,13 @@ describe("W10 idempotency", () => {
       grantId: "g",
       permissionProfile: "workspace_manager",
       permissionsVersion: 1,
-      permissions: ["projects.create", "projects.read", "goals.read", "tasks.read", "today.read", "timer.read", "projects.read", "projects.create", "projects.update", "goals.create", "goals.update", "tasks.create", "tasks.update", "today.update", "timer.create", "timer.update"],
-    } as never);
+      // Derived from the canonical document. This fixture previously carried a
+      // 16-entry array containing duplicates, which the weak auth-info validator
+      // accepted; the strong validator rejects it, so the test would have
+      // passed vacuously on an auth failure instead of exercising the
+      // receipt-store failure it was written for.
+      permissions: getPermissionsForProfile("workspace_manager", 1),
+    });
     const result = await handlers.createProject(authInfo as never, { name: "test", operationId: "550e8400-e29b-41d4-a716-446655440000" } as never);
     expect(result.isError).toBe(true);
     expect((result.structuredContent as { error?: { code?: string } }).error?.code).not.toBe("CONFLICT");

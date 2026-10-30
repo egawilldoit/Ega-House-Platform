@@ -9,65 +9,14 @@ import { pathToFileURL } from 'node:url';
  * Each record represents a temporary risk acceptance for an unpatched transitive
  * dependency pending an upstream fix. Bare advisory IDs are strictly prohibited.
  * Every exception must define an explicit expiry date (reviewBy) in YYYY-MM-DD format.
+ *
+ * An entry belongs here only while no patched release exists. When a patch does
+ * appear, the advisory is remediated (upgrade or scoped override) and the entry is
+ * deleted rather than given a later `reviewBy`.
  */
-export const SECURITY_AUDIT_EXCEPTIONS = [
-  {
-    source: 1240104,
-    advisory: 'GHSA-qhr7-859c-m2p7',
-    package: 'brace-expansion',
-    reason: 'Temporary risk acceptance: brace-expansion uncontrolled recursion DoS in transitive dependency',
-    reviewBy: '2026-10-15',
-    upstream: 'expo > react-native',
-  },
-  {
-    source: 1240105,
-    advisory: 'GHSA-qhr7-859c-m2p7',
-    package: 'brace-expansion',
-    reason: 'Temporary risk acceptance: brace-expansion uncontrolled recursion DoS in transitive dependency',
-    reviewBy: '2026-10-15',
-    upstream: 'expo > react-native',
-  },
-  {
-    source: 1240107,
-    advisory: 'GHSA-qhr7-859c-m2p7',
-    package: 'brace-expansion',
-    reason: 'Temporary risk acceptance: brace-expansion uncontrolled recursion DoS in transitive dependency',
-    reviewBy: '2026-10-15',
-    upstream: 'expo > react-native',
-  },
-  {
-    source: 1240108,
-    advisory: 'GHSA-6j4f-fj2g-mc7p',
-    package: 'brace-expansion',
-    reason: 'Temporary risk acceptance: brace-expansion parseCommaParts recursion DoS in transitive dependency',
-    reviewBy: '2026-10-15',
-    upstream: 'expo > react-native',
-  },
-  {
-    source: 1240109,
-    advisory: 'GHSA-6j4f-fj2g-mc7p',
-    package: 'brace-expansion',
-    reason: 'Temporary risk acceptance: brace-expansion parseCommaParts recursion DoS in transitive dependency',
-    reviewBy: '2026-10-15',
-    upstream: 'expo > react-native',
-  },
-  {
-    source: 1240111,
-    advisory: 'GHSA-6j4f-fj2g-mc7p',
-    package: 'brace-expansion',
-    reason: 'Temporary risk acceptance: brace-expansion parseCommaParts recursion DoS in transitive dependency',
-    reviewBy: '2026-10-15',
-    upstream: 'expo > react-native',
-  },
-  {
-    source: 1240042,
-    advisory: 'GHSA-rfgv-xxqx-mfg5',
-    package: 'undici',
-    reason: 'Temporary risk acceptance: undici unrequested WebSocket subprotocol DoS in transitive dependency',
-    reviewBy: '2026-10-15',
-    upstream: '@expo/cli',
-  },
-];
+// These former exceptions are covered by source-pinned, hash-verified backports.
+// An unverified copy must continue to fail the audit gate.
+export const SECURITY_AUDIT_EXCEPTIONS = [];
 
 export const ALLOWED_LEAF_EXCEPTIONS = SECURITY_AUDIT_EXCEPTIONS;
 export const ALLOWED_LEAF_SOURCES = new Map(
@@ -96,6 +45,26 @@ export function isValidReviewByFormat(dateStr) {
     date.getUTCFullYear() === year &&
     date.getUTCMonth() + 1 === month &&
     date.getUTCDate() === day
+  );
+}
+
+/**
+ * Whether an exception names ONE concrete package, which is the whole basis of
+ * the registry's narrowness.
+ *
+ * The registry's other predicates do not have this property, and copying their
+ * shape here was the defect: `package: ''` is falsy, so a truthiness guard
+ * reads it as "no opinion" and the advisory is accepted for
+ * ANY package, which turns one entry into a blanket exemption while the
+ * structural guard still sees a `string` with no `*`. A missing, blank or
+ * wildcard package is therefore a policy failure in its own right - the same
+ * treatment a malformed `reviewBy` already gets - never a silent skip.
+ */
+export function isConcretePackageName(value) {
+  return (
+    typeof value === 'string' &&
+    value.trim() !== '' &&
+    !value.includes('*')
   );
 }
 
@@ -156,6 +125,16 @@ export function evaluateAuditReport(report, options = {}) {
         name: exception?.package ?? 'unknown',
         source: exception?.source,
         reason: `malformed reviewBy date format: ${exception?.reviewBy}`,
+      });
+    }
+    if (!isConcretePackageName(exception?.package)) {
+      // An exception that names no concrete package cannot be honoured
+      // without becoming a blanket exemption, so it is reported as a blocking
+      // finding in its own right rather than quietly matching every package.
+      blocking.push({
+        name: exception?.package || 'unknown',
+        source: exception?.source,
+        reason: `malformed exception package: ${JSON.stringify(exception?.package)}; an exception must name one concrete package`,
       });
     }
   }
@@ -235,7 +214,11 @@ export function evaluateAuditReport(report, options = {}) {
         continue;
       }
 
-      if (exception.package && leaf.name !== exception.package) {
+      // Equality, not truthiness plus equality. An exception whose `package` is
+      // absent or blank must not reach this point as a match, so the check is
+      // written so that a non-concrete package fails here rather than skipping
+      // the comparison; the validation loop above has already reported it.
+      if (!isConcretePackageName(exception.package) || leaf.name !== exception.package) {
         rejected.push({
           source: leaf.source,
           name: leaf.name,
@@ -301,14 +284,42 @@ export function evaluateAuditReport(report, options = {}) {
   };
 }
 
-export function main() {
+/**
+ * The one behaviour the architecture map calls this gate's evidence: the
+ * workflow step fails. CI observes nothing else about this script - not the
+ * JSON on stdout, not the evaluation object - only the process exit code, so
+ * the exit code is the part that has to be reachable from a test.
+ *
+ * Every dependency `main()` touches is therefore injectable, with the shipped
+ * behaviour as the default, so the shipped path (`node
+ * scripts/ci/audit-production.mjs`) is unchanged while a test can drive the
+ * same function with a stubbed `npm audit` report and observe the code the
+ * process would exit with:
+ *
+ *   runAudit        the child process (defaults to runAuditCommand)
+ *   evaluate        report -> evaluation (defaults to evaluateAuditReport)
+ *   exitCodeTarget  the object whose `exitCode` is set (defaults to process)
+ *   log/writeError  stdout/stderr sinks, so a test reads no process streams
+ *
+ * `evaluate` and `exitCodeTarget` exist so that a test can isolate one
+ * concern from another; neither changes what the gate decides. Deleting the
+ * blocking branch below therefore cannot survive `audit-production.test.mjs`,
+ * which drives the real process through this function AND through the CLI.
+ */
+export function main({
+  runAudit = runAuditCommand,
+  evaluate = evaluateAuditReport,
+  exitCodeTarget = process,
+  log = (line) => console.log(line),
+  writeError = (line) => process.stderr.write(line),
+} = {}) {
   let result;
   try {
-    result = runAuditCommand();
+    result = runAudit();
   } catch (error) {
-    process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
-    process.exitCode = 1;
-    return;
+    writeError(`${error instanceof Error ? error.message : String(error)}\n`);
+    exitCodeTarget.exitCode = 1;
+    return 1;
   }
 
   const report = JSON.parse(result.stdout);
@@ -320,9 +331,9 @@ export function main() {
     process.exitCode = 1;
     return;
   }
-  const evaluation = evaluateAuditReport(report, { verifiedBackports });
+  const evaluation = evaluate(report, { verifiedBackports });
 
-  console.log(
+  log(
     JSON.stringify(
       {
         counts: report.metadata?.vulnerabilities,
@@ -336,8 +347,14 @@ export function main() {
   );
 
   if (evaluation.blockingHighCritical.length > 0) {
-    process.exitCode = 1;
+    exitCodeTarget.exitCode = 1;
+    return 1;
   }
+
+  // Nothing is written to `exitCodeTarget` on this path: zero is already the
+  // process default, and clobbering it would mask an exit code something else
+  // set. The returned 0 is what makes the clean case observable to a caller.
+  return 0;
 }
 
 const entryUrl = process.argv[1] ? pathToFileURL(process.argv[1]).href : null;

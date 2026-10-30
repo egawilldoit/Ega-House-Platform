@@ -8,6 +8,10 @@ import {
   type McpWriteToolHandlers,
 } from "@/lib/mcp/server";
 import { filterToolsByPermissions, getAllToolNames } from "@/lib/mcp/tool-discovery";
+import {
+  getCapability,
+  getCapabilityAnnotations,
+} from "@/lib/mcp/capability-registry";
 
 type Registration = {
   name: string;
@@ -175,6 +179,37 @@ describe("registerMcpReadTools", () => {
     expect(new Set(fake.registrations.map(({ name }) => name)).size).toBe(
       fake.registrations.length,
     );
+  });
+
+  it("advertises annotations derived from the canonical registry for every tool", () => {
+    // The registry claims to be the one place stating whether a capability is
+    // destructive or idempotent. That claim was false while server.ts
+    // hand-wrote three annotation literals: flipping `destructive` in the
+    // registry changed nothing a client was told. This is the assertion that
+    // makes the claim true, so it asserts every registered tool rather than the
+    // three groups server.ts happens to use.
+    const fake = createFakeServer();
+    const allowed = new Set(filterToolsByPermissions([
+      "projects.read", "projects.create", "projects.update",
+      "goals.read", "goals.create", "goals.update",
+      "tasks.read", "tasks.create", "tasks.update",
+      "today.read", "today.update", "timer.read", "timer.create", "timer.update",
+    ], true));
+
+    registerMcpToolsForPrincipal(
+      fake.server,
+      createHandlers(),
+      {} as McpWriteToolHandlers,
+      allowed,
+    );
+
+    expect(fake.registrations.length).toBeGreaterThan(0);
+    for (const { name, config } of fake.registrations) {
+      expect(
+        config.annotations,
+        `${name} advertises annotations that differ from the canonical registry`,
+      ).toEqual(getCapabilityAnnotations(getCapability(name)));
+    }
   });
 
   it("accepts only canonical task status and priority filters", () => {

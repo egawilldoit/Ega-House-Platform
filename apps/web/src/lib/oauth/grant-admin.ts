@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type { McpDatabase } from "@/lib/mcp/mcp-database.types";
 import {
+  CURRENT_MCP_PERMISSION_VERSION,
   getPermissionsForProfile,
   type McpPermissionProfile,
 } from "@/lib/mcp/permissions";
@@ -42,8 +43,8 @@ export async function activateMcpGrant(
         resource_uri: input.resourceUri,
         status: "active",
         permission_profile: profile,
-        permissions: getPermissionsForProfile(profile),
-        permissions_version: 1,
+        permissions: getPermissionsForProfile(profile, CURRENT_MCP_PERMISSION_VERSION),
+        permissions_version: CURRENT_MCP_PERMISSION_VERSION,
         approved_at: timestamp,
         revoked_at: null,
         updated_at: timestamp,

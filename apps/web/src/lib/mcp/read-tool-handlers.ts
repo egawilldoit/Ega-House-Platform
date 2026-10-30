@@ -303,7 +303,24 @@ export function createMcpReadToolHandlers(
         const actor = { userId: principal.ownerUserId } as unknown as never;
         const open = await timerRepo.listOpenSessions(actor as never);
         const recent = input.includeClosed ? await timerRepo.listRecentSessions(actor as never, { limit } as never) : { ok: true, value: [] } as unknown as { ok: boolean; value: unknown[] };
-        const sessions = [...((open as unknown as { value?: unknown[] }).value ?? []), ...((recent as unknown as { value?: unknown[] }).value ?? [])].slice(0, limit);
+        // `listOpenSessions` filters `ended_at IS NULL` and takes one row, while
+        // `listRecentSessions` carries no such filter - so the open session is in
+        // BOTH lists and a plain concatenation returned it twice, inflating `count`
+        // and showing the same session to the client as two rows.
+        //
+        // Deduplicated by id, keeping first occurrence so the open session (which is
+        // listed first) is the one that survives. The slice to `limit` happens AFTER
+        // the dedupe: slicing first would drop closed sessions in favour of a duplicate
+        // and under-report when the open session was already inside the window.
+        const seen = new Set<string>();
+        const merged = [...((open as unknown as { value?: unknown[] }).value ?? []), ...((recent as unknown as { value?: unknown[] }).value ?? [])]
+          .filter((session) => {
+            const id = String((session as { id?: unknown }).id ?? "");
+            if (seen.has(id)) return false;
+            seen.add(id);
+            return true;
+          });
+        const sessions = merged.slice(0, limit);
         return resultFromPayload({ ok: true, sessions, count: sessions.length });
       } catch (error) {
         return errorResult(error);

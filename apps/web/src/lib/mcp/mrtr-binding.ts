@@ -1,8 +1,20 @@
+import type { McpPermissionVersion } from "@/lib/mcp/permissions";
+
+/**
+ * The confirmation is bound to the grant's permission VERSION, not merely to
+ * its identity, so a document re-consented at a new version cannot be spent
+ * under the authority that was confirmed. Typed as the validated version
+ * rather than `number` on purpose: the resolver already refuses an unknown
+ * version, and widening the field back to `number` would let that guarantee
+ * rest on caller discipline instead of the type - which is how the mrtr suite
+ * came to assert the binding using versions 3 and 999, values no shipped code
+ * path can produce.
+ */
 export type McpMutationBinding = {
   user: string;
   client: string;
   grantId: string;
-  grantVersion: number;
+  grantVersion: McpPermissionVersion;
   resource: string;
   tool: string;
   operationId: string;
@@ -17,7 +29,7 @@ export type McpMutationCurrent = {
     ownerUserId: string;
     oauthClientId: string;
     grantId: string;
-    permissionsVersion: number;
+    permissionsVersion: McpPermissionVersion;
   };
   resource: string;
   tool: string;

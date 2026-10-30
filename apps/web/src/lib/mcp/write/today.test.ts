@@ -8,6 +8,7 @@ import {
   planTaskForToday,
   removeTaskFromToday,
   updateTodayTaskStatus,
+  type ApplicationErrorCode,
 } from "@ega/application";
 import {
   SupabaseTasksRepository,
@@ -16,8 +17,10 @@ import {
 } from "@ega/data-access";
 
 import { createMcpAuthInfo } from "@/lib/mcp/auth-info";
+import { DEPENDENCY_UNAVAILABLE_MESSAGE } from "@/lib/mcp/application-failure";
 import type { McpDatabase } from "@/lib/mcp/mcp-database.types";
 import type { McpPrincipal } from "@/lib/mcp/principal";
+import { getPermissionsForProfile, type McpPermissionProfile } from "@/lib/mcp/permissions";
 
 import { createMcpTodayWriteHandlers } from "./today";
 
@@ -42,28 +45,28 @@ vi.mock("@ega/data-access", () => ({
 const OWNER_A = "00000000-0000-0000-0000-000000000001";
 const OWNER_B = "00000000-0000-0000-0000-000000000002";
 
+/**
+ * Builds a principal from a real (profile, version) permission document.
+ *
+ * Fixtures used to hand-type permission arrays. Authorisation now resolves the
+ * authority from the grant's own document and rejects any set that is not one,
+ * so a hand-typed subset is not a weaker principal - it is an invalid one that
+ * fails authentication rather than authorisation. Denial tests therefore name
+ * the issuable profile that genuinely lacks the permission instead of inventing
+ * a partial set: task_manager holds today.read but not today.update, which is
+ * exactly the authorization boundary under test.
+ */
 function principalFor(
   ownerUserId: string,
-  permissions: McpPrincipal["permissions"] = [
-    "projects.read",
-    "goals.read",
-    "tasks.read",
-    "tasks.create",
-    "tasks.update",
-    "today.read",
-    "today.update",
-    "timer.read",
-    "timer.create",
-    "timer.update",
-  ],
+  permissionProfile: McpPermissionProfile = "workspace_manager",
 ): McpPrincipal {
   return {
     ownerUserId,
     oauthClientId: "hermes-client",
     grantId: "10000000-0000-0000-0000-000000000001",
-    permissionProfile: "workspace_manager",
+    permissionProfile,
     permissionsVersion: 1,
-    permissions,
+    permissions: getPermissionsForProfile(permissionProfile, 1),
   };
 }
 
@@ -132,8 +135,14 @@ function okData(data: unknown) {
   return { ok: true as const, data };
 }
 
-function failure(errorMessage: string) {
-  return { ok: false as const, errorMessage };
+/**
+ * The canonical class the use case asserted. A transport that ignores it
+ * cannot tell a validation rejection from a dependency outage, so the fixture
+ * carries it: without `code` the module would be free to flatten again and
+ * these assertions would still pass.
+ */
+function failure(errorMessage: string, code?: ApplicationErrorCode) {
+  return { ok: false as const, errorMessage, code };
 }
 
 describe("createMcpTodayWriteHandlers", () => {
@@ -224,7 +233,9 @@ describe("createMcpTodayWriteHandlers", () => {
     });
 
     it("maps canonical failure to a stable error result", async () => {
-      vi.mocked(getTodayPlan).mockResolvedValue(failure("Today date is invalid.") as never);
+      vi.mocked(getTodayPlan).mockResolvedValue(
+        failure("Today date is invalid.", "validation") as never,
+      );
       const handlers = createMcpTodayWriteHandlers(createDeps());
 
       const result = await handlers.getTodayPlan(AUTH_INFO, { date: "bad-date" });
@@ -232,22 +243,43 @@ describe("createMcpTodayWriteHandlers", () => {
       expect(result.isError).toBe(true);
       expect(result.structuredContent).toEqual({
         ok: false,
-        error: { code: "APPLICATION_ERROR", message: "Today date is invalid." },
+        error: { code: "INVALID_ARGUMENT", message: "Today date is invalid." },
       });
     });
 
-    it("denies callers without today.read before building the plan", async () => {
+    it("fails closed before building the plan when the permission set is not a valid document", async () => {
+      // No issuable (profile, version) document lacks today.read, so the
+      // "denied because today.read is missing" state is unreachable in
+      // production. What must hold is that a permission set outside every
+      // document cannot be used to build a plan at all.
       const handlers = createMcpTodayWriteHandlers(createDeps());
-      const denied = createMcpAuthInfo("token-a", principalFor(OWNER_A, []));
+      const invalid = createMcpAuthInfo("token-a", {
+        ownerUserId: OWNER_A,
+        oauthClientId: "hermes-client",
+        grantId: "10000000-0000-0000-0000-000000000001",
+        permissionProfile: "workspace_manager",
+        permissionsVersion: 1,
+        permissions: [],
+      });
 
-      const result = await handlers.getTodayPlan(denied, { date: "2026-08-28" });
+      const result = await handlers.getTodayPlan(invalid, { date: "2026-08-28" });
 
       expect(result.isError).toBe(true);
       expect((result.structuredContent as { error: { code: string } }).error.code).toBe(
-        "PERMISSION_DENIED",
+        "UNAUTHENTICATED",
       );
       expect(SupabaseTodayReadPort).not.toHaveBeenCalled();
       expect(getTodayPlan).not.toHaveBeenCalled();
+    });
+
+    it("authorizes a real document that grants today.read", async () => {
+      const handlers = createMcpTodayWriteHandlers(createDeps());
+      vi.mocked(getTodayPlan).mockResolvedValue(okData(PLAN) as never);
+      const authorized = createMcpAuthInfo("token-a", principalFor(OWNER_A, "task_manager"));
+
+      const result = await handlers.getTodayPlan(authorized, { date: "2026-08-28" });
+
+      expect(result.isError).toBeFalsy();
     });
 
     it("rejects unauthenticated calls", async () => {
@@ -300,7 +332,7 @@ describe("createMcpTodayWriteHandlers", () => {
 
     it("maps canonical failure without mutating", async () => {
       vi.mocked(planTaskForToday).mockResolvedValue(
-        failure("Unable to add task to Today right now.") as never,
+        failure("Unable to add task to Today right now.", "unknown") as never,
       );
       const handlers = createMcpTodayWriteHandlers(createDeps());
 
@@ -313,8 +345,8 @@ describe("createMcpTodayWriteHandlers", () => {
       expect(result.structuredContent).toEqual({
         ok: false,
         error: {
-          code: "APPLICATION_ERROR",
-          message: "Unable to add task to Today right now.",
+          code: "DEPENDENCY_UNAVAILABLE",
+          message: DEPENDENCY_UNAVAILABLE_MESSAGE,
         },
       });
     });
@@ -323,7 +355,7 @@ describe("createMcpTodayWriteHandlers", () => {
       const handlers = createMcpTodayWriteHandlers(createDeps());
       const denied = createMcpAuthInfo(
         "token-a",
-        principalFor(OWNER_A, ["today.read", "tasks.read"]),
+        principalFor(OWNER_A, "task_manager"),
       );
 
       const result = await handlers.planTaskForToday(denied, {
@@ -365,7 +397,7 @@ describe("createMcpTodayWriteHandlers", () => {
 
     it("maps canonical failure", async () => {
       vi.mocked(removeTaskFromToday).mockResolvedValue(
-        failure("Unable to remove task from Today right now.") as never,
+        failure("Unable to remove task from Today right now.", "unknown") as never,
       );
       const handlers = createMcpTodayWriteHandlers(createDeps());
 
@@ -375,15 +407,15 @@ describe("createMcpTodayWriteHandlers", () => {
       expect(result.structuredContent).toEqual({
         ok: false,
         error: {
-          code: "APPLICATION_ERROR",
-          message: "Unable to remove task from Today right now.",
+          code: "DEPENDENCY_UNAVAILABLE",
+          message: DEPENDENCY_UNAVAILABLE_MESSAGE,
         },
       });
     });
 
     it("requires today.update", async () => {
       const handlers = createMcpTodayWriteHandlers(createDeps());
-      const denied = createMcpAuthInfo("token-a", principalFor(OWNER_A, ["today.read"]));
+      const denied = createMcpAuthInfo("token-a", principalFor(OWNER_A, "task_manager"));
 
       const result = await handlers.removeTaskFromToday(denied, { taskId: "task-1" });
 
@@ -440,7 +472,7 @@ describe("createMcpTodayWriteHandlers", () => {
 
     it("requires today.update", async () => {
       const handlers = createMcpTodayWriteHandlers(createDeps());
-      const denied = createMcpAuthInfo("token-a", principalFor(OWNER_A, ["today.read"]));
+      const denied = createMcpAuthInfo("token-a", principalFor(OWNER_A, "task_manager"));
 
       const result = await handlers.updateTodayTaskStatus(denied, {
         taskId: "task-1",
@@ -520,7 +552,7 @@ describe("createMcpTodayWriteHandlers", () => {
 
     it("maps canonical failure on the second round", async () => {
       vi.mocked(clearCompletedToday).mockResolvedValue(
-        failure("Unable to clear completed Today items right now.") as never,
+        failure("Unable to clear completed Today items right now.", "unknown") as never,
       );
       const deps = createDeps({
         clearCompletedMrtr: { firstRound: vi.fn(), verifySecondRound: vi.fn().mockResolvedValue(undefined) },
@@ -537,8 +569,8 @@ describe("createMcpTodayWriteHandlers", () => {
       expect(result.structuredContent).toEqual({
         ok: false,
         error: {
-          code: "APPLICATION_ERROR",
-          message: "Unable to clear completed Today items right now.",
+          code: "DEPENDENCY_UNAVAILABLE",
+          message: DEPENDENCY_UNAVAILABLE_MESSAGE,
         },
       });
     });
@@ -569,7 +601,7 @@ describe("createMcpTodayWriteHandlers", () => {
         readVerifiedClearCompletedState: vi.fn().mockReturnValue({ phase: "awaiting_confirmation" }),
       });
       const handlers = createMcpTodayWriteHandlers(deps);
-      const denied = createMcpAuthInfo("token-a", principalFor(OWNER_A, ["today.read"]));
+      const denied = createMcpAuthInfo("token-a", principalFor(OWNER_A, "task_manager"));
 
       const result = await handlers.clearCompletedToday(denied, {
         date: "2026-08-28",
