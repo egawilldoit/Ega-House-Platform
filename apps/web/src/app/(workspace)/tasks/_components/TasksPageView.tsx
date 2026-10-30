@@ -22,7 +22,7 @@ import {
   updateTaskTimelineScheduleAction,
   rescheduleTaskCalendarAction,
 } from "@/app/(workspace)/tasks/actions";
-import { startTimerAction } from "@/app/timer/actions";
+import { startTimerAction } from "@/app/(workspace)/timer/actions";
 import { BulkArchiveCompletedTasksForm } from "@/components/tasks/bulk-archive-completed-tasks-form";
 import { TaskViewToolbar } from "@/components/tasks/view-toolbar/task-view-toolbar";
 import { TasksNewTaskButton } from "@/components/tasks/tasks-new-task-button";

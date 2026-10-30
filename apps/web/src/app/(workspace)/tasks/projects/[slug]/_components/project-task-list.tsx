@@ -9,7 +9,7 @@ import {
   unpinTaskAction,
   updateTaskInlineAction,
 } from "@/app/(workspace)/tasks/actions";
-import { CreateTaskForm } from "@/app/tasks/create-task-form";
+import { CreateTaskForm } from "@/app/(workspace)/tasks/create-task-form";
 import { EstimateVsActualBadge } from "@/components/tasks/estimate-vs-actual-badge";
 import { FocusPinToggleForm } from "@/components/tasks/focus-pin-toggle-form";
 import { InlineTaskUpdateForm } from "@/components/tasks/inline-task-update-form";
