@@ -1,3 +1,4 @@
+import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
 import { formatDisplayDate, formatDisplayDateTime } from "@/lib/presentation-format";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -72,15 +73,8 @@ export default async function FrictionRadarPage() {
   const hasAny = blocked.length > 0 || staleTasks.length > 0 || staleGoals.length > 0 || estimateSignals.length > 0 || contextSwitch.isFriction || neglectedGoals.length > 0 || workloadImbalance.isImbalance;
 
   return (
-    <AppShell
-      title="Workflow Friction"
-      description={`Where work is stalling, based on staleness over ${thresholdDays} days, estimate drift, context switching, neglected goals, and workload balance. Updated ${formatDisplayDateTime(generatedAt, { timezone: displayTimezone })}${
-        evidenceWindow
-          ? ` · ${formatDisplayDate(evidenceWindow.startIso, "compact", displayTimezone)} – ${formatDisplayDate(evidenceWindow.endIso, "compact", displayTimezone)}`
-          : ""
-      }.`}
-    >
-      <DashboardSection
+    <>
+<DashboardSection
         title="Signal summary"
         description="Real counts from your current friction signals."
       >
@@ -375,6 +369,6 @@ export default async function FrictionRadarPage() {
           </dl>
         )}
       </Card>
-    </AppShell>
+</>
   );
 }

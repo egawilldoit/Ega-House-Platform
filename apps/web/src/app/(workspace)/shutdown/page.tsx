@@ -1,3 +1,4 @@
+import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { formatTaskDueDate } from "@/lib/task-due-date";
@@ -14,19 +15,15 @@ export default async function ShutdownPage({ searchParams }: { searchParams: Pro
   const model = await getShutdownPageModel(resolvedSearchParams);
   if (model.shutdownResult.errorMessage || !model.shutdownResult.data) {
     return (
-      <AppShell title="Shutdown" description="Close the day — completion, carry-over, reflection.">
-        <ShutdownErrorView />
-      </AppShell>
+      <>
+<ShutdownErrorView />
+</>
     );
   }
   const data = model.shutdownResult.data;
   return (
-    <AppShell
-      title="Shutdown"
-      description={`${formatTaskDueDate(data.date)} · Close the loop on today and set up tomorrow.`}
-      actions={
-        <div className="flex items-center gap-2">
-          <Link
+    <>
+<Link
             href="/today"
             className="btn-instrument btn-instrument-muted inline-flex h-8 items-center px-3 text-xs"
           >
@@ -39,6 +36,6 @@ export default async function ShutdownPage({ searchParams }: { searchParams: Pro
       }
     >
       <ShutdownPageView model={model} />
-    </AppShell>
+</>
   );
 }

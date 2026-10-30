@@ -1,3 +1,4 @@
+import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Star } from "lucide-react";
@@ -81,8 +82,8 @@ export default async function FavoritesPage({
   const tasks = items.filter((item) => item.kind === "task");
 
   return (
-    <AppShell title="Favourites" description="Starred projects and tasks for quick navigation.">
-      {params.actionError ? (
+    <>
+{params.actionError ? (
         <p role="alert" className="feedback-block feedback-block-error mb-4">
           {params.actionError.slice(0, 180)}
         </p>
@@ -137,6 +138,6 @@ export default async function FavoritesPage({
           </p>
         </div>
       )}
-    </AppShell>
+</>
   );
 }

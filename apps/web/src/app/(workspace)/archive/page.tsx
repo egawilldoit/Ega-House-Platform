@@ -1,3 +1,4 @@
+import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
 import { ArchivePageView } from "@/app/archive/_components/ArchivePageView";
 import { getArchivePageModel } from "@/app/archive/_lib/archive-page-model";
 
@@ -15,11 +16,8 @@ export default async function ArchivePage({ searchParams }: ArchivePageProps) {
   const model = await getArchivePageModel(resolvedSearchParams);
 
   return (
-    <AppShell
-      title="Archive"
-      description="Restore archived tasks, goals and projects. Archived work keeps its history."
-    >
-      <ArchivePageView model={model} />
-    </AppShell>
+    <>
+<ArchivePageView model={model} />
+</>
   );
 }

@@ -1,3 +1,4 @@
+import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
 import type { Metadata } from "next";
 
 import { ChoiceGroup } from "@/app/settings/_components/choice-group";
@@ -43,11 +44,8 @@ export default async function WorkspacePreferencesPage({
   const loadError = error ?? state.errorMessage;
 
   return (
-    <AppShell
-      title="Preferences"
-      description="Where the workspace opens and how tasks are presented."
-    >
-      <div className="flex max-w-3xl flex-col gap-6">
+    <>
+<div className="flex max-w-3xl flex-col gap-6">
         <SettingsNav active="preferences" />
 
         {loadError ? (
@@ -107,6 +105,6 @@ export default async function WorkspacePreferencesPage({
           </CardContent>
         </Card>
       </div>
-    </AppShell>
+</>
   );
 }

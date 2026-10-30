@@ -1,3 +1,4 @@
+import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
 import type { Metadata } from "next";
 
 import { updateAppearancePreferencesAction } from "@/app/settings/appearance/actions";
@@ -50,8 +51,8 @@ export default async function AppearanceSettingsPage({
   const loadError = error ?? state.errorMessage;
 
   return (
-    <AppShell title="Appearance" description="Theme, accent, density and motion.">
-      <div className="flex max-w-3xl flex-col gap-6">
+    <>
+<div className="flex max-w-3xl flex-col gap-6">
         <SettingsNav active="appearance" />
 
         {loadError ? (
@@ -137,6 +138,6 @@ export default async function AppearanceSettingsPage({
           </CardContent>
         </Card>
       </div>
-    </AppShell>
+</>
   );
 }

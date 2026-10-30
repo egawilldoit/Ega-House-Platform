@@ -72,20 +72,13 @@ function AgentShell({
   children: ReactNode;
 }) {
   return (
-    <AppShell
-      title={title}
-      description={description}
-      actions={
-        <Link
-          href="/agents"
-          className="btn-instrument btn-instrument-muted flex h-8 items-center px-3 text-sm"
-        >
-          All agents
+    <>
+All agents
         </Link>
       }
     >
       {children}
-    </AppShell>
+</>
   );
 }
 

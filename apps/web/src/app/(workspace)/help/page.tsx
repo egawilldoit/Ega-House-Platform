@@ -1,3 +1,4 @@
+import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
 import type { Metadata } from "next";
 import Link from "next/link";
 
@@ -126,19 +127,12 @@ const helpGroups: HelpGroup[] = [
 
 export default async function HelpPage() {
   return (
-    <AppShell
-      title="Help Center"
-      description={`Workflow guide — ${WORKFLOW_LOOP}.`}
-      actions={
-        <Link
-          href="/today"
-          className="btn-instrument btn-instrument-muted flex h-8 items-center gap-2 px-3 text-sm"
-        >
-          Back to Today
+    <>
+Back to Today
         </Link>
       }
     >
       <HelpDirectory groups={helpGroups} />
-    </AppShell>
+</>
   );
 }

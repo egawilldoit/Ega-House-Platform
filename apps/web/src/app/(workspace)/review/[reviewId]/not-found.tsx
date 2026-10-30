@@ -4,11 +4,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 export default function ReviewDetailNotFound() {
   return (
-    <AppShell
-      title="Review not found"
-      description="The selected review could not be located."
-    >
-      <Card>
+    <>
+<Card>
         <CardHeader>
           <CardTitle>Missing review</CardTitle>
         </CardHeader>
@@ -24,6 +21,6 @@ export default function ReviewDetailNotFound() {
           </Link>
         </CardContent>
       </Card>
-    </AppShell>
+</>
   );
 }

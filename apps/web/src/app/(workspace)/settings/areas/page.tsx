@@ -1,3 +1,4 @@
+import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Folder } from "lucide-react";
@@ -185,11 +186,8 @@ export default async function AreasSettingsPage({
   );
 
   return (
-    <AppShell
-      title="Settings"
-      description="Group projects into life and work areas."
-    >
-      <div className="flex max-w-4xl flex-col gap-6">
+    <>
+<div className="flex max-w-4xl flex-col gap-6">
         <SettingsNav active="areas" />
 
         {success ? (
@@ -274,6 +272,6 @@ export default async function AreasSettingsPage({
           </Card>
         )}
       </div>
-    </AppShell>
+</>
   );
 }

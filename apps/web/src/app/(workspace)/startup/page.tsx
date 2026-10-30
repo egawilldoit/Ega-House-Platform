@@ -1,3 +1,4 @@
+import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
 import type { Metadata } from "next";
 import { getStartupPageModel } from "./_lib/startup-page-model";
 import { StartupPageView, StartupErrorView } from "./_components/StartupPageView";
@@ -12,14 +13,14 @@ export default async function StartupPage({ searchParams }: { searchParams: Prom
   const model = await getStartupPageModel(resolvedSearchParams);
   if (model.startupResult.errorMessage || !model.startupResult.data) {
     return (
-      <AppShell title="Startup" description="Intentional daily start — priorities, attention, focus decision.">
-        <StartupErrorView actionError={model.actionError} />
-      </AppShell>
+      <>
+<StartupErrorView actionError={model.actionError} />
+</>
     );
   }
   return (
-    <AppShell title="Startup" description={`${model.startupResult.data.week.weekStart} · Set priorities for the week, then move to execution.`}>
-      <StartupPageView model={model} />
-    </AppShell>
+    <>
+<StartupPageView model={model} />
+</>
   );
 }
