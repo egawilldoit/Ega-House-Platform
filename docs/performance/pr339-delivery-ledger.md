@@ -17,3 +17,9 @@ Model constraint: only iceman-contributor-free on OpenCode 2 (verified exact mod
 | Merge main | lead | done | 9bf814ca | resolved conflicts, vercel regions dub1 preserved |
 | A Review CSV | subagent(iceman-contributor-free) | done | 7f59652b | fixed href, added tests |
 | E2E rewrite | subagent(iceman-contributor-free) | done | f04be35e | comprehensive tests added |
+
+| Task | Owner | Status | Commit | Notes |
+|------|-------|--------|--------|-------|
+| W5 Home | subagent(iceman-contributor-free) | done | 630b4233 | primary action non-blocking |
+| W6 Today | subagent(iceman-contributor-free) | done | 1735343e | drawer parallelized |
+| W7 Tasks | subagent(iceman-contributor-free) | done | d0248b83 | drawer optimized |
