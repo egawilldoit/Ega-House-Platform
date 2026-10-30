@@ -13,7 +13,8 @@ const vendorPath = path.join(root, 'vendor/decode-uri-component/index.cjs');
 
 test('security-patched decoder is installed from the owned CommonJS source', () => {
   const resolved = require.resolve('decode-uri-component');
-  assert.equal(fs.realpathSync(resolved), fs.realpathSync(vendorPath));
+  assert.equal(resolved, path.join(root, 'node_modules/decode-uri-component/index.cjs'));
+  assert.notEqual(fs.realpathSync(resolved), fs.realpathSync(vendorPath), 'Metro requires a packed copy rather than an external symlink');
   assert.equal(
     createHash('sha256').update(fs.readFileSync(resolved)).digest('hex'),
     createHash('sha256').update(fs.readFileSync(vendorPath)).digest('hex'),
