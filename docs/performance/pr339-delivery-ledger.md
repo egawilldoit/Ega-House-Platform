@@ -11,3 +11,9 @@ Model constraint: only iceman-contributor-free on OpenCode 2 (verified exact mod
 | W2 | subagent(iceman-contributor-free) | done | 5b89a8ae | imports/actions restored |
 | W3 | subagent(iceman-contributor-free) | done | 0435725c | E2E shell tests added |
 | W4 | subagent(iceman-contributor-free) | done | 32f697ed | realtime overlap preserved |
+
+| Task | Owner | Status | Commit | Notes |
+|------|-------|--------|--------|-------|
+| Merge main | lead | done | 9bf814ca | resolved conflicts, vercel regions dub1 preserved |
+| A Review CSV | subagent(iceman-contributor-free) | done | 7f59652b | fixed href, added tests |
+| E2E rewrite | subagent(iceman-contributor-free) | done | f04be35e | comprehensive tests added |
