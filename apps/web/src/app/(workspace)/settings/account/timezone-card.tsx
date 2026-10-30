@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
-import { updateAccountTimezoneAction } from "@/app/settings/account/actions";
+import { updateAccountTimezoneAction } from "@/app/(workspace)/settings/account/actions";
 
 type TimezoneCardProps = {
   /** Effective timezone actually used for day/time semantics (UTC when fallback). */

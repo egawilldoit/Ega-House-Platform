@@ -50,7 +50,7 @@ import type { TaskRecord } from "@/lib/services/task-service";
 import type {
   TaskTableCellUpdateInput,
   TaskTableCellUpdateResult,
-} from "@/app/tasks/actions";
+} from "@/app/(workspace)/tasks/actions";
 import {
   TASK_TABLE_COLUMN_MAX_WIDTH,
   TASK_TABLE_COLUMN_MIN_WIDTH,

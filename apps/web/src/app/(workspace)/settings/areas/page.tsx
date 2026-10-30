@@ -18,7 +18,7 @@ import {
 import { SupabaseProjectsRepository } from "@ega/data-access";
 
 import { AreaColorDot, AreaIconView } from "@/components/projects/area-icon";
-import { SettingsNav } from "@/app/settings/_components/settings-nav";
+import { SettingsNav } from "@/app/(workspace)/settings/_components/settings-nav";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,

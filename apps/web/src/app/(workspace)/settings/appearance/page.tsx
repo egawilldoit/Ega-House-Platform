@@ -1,9 +1,9 @@
 import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
 import type { Metadata } from "next";
 
-import { updateAppearancePreferencesAction } from "@/app/settings/appearance/actions";
-import { ChoiceGroup } from "@/app/settings/_components/choice-group";
-import { SettingsNav } from "@/app/settings/_components/settings-nav";
+import { updateAppearancePreferencesAction } from "@/app/(workspace)/settings/appearance/actions";
+import { ChoiceGroup } from "@/app/(workspace)/settings/_components/choice-group";
+import { SettingsNav } from "@/app/(workspace)/settings/_components/settings-nav";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import { getWebUserPreferencesState } from "@/lib/services/user-preferences-service";

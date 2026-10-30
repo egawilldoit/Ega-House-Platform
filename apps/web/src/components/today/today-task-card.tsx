@@ -7,7 +7,7 @@ import {
   markTodayTaskBlockedAction,
   removeTaskFromTodayAction,
   updateTodayTaskStatusAction,
-} from "@/app/today/actions";
+} from "@/app/(workspace)/today/actions";
 import { TaskDueDateLabel } from "@/components/tasks/task-due-date-label";
 import { TimerStopForm } from "@/components/timer/timer-stop-form";
 import { Badge } from "@/components/ui/badge";
