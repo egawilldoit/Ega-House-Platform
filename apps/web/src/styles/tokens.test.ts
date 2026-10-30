@@ -146,6 +146,9 @@ describe("EGA House workspace tokens — single authority", () => {
     expect(motion).toContain("transition-duration: 0.01ms !important");
     expect(motion).toContain('html[data-reduce-motion="true"] .motion-check');
     expect(motion).toContain('html[data-reduce-motion="true"] .motion-rise');
+    const reduceMotionRiseIndex = motion.indexOf('html[data-reduce-motion="true"] .motion-rise');
+    expect(reduceMotionRiseIndex).toBeGreaterThan(-1);
+    expect(motion.slice(reduceMotionRiseIndex, reduceMotionRiseIndex + 260)).toContain("animation: none");
     expect(motion).toContain("@media (prefers-reduced-motion: reduce)");
   });
 

@@ -16,7 +16,16 @@ export default async function WorkAnalyticsPage({ searchParams }: { searchParams
   const resolvedSearchParams = await searchParams;
   const model = await getWorkAnalyticsPageModel(resolvedSearchParams as unknown as Record<string, string | undefined>);
   if (!model.user) {
-    redirect("/login?next=/work-analytics");
+    const nextParams = new URLSearchParams();
+    for (const [key, value] of Object.entries(resolvedSearchParams)) {
+      if (typeof value === "string" && value.trim()) {
+        nextParams.set(key, value);
+      }
+    }
+    const nextPath = nextParams.toString()
+      ? `/work-analytics?${nextParams.toString()}`
+      : "/work-analytics";
+    redirect(`/login?next=${encodeURIComponent(nextPath)}`);
   }
   return (
     <AppShell

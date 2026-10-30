@@ -8,12 +8,19 @@ import { WorkspaceErrorFallback } from "@/components/layout/workspace-error-fall
 type FavoritesErrorPageProps = {
   error: Error & { digest?: string };
   reset: () => void;
+  retry: () => void;
 };
 
-export default function FavoritesErrorPage({ error, reset }: FavoritesErrorPageProps) {
+export default function FavoritesErrorPage({ error, reset, retry }: FavoritesErrorPageProps) {
   useEffect(() => {
     Sentry.captureException(error);
   }, [error]);
 
-  return <WorkspaceErrorFallback reset={reset} scopeLabel="Favourites" />;
+  return (
+    <WorkspaceErrorFallback
+      reset={reset}
+      retry={retry}
+      scopeLabel="Favourites"
+    />
+  );
 }

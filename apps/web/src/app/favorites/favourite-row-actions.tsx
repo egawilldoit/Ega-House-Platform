@@ -20,7 +20,7 @@ export function MoveButton({ direction, disabled, label }: MoveButtonProps) {
       disabled={disabled || pending}
       aria-label={label}
       className={cn(
-        "inline-flex h-7 w-7 min-h-[40px] min-w-[40px] items-center justify-center rounded-[var(--radius-xs)] text-[color:var(--ega-text-secondary)] transition-colors hover:bg-[var(--ega-surface-hover)] hover:text-[color:var(--ega-text)] focus-visible:outline-none focus-visible:shadow-[var(--ega-focus-ring)] disabled:opacity-40 disabled:hover:bg-transparent",
+        "inline-flex h-7 w-7 min-h-[40px] min-w-[40px] items-center justify-center rounded-[var(--radius-xs)] text-[color:var(--ega-text-secondary)] transition-colors hover:bg-[var(--ega-surface-hover)] hover:text-[color:var(--ega-text)] focus-visible:shadow-[var(--ega-focus-ring)] disabled:opacity-40 disabled:hover:bg-transparent",
         pending && "opacity-60",
       )}
     >
@@ -40,7 +40,7 @@ export function RemoveButton({ label }: RemoveButtonProps) {
       type="submit"
       aria-label={label}
       className={cn(
-        "inline-flex h-7 w-7 min-h-[40px] min-w-[40px] items-center justify-center rounded-[var(--radius-xs)] text-[color:var(--ega-data-orange)] transition-colors hover:outline hover:outline-2 hover:outline-[var(--ega-data-orange)] focus-visible:outline-none focus-visible:shadow-[var(--ega-focus-ring)]",
+        "inline-flex h-7 w-7 min-h-[40px] min-w-[40px] items-center justify-center rounded-[var(--radius-xs)] text-[color:var(--ega-data-orange)] transition-colors hover:outline hover:outline-2 hover:outline-[var(--ega-data-orange)] focus-visible:shadow-[var(--ega-focus-ring)]",
         pending && "opacity-60",
       )}
     >
