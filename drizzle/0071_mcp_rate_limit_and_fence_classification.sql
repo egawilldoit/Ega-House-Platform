@@ -207,7 +207,7 @@ BEGIN
   ELSIF p_table = 'projects' THEN
     IF private.has_active_mcp_permission('projects.update') THEN
       v_allowed := v_allowed || ARRAY[
-        'status', 'description', 'area_id', 'updated_at', 'mcp_operation_id', 'mcp_client_id'
+        'status', 'updated_at', 'mcp_operation_id', 'mcp_client_id'
       ];
     END IF;
   ELSIF p_table = 'task_sessions' THEN
