@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 
 import { OwnerScopedRealtimeRefresh } from "@/components/realtime/owner-scoped-realtime-refresh";
 import { getCurrentUser } from "@/lib/services/auth-service";
@@ -32,13 +33,14 @@ export default async function HomeRoute({
   searchParams: Promise<{ myTasks?: string }>;
 }) {
   const resolvedSearchParams = await searchParams;
-  const [snapshotResult, attentionResult, user, identity, dashboard] = await Promise.all([
+  const [snapshotResult, attentionResult, user, identity] = await Promise.all([
     getOperatorSnapshotData(),
     getWorkspaceShellMetricsResult(),
     getCurrentUser(),
     getShellIdentity(),
-    getHomeDashboardData(),
   ]);
+
+  const dashboardPromise = getHomeDashboardData();
 
   // Bounded active-session read, only when the canonical Operator snapshot says
   // a timer is running. It supplies startedAt for the live elapsed display; Home
@@ -48,20 +50,6 @@ export default async function HomeRoute({
     const activeTimerResult = await getActiveTimerSession();
     activeTimerStartedAt = activeTimerResult.data?.startedAt ?? null;
   }
-
-  const model = buildHomeModel({
-    snapshot: snapshotResult.data,
-    attention: attentionResult.available
-      ? {
-          overdue: attentionResult.metrics.overdueTaskCount,
-          dueToday: attentionResult.metrics.dueTodayTaskCount,
-          reviewMissing: attentionResult.metrics.reviewMissing,
-        }
-      : null,
-    activeTimerStartedAt,
-    dashboard,
-    myTasksTab: resolvedSearchParams.myTasks,
-  });
 
   // Greeting/date come from the canonical Time Context already embedded in the
   // Operator snapshot — never from the runtime or browser timezone.
@@ -73,6 +61,70 @@ export default async function HomeRoute({
       })
     : null;
 
+  const baseModel = buildHomeModel({
+    snapshot: snapshotResult.data,
+    attention: attentionResult.available
+      ? {
+          overdue: attentionResult.metrics.overdueTaskCount,
+          dueToday: attentionResult.metrics.dueTodayTaskCount,
+          reviewMissing: attentionResult.metrics.reviewMissing,
+        }
+      : null,
+    activeTimerStartedAt,
+    dashboard: null,
+    myTasksTab: resolvedSearchParams.myTasks,
+  });
+
+  const baseModel = buildHomeModel({
+    snapshot: snapshotResult.data,
+    attention: attentionResult.available
+      ? {
+          overdue: attentionResult.metrics.overdueTaskCount,
+          dueToday: attentionResult.metrics.dueTodayTaskCount,
+          reviewMissing: attentionResult.metrics.reviewMissing,
+        }
+      : null,
+    activeTimerStartedAt,
+    dashboard: null,
+    myTasksTab: resolvedSearchParams.myTasks,
+  });
+
+  async function HomeDashboardLoader({
+    snapshot,
+    attentionAvailable,
+    attentionMetrics,
+    activeTimerStartedAt: ats,
+    myTasksTab,
+    greeting: g,
+    userName,
+    dashPromise,
+  }: {
+    snapshot: typeof snapshotResult.data;
+    attentionAvailable: boolean;
+    attentionMetrics: typeof attentionResult.metrics | null;
+    activeTimerStartedAt: string | null;
+    myTasksTab: string | undefined;
+    greeting: HomeGreeting | null;
+    userName: string;
+    dashPromise: ReturnType<typeof getHomeDashboardData>;
+  }) {
+    const dashboard = await dashPromise;
+    const model = buildHomeModel({
+      snapshot,
+      attention: attentionAvailable && attentionMetrics
+        ? {
+            overdue: attentionMetrics.overdueTaskCount,
+            dueToday: attentionMetrics.dueTodayTaskCount,
+            reviewMissing: attentionMetrics.reviewMissing,
+          }
+        : null,
+      activeTimerStartedAt: ats,
+      dashboard,
+      myTasksTab,
+    });
+    return <AuthenticatedHomePage model={model} greeting={g} name={userName} />;
+  }
+
   return (
     <>
       <OwnerScopedRealtimeRefresh
@@ -80,7 +132,26 @@ export default async function HomeRoute({
         channelPrefix="home"
         tables={["tasks", "task_sessions", "week_reviews"]}
       />
-      <AuthenticatedHomePage model={model} greeting={greeting} name={identity.name} />
+      <Suspense
+        fallback={
+          <AuthenticatedHomePage
+            model={baseModel}
+            greeting={greeting}
+            name={identity.name}
+          />
+        }
+      >
+        <HomeDashboardLoader
+          snapshot={snapshotResult.data}
+          attentionAvailable={attentionResult.available}
+          attentionMetrics={attentionResult.available ? attentionResult.metrics : null}
+          activeTimerStartedAt={activeTimerStartedAt}
+          myTasksTab={resolvedSearchParams.myTasks}
+          greeting={greeting}
+          userName={identity.name}
+          dashPromise={dashboardPromise}
+        />
+      </Suspense>
     </>
   );
 }
