@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
+import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
 import {
   AGENT_AVATAR_COLORS,
   AGENT_KIND_LABELS,
@@ -66,19 +67,18 @@ function AgentShell({
   title,
   description,
   children,
+  actions,
 }: {
   title: string;
   description: string;
   children: ReactNode;
+  actions?: ReactNode;
 }) {
   return (
     <>
-All agents
-        </Link>
-      }
-    >
+      <WorkspacePageHeader title={title} description={description} actions={actions} />
       {children}
-</>
+    </>
   );
 }
 
@@ -91,195 +91,143 @@ function AgentDetail({ agent }: { agent: AgentActorDetail }) {
     <AgentShell
       title={agent.displayName}
       description={`${AGENT_KIND_LABELS[agent.kind]} · owner-declared identity`}
+      actions={
+        <Link href="/agents" className="btn-instrument btn-instrument-muted">
+          All agents
+        </Link>
+      }
     >
       <div className="flex flex-col gap-4">
         <Card level="hero">
           <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div className="flex min-w-0 items-start gap-3">
-              <AgentBadge
-                displayName={agent.displayName}
-                kind={agent.kind}
-                avatarColor={agent.avatarColor}
-                role={agent.role}
-                size="lg"
-                className="items-start"
-              />
+              <AgentBadge displayName={agent.displayName} />
               <div className="min-w-0">
-                <p className="text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
-                  {capabilities.join(" · ")}
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="text-[length:var(--text-panel-title)] font-semibold">{agent.displayName}</h2>
+                  <Badge tone={archived ? "muted" : "active"}>{archived ? "Archived" : "Active"}</Badge>
+                  <Badge tone="muted">{AGENT_KIND_LABELS[agent.kind]}</Badge>
+                </div>
+                <p className="mt-1 text-[length:var(--text-body)] text-[color:var(--ega-text-secondary)]">
+                  {agent.description || "No description provided."}
                 </p>
                 <p className="mt-1 text-[length:var(--text-meta)] text-[color:var(--ega-text-tertiary)]">
-                  {agent.lastObservedAt
-                    ? `Last observed: ${agent.lastObservedLabel} · ${formatDate(agent.lastObservedAt, "unknown")}`
-                    : "No observed activity yet."}
+                  Created {formatDate(agent.createdAt, "unknown")} · Last updated{" "}
+                  {formatDate(agent.updatedAt, "unknown")}
+                  {agent.lastUsedAt ? ` · Last used ${formatDate(agent.lastUsedAt, "unknown")}` : ""}
+                </p>
+                <p className="mt-2 text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
+                  Capabilities: {capabilities.length > 0 ? capabilities.join(", ") : "None declared"}
                 </p>
               </div>
-            </div>
-            <div className="flex shrink-0 flex-wrap items-center gap-2">
-              <Badge tone={archived ? "muted" : "active"}>{archived ? "Archived" : "Active"}</Badge>
-              <Badge tone="muted">
-                {activeCredentials.length} active credential
-                {activeCredentials.length === 1 ? "" : "s"}
-              </Badge>
             </div>
           </CardContent>
         </Card>
 
-        <Card clip level="standard">
-          <CardHeader>
-            <CardTitle>Credentials</CardTitle>
-            <CardDescription>
-              Capabilities come only from these credentials. Revoking one credential leaves the
-              agent&apos;s other credentials unchanged.
-            </CardDescription>
-          </CardHeader>
-          {agent.credentials.length === 0 ? (
-            <EmptyState
-              icon={Bot}
-              title="No credentials yet"
-              description="Issue a credential to let this agent authenticate. The raw token is shown once."
-            />
-          ) : (
-            <ul>
-              {agent.credentials.map((credential) => (
-                <AgentCredentialRow
-                  key={credential.id}
-                  credential={credential}
-                  returnTo={`/agents/${agent.id}`}
-                />
-              ))}
-            </ul>
-          )}
-          <div className="border-t border-[var(--ega-divider)] px-4 py-4">
-            <h3 className="mb-3 text-[length:var(--text-panel-title)] font-semibold text-[color:var(--ega-text)]">
-              Issue a credential
-            </h3>
-            <IssueCredentialForm agentId={agent.id} disabled={archived} />
-            {archived ? (
-              <p className="mt-2 text-[length:var(--text-meta)] text-[color:var(--ega-text-tertiary)]">
-                Reactivate this agent before issuing another credential.
-              </p>
-            ) : null}
-          </div>
-        </Card>
-
-        <Card clip level="standard">
-          <CardHeader>
-            <CardTitle>Recent activity</CardTitle>
-            <CardDescription>
-              Durable events recorded for this identity. Revoking a credential does not remove them.
-            </CardDescription>
-          </CardHeader>
-          {agent.events.length === 0 ? (
-            <EmptyState
-              icon={History}
-              title="No activity observed yet"
-              description="Agent events appear here after a credential performs an action through the agent API."
-            />
-          ) : (
-            <ul>
-              {agent.events.map((event) => (
-                <EventRow key={event.id} event={event} />
-              ))}
-            </ul>
-          )}
-        </Card>
-
-        <Card level="standard">
-          <CardHeader>
-            <CardTitle>Profile</CardTitle>
-            <CardDescription>
-              Display role and kind are presentation only; they never grant capabilities.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-4">
-            <form action={updateAgentAction} className="grid gap-3 sm:grid-cols-2">
-              <input type="hidden" name="agentId" value={agent.id} />
-              <input type="hidden" name="returnTo" value={`/agents/${agent.id}`} />
-              <div className="flex flex-col gap-1">
-                <label htmlFor="edit-agent-name" className="text-[length:var(--text-meta)] font-medium">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <Card>
+            <CardHeader>
+              <CardTitle>Profile</CardTitle>
+              <CardDescription>Rename, describe or change the agent kind.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form action={updateAgentAction} className="flex flex-col gap-3">
+                <input type="hidden" name="agentId" value={agent.id} />
+                <input type="hidden" name="returnTo" value={`/agents/${agent.id}`} />
+                <label className="flex flex-col gap-1 text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
                   Display name
+                  <input name="displayName" defaultValue={agent.displayName} className={FIELD_CLASS} required maxLength={80} />
                 </label>
-                <input
-                  id="edit-agent-name"
-                  name="displayName"
-                  required
-                  maxLength={80}
-                  defaultValue={agent.displayName}
-                  className={FIELD_CLASS}
-                />
-              </div>
-              <div className="flex flex-col gap-1">
-                <label htmlFor="edit-agent-kind" className="text-[length:var(--text-meta)] font-medium">
+                <label className="flex flex-col gap-1 text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
+                  Description
+                  <textarea name="description" defaultValue={agent.description ?? ""} className="min-h-20 w-full rounded-[var(--radius-sm)] border border-[var(--ega-border)] bg-[var(--ega-surface)] px-2 py-1.5 text-[length:var(--text-body)] text-[color:var(--ega-text)]" maxLength={280} />
+                </label>
+                <label className="flex flex-col gap-1 text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
                   Kind
+                  <select name="kind" defaultValue={agent.kind} className={FIELD_CLASS}>
+                    {AGENT_KINDS.map((kind) => (
+                      <option key={kind} value={kind}>
+                        {AGENT_KIND_LABELS[kind]}
+                      </option>
+                    ))}
+                  </select>
                 </label>
-                <select
-                  id="edit-agent-kind"
-                  name="kind"
-                  defaultValue={agent.kind}
-                  className={FIELD_CLASS}
-                >
-                  {AGENT_KINDS.map((kind) => (
-                    <option key={kind} value={kind}>
-                      {AGENT_KIND_LABELS[kind]}
-                    </option>
-                  ))}
-                </select>
+                <div>
+                  <PendingSubmitButton type="submit" size="sm">
+                    Save changes
+                  </PendingSubmitButton>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Credentials</CardTitle>
+              <CardDescription>Issue scoped credentials or revoke them individually.</CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-4">
+              <IssueCredentialForm agentId={agent.id} />
+              <div className="flex flex-col gap-2">
+                {agent.credentials.length === 0 ? (
+                  <p className="text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
+                    No credentials issued yet.
+                  </p>
+                ) : (
+                  agent.credentials.map((credential) => (
+                    <AgentCredentialRow key={credential.id} agentId={agent.id} credential={credential} />
+                  ))
+                )}
               </div>
-              <div className="flex flex-col gap-1">
-                <label htmlFor="edit-agent-role" className="text-[length:var(--text-meta)] font-medium">
-                  Display role
-                </label>
-                <input
-                  id="edit-agent-role"
-                  name="role"
-                  maxLength={64}
-                  defaultValue={agent.role ?? ""}
-                  className={FIELD_CLASS}
+              <div className="border-t border-[var(--ega-divider)] pt-3">
+                <p className="mb-2 text-[length:var(--text-meta)] font-medium">Lifecycle</p>
+                <form action={setAgentArchivedAction} className="border-t border-[var(--ega-divider)] pt-3">
+                  <input type="hidden" name="agentId" value={agent.id} />
+                  <input type="hidden" name="returnTo" value={`/agents/${agent.id}`} />
+                  <input type="hidden" name="archived" value={archived ? "false" : "true"} />
+                  <p className="mb-2 text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
+                    {archived
+                      ? "Reactivating restores the identity. Previously revoked credentials stay revoked."
+                      : "Archiving revokes every active credential of this agent and keeps its activity history."}
+                  </p>
+                  <PendingSubmitButton
+                    type="submit"
+                    variant={archived ? "secondary" : "danger"}
+                    size="sm"
+                    pendingLabel={archived ? "Reactivating…" : "Archiving…"}
+                  >
+                    {archived ? "Reactivate agent" : "Archive agent and revoke credentials"}
+                  </PendingSubmitButton>
+                </form>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <History className="h-4 w-4" />
+              Recent activity
+            </CardTitle>
+            <CardDescription>Latest observed actions for this agent.</CardDescription>
+          </CardHeader>
+          <CardContent className="p-0">
+            {agent.recentEvents.length === 0 ? (
+              <div className="px-4 py-6">
+                <EmptyState
+                  icon={Bot}
+                  title="No activity yet"
+                  description="Activity appears after the agent uses a credential."
                 />
               </div>
-              <div className="flex flex-col gap-1">
-                <label htmlFor="edit-agent-color" className="text-[length:var(--text-meta)] font-medium">
-                  Avatar colour
-                </label>
-                <select
-                  id="edit-agent-color"
-                  name="avatarColor"
-                  defaultValue={agent.avatarColor}
-                  className={FIELD_CLASS}
-                >
-                  {AGENT_AVATAR_COLORS.map((color) => (
-                    <option key={color} value={color}>
-                      {color.charAt(0).toUpperCase() + color.slice(1)}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="sm:col-span-2">
-                <PendingSubmitButton type="submit" variant="secondary" size="sm" pendingLabel="Saving…">
-                  Save profile
-                </PendingSubmitButton>
-              </div>
-            </form>
-
-            <form action={setAgentArchivedAction} className="border-t border-[var(--ega-divider)] pt-3">
-              <input type="hidden" name="agentId" value={agent.id} />
-              <input type="hidden" name="returnTo" value={`/agents/${agent.id}`} />
-              <input type="hidden" name="archived" value={archived ? "false" : "true"} />
-              <p className="mb-2 text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
-                {archived
-                  ? "Reactivating restores the identity. Previously revoked credentials stay revoked."
-                  : "Archiving revokes every active credential of this agent and keeps its activity history."}
-              </p>
-              <PendingSubmitButton
-                type="submit"
-                variant={archived ? "secondary" : "danger"}
-                size="sm"
-                pendingLabel={archived ? "Reactivating…" : "Archiving…"}
-              >
-                {archived ? "Reactivate agent" : "Archive agent and revoke credentials"}
-              </PendingSubmitButton>
-            </form>
+            ) : (
+              <ul className="divide-y divide-[var(--ega-divider)]">
+                {agent.recentEvents.map((event) => (
+                  <EventRow key={event.id} event={event} />
+                ))}
+              </ul>
+            )}
           </CardContent>
         </Card>
       </div>

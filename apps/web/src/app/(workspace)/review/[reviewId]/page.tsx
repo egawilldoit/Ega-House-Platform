@@ -1,16 +1,11 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatDateTime, formatIsoDate } from "@/lib/review-week";
 import { createClient } from "@/lib/supabase/server";
 import { getWebTimeContext } from "@/lib/services/time-context-service";
+import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
 
 import { getReviewDetailFields, toFieldValue } from "../review-detail-state";
 
@@ -68,10 +63,15 @@ export default async function ReviewDetailPage({ params }: ReviewDetailPageProps
 
   return (
     <>
-Back to review workspace
-        </Link>
-      }
-    >
+      <WorkspacePageHeader
+        title="Past Review"
+        description="Inspect a saved weekly review entry."
+        actions={
+          <Link href="/review" className="btn-instrument btn-instrument-muted inline-flex h-8 items-center px-3 text-xs">
+            Back to review workspace
+          </Link>
+        }
+      />
       <div className="workspace-main-rail-grid">
         <Card>
           <CardHeader>
@@ -94,10 +94,12 @@ Back to review workspace
           </CardHeader>
           <CardContent className="flex flex-col gap-2 text-[length:var(--text-body)] leading-[var(--leading-relaxed)] text-ega-text-secondary">
             <p>
-              <span className="text-ega-text">Created:</span> {formatDateTime(review.created_at, reviewTimezone)}
+              <span className="text-ega-text">Created:</span>{" "}
+              {formatDateTime(review.created_at, reviewTimezone)}
             </p>
             <p>
-              <span className="text-ega-text">Updated:</span> {formatDateTime(review.updated_at, reviewTimezone)}
+              <span className="text-ega-text">Updated:</span>{" "}
+              {formatDateTime(review.updated_at, reviewTimezone)}
             </p>
             <p className="break-all">
               <span className="text-ega-text">Review ID:</span> {review.id}
@@ -105,6 +107,6 @@ Back to review workspace
           </CardContent>
         </Card>
       </div>
-</>
+    </>
   );
 }

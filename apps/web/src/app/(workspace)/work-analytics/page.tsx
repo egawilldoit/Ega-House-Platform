@@ -1,26 +1,27 @@
 import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
 import type { Metadata } from "next";
-import { AnalyticsFilters } from "./analytics-filters";
 import { getWorkAnalyticsPageModel } from "./_lib/work-analytics-page-model";
-import { WorkAnalyticsPageView } from "./_components/WorkAnalyticsPageView";
-
-export const dynamic = "force-dynamic";
+import { InteractiveAnalytics } from "./interactive-analytics";
 
 export const metadata: Metadata = {
   title: "Analytics",
-  description: "See where your focused time goes.",
+  description: "Operational evidence and trends.",
 };
 
-export default async function WorkAnalyticsPage({ searchParams }: { searchParams: Promise<{ range?: string; groupBy?: string; breakdownBy?: string; includeOpen?: string }> }) {
+export default async function WorkAnalyticsPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const resolvedSearchParams = await searchParams;
-  const model = await getWorkAnalyticsPageModel(resolvedSearchParams as unknown as Record<string, string | undefined>);
-  if (!model.user) return <div className="p-6">Please log in to view work analytics.</div>;
-  if (model.error) return <div className="p-6">{model.error}</div>;
+  const normalized = Object.fromEntries(
+    Object.entries(resolvedSearchParams).map(([k, v]) => [k, Array.isArray(v) ? v[0] : v]),
+  ) as Record<string, string | undefined>;
+  const model = await getWorkAnalyticsPageModel(normalized);
   return (
     <>
-}
-    >
-      <WorkAnalyticsPageView model={model} />
-</>
+      <WorkspacePageHeader title="Analytics" description="Operational evidence and trends." />
+      <InteractiveAnalytics model={model} />
+    </>
   );
 }

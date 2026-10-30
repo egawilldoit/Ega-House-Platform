@@ -1,138 +1,46 @@
 import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
 import type { Metadata } from "next";
-import Link from "next/link";
 
-import { SHORTCUT_HELP_SECTIONS } from "@/lib/keyboard-shortcuts";
-
-import { HelpDirectory, type HelpGroup } from "./help-directory";
-
-const WORKFLOW_LOOP = "Projects → Goals → Tasks → Timer → Review";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 export const metadata: Metadata = {
   title: "Help",
-  description: `Practical guidance for running the ${WORKFLOW_LOOP} loop.`,
+  description: "Shortcuts, guidance and system references.",
 };
 
-const workflowSteps = [
-  {
-    title: "Plan on Goals",
-    detail:
-      "Use /goals to define outcome-based targets and the immediate next move for each objective.",
-  },
-  {
-    title: "Break down in Tasks",
-    detail:
-      "Use /tasks to convert goal intent into concrete execution items with priority and due date clarity.",
-  },
-  {
-    title: "Run focus sessions",
-    detail:
-      "Use /timer to start tracked sessions against active work so your execution data stays grounded in real time.",
-  },
-  {
-    title: "Close the loop in Review",
-    detail:
-      "Use /review weekly to capture wins, blockers, and next steps based on what actually happened.",
-  },
+const shortcuts = [
+  { keys: "Cmd+K / Ctrl+K", action: "Open command palette" },
+  { keys: "Cmd+Shift+T / Ctrl+Shift+T", action: "Go to Today" },
+  { keys: "Cmd+Shift+N / Ctrl+Shift+N", action: "Go to Tasks" },
+  { keys: "G then H", action: "Go to Home" },
+  { keys: "G then T", action: "Go to Today" },
+  { keys: "Esc", action: "Close drawer/dialog" },
 ];
 
-const faq = [
-  {
-    question: "Where should I start each day?",
-    answer:
-      "Open /today first for the current plan, then move into /tasks or /timer based on your priority queue.",
-  },
-  {
-    question: "How do I connect tasks to strategy?",
-    answer:
-      "Attach tasks to goals whenever possible so weekly review reflects progress and blockers at the goal level.",
-  },
-  {
-    question: "What if I do not use keyboard shortcuts heavily?",
-    answer:
-      "The workspace is fully usable with pointer and keyboard navigation. Keep actions route-focused and use the top bar search to move quickly.",
-  },
-];
-
-const shortcutEntries = SHORTCUT_HELP_SECTIONS.flatMap((section) =>
-  section.shortcuts.map((shortcut) => ({
-    id: `shortcut-${shortcut.id}`,
-    title: shortcut.description,
-    detail: `${section.title} shortcut`,
-    combo: shortcut.combo,
-  })),
-);
-
-const helpGroups: HelpGroup[] = [
-  {
-    id: "getting-started",
-    title: "Getting Started",
-    description: "Run the core workflow in five minutes.",
-    entries: [
-      {
-        id: "getting-started-priorities",
-        title: "1. Confirm your priorities",
-        detail:
-          "Use /today to check today's load, active projects, and timer state before starting work.",
-      },
-      {
-        id: "getting-started-tasks",
-        title: "2. Start from active tasks",
-        detail:
-          "Open /tasks to refine the queue, then launch a timer session for the next item that should move today.",
-      },
-    ],
-  },
-  {
-    id: "shortcuts",
-    title: "Shortcuts",
-    description: "Navigation and fast actions, including the keyboard shortcut sheet (press ?).",
-    entries: [
-      {
-        id: "shortcuts-sidebar",
-        title: "Route jumps",
-        detail:
-          "Use the left sidebar for direct route jumps between /today, /tasks, /goals, /timer, and /review.",
-      },
-      {
-        id: "shortcuts-search",
-        title: "Search",
-        detail:
-          "Use the top search field to find tasks, goals, and projects quickly without leaving your current context.",
-      },
-      ...shortcutEntries,
-    ],
-  },
-  {
-    id: "workflow-guides",
-    title: "Workflow Guides",
-    description: WORKFLOW_LOOP,
-    entries: workflowSteps.map((step, index) => ({
-      id: `workflow-${index}`,
-      title: step.title,
-      detail: step.detail,
-    })),
-  },
-  {
-    id: "faq",
-    title: "FAQ",
-    description: "Common operating questions.",
-    entries: faq.map((item, index) => ({
-      id: `faq-${index}`,
-      title: item.question,
-      detail: item.answer,
-    })),
-  },
-];
-
-export default async function HelpPage() {
+export default function HelpPage() {
   return (
     <>
-Back to Today
-        </Link>
-      }
-    >
-      <HelpDirectory groups={helpGroups} />
-</>
+      <WorkspacePageHeader title="Help" description="Shortcuts, guidance and system references." />
+      <div className="flex flex-col gap-4">
+        <Card>
+          <CardHeader>
+            <CardTitle>Keyboard shortcuts</CardTitle>
+            <CardDescription>Fast navigation and actions.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="divide-y divide-[color:var(--ega-border-subtle)]">
+              {shortcuts.map((shortcut) => (
+                <div key={shortcut.keys} className="flex items-center justify-between py-2">
+                  <span className="text-[length:var(--text-body)]">{shortcut.action}</span>
+                  <kbd className="rounded border border-[color:var(--ega-border-subtle)] px-2 py-0.5 text-xs">
+                    {shortcut.keys}
+                  </kbd>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    </>
   );
 }
