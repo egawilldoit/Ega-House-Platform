@@ -22,6 +22,18 @@ export async function getTimerPageModel(searchParams: TimerSearchParams) {
   const { tasks, openSessions, todayTaskBreakdown, todayTotalDurationSeconds, sessionHistory, taskTotalDurations } = workspaceData;
   const activeSession = openSessions[0] ?? null;
   const trackedTotalSeconds = Object.values(taskTotalDurations).reduce((sum, v) => sum + v, 0);
+  const seenSessionIds = new Set<string>();
+  const deduplicatedSessionHistory = (sessionHistory ?? []).filter((session) => {
+    if (!session?.id) {
+      return false;
+    }
+    if (seenSessionIds.has(session.id)) {
+      return false;
+    }
+    seenSessionIds.add(session.id);
+    return true;
+  });
+  const boundedSessionHistory = deduplicatedSessionHistory.slice(0, 50);
   return {
     actionError,
     actionSuccess,
@@ -32,7 +44,7 @@ export async function getTimerPageModel(searchParams: TimerSearchParams) {
     openSessions,
     todayTaskBreakdown,
     todayTotalDurationSeconds,
-    sessionHistory,
+    sessionHistory: boundedSessionHistory,
     taskTotalDurations,
     activeSession,
     trackedTotalSeconds,

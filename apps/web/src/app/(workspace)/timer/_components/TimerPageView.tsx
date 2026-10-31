@@ -91,7 +91,7 @@ export function TimerPageView({ model }: { model: TimerPageModel }) {
       <OwnerScopedRealtimeRefresh
         ownerUserId={ownerUserId}
         channelPrefix="timer"
-        tables={["task_sessions"]}
+        tables={["task_sessions", "tasks"]}
       />
 
       {hasSessionConflict ? (
@@ -369,7 +369,7 @@ export function TimerPageView({ model }: { model: TimerPageModel }) {
                         </tr>
                       </thead>
                       <tbody className="max-[761px]:block">
-                        {group.rows.slice(0, 8).map((entry) => (
+                        {group.rows.slice(0, 20).map((entry) => (
                           <tr
                             key={entry.id}
                             id={`session-${entry.id}`}

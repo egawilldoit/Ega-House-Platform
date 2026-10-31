@@ -36,3 +36,11 @@ test("falls back to /timer for unsupported return paths", () => {
   assert.equal(getTimerActionReturnPath("/review"), "/timer");
   assert.equal(getTimerActionReturnPath(""), "/timer");
 });
+
+test("keeps /timer paths as-is and falls back for unknown", () => {
+  assert.equal(getTimerActionReturnPath("/timer"), "/timer");
+  assert.equal(getTimerActionReturnPath("/dashboard"), "/dashboard");
+  assert.equal(getTimerActionReturnPath("/today"), "/today");
+  assert.equal(getTimerActionReturnPath("/tasks"), "/tasks");
+  assert.equal(getTimerActionReturnPath("/unknown"), "/timer");
+});

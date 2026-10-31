@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { memo } from "react";
 
 import { LiveDuration } from "@/components/timer/live-duration";
 import { TimerStopForm } from "@/components/timer/timer-stop-form";
@@ -33,7 +34,7 @@ type ActiveTimerDisplayProps = {
  * Elapsed time stays in the isolated `LiveDuration` leaf so the one-second tick
  * never re-renders this tree.
  */
-export function ActiveTimerDisplay({
+function ActiveTimerDisplayComponent({
   session,
   taskContextHref,
   hasSessionConflict = false,
@@ -120,3 +121,5 @@ export function ActiveTimerDisplay({
     </div>
   );
 }
+
+export const ActiveTimerDisplay = memo(ActiveTimerDisplayComponent);

@@ -121,11 +121,11 @@ test("TimerPageView keeps timing correction behind a compact per-row trigger", (
 
 test("TimerPageView wires the session editor to the update action and passes row context", () => {
   const source = readFileSync(
-    resolve(process.cwd(), "src/app/timer/_components/TimerPageView.tsx"),
+    resolve(process.cwd(), "src/app/(workspace)/timer/_components/TimerPageView.tsx"),
     "utf8",
   );
 
-  assert.match(source, /action=\{updateSessionTimingAction\}/);
+  assert.match(source, /action=\{updateSessionTimingAction\}/); replaceAll=true
   assert.match(source, /taskTitle=\{entry\.taskTitle\}/);
   assert.match(source, /projectName=\{entry\.projectName\}/);
   assert.match(source, /sessionId=\{entry\.id\}/);
@@ -144,7 +144,7 @@ test("TimerPageView keeps the idle start-session region as the hero", () => {
   assert.match(markup, /Start session/);
 
   const source = readFileSync(
-    resolve(process.cwd(), "src/app/timer/_components/TimerPageView.tsx"),
+    resolve(process.cwd(), "src/app/(workspace)/timer/_components/TimerPageView.tsx"),
     "utf8",
   );
   assert.match(source, /action=\{startTimerAction\}/);
@@ -153,7 +153,7 @@ test("TimerPageView keeps the idle start-session region as the hero", () => {
 
 test("TimerPageView gives the start and resolve submits a pending state", () => {
   const source = readFileSync(
-    resolve(process.cwd(), "src/app/timer/_components/TimerPageView.tsx"),
+    resolve(process.cwd(), "src/app/(workspace)/timer/_components/TimerPageView.tsx"),
     "utf8",
   );
 
