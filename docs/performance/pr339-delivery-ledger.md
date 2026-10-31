@@ -23,3 +23,8 @@ Model constraint: only iceman-contributor-free on OpenCode 2 (verified exact mod
 | W5 Home | subagent(iceman-contributor-free) | done | 630b4233 | primary action non-blocking |
 | W6 Today | subagent(iceman-contributor-free) | done | 1735343e | drawer parallelized |
 | W7 Tasks | subagent(iceman-contributor-free) | done | d0248b83 | drawer optimized |
+
+| Task | Owner | Status | Commit | Notes |
+|------|-------|--------|--------|-------|
+| W9 Timer | subagent(iceman-contributor-free) | done | 7b6e56aa | isolated ticks, bounded history |
+| W10 Nav | subagent(iceman-contributor-free) | done | (see W9 batch) | canonical nav preserved |
