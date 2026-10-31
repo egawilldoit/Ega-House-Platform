@@ -34,3 +34,7 @@ Model constraint: only iceman-contributor-free on OpenCode 2 (verified exact mod
 |------|-------|--------|--------|-------|
 | W11 Mobile/A11y | subagent(iceman-contributor-free) | done | d96ae231 | overflow, keyboard, themes, PWA |
 | W12 Perf evidence | subagent(iceman-contributor-free) | done | d96ae231 | post-dublin report added |
+
+| Task | Owner | Status | Commit | Notes |
+|------|-------|--------|--------|-------|
+| W13 Final Verification | subagent(iceman-contributor-free) | done | 78507300 | full verification report complete |
