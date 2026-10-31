@@ -52,7 +52,7 @@ export function WorkspaceShell({
         onCollapsedChange={setCollapsed}
       />
 
-      <main className="app-main workspace-main">
+      <main className="app-main workspace-main" style={{ maxWidth: "100%" }}>
         <OfflineBanner />
         <TopBar
           metrics={metrics}
