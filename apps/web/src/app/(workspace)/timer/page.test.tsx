@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-const page = readFileSync(resolve(process.cwd(), "src/app/timer/page.tsx"), "utf8");
+const page = readFileSync(
+  resolve(process.cwd(), "src/app/(workspace)/timer/page.tsx"),
+  "utf8",
+);
 
 describe("Timer — Open Today control", () => {
   it("Open Today control navigates to /today via Link", () => {
@@ -25,3 +28,11 @@ describe("Timer — Open Today control", () => {
     expect(page).not.toMatch(/<span[^>]*btn-instrument[^>]*>Today<\/span>/);
   });
 });
+
+  it("imports LiveDuration in the active timer stack", () => {
+    const activeDisplay = readFileSync(
+      resolve(process.cwd(), "src/components/timer/active-timer-display.tsx"),
+      "utf8",
+    );
+    expect(activeDisplay).toContain("LiveDuration");
+  });

@@ -64,6 +64,20 @@ export async function stopTimerAction(formData: FormData) {
   });
 }
 
+export async function cancelTimerAction(formData: FormData) {
+  const returnPath = getTimerActionReturnPath(formData.get("returnTo"));
+  const submittedSessionId = String(formData.get("sessionId") ?? "").trim();
+  const result = await stopTimerSession({ sessionId: submittedSessionId });
+  if (result.errorMessage) {
+    redirectToTimer(returnPath, { errorMessage: result.errorMessage });
+  }
+
+  revalidateWorkspaceFor("timer", { returnTo: returnPath });
+  redirectToTimer(returnPath, {
+    successMessage: "Timer cancelled.",
+  });
+}
+
 type StoppedTimerOutcome = "done" | "in_progress" | "blocked" | "no_change";
 
 type HandleStoppedTimerOutcomeDependencies = {

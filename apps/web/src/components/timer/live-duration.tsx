@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { memo, useEffect, useState } from "react";
 
 import {
   formatDurationClock,
@@ -21,7 +21,7 @@ type LiveDurationProps = {
  * The ticking state deliberately lives in this leaf component so parent trees
  * never re-render once per second.
  */
-export function LiveDuration({
+function LiveDurationComponent({
   startedAt,
   size = "lg",
   label = "Elapsed",
@@ -40,11 +40,46 @@ export function LiveDuration({
   }
 
   useEffect(() => {
-    const intervalId = window.setInterval(() => {
-      setElapsedSeconds(getElapsedDurationSeconds(startedAt));
-    }, 1000);
+    let isHidden =
+      typeof document !== "undefined" && document.visibilityState === "hidden";
 
-    return () => window.clearInterval(intervalId);
+    const updateElapsed = () => {
+      if (
+        typeof document !== "undefined" &&
+        document.visibilityState === "hidden"
+      ) {
+        isHidden = true;
+        return;
+      }
+      isHidden = false;
+      setElapsedSeconds(getElapsedDurationSeconds(startedAt));
+    };
+
+    updateElapsed();
+    const intervalId = window.setInterval(updateElapsed, 1000);
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        isHidden = true;
+        return;
+      }
+
+      if (isHidden) {
+        isHidden = false;
+        setElapsedSeconds(getElapsedDurationSeconds(startedAt));
+      }
+    };
+
+    if (typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", handleVisibilityChange);
+    }
+
+    return () => {
+      window.clearInterval(intervalId);
+      if (typeof document !== "undefined") {
+        document.removeEventListener("visibilitychange", handleVisibilityChange);
+      }
+    };
   }, [startedAt]);
 
   return (
@@ -63,3 +98,5 @@ export function LiveDuration({
     </div>
   );
 }
+
+export const LiveDuration = memo(LiveDurationComponent);

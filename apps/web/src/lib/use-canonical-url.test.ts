@@ -27,6 +27,7 @@ test("routeBelongsToWorkspace returns false for other workspace routes", () => {
 test("routeBelongsToWorkspace returns false for global app routes on workspace", () => {
   // On tasks.egawilldoit.online, /dashboard does NOT belong.
   assert.equal(routeBelongsToWorkspace("/dashboard", "tasks.egawilldoit.online"), false);
+  assert.equal(routeBelongsToWorkspace("/home", "tasks.egawilldoit.online"), false);
   assert.equal(routeBelongsToWorkspace("/today", "tasks.egawilldoit.online"), false);
   assert.equal(routeBelongsToWorkspace("/backlog", "tasks.egawilldoit.online"), false);
 });
@@ -37,6 +38,7 @@ test("GLOBAL_APP_ROUTES includes all known global app routes", () => {
     "/backlog",
     "/dashboard",
     "/help",
+    "/home",
     "/settings",
     "/shutdown",
     "/startup",
@@ -50,4 +52,16 @@ test("GLOBAL_APP_ROUTES includes all known global app routes", () => {
   assert.equal(GLOBAL_APP_ROUTES.has("/timer"), false);
   assert.equal(GLOBAL_APP_ROUTES.has("/goals"), false);
   assert.equal(GLOBAL_APP_ROUTES.has("/review"), false);
+});
+
+test("routeBelongsToWorkspace preserves behavior for routes with deeper paths", () => {
+  assert.equal(routeBelongsToWorkspace("/dashboard/settings", "tasks.egawilldoit.online"), false);
+  assert.equal(routeBelongsToWorkspace("/home", "tasks.egawilldoit.online"), false);
+});
+
+test("global app routes include home and are not workspace-scoped", () => {
+  assert.equal(GLOBAL_APP_ROUTES.has("/home"), true);
+  assert.equal(routeBelongsToWorkspace("/home", "goals.egawilldoit.online"), false);
+  assert.equal(routeBelongsToWorkspace("/home", "timer.egawilldoit.online"), false);
+  assert.equal(routeBelongsToWorkspace("/home", "review.egawilldoit.online"), false);
 });

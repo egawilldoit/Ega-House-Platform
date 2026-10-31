@@ -211,7 +211,7 @@ export async function proxy(request: NextRequest) {
     // instead of rewriting it into an invalid workspace-prefixed route.
     if (GLOBAL_APP_ROUTES.includes(request.nextUrl.pathname as `/${string}`)) {
       const redirectUrl = new URL(
-        request.nextUrl.pathname,
+        `${request.nextUrl.pathname}${request.nextUrl.search}${request.nextUrl.hash}`,
         `https://${CANONICAL_HOST}`,
       );
       return copySupabaseResponse(response, NextResponse.redirect(redirectUrl));
@@ -241,7 +241,7 @@ export async function proxy(request: NextRequest) {
   // Still redirect global routes to canonical host instead of rewriting.
   if (GLOBAL_APP_ROUTES.includes(request.nextUrl.pathname as `/${string}`)) {
     const redirectUrl = new URL(
-      request.nextUrl.pathname,
+      `${request.nextUrl.pathname}${request.nextUrl.search}${request.nextUrl.hash}`,
       `https://${CANONICAL_HOST}`,
     );
     return NextResponse.redirect(redirectUrl);
