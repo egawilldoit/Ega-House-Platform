@@ -4,12 +4,10 @@ import { useState, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
 
 import type { ShellIdentity, WorkspaceShellMetrics } from "@/lib/workspace-shell";
-import { cn } from "@/lib/utils";
 import { OfflineBanner } from "./offline-banner";
 import { Sidebar, type SidebarFavorite, type SidebarProject } from "./sidebar";
 import { SidebarMobileDrawer } from "./sidebar-mobile-drawer";
 import { TopBar } from "./top-bar";
-import { getShellRouteMeta } from "./shell-route-meta";
 
 type WorkspaceShellProps = {
   favorites?: SidebarFavorite[];
@@ -17,21 +15,10 @@ type WorkspaceShellProps = {
   projects?: SidebarProject[];
   metrics: WorkspaceShellMetrics;
   identity: ShellIdentity;
-  title: string;
-  description?: string;
-  actions?: ReactNode;
-  className?: string;
-  contentClassName?: string;
-  hideHeader?: boolean;
 };
 
 function buildBreadcrumb(pathname: string) {
-  const route = getShellRouteMeta(pathname);
-  if (route.href === "/home") {
-    return "Home";
-  }
-
-  return `Home › ${route.label}`;
+  return null;
 }
 
 /**
@@ -46,12 +33,6 @@ export function WorkspaceShell({
   projects = [],
   metrics,
   identity,
-  title,
-  description,
-  actions,
-  className,
-  contentClassName,
-  hideHeader = false,
 }: WorkspaceShellProps) {
   const [collapsed, setCollapsed] = useState(false);
   const pathname = usePathname();
@@ -59,7 +40,8 @@ export function WorkspaceShell({
   return (
     <div
       data-workspace-theme="workspace"
-      className={cn("ega-app-shell app-shell", className)}
+      data-ega-shell-root
+      className="ega-app-shell app-shell"
       data-collapsed={collapsed ? "true" : "false"}
     >
       <Sidebar
@@ -70,7 +52,7 @@ export function WorkspaceShell({
         onCollapsedChange={setCollapsed}
       />
 
-      <main className="app-main workspace-main">
+      <main className="app-main workspace-main" style={{ maxWidth: "100%" }}>
         <OfflineBanner />
         <TopBar
           metrics={metrics}
@@ -79,28 +61,7 @@ export function WorkspaceShell({
         />
 
         <div className="app-page ega-shell-max">
-          {!hideHeader ? (
-            <header className="app-page-header">
-              <div className="app-page-heading">
-                <div className="app-page-eyebrow">{buildBreadcrumb(pathname)}</div>
-                <h1
-                  tabIndex={-1}
-                  data-shell-page-title
-                  className="app-page-title focus:outline-none"
-                >
-                  {title}
-                </h1>
-                {description ? <p className="app-page-description">{description}</p> : null}
-              </div>
-              {actions ? <div className="app-page-actions">{actions}</div> : null}
-            </header>
-          ) : null}
-
-          <div
-            className={cn("app-content motion-rise", contentClassName)}
-          >
-            {children}
-          </div>
+          <div className="app-content">{children}</div>
         </div>
       </main>
     </div>

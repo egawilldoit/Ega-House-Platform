@@ -15,7 +15,7 @@ import { Archive as ArchiveIcon, CalendarClock, Pencil, X } from "lucide-react";
 import { ConfirmDeleteTaskButton } from "./confirm-delete-task-button";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 
-import type { UpdateTaskEditorFormState } from "@/app/tasks/actions";
+import type { UpdateTaskEditorFormState } from "@/app/(workspace)/tasks/actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";

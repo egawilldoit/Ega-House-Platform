@@ -85,6 +85,7 @@ export default async function RootLayout({
       data-density={preferences.density}
       data-reduce-motion={preferences.reducedMotion ? "true" : "false"}
       className={`h-full antialiased ${instrumentSans.variable} ${sora.variable} ${jetbrainsMono.variable}`}
+      style={{ overflowX: "hidden" }}
     >
       <head>
         <script
@@ -92,7 +93,7 @@ export default async function RootLayout({
           dangerouslySetInnerHTML={{ __html: WORKSPACE_THEME_INIT_SCRIPT }}
         />
       </head>
-      <body className="min-h-full flex flex-col" suppressHydrationWarning>
+      <body className="min-h-full flex flex-col" suppressHydrationWarning style={{ overflowX: "hidden" }}>
         <WorkspacePreferencesProvider value={preferences}>
           <MotionProvider reducedMotion={preferences.reducedMotion}>
             <DisplayTimezoneBootstrap />

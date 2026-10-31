@@ -21,6 +21,9 @@
 .ega-app-shell,
 .app-shell {
   min-height: 100dvh;
+  min-height: 100svh;
+  max-width: 100vw;
+  overflow-x: hidden;
   overflow-x: clip;
   background: var(--ega-bg);
   color: var(--ega-text);
@@ -43,7 +46,9 @@
   display: flex;
   flex-direction: column;
   height: 100dvh;
+  height: 100svh;
   overflow: hidden;
+  overscroll-behavior: contain;
   gap: 4px;
   padding: 12px 10px;
   background: var(--ega-bg);
@@ -54,6 +59,9 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
+  overflow-x: hidden;
+  overflow-x: clip;
+  max-width: 100%;
 }
 
 .app-topbar {
@@ -64,8 +72,9 @@
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  height: var(--topbar-height);
+  height: calc(var(--topbar-height) + env(safe-area-inset-top, 0px));
   padding-inline: var(--content-gutter);
+  padding-top: env(safe-area-inset-top, 0px);
   background: var(--ega-bg);
 }
 
@@ -74,7 +83,8 @@
   max-width: var(--content-max);
   margin-inline: auto;
   padding-inline: var(--content-gutter);
-  padding-bottom: 48px;
+  padding-bottom: calc(48px + env(safe-area-inset-bottom, 0px));
+  min-width: 0;
 }
 
 .app-page-header {
@@ -846,6 +856,9 @@
   position: fixed;
   inset: 0;
   z-index: 60;
+  overflow: hidden;
+  overscroll-behavior: contain;
+  max-width: 100vw;
 }
 
 .workspace-drawer-backdrop {
@@ -1452,11 +1465,43 @@ select.ega-glass-input {
   flex-direction: column;
   gap: 4px;
   width: min(288px, 86vw);
+  max-width: 86vw;
   padding: 12px 10px;
+  padding-top: calc(12px + env(safe-area-inset-top, 0px));
+  padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
   overflow-y: auto;
+  overflow-x: hidden;
   overscroll-behavior: contain;
   background: var(--ega-bg);
   border-right: 1px solid var(--ega-border);
+  touch-action: pan-y;
+  box-sizing: border-box;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .workspace-drawer-panel-enter {
+    animation: workspace-drawer-slide-in var(--duration-enter) var(--ease-spring);
+    will-change: transform;
+  }
+
+  @keyframes workspace-drawer-slide-in {
+    from {
+      transform: translateX(-100%);
+    }
+    to {
+      transform: translateX(0);
+    }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .workspace-drawer-panel-enter {
+    animation: none;
+  }
+}
+
+html[data-reduce-motion="true"] .workspace-drawer-panel-enter {
+  animation: none !important;
 }
 
 .workspace-drawer-panel > .workspace-sidebar-nav {
@@ -1831,6 +1876,11 @@ select.ega-glass-input {
     grid-template-columns: minmax(0, 1fr);
   }
 
+  .app-shell {
+    overflow-x: hidden;
+    overflow-x: clip;
+  }
+
   .app-sidebar {
     display: none;
   }
@@ -1842,11 +1892,13 @@ select.ega-glass-input {
 
   .app-topbar {
     padding-inline: 16px;
+    padding-top: env(safe-area-inset-top, 0px);
+    height: calc(var(--topbar-height) + env(safe-area-inset-top, 0px));
   }
 
   .app-page {
     padding-inline: 16px;
-    padding-bottom: 32px;
+    padding-bottom: calc(32px + env(safe-area-inset-bottom, 0px));
   }
 
   .app-page-header {
@@ -1879,6 +1931,10 @@ select.ega-glass-input {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     scroll-behavior: auto !important;
+  }
+
+  .workspace-drawer-panel-enter {
+    animation: none !important;
   }
 }
 

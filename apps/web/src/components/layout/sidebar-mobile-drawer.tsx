@@ -67,7 +67,9 @@ export function WorkspaceNavigationDrawer({
     const restoreFocus = options?.restoreFocus ?? true;
     setOpen(false);
     if (restoreFocus) {
-      queueMicrotask(() => triggerRef.current?.focus());
+      queueMicrotask(() => {
+        triggerRef.current?.focus({ preventScroll: true });
+      });
     }
   }, []);
 
@@ -78,13 +80,19 @@ export function WorkspaceNavigationDrawer({
 
     previousOverflowRef.current = document.body.style.overflow;
     document.body.style.overflow = "hidden";
+    document.documentElement.style.overflow = "hidden";
+    const previousPaddingRight = document.body.style.paddingRight;
+    const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
+    if (scrollbarWidth > 0) {
+      document.body.style.paddingRight = `${scrollbarWidth}px`;
+    }
 
     const panel = panelRef.current;
     const focusTarget = panel ? getVisibleFocusableElements(panel)[0] : undefined;
     if (focusTarget) {
-      focusTarget.focus();
+      focusTarget.focus({ preventScroll: true });
     } else {
-      panel?.focus();
+      panel?.focus({ preventScroll: true });
     }
 
     function onKeyDown(event: KeyboardEvent) {
@@ -99,6 +107,7 @@ export function WorkspaceNavigationDrawer({
       const focusable = getVisibleFocusableElements(panelRef.current);
       if (focusable.length === 0) {
         event.preventDefault();
+        panelRef.current.focus({ preventScroll: true });
         return;
       }
 
@@ -109,13 +118,13 @@ export function WorkspaceNavigationDrawer({
 
       if (activeIndex === -1) {
         event.preventDefault();
-        (event.shiftKey ? last : first).focus();
+        (event.shiftKey ? last : first).focus({ preventScroll: true });
       } else if (event.shiftKey && activeIndex === 0) {
         event.preventDefault();
-        last.focus();
+        last.focus({ preventScroll: true });
       } else if (!event.shiftKey && activeIndex === focusable.length - 1) {
         event.preventDefault();
-        first.focus();
+        first.focus({ preventScroll: true });
       }
     }
 
@@ -123,6 +132,8 @@ export function WorkspaceNavigationDrawer({
     return () => {
       document.removeEventListener("keydown", onKeyDown);
       document.body.style.overflow = previousOverflowRef.current;
+      document.documentElement.style.overflow = "";
+      document.body.style.paddingRight = previousPaddingRight;
     };
   }, [closeDrawer, open]);
 
@@ -151,12 +162,16 @@ export function WorkspaceNavigationDrawer({
         </button>
 
         {open ? (
-          <div className="workspace-drawer-layer">
+          <div className="workspace-drawer-layer" role="presentation" style={{ maxWidth: "100vw", overflow: "hidden" }}>
             <button
               type="button"
               className="workspace-drawer-backdrop"
               aria-label="Close workspace navigation"
               onClick={() => closeDrawer()}
+              onPointerDown={(event) => {
+                event.preventDefault();
+              }}
+              tabIndex={-1}
             />
             <div
               ref={panelRef}
@@ -167,6 +182,7 @@ export function WorkspaceNavigationDrawer({
               tabIndex={-1}
               className="workspace-drawer-panel workspace-drawer-panel-enter"
               onClickCapture={onPanelClick}
+              style={{ overscrollBehavior: "contain", maxWidth: "86vw", boxSizing: "border-box" }}
             >
               {children}
               <button
