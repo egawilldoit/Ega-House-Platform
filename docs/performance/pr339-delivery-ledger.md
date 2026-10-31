@@ -28,3 +28,4 @@ Model constraint: only iceman-contributor-free on OpenCode 2 (verified exact mod
 |------|-------|--------|--------|-------|
 | W9 Timer | subagent(iceman-contributor-free) | done | 7b6e56aa | isolated ticks, bounded history |
 | W10 Nav | subagent(iceman-contributor-free) | done | (see W9 batch) | canonical nav preserved |
+| W12 | subagent(iceman-contributor-free) | done | e6d37881/docs+scripts | post-Dublin measurements, limits recorded, no 50% CPU claim |
