@@ -213,8 +213,8 @@ test("EGA-662: the analytics page and export render no competing streak", () => 
   const read = (relative: string) =>
     readFileSync(resolve(process.cwd(), relative), "utf8");
 
-  const view = read("src/app/work-analytics/_components/WorkAnalyticsPageView.tsx");
-  const exportRoute = read("src/app/work-analytics/export/route.ts");
+  const view = read("src/app/(workspace)/work-analytics/_components/WorkAnalyticsPageView.tsx");
+  const exportRoute = read("src/app/(workspace)/work-analytics/export/route.ts");
 
   assert.ok(!view.includes("currentStreak"), "page must not render the legacy streak");
   assert.ok(

@@ -1,9 +1,9 @@
-import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Bot } from "lucide-react";
 
 import { AgentBadge } from "@/components/agents/agent-badge";
+import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -84,7 +84,11 @@ export default async function AgentsPage({
 
   return (
     <>
-<div className="flex flex-col gap-4">
+      <WorkspacePageHeader
+      title="Agents"
+      description="Owner-registered agent identities, their credentials and observed activity."
+    />
+      <div className="flex flex-col gap-4">
         {params.error ? (
           <p
             role="alert"
@@ -156,6 +160,6 @@ export default async function AgentsPage({
           </Card>
         ) : null}
       </div>
-</>
+    </>
   );
 }

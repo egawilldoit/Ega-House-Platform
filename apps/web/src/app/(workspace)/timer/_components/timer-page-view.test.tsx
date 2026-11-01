@@ -125,7 +125,7 @@ test("TimerPageView wires the session editor to the update action and passes row
     "utf8",
   );
 
-  assert.match(source, /action=\{updateSessionTimingAction\}/); replaceAll=true
+  assert.match(source, /action=\{updateSessionTimingAction\}/);
   assert.match(source, /taskTitle=\{entry\.taskTitle\}/);
   assert.match(source, /projectName=\{entry\.projectName\}/);
   assert.match(source, /sessionId=\{entry\.id\}/);

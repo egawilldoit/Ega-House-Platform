@@ -17,7 +17,7 @@ const updateThemePreferenceAction = vi.hoisted(() =>
   }),
 );
 
-vi.mock("@/app/settings/appearance/actions", () => ({
+vi.mock("@/app/(workspace)/settings/appearance/actions", () => ({
   updateThemePreferenceAction,
 }));
 

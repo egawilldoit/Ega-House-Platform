@@ -1,4 +1,4 @@
-import { WorkspaceContentSkeleton } from "@/components/layout/workspace-content-skeleton";
+import { WorkspaceSkeletonShell } from "@/components/layout/workspace-skeleton-shell";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -17,10 +17,7 @@ function GoalRowSkeleton() {
 
 export default function GoalsLoadingPage() {
   return (
-    <WorkspaceContentSkeleton
-      title="Goals"
-      description="Objectives with health, progress, next step, and linked tasks."
-    >
+    <WorkspaceSkeletonShell title="Goals" description="Objectives with health, progress, next step, and linked tasks.">
       <div className="flex flex-col gap-6">
         <div className="kpi-grid">
           {[0, 1, 2, 3].map((index) => (
@@ -64,6 +61,6 @@ export default function GoalsLoadingPage() {
           </Card>
         </div>
       </div>
-    </WorkspaceContentSkeleton>
+    </WorkspaceSkeletonShell>
   );
 }

@@ -137,7 +137,15 @@ export default async function TodayPage({
     ]);
 
   if (todayResult.errorMessage || !todayResult.data) {
-    return <PlannerErrorState actionError={actionError} />;
+    return (
+      <>
+        <WorkspacePageHeader
+          title="Today"
+          description="Focus on what matters today. Make progress, one step at a time."
+        />
+        <PlannerErrorState actionError={actionError} />
+      </>
+    );
   }
 
   const snapshot = todayResult.data;
@@ -207,6 +215,7 @@ export default async function TodayPage({
   let selectedTaskActivityPage: Awaited<ReturnType<typeof getTaskActivity>> = {
     items: [],
     hasMore: false,
+    errorMessage: null,
   };
   let selectedTaskActivity: Awaited<ReturnType<typeof getTaskActivity>>["items"] = [];
   let selectedTaskComments: Awaited<ReturnType<typeof getTaskCommentThread>> = {

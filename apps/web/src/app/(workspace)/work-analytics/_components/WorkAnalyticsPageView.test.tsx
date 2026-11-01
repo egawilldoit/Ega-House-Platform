@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-const view = readFileSync(resolve(process.cwd(), "src/app/work-analytics/_components/WorkAnalyticsPageView.tsx"), "utf8");
+const view = readFileSync(resolve(process.cwd(), "src/app/(workspace)/work-analytics/_components/WorkAnalyticsPageView.tsx"), "utf8");
 
 describe("WorkAnalytics — restored capabilities", () => {
   it("exposes Month Comparison (monthComparison)", () => {

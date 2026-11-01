@@ -1,4 +1,4 @@
-import { WorkspaceContentSkeleton } from "@/components/layout/workspace-content-skeleton";
+import { WorkspaceSkeletonShell } from "@/components/layout/workspace-skeleton-shell";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -18,10 +18,7 @@ function ArchiveRowSkeleton() {
 
 export default function ArchiveLoadingPage() {
   return (
-    <WorkspaceContentSkeleton
-      title="Archive"
-      description="Restore archived tasks, goals and projects. Archived work keeps its history."
-    >
+    <WorkspaceSkeletonShell title="Archive" description="Restore archived tasks, goals and projects. Archived work keeps its history.">
       <div className="flex flex-col gap-6">
         <div className="flex flex-wrap items-center gap-2">
           <Skeleton className="h-7 w-24" />
@@ -43,6 +40,6 @@ export default function ArchiveLoadingPage() {
           </div>
         </Card>
       </div>
-    </WorkspaceContentSkeleton>
+    </WorkspaceSkeletonShell>
   );
 }

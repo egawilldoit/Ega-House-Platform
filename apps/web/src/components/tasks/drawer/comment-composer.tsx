@@ -19,7 +19,7 @@ import {
   readTaskCommentDraftState,
   writeTaskCommentDraft,
 } from "@/lib/task-comment-draft";
-import type { TaskCommentActionResult } from "@/app/tasks/comment-actions";
+import type { TaskCommentActionResult } from "@/app/(workspace)/tasks/comment-actions";
 import { MentionMenu, filterMentionCandidates } from "./mention-menu";
 
 type CommentComposerProps = {

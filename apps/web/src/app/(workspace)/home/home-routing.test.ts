@@ -31,7 +31,7 @@ test("EGA-653: shell navigation and metadata know about /home", () => {
 });
 
 test("EGA-653: an authenticated /home route exists and composes canonical owners", () => {
-  const homeRoute = read("app", "home", "page.tsx");
+  const homeRoute = read("app", "(workspace)", "home", "page.tsx");
   assert.match(homeRoute, /getOperatorSnapshotData/);
   assert.match(homeRoute, /getWorkspaceShellMetricsResult/);
   assert.match(homeRoute, /buildHomeModel/);
@@ -40,7 +40,7 @@ test("EGA-653: an authenticated /home route exists and composes canonical owners
 });
 
 test("EGA-663/EGA-798: legacy /dashboard compatibility route redirects to the launch page", () => {
-  const dashboardPage = read("app", "dashboard", "page.tsx");
+  const dashboardPage = read("app", "(workspace)", "dashboard", "page.tsx");
   assert.match(dashboardPage, /getLaunchPagePath\(preferences\.launchPage\)/);
   assert.doesNotMatch(dashboardPage, /redirect\("\/today"\)/);
 });

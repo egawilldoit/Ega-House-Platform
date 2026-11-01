@@ -1,4 +1,3 @@
-import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Folder } from "lucide-react";
@@ -17,6 +16,7 @@ import {
 } from "@ega/domain";
 import { SupabaseProjectsRepository } from "@ega/data-access";
 
+import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
 import { AreaColorDot, AreaIconView } from "@/components/projects/area-icon";
 import { SettingsNav } from "@/app/(workspace)/settings/_components/settings-nav";
 import { Badge } from "@/components/ui/badge";
@@ -187,7 +187,11 @@ export default async function AreasSettingsPage({
 
   return (
     <>
-<div className="flex max-w-4xl flex-col gap-6">
+      <WorkspacePageHeader
+      title="Settings"
+      description="Group projects into life and work areas."
+    />
+      <div className="flex max-w-4xl flex-col gap-6">
         <SettingsNav active="areas" />
 
         {success ? (
@@ -272,6 +276,6 @@ export default async function AreasSettingsPage({
           </Card>
         )}
       </div>
-</>
+    </>
   );
 }

@@ -1,4 +1,4 @@
-import { WorkspaceContentSkeleton } from "@/components/layout/workspace-content-skeleton";
+import { WorkspaceSkeletonShell } from "@/components/layout/workspace-skeleton-shell";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -18,11 +18,8 @@ function TaskRowSkeleton() {
 
 export default function TasksLoadingPage() {
   return (
-    <WorkspaceContentSkeleton
-      title="Tasks"
-      description="Find, organize, and move your work forward."
-      actions={<Skeleton className="h-8 w-24" />}
-    >
+    <WorkspaceSkeletonShell title="Tasks" description="Find, organize, and move your work forward." actions={<Skeleton className="h-8 w-24" />}>
+
       {/* Mirrors the rail-free composition: one full-width inventory card with a
           two-row toolbar. */}
       <Card clip>
@@ -49,6 +46,6 @@ export default function TasksLoadingPage() {
           <TaskRowSkeleton />
         </div>
       </Card>
-    </WorkspaceContentSkeleton>
+    </WorkspaceSkeletonShell>
   );
 }

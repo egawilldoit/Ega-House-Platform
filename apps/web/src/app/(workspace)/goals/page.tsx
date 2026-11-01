@@ -1,5 +1,5 @@
-import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
 import type { Metadata } from "next";
+import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
 import { getGoalsPageModel } from "./_lib/goals-page-model";
 import { GoalsPageView } from "./_components/GoalsPageView";
 
@@ -24,7 +24,11 @@ export default async function GoalsPage({ searchParams }: GoalsPageProps) {
 
   return (
     <>
-<GoalsPageView model={model} />
-</>
+      <WorkspacePageHeader
+      title="Goals"
+      description="Objectives with health, progress, next step, and linked tasks."
+    />
+      <GoalsPageView model={model} />
+    </>
   );
 }

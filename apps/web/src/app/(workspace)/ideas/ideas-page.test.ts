@@ -3,9 +3,9 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
 
-const ideasPage = readFileSync(path.join(process.cwd(), "src", "app", "ideas", "page.tsx"), "utf8");
-const backlogPage = readFileSync(path.join(process.cwd(), "src", "app", "backlog", "page.tsx"), "utf8");
-const backlogActions = readFileSync(path.join(process.cwd(), "src", "app", "backlog", "actions.ts"), "utf8");
+const ideasPage = readFileSync(path.join(process.cwd(), "src", "app", "(workspace)", "ideas", "page.tsx"), "utf8");
+const backlogPage = readFileSync(path.join(process.cwd(), "src", "app", "(workspace)", "backlog", "page.tsx"), "utf8");
+const backlogActions = readFileSync(path.join(process.cwd(), "src", "app", "(workspace)", "backlog", "actions.ts"), "utf8");
 
 test("EGA-659: /ideas compatibility redirect delegates to /backlog", () => {
   assert.match(ideasPage, /redirect\(/);

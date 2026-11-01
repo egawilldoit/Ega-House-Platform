@@ -1,10 +1,10 @@
-import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
 import type { Metadata } from "next";
 
 import {
   disconnectGoogleCalendarAction,
   updateCalendarDefaultsAction,
 } from "@/app/(workspace)/settings/account/actions";
+import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -54,7 +54,11 @@ export default async function AccountSettingsPage({
 
   return (
     <>
-<div className="flex max-w-3xl flex-col gap-6">
+      <WorkspacePageHeader
+      title="Settings"
+      description="Account controls and integrations."
+    />
+      <div className="flex max-w-3xl flex-col gap-6">
         <SettingsNav active="account" />
 
         <TimezoneCard
@@ -221,6 +225,6 @@ export default async function AccountSettingsPage({
           </Card>
         ) : null}
       </div>
-</>
+    </>
   );
 }

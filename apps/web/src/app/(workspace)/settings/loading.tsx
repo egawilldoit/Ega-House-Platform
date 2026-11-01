@@ -1,10 +1,10 @@
-import { WorkspaceContentSkeleton } from "@/components/layout/workspace-content-skeleton";
+import { WorkspaceSkeletonShell } from "@/components/layout/workspace-skeleton-shell";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export default function SettingsLoadingPage() {
   return (
-    <WorkspaceContentSkeleton>
+    <WorkspaceSkeletonShell>
 <div className="flex max-w-3xl flex-col gap-6">
         {Array.from({ length: 3 }).map((_, index) => (
           <Card key={index}>
@@ -16,6 +16,6 @@ export default function SettingsLoadingPage() {
           </Card>
         ))}
       </div>
-</WorkspaceContentSkeleton>
+</WorkspaceSkeletonShell>
   );
 }

@@ -1,10 +1,10 @@
-import { WorkspaceContentSkeleton } from "@/components/layout/workspace-content-skeleton";
+import { WorkspaceSkeletonShell } from "@/components/layout/workspace-skeleton-shell";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export default function AgentDetailLoadingPage() {
   return (
-    <WorkspaceContentSkeleton>
+    <WorkspaceSkeletonShell>
 <div className="flex flex-col gap-4">
         <Card>
           <div className="flex items-start gap-3 px-5 py-5">
@@ -27,6 +27,6 @@ export default function AgentDetailLoadingPage() {
           </Card>
         ))}
       </div>
-</WorkspaceContentSkeleton>
+</WorkspaceSkeletonShell>
   );
 }

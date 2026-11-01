@@ -1,69 +1,120 @@
-import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
 import type { Metadata } from "next";
 import Link from "next/link";
-import { CheckCheck } from "lucide-react";
+import { Bell, CheckCheck } from "lucide-react";
+import type { Notification } from "@ega/contracts";
 
+import {
+  markAllNotificationsReadAction,
+} from "./actions";
+import {
+  NotificationsInbox,
+  type NotificationInboxGroup,
+  type NotificationInboxRow,
+} from "./notifications-inbox";
+import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
+import { Badge } from "@/components/ui/badge";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
-import {
-  getWebNotifications,
-  markAllNotificationsReadAction,
-  markNotificationReadAction,
-} from "@/app/(workspace)/notifications/actions";
+import { getWebNotifications } from "@/lib/services/notification-service";
+import { getNotificationTargetHref } from "@/lib/notification-target";
 import { getWebTimeContext } from "@/lib/services/time-context-service";
-import { formatRelativeTime } from "@/lib/presentation-format";
+import { getLocalDateInTimezone } from "@ega/domain/time-context";
 
 export const metadata: Metadata = {
   title: "Notifications",
-  description: "Updates and reminders that need your attention.",
+  description: "Review task reminders and return to the work they reference.",
 };
+
+export const dynamic = "force-dynamic";
 
 type NotificationsPageProps = {
   searchParams: Promise<{
     cursor?: string;
-    notice?: string;
     error?: string;
+    notice?: string;
   }>;
 };
 
-type GroupKey = "today" | "thisWeek" | "earlier";
+function formatNotificationDate(value: string) {
+  return new Intl.DateTimeFormat("en", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(value));
+}
 
-function getGroupForDate(date: Date, now: Date) {
-  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const startOfWeek = new Date(startOfToday);
-  const day = startOfWeek.getDay();
-  const diffToMonday = (day + 6) % 7;
-  startOfWeek.setDate(startOfWeek.getDate() - diffToMonday);
+function formatNotificationDayHeading(value: string, timezone?: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "Unknown date";
+  }
 
-  if (date >= startOfToday) {
-    return "today" satisfies GroupKey;
+  // Today/Yesterday derive from the owner's EGA House timezone, not the
+  // process timezone or the UTC date of the createdAt instant.
+  const now = new Date();
+  const notificationDate = timezone
+    ? getLocalDateInTimezone(date, timezone)
+    : date.toISOString().slice(0, 10);
+  const todayDate = timezone
+    ? getLocalDateInTimezone(now, timezone)
+    : now.toISOString().slice(0, 10);
+  const [notifYear, notifMonth, notifDay] = notificationDate.split("-").map(Number);
+  const [todayYear, todayMonth, todayDay] = todayDate.split("-").map(Number);
+  const startOfToday = Date.UTC(todayYear, todayMonth - 1, todayDay);
+  const startOfDay = Date.UTC(notifYear, notifMonth - 1, notifDay);
+  const dayDiff = Math.round((startOfToday - startOfDay) / 86_400_000);
+
+  if (dayDiff === 0) {
+    return "Today";
   }
-  if (date >= startOfWeek) {
-    return "thisWeek" satisfies GroupKey;
+  if (dayDiff === 1) {
+    return "Yesterday";
   }
-  return "earlier" satisfies GroupKey;
+
+  return new Intl.DateTimeFormat("en", {
+    weekday: "long",
+    month: "short",
+    day: "numeric",
+    ...(timezone ? { timeZone: timezone } : {}),
+  }).format(date);
 }
 
 function buildNotificationGroups(
-  notifications: Awaited<ReturnType<typeof getWebNotifications>>["data"]["notifications"],
+  notifications: Notification[],
   timezone?: string,
-) {
-  const now = new Date();
-  const groups: Record<GroupKey, typeof notifications> = {
-    today: [],
-    thisWeek: [],
-    earlier: [],
-  };
+): NotificationInboxGroup[] {
+  const groups: NotificationInboxGroup[] = [];
 
   for (const notification of notifications) {
     const createdAt = new Date(notification.createdAt);
-    if (Number.isNaN(createdAt.getTime())) {
-      groups.earlier.push(notification);
-      continue;
+    const key = Number.isNaN(createdAt.getTime())
+      ? "unknown"
+      : timezone
+        ? getLocalDateInTimezone(createdAt, timezone)
+        : createdAt.toISOString().slice(0, 10);
+
+    const row: NotificationInboxRow = {
+      id: notification.id,
+      title: notification.title,
+      body: notification.body,
+      createdAt: notification.createdAt,
+      createdAtLabel: formatNotificationDate(notification.createdAt),
+      targetHref: notification.target
+        ? getNotificationTargetHref(notification.target)
+        : null,
+      isUnread: !notification.readAt,
+    };
+
+    const lastGroup = groups[groups.length - 1];
+    if (lastGroup && lastGroup.key === key) {
+      lastGroup.rows.push(row);
+    } else {
+      groups.push({
+        key,
+        label: formatNotificationDayHeading(notification.createdAt, timezone),
+        rows: [row],
+      });
     }
-    const key = getGroupForDate(createdAt, now);
-    groups[key].push(notification);
   }
 
   return groups;
@@ -85,7 +136,10 @@ export default async function NotificationsPage({ searchParams }: NotificationsP
   if (result.errorMessage || !result.data) {
     return (
       <>
-        <WorkspacePageHeader title="Notifications" description="Updates and reminders that need your attention." />
+      <WorkspacePageHeader
+        title="Notifications"
+        description="Review reminders and return to the work they reference."
+      />
         {notice ? (
           <div className="feedback-block mb-5" role="status" aria-live="polite">
             {notice}
@@ -94,9 +148,7 @@ export default async function NotificationsPage({ searchParams }: NotificationsP
         <Card>
           <CardHeader>
             <CardTitle>Notifications unavailable</CardTitle>
-            <CardDescription>
-              {error ?? result.errorMessage ?? "Unable to load notifications right now."}
-            </CardDescription>
+            <CardDescription>{error ?? result.errorMessage ?? "Unable to load notifications right now."}</CardDescription>
           </CardHeader>
           <div className="px-[18px] py-4">
             <Link href="/notifications" className="btn-instrument btn-instrument-muted inline-flex h-8 items-center px-3 text-xs">
@@ -115,24 +167,24 @@ export default async function NotificationsPage({ searchParams }: NotificationsP
   return (
     <>
       <WorkspacePageHeader
-        title="Notifications"
-        description="Updates and reminders that need your attention."
-        actions={
-          unreadCount > 0 ? (
-            <form action={markAllNotificationsReadAction}>
-              <PendingSubmitButton
-                type="submit"
-                size="sm"
-                variant="muted"
-                className="gap-2"
-                pendingLabel="Marking all..."
-              >
-                <CheckCheck className="h-4 w-4" aria-hidden="true" />
-                Mark all read
-              </PendingSubmitButton>
-            </form>
-          ) : null
-        }
+      title="Notifications"
+      description="Review reminders and return to the work they reference."
+      actions={
+        unreadCount > 0 ? (
+          <form action={markAllNotificationsReadAction}>
+            <PendingSubmitButton
+              type="submit"
+              size="sm"
+              variant="muted"
+              className="gap-2"
+              pendingLabel="Marking all..."
+            >
+              <CheckCheck className="h-4 w-4" aria-hidden="true" />
+              Mark all read
+            </PendingSubmitButton>
+          </form>
+        ) : null
+      }
       />
       {notice ? (
         <div className="feedback-block mb-5" role="status" aria-live="polite">
@@ -144,74 +196,46 @@ export default async function NotificationsPage({ searchParams }: NotificationsP
           {error}
         </div>
       ) : null}
-      {notifications.length === 0 ? (
-        <EmptyState
-          title="You're all caught up"
-          description="New notifications will appear here when there's something to review."
-        />
-      ) : (
-        <div className="flex flex-col gap-6">
-          {(Object.keys(groups) as GroupKey[]).map((groupKey) => {
-            const group = groups[groupKey];
-            if (group.length === 0) {
-              return null;
-            }
-            const label =
-              groupKey === "today" ? "Today" : groupKey === "thisWeek" ? "This week" : "Earlier";
-            return (
-              <section key={groupKey} className="flex flex-col gap-3">
-                <h2 className="text-sm font-medium text-[color:var(--ega-text-secondary)]">{label}</h2>
-                <div className="flex flex-col divide-y divide-[color:var(--ega-border-subtle)] overflow-hidden rounded-[var(--radius-lg)] border border-[color:var(--ega-border-subtle)] bg-[color:var(--ega-surface-panel)]">
-                  {group.map((notification) => (
-                    <article
-                      key={notification.id}
-                      className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-start sm:justify-between"
-                    >
-                      <div className="flex flex-col gap-1">
-                        <div className="flex items-center gap-2">
-                          <p className="text-[length:var(--text-body)] font-medium">
-                            {notification.title}
-                          </p>
-                          {!notification.readAt ? (
-                            <span className="h-1.5 w-1.5 rounded-full bg-[color:var(--ega-accent)]" aria-label="Unread" />
-                          ) : null}
-                        </div>
-                        {notification.body ? (
-                          <p className="text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
-                            {notification.body}
-                          </p>
-                        ) : null}
-                        <p className="text-[length:var(--text-meta)] text-[color:var(--ega-text-tertiary)]">
-                          {formatRelativeTime(notification.createdAt, timeContext?.timezone)}
-                        </p>
-                      </div>
-                      {!notification.readAt ? (
-                        <form action={markNotificationReadAction}>
-                          <input type="hidden" name="notificationId" value={notification.id} />
-                          <input type="hidden" name="returnTo" value="/notifications" />
-                          <PendingSubmitButton type="submit" size="sm" variant="muted">
-                            Mark read
-                          </PendingSubmitButton>
-                        </form>
-                      ) : null}
-                    </article>
-                  ))}
-                </div>
-              </section>
-            );
-          })}
-        </div>
-      )}
-      {nextCursor ? (
-        <div className="mt-6">
-          <Link
-            href={`/notifications?cursor=${encodeURIComponent(nextCursor)}`}
-            className="btn-instrument btn-instrument-muted inline-flex h-9 items-center px-4 text-sm"
-          >
-            Load more
-          </Link>
-        </div>
-      ) : null}
+
+      <Card>
+        <CardHeader>
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <CardTitle>Notification history</CardTitle>
+              <CardDescription>
+                {unreadCount > 0
+                  ? `${unreadCount} unread reminder${unreadCount === 1 ? "" : "s"} need your attention.`
+                  : "You are caught up. New task reminders will appear here."}
+              </CardDescription>
+            </div>
+            <Badge tone={unreadCount > 0 ? "warn" : "active"}>
+              {unreadCount} unread
+            </Badge>
+          </div>
+        </CardHeader>
+
+        {notifications.length > 0 ? (
+          <>
+            <NotificationsInbox groups={groups} unreadCount={unreadCount} />
+            {nextCursor ? (
+              <div className="flex justify-center border-t border-[var(--ega-divider)] px-[18px] py-4">
+                <Link
+                  href={`/notifications?cursor=${encodeURIComponent(nextCursor)}`}
+                  className="btn-instrument btn-instrument-muted inline-flex h-8 items-center px-3 text-xs"
+                >
+                  Load older notifications
+                </Link>
+              </div>
+            ) : null}
+          </>
+        ) : (
+          <EmptyState
+            icon={Bell}
+            title="No notifications yet"
+            description="Task reminders will stay here until you have reviewed them."
+          />
+        )}
+      </Card>
     </>
   );
 }

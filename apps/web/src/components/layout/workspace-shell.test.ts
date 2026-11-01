@@ -189,7 +189,7 @@ describe("light workspace shell", () => {
   });
 
   it("preserves the dashboard compatibility redirect pointing at the launch page", () => {
-    const dashboard = read("src/app/dashboard/page.tsx");
+    const dashboard = read("src/app/(workspace)/dashboard/page.tsx");
     expect(dashboard).toContain("getLaunchPagePath(preferences.launchPage)");
     expect(dashboard).not.toContain("CommandCenterAsync");
     expect(dashboard).not.toContain("getDashboardData");

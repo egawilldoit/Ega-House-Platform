@@ -1,13 +1,10 @@
-import { WorkspaceContentSkeleton } from "@/components/layout/workspace-content-skeleton";
+import { WorkspaceSkeletonShell } from "@/components/layout/workspace-skeleton-shell";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export default function TimerLoadingPage() {
   return (
-    <WorkspaceContentSkeleton
-      title="Timer"
-      description="Track focused work and review your recent sessions."
-    >
+    <WorkspaceSkeletonShell title="Timer" description="Track focused work and review your recent sessions.">
       <div className="flex flex-col gap-6">
         <Card>
           <CardContent className="flex flex-col gap-4">
@@ -37,6 +34,6 @@ export default function TimerLoadingPage() {
           </CardContent>
         </Card>
       </div>
-    </WorkspaceContentSkeleton>
+    </WorkspaceSkeletonShell>
   );
 }

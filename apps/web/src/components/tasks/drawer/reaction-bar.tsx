@@ -7,7 +7,7 @@ import { TASK_COMMENT_REACTION_EMOJIS } from "@ega/domain";
 
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
-import type { TaskCommentReactionActionResult } from "@/app/tasks/comment-actions";
+import type { TaskCommentReactionActionResult } from "@/app/(workspace)/tasks/comment-actions";
 
 type ReactionBarProps = {
   commentId: string;

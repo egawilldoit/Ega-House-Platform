@@ -36,12 +36,12 @@ const actorFiles = execFileSync(
   'git',
   [
     'ls-files',
-    'apps/web/src/app/tasks/projects/**/*.ts',
-    'apps/web/src/app/tasks/projects/**/*.tsx',
-    'apps/web/src/app/goals/**/*.ts',
-    'apps/web/src/app/goals/**/*.tsx',
-    'apps/web/src/app/tasks/**/*.ts',
-    'apps/web/src/app/tasks/**/*.tsx',
+    'apps/web/src/app/(workspace)/tasks/projects/**/*.ts',
+    'apps/web/src/app/(workspace)/tasks/projects/**/*.tsx',
+    'apps/web/src/app/(workspace)/goals/**/*.ts',
+    'apps/web/src/app/(workspace)/goals/**/*.tsx',
+    'apps/web/src/app/(workspace)/tasks/**/*.ts',
+    'apps/web/src/app/(workspace)/tasks/**/*.tsx',
   ],
   { encoding: 'utf8' },
 )

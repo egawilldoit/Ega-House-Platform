@@ -7,6 +7,7 @@ const accountPageFile = path.join(
   process.cwd(),
   "src",
   "app",
+  "(workspace)",
   "settings",
   "account",
   "page.tsx",

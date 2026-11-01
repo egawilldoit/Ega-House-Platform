@@ -17,7 +17,7 @@ describe("EGA-516 Operator acceptance", () => {
   });
 
   it("/dashboard no longer computes competing command-center model and redirects to the launch page", () => {
-    const dashboardPage = read("src/app/dashboard/page.tsx");
+    const dashboardPage = read("src/app/(workspace)/dashboard/page.tsx");
     expect(dashboardPage).toContain("getLaunchPagePath(preferences.launchPage)");
     // Should not import or compute competing dashboard-data panels
     expect(dashboardPage).not.toContain("getDashboardData");
@@ -29,24 +29,24 @@ describe("EGA-516 Operator acceptance", () => {
     // The launcher must not link the retired /dashboard route: it only
     // server-redirects to the configured launch page, so operators lost the
     // history entry.
-    const launcherItems = read("src/app/apps/launcher-items.ts");
+    const launcherItems = read("src/app/(workspace)/apps/launcher-items.ts");
     expect(launcherItems).not.toContain('"/dashboard"');
     expect(launcherItems).toContain('label: "Home"');
     expect(launcherItems).toContain('href: "/home"');
 
     // /apps/dashboard deep links go straight to Home instead of chaining
     // /apps/dashboard -> /dashboard -> /home.
-    const appsWorkspacePage = read("src/app/apps/[workspace]/page.tsx");
+    const appsWorkspacePage = read("src/app/(workspace)/apps/[workspace]/page.tsx");
     expect(appsWorkspacePage).toContain('dashboard: "/home"');
     expect(appsWorkspacePage).toContain('home: "/home"');
 
     // Old bookmarks still resolve: /dashboard redirects to the launch page.
-    const dashboardPage = read("src/app/dashboard/page.tsx");
+    const dashboardPage = read("src/app/(workspace)/dashboard/page.tsx");
     expect(dashboardPage).toContain("getLaunchPagePath");
   });
 
   it("web Today no longer forks shared ranking/status semantics", () => {
-    const todayPage = read("src/app/today/page.tsx");
+    const todayPage = read("src/app/(workspace)/today/page.tsx");
     // Must use canonical operator service, not web-local planner service
     expect(todayPage).toContain("getOperatorSnapshotData");
     expect(todayPage).toContain('from "@/lib/services/operator-service"');

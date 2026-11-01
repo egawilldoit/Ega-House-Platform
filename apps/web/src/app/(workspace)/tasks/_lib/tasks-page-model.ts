@@ -362,10 +362,6 @@ export async function getTasksPageModel(
     data: [],
     errorMessage: null,
   };
-  let selectedTaskActivityPage: Awaited<ReturnType<typeof getTaskActivity>> = {
-    items: [],
-    hasMore: false,
-  };
   let selectedTaskActivity: Awaited<ReturnType<typeof getTaskActivity>>["items"] = [];
   let selectedTaskActivityHasMore = false;
   let selectedTaskComments: Awaited<ReturnType<typeof getTaskCommentThread>> = {
@@ -387,7 +383,6 @@ export async function getTasksPageModel(
 
     selectedTaskSubtasks = subtasksResult.data ?? [];
     selectedTaskAttachments = attachmentsResult;
-    selectedTaskActivityPage = activityPageResult;
     selectedTaskActivity = activityPageResult.items;
     selectedTaskActivityHasMore = activityPageResult.hasMore;
     selectedTaskComments = commentsResult;

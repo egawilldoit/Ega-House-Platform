@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
 
-const helpPageFile = path.join(process.cwd(), "src", "app", "help", "page.tsx");
+const helpPageFile = path.join(process.cwd(), "src", "app", "(workspace)", "help", "page.tsx");
 
 test("help page defines metadata and required operational sections", () => {
   const source = readFileSync(helpPageFile, "utf8");

@@ -92,7 +92,7 @@ test("EGA-663: the only Home-computed value is the display session sum over cano
 
 test("EGA-663: Home consumes the canonical EGA-662 read model and owns no activity semantics", () => {
   const source = readFileSync(
-    resolve(process.cwd(), "src/app/home/_lib/home-activity-pulse.ts"),
+    resolve(process.cwd(), "src/app/(workspace)/home/_lib/home-activity-pulse.ts"),
     "utf8",
   );
 
@@ -113,7 +113,7 @@ test("EGA-663: Home consumes the canonical EGA-662 read model and owns no activi
 
 test("EGA-663: the pulse loader delegates timezone resolution to the canonical read model", () => {
   const source = readFileSync(
-    resolve(process.cwd(), "src/app/home/_lib/home-activity-pulse.ts"),
+    resolve(process.cwd(), "src/app/(workspace)/home/_lib/home-activity-pulse.ts"),
     "utf8",
   );
 

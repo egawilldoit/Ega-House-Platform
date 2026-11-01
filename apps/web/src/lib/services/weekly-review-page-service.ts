@@ -1,4 +1,4 @@
-import { getReviewFormValuesFromRecord } from "@/app/review/review-form-state";
+import { getReviewFormValuesFromRecord } from "@/app/(workspace)/review/review-form-state";
 import type { MostTrackedInsights } from "@/lib/review-most-tracked";
 import { getDailyTrackedWindow, getRecentDailyTrackedTime } from "@/lib/review-session-heatmap";
 import { createClient } from "@/lib/supabase/server";
