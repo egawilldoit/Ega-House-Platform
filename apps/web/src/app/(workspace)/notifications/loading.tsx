@@ -1,13 +1,10 @@
-import { WorkspaceContentSkeleton } from "@/components/layout/workspace-content-skeleton";
+import { WorkspaceSkeletonShell } from "@/components/layout/workspace-skeleton-shell";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export default function NotificationsLoadingPage() {
   return (
-    <WorkspaceContentSkeleton
-      title="Notifications"
-      description="Reminders and updates across your workspace."
-    >
+    <WorkspaceSkeletonShell title="Notifications" description="Reminders and updates across your workspace.">
       <Card clip>
         <div className="flex flex-wrap items-center gap-2 border-b border-[var(--ega-divider)] px-[18px] py-3">
           <Skeleton className="h-8 w-14" />
@@ -27,6 +24,6 @@ export default function NotificationsLoadingPage() {
           </div>
         ))}
       </Card>
-    </WorkspaceContentSkeleton>
+    </WorkspaceSkeletonShell>
   );
 }

@@ -21,7 +21,6 @@ it("does not remount retained page content merely to replay the entrance animati
     return <input defaultValue="Draft" aria-label="Draft" />;
   }
   const props = {
-    title: "Tasks",
     metrics: { hasActiveTimer: false, timerState: "idle", blockedTaskCount: 0, overdueTaskCount: 0, dueTodayTaskCount: 0, unreadNotificationCount: 0, reviewMissing: false, reviewSignal: "current", taskActionCount: 0, totalActionCount: 0, highestPrioritySignal: "clear" },
     identity: { id: null, name: "EGA", email: "ega@example.com", initials: "EG" },
   } satisfies Omit<ComponentProps<typeof WorkspaceShell>, "children">;

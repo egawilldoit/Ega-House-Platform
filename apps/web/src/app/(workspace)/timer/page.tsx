@@ -1,19 +1,43 @@
-import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
 import type { Metadata } from "next";
-import { TimerPageView } from "./_components/TimerPageView";
+import Link from "next/link";
+import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
+import { TimerActionFeedback } from "@/components/timer/timer-action-feedback";
 import { getTimerPageModel } from "./_lib/timer-page-model";
+import { TimerPageView } from "./_components/TimerPageView";
+import { ExportCsvButton } from "@/components/ui/export-csv-button";
 
 export const metadata: Metadata = {
   title: "Timer",
-  description: "Focus session timer with live tracking and history.",
+  description: "Start and stop focused task sessions.",
 };
 
-export default async function TimerPage({ searchParams }: { searchParams: Promise<{ stoppedTaskId?: string }> }) {
+export default async function TimerPage({ searchParams }: { searchParams: Promise<{ actionError?: string; actionSuccess?: string; stoppedTaskId?: string }> }) {
   const resolvedSearchParams = await searchParams;
   const model = await getTimerPageModel(resolvedSearchParams);
   return (
     <>
-      <WorkspacePageHeader title="Timer" description="Focus session timer with live tracking and history." />
+      <WorkspacePageHeader
+      title="Timer"
+      description="Track focused work and review your recent sessions."
+      actions={
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            href="/today"
+            className="btn-instrument btn-instrument-muted flex h-8 items-center px-3 text-sm"
+          >
+            Open Today
+          </Link>
+          <ExportCsvButton
+            href="/timer/export"
+            defaultFilename="timer-sessions.csv"
+            className="btn-instrument btn-instrument-muted flex h-8 items-center px-3 text-sm"
+          >
+            Export CSV
+          </ExportCsvButton>
+        </div>
+      }
+    />
+      <TimerActionFeedback actionError={model.actionError} actionSuccess={model.actionSuccess} />
       <TimerPageView model={model} />
     </>
   );

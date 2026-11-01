@@ -3,13 +3,13 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
 
-const page = readFileSync(path.join(process.cwd(), "src", "app", "notifications", "page.tsx"), "utf8");
+const page = readFileSync(path.join(process.cwd(), "src", "app", "(workspace)", "notifications", "page.tsx"), "utf8");
 const inbox = readFileSync(
-  path.join(process.cwd(), "src", "app", "notifications", "notifications-inbox.tsx"),
+  path.join(process.cwd(), "src", "app", "(workspace)", "notifications", "notifications-inbox.tsx"),
   "utf8",
 );
 const actions = readFileSync(
-  path.join(process.cwd(), "src", "app", "notifications", "actions.ts"),
+  path.join(process.cwd(), "src", "app", "(workspace)", "notifications", "actions.ts"),
   "utf8",
 );
 const service = readFileSync(

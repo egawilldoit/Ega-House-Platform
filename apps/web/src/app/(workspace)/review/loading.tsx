@@ -1,4 +1,4 @@
-import { WorkspaceContentSkeleton } from "@/components/layout/workspace-content-skeleton";
+import { WorkspaceSkeletonShell } from "@/components/layout/workspace-skeleton-shell";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -20,10 +20,7 @@ function RailCardSkeleton() {
 
 export default function ReviewLoadingPage() {
   return (
-    <WorkspaceContentSkeleton
-      title="Review"
-      description="What happened this week, and what to change next."
-    >
+    <WorkspaceSkeletonShell title="Review" description="What happened this week, and what to change next.">
       <div className="flex flex-col gap-6">
         <Card>
           <CardContent className="space-y-4">
@@ -110,6 +107,6 @@ export default function ReviewLoadingPage() {
           </CardContent>
         </Card>
       </div>
-    </WorkspaceContentSkeleton>
+    </WorkspaceSkeletonShell>
   );
 }

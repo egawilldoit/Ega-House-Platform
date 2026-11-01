@@ -1,13 +1,10 @@
-import { WorkspaceContentSkeleton } from "@/components/layout/workspace-content-skeleton";
+import { WorkspaceSkeletonShell } from "@/components/layout/workspace-skeleton-shell";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export default function AgentsLoadingPage() {
   return (
-    <WorkspaceContentSkeleton
-      title="Agents"
-      description="Owner-registered agent identities, their credentials and observed activity."
-    >
+    <WorkspaceSkeletonShell title="Agents" description="Owner-registered agent identities, their credentials and observed activity.">
       <div className="flex flex-col gap-4">
         <Card clip>
           <div className="border-b border-[var(--ega-divider)] px-4 py-4">
@@ -29,6 +26,6 @@ export default function AgentsLoadingPage() {
         </Card>
         <Skeleton className="h-12 w-full" />
       </div>
-    </WorkspaceContentSkeleton>
+    </WorkspaceSkeletonShell>
   );
 }

@@ -1,13 +1,10 @@
-import { WorkspaceContentSkeleton } from "@/components/layout/workspace-content-skeleton";
+import { WorkspaceSkeletonShell } from "@/components/layout/workspace-skeleton-shell";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export default function ShutdownLoadingPage() {
   return (
-    <WorkspaceContentSkeleton
-      title="Shutdown"
-      description="Close the day: what moved, what carries forward, and what to note."
-    >
+    <WorkspaceSkeletonShell title="Shutdown" description="Close the day: what moved, what carries forward, and what to note.">
       <div className="flex flex-col gap-6">
         <Card>
           <CardContent className="flex flex-col gap-3">
@@ -25,6 +22,6 @@ export default function ShutdownLoadingPage() {
           </CardContent>
         </Card>
       </div>
-    </WorkspaceContentSkeleton>
+    </WorkspaceSkeletonShell>
   );
 }

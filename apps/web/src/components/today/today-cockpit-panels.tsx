@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { startTimerAction } from "@/app/timer/actions";
+import { startTimerAction } from "@/app/(workspace)/timer/actions";
 import { completeTodayTaskAction } from "@/app/(workspace)/today/actions";
 import { TimerStopForm } from "@/components/timer/timer-stop-form";
 import { LiveDuration } from "@/components/timer/live-duration";

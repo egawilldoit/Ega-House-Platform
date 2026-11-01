@@ -216,7 +216,7 @@ describe("getTasksPageModel dead /tasks work removal", () => {
 
   it("never requests calendar integration settings or sorts a focus queue in the model", () => {
     const source = readFileSync(
-      resolve(process.cwd(), "src/app/tasks/_lib/tasks-page-model.ts"),
+      resolve(process.cwd(), "src/app/(workspace)/tasks/_lib/tasks-page-model.ts"),
       "utf8",
     );
 

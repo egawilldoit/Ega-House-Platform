@@ -75,56 +75,6 @@ export default async function HomeRoute({
     myTasksTab: resolvedSearchParams.myTasks,
   });
 
-  const baseModel = buildHomeModel({
-    snapshot: snapshotResult.data,
-    attention: attentionResult.available
-      ? {
-          overdue: attentionResult.metrics.overdueTaskCount,
-          dueToday: attentionResult.metrics.dueTodayTaskCount,
-          reviewMissing: attentionResult.metrics.reviewMissing,
-        }
-      : null,
-    activeTimerStartedAt,
-    dashboard: null,
-    myTasksTab: resolvedSearchParams.myTasks,
-  });
-
-  async function HomeDashboardLoader({
-    snapshot,
-    attentionAvailable,
-    attentionMetrics,
-    activeTimerStartedAt: ats,
-    myTasksTab,
-    greeting: g,
-    userName,
-    dashPromise,
-  }: {
-    snapshot: typeof snapshotResult.data;
-    attentionAvailable: boolean;
-    attentionMetrics: typeof attentionResult.metrics | null;
-    activeTimerStartedAt: string | null;
-    myTasksTab: string | undefined;
-    greeting: HomeGreeting | null;
-    userName: string;
-    dashPromise: ReturnType<typeof getHomeDashboardData>;
-  }) {
-    const dashboard = await dashPromise;
-    const model = buildHomeModel({
-      snapshot,
-      attention: attentionAvailable && attentionMetrics
-        ? {
-            overdue: attentionMetrics.overdueTaskCount,
-            dueToday: attentionMetrics.dueTodayTaskCount,
-            reviewMissing: attentionMetrics.reviewMissing,
-          }
-        : null,
-      activeTimerStartedAt: ats,
-      dashboard,
-      myTasksTab,
-    });
-    return <AuthenticatedHomePage model={model} greeting={g} name={userName} />;
-  }
-
   return (
     <>
       <OwnerScopedRealtimeRefresh
@@ -141,7 +91,7 @@ export default async function HomeRoute({
           />
         }
       >
-        <HomeDashboardLoader
+        <HomeDashboardLoaderAsync
           snapshot={snapshotResult.data}
           attentionAvailable={attentionResult.available}
           attentionMetrics={attentionResult.available ? attentionResult.metrics : null}
@@ -154,4 +104,40 @@ export default async function HomeRoute({
       </Suspense>
     </>
   );
+}
+
+async function HomeDashboardLoaderAsync({
+  snapshot,
+  attentionAvailable,
+  attentionMetrics,
+  activeTimerStartedAt: ats,
+  myTasksTab,
+  greeting: g,
+  userName,
+  dashPromise,
+}: {
+  snapshot: Awaited<ReturnType<typeof getOperatorSnapshotData>>["data"];
+  attentionAvailable: boolean;
+  attentionMetrics: Awaited<ReturnType<typeof getWorkspaceShellMetricsResult>>["metrics"] | null;
+  activeTimerStartedAt: string | null;
+  myTasksTab: string | undefined;
+  greeting: HomeGreeting | null;
+  userName: string;
+  dashPromise: ReturnType<typeof getHomeDashboardData>;
+}) {
+  const dashboard = await dashPromise;
+  const model = buildHomeModel({
+    snapshot,
+    attention: attentionAvailable && attentionMetrics
+      ? {
+          overdue: attentionMetrics.overdueTaskCount,
+          dueToday: attentionMetrics.dueTodayTaskCount,
+          reviewMissing: attentionMetrics.reviewMissing,
+        }
+      : null,
+    activeTimerStartedAt: ats,
+    dashboard,
+    myTasksTab,
+  });
+  return <AuthenticatedHomePage model={model} greeting={g} name={userName} />;
 }

@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { usePathname } from "next/navigation";
 
 import type { ShellIdentity, WorkspaceShellMetrics } from "@/lib/workspace-shell";
 import { OfflineBanner } from "./offline-banner";
@@ -17,10 +16,6 @@ type WorkspaceShellProps = {
   identity: ShellIdentity;
 };
 
-function buildBreadcrumb(pathname: string) {
-  return null;
-}
-
 /**
  * The authenticated workspace frame.
  *
@@ -35,7 +30,6 @@ export function WorkspaceShell({
   identity,
 }: WorkspaceShellProps) {
   const [collapsed, setCollapsed] = useState(false);
-  const pathname = usePathname();
 
   return (
     <div

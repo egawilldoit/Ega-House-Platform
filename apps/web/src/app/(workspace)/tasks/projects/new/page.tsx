@@ -11,6 +11,7 @@ import {
 } from "@ega/application";
 import { SupabaseProjectsRepository } from "@ega/data-access";
 
+import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
 import {
   Card,
   CardContent,
@@ -91,6 +92,10 @@ export default async function NewProjectPage() {
 
   return (
     <>
+      <WorkspacePageHeader
+      title="New project"
+      description="Add a project to anchor goals and tasks in the workspace."
+    />
       <div className="mx-auto w-full max-w-3xl">
         <Card>
           <CardHeader>

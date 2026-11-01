@@ -7,7 +7,7 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }),
 }));
 
-vi.mock("@/app/tasks/saved-views-actions", () => ({
+vi.mock("@/app/(workspace)/tasks/saved-views-actions", () => ({
   createTaskSavedViewAction: vi.fn(),
   deleteTaskSavedViewAction: vi.fn(),
   updateTaskSavedViewAction: vi.fn(),

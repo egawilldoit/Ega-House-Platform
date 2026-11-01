@@ -8,7 +8,7 @@ function read(...segments: string[]) {
 }
 
 test("Today hides the Start Here task from Up next without changing queue data", () => {
-  const page = read("app", "today", "page.tsx");
+  const page = read("app", "(workspace)", "today", "page.tsx");
 
   assert.match(page, /tasks=\{todayData\.focusQueue\}/);
   assert.match(page, /excludeTaskId=\{todayData\.startHere\?\.id \?\? null\}/);
@@ -22,21 +22,21 @@ test("Today labels the focus queue as suggestions, not the planned-today lane", 
 });
 
 test("Today keeps the plan-empty state a compact one-liner, not a chart-sized empty block", () => {
-  const page = read("app", "today", "page.tsx");
+  const page = read("app", "(workspace)", "today", "page.tsx");
 
   assert.match(page, /Nothing planned yet for today\./);
   assert.doesNotMatch(page, /title="Nothing planned yet for today"/);
 });
 
 test("Today keeps the completed-today empty state compact", () => {
-  const page = read("app", "today", "page.tsx");
+  const page = read("app", "(workspace)", "today", "page.tsx");
 
   assert.match(page, /Nothing completed yet today\./);
   assert.doesNotMatch(page, /No completed items yet/);
 });
 
 test("Today copy avoids developer vocabulary", () => {
-  const page = read("app", "today", "page.tsx");
+  const page = read("app", "(workspace)", "today", "page.tsx");
   const intelligence = read("components", "today", "today-intelligence-panel.tsx");
 
   assert.doesNotMatch(page, /evidence/i);

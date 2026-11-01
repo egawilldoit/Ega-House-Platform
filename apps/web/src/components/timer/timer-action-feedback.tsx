@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 
-import { clearTimerFlashParamsFromHref } from "@/app/timer/flash-query";
+import { clearTimerFlashParamsFromHref } from "@/app/(workspace)/timer/flash-query";
 
 type TimerActionFeedbackProps = {
   actionError: string | null;

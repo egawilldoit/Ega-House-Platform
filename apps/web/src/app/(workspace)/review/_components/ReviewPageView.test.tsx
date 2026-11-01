@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-const view = readFileSync(resolve(process.cwd(), "src/app/review/_components/ReviewPageView.tsx"), "utf8");
+const view = readFileSync(resolve(process.cwd(), "src/app/(workspace)/review/_components/ReviewPageView.tsx"), "utf8");
 
 describe("Review — email preview preserved", () => {
   it("preserves ReviewEmailPreviewForm with preview semantics", () => {

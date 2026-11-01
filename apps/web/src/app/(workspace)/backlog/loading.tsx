@@ -1,13 +1,10 @@
-import { WorkspaceContentSkeleton } from "@/components/layout/workspace-content-skeleton";
+import { WorkspaceSkeletonShell } from "@/components/layout/workspace-skeleton-shell";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export default function BacklogLoadingPage() {
   return (
-    <WorkspaceContentSkeleton
-      title="Backlog"
-      description="Keep ideas here until they are ready to become real work."
-    >
+    <WorkspaceSkeletonShell title="Backlog" description="Keep ideas here until they are ready to become real work.">
       <div className="flex flex-col gap-6">
         <Card>
           <CardContent className="flex flex-col gap-3">
@@ -38,6 +35,6 @@ export default function BacklogLoadingPage() {
           ))}
         </Card>
       </div>
-    </WorkspaceContentSkeleton>
+    </WorkspaceSkeletonShell>
   );
 }

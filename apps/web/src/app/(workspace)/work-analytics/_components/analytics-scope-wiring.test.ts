@@ -4,7 +4,7 @@ import { join } from "node:path";
 import test from "node:test";
 
 const view = readFileSync(
-  join(process.cwd(), "src/app/work-analytics/_components/WorkAnalyticsPageView.tsx"),
+  join(process.cwd(), "src/app/(workspace)/work-analytics/_components/WorkAnalyticsPageView.tsx"),
   "utf8",
 );
 

@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 import test from "node:test";
 
 const source = readFileSync(
-  resolve(process.cwd(), "src/app/work-analytics/analytics-drilldown-drawer.tsx"),
+  resolve(process.cwd(), "src/app/(workspace)/work-analytics/analytics-drilldown-drawer.tsx"),
   "utf8",
 );
 

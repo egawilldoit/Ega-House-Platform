@@ -4,7 +4,7 @@ import path from "node:path";
 import test from "node:test";
 
 const page = readFileSync(
-  path.join(process.cwd(), "src", "app", "tasks", "projects", "[slug]", "page.tsx"),
+  path.join(process.cwd(), "src", "app", "(workspace)", "tasks", "projects", "[slug]", "page.tsx"),
   "utf8",
 );
 

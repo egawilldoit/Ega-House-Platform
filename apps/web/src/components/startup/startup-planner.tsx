@@ -4,7 +4,7 @@ import { CircleAlert, Pin, Play, Target } from "lucide-react";
 import {
   addStartupShortlistToTodayAction,
   addStartupTaskToTodayAction,
-} from "@/app/startup/actions";
+} from "@/app/(workspace)/startup/actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";

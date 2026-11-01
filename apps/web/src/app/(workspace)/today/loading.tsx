@@ -1,4 +1,4 @@
-import { WorkspaceContentSkeleton } from "@/components/layout/workspace-content-skeleton";
+import { WorkspaceSkeletonShell } from "@/components/layout/workspace-skeleton-shell";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -17,7 +17,7 @@ function PanelSkeleton({ rows = 3 }: { rows?: number }) {
 
 export default function TodayLoadingPage() {
   return (
-    <WorkspaceContentSkeleton>
+    <WorkspaceSkeletonShell>
       <div className="flex flex-col gap-6">
         <div className="kpi-grid">
           {Array.from({ length: 5 }).map((_, index) => (
@@ -36,6 +36,6 @@ export default function TodayLoadingPage() {
           </div>
         </div>
       </div>
-    </WorkspaceContentSkeleton>
+    </WorkspaceSkeletonShell>
   );
 }

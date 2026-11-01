@@ -5,7 +5,7 @@ import {
   applyApprovedOperatorProposalAction,
   approveOperatorProposalAction,
   createOperatorProposalAction,
-} from "@/app/today/operator-actions";
+} from "@/app/(workspace)/today/operator-actions";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatTaskEstimate } from "@/lib/task-estimate";

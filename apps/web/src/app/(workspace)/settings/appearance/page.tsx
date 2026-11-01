@@ -1,9 +1,9 @@
-import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
 import type { Metadata } from "next";
 
 import { updateAppearancePreferencesAction } from "@/app/(workspace)/settings/appearance/actions";
 import { ChoiceGroup } from "@/app/(workspace)/settings/_components/choice-group";
 import { SettingsNav } from "@/app/(workspace)/settings/_components/settings-nav";
+import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import { getWebUserPreferencesState } from "@/lib/services/user-preferences-service";
@@ -52,7 +52,8 @@ export default async function AppearanceSettingsPage({
 
   return (
     <>
-<div className="flex max-w-3xl flex-col gap-6">
+      <WorkspacePageHeader title="Appearance" description="Theme, accent, density and motion." />
+      <div className="flex max-w-3xl flex-col gap-6">
         <SettingsNav active="appearance" />
 
         {loadError ? (
@@ -138,6 +139,6 @@ export default async function AppearanceSettingsPage({
           </CardContent>
         </Card>
       </div>
-</>
+    </>
   );
 }

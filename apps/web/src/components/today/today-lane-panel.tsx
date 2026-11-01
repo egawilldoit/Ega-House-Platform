@@ -1,4 +1,4 @@
-import { startTimerAction } from "@/app/timer/actions";
+import { startTimerAction } from "@/app/(workspace)/timer/actions";
 import { TimerStopForm } from "@/components/timer/timer-stop-form";
 import { Card, CardContent } from "@/components/ui/card";
 import { PendingSubmitButton } from "@/components/ui/pending-submit-button";

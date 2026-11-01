@@ -1,10 +1,10 @@
-import { WorkspaceContentSkeleton } from "@/components/layout/workspace-content-skeleton";
+import { WorkspaceSkeletonShell } from "@/components/layout/workspace-skeleton-shell";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export default function ProjectDetailLoadingPage() {
   return (
-    <WorkspaceContentSkeleton>
+    <WorkspaceSkeletonShell>
       <div className="flex flex-col gap-6">
         <div className="flex flex-col gap-3">
           <Skeleton className="h-8 w-64" />
@@ -28,6 +28,6 @@ export default function ProjectDetailLoadingPage() {
           </CardContent>
         </Card>
       </div>
-    </WorkspaceContentSkeleton>
+    </WorkspaceSkeletonShell>
   );
 }

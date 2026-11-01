@@ -54,7 +54,7 @@ describe("authenticated loading boundaries", () => {
     }
   });
 
-  it("keeps the skeleton shell itself free of data dependencies", () => {
+  it("keeps the route fallback free of data dependencies", () => {
     const source = readFileSync(
       resolve(root, "src/components/layout/workspace-skeleton-shell.tsx"),
       "utf8",
@@ -66,18 +66,32 @@ describe("authenticated loading boundaries", () => {
     expect(source).not.toMatch(/async function/);
   });
 
-  it("renders the shell geometry without fetching shell data", () => {
+  it("renders content-scoped fallback markup without painting a second shell", () => {
     const markup = renderToStaticMarkup(
       <WorkspaceSkeletonShell title="Tasks" description="Find, organize, and move your work forward.">
         <div>route-content</div>
       </WorkspaceSkeletonShell>,
     );
 
-    expect(markup).toContain("app-shell");
-    expect(markup).toContain("app-sidebar");
-    expect(markup).toContain("app-topbar");
+    // The persistent shell lives in (workspace)/layout.tsx. A route fallback
+    // renders inside that layout, so it must not repeat the chrome.
+    expect(markup).toContain("data-workspace-route-loading");
+    expect(markup).not.toContain("app-shell");
+    expect(markup).not.toContain("app-sidebar");
+    expect(markup).not.toContain("app-topbar");
     expect(markup).toContain("app-page-title");
     expect(markup).toContain("Tasks");
     expect(markup).toContain("route-content");
+  });
+
+  it("keeps route loading boundaries inside the persistent content column", () => {
+    for (const file of loadingBoundaries) {
+      const source = readFileSync(file, "utf8");
+      const relative = file.replace(`${root}/`, "");
+      expect(
+        source,
+        `${relative} must not re-render the interactive workspace chrome`,
+      ).not.toMatch(/@\/components\/layout\/workspace-shell"/);
+    }
   });
 });

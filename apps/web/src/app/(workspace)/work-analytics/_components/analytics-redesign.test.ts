@@ -7,8 +7,8 @@ function read(...segments: string[]) {
   return readFileSync(path.join(process.cwd(), "src", ...segments), "utf8");
 }
 
-const view = read("app", "work-analytics", "_components", "WorkAnalyticsPageView.tsx");
-const interactive = read("app", "work-analytics", "interactive-analytics.tsx");
+const view = read("app", "(workspace)", "work-analytics", "_components", "WorkAnalyticsPageView.tsx");
+const interactive = read("app", "(workspace)", "work-analytics", "interactive-analytics.tsx");
 const chart = read("components", "review", "trend-bar-chart.tsx");
 const svgChart = read("components", "work-analytics", "analytics-charts.tsx");
 
@@ -71,7 +71,7 @@ test("EGA-655: primary KPI and dominant chart follow the selected range", () => 
 });
 
 test("EGA-655: analytics filters are compact and URL-authoritative", () => {
-  const filters = read("app", "work-analytics", "analytics-filters.tsx");
+  const filters = read("app", "(workspace)", "work-analytics", "analytics-filters.tsx");
   assert.match(filters, /data-testid="analytics-filters"/);
   assert.match(filters, /analytics-filter-range/);
   assert.match(filters, /analytics-filter-more/);

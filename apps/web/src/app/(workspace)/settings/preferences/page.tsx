@@ -1,9 +1,9 @@
-import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
 import type { Metadata } from "next";
 
 import { ChoiceGroup } from "@/app/(workspace)/settings/_components/choice-group";
 import { SettingsNav } from "@/app/(workspace)/settings/_components/settings-nav";
 import { updateWorkspacePreferencesAction } from "@/app/(workspace)/settings/preferences/actions";
+import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import { getWebUserPreferencesState } from "@/lib/services/user-preferences-service";
@@ -45,7 +45,11 @@ export default async function WorkspacePreferencesPage({
 
   return (
     <>
-<div className="flex max-w-3xl flex-col gap-6">
+      <WorkspacePageHeader
+      title="Preferences"
+      description="Where the workspace opens and how tasks are presented."
+    />
+      <div className="flex max-w-3xl flex-col gap-6">
         <SettingsNav active="preferences" />
 
         {loadError ? (
@@ -105,6 +109,6 @@ export default async function WorkspacePreferencesPage({
           </CardContent>
         </Card>
       </div>
-</>
+    </>
   );
 }

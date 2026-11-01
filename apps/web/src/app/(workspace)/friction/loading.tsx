@@ -1,13 +1,10 @@
-import { WorkspaceContentSkeleton } from "@/components/layout/workspace-content-skeleton";
+import { WorkspaceSkeletonShell } from "@/components/layout/workspace-skeleton-shell";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export default function FrictionLoadingPage() {
   return (
-    <WorkspaceContentSkeleton
-      title="Friction"
-      description="Where work stalls, and what to do about it."
-    >
+    <WorkspaceSkeletonShell title="Friction" description="Where work stalls, and what to do about it.">
       <div className="flex flex-col gap-6">
         <div className="kpi-grid">
           {Array.from({ length: 3 }).map((_, index) => (
@@ -29,6 +26,6 @@ export default function FrictionLoadingPage() {
           ))}
         </Card>
       </div>
-    </WorkspaceContentSkeleton>
+    </WorkspaceSkeletonShell>
   );
 }

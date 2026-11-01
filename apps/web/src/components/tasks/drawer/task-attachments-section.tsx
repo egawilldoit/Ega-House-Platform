@@ -31,7 +31,7 @@ import {
   deleteAttachmentAction,
   finalizeAttachmentAction,
   getAttachmentPreviewAction,
-} from "@/app/tasks/attachments-actions";
+} from "@/app/(workspace)/tasks/attachments-actions";
 import { AttachmentPreviewDialog } from "@/components/tasks/attachment-preview-dialog";
 import { uploadAttachmentToSignedUrl, type AttachmentUploadHandle } from "@/lib/attachment-upload";
 import { EmptyState } from "@/components/ui/empty-state";
