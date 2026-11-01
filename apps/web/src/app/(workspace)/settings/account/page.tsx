@@ -24,6 +24,10 @@ import {
 } from "@/app/api/integrations/google-calendar/oauth";
 import { TimezoneCard } from "@/app/(workspace)/settings/account/timezone-card";
 import { SettingsNav } from "@/app/(workspace)/settings/_components/settings-nav";
+import {
+  rethrowSettingsLoadError,
+  requireSettingsPageUser,
+} from "@/app/(workspace)/settings/_lib/settings-auth-guard";
 
 export const metadata: Metadata = {
   title: "Account Settings",
@@ -38,15 +42,29 @@ type AccountSettingsPageProps = {
   }>;
 };
 
-export default async function AccountSettingsPage({
-  searchParams,
-}: AccountSettingsPageProps) {
-  const [{ success, error, errorCode }, settingsResult, timeContext] =
-    await Promise.all([
+const ACCOUNT_SETTINGS_PATH = "/settings/account";
+
+async function loadAccountSettings(
+  searchParams: AccountSettingsPageProps["searchParams"],
+) {
+  try {
+    return await Promise.all([
       searchParams,
       getCalendarIntegrationSettings(),
       getWebTimeContext(),
     ]);
+  } catch (error) {
+    rethrowSettingsLoadError(error, ACCOUNT_SETTINGS_PATH);
+  }
+}
+
+export default async function AccountSettingsPage({
+  searchParams,
+}: AccountSettingsPageProps) {
+  await requireSettingsPageUser(ACCOUNT_SETTINGS_PATH);
+
+  const [{ success, error, errorCode }, settingsResult, timeContext] =
+    await loadAccountSettings(searchParams);
   const settings = settingsResult.data;
   const feedbackError =
     getGoogleCalendarOAuthFailureMessage(errorCode, error) ??
