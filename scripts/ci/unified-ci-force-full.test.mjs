@@ -28,16 +28,35 @@ test("changes job outputs force_full resolved from dispatch input or release/ful
 });
 
 test("every path-filtered leaf job ORs in force_full", () => {
-  for (const output of ["web", "mobile", "server", "api-client", "db"]) {
-    const section = jobSection(output === "db" ? "db-invariants" : output);
+  const leafJobs = {
+    web: "web",
+    mobile: "mobile",
+    server: "server",
+    "api-client": "api-client",
+    "db-invariants": "db",
+    contracts: "packages",
+    domain: "packages",
+    application: "packages",
+    "data-access": "packages",
+    regressions: "regressions",
+    "lint-changed": "code",
+  };
+  for (const [job, output] of Object.entries(leafJobs)) {
+    const section = jobSection(job);
     assert.match(
       section,
       new RegExp(
         `if: needs\\.changes\\.outputs\\.${output} == 'true' \\|\\| needs\\.changes\\.outputs\\.force_full == 'true'`,
       ),
-      `leaf job ${output} must run under force_full`,
+      `leaf job ${job} must run under force_full`,
     );
   }
+});
+
+test("lint-report only runs on demand or in force-full mode", () => {
+  const section = jobSection("lint-report");
+  assert.match(section, /if: needs\.changes\.outputs\.force_full == 'true' \|\| github\.event_name == 'workflow_dispatch'/);
+  assert.match(section, /continue-on-error: true/);
 });
 
 test("hygiene keeps if: always() and fails on any failed or cancelled dependency", () => {
