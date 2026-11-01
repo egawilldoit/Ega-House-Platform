@@ -19,6 +19,10 @@ import { SupabaseProjectsRepository } from "@ega/data-access";
 import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
 import { AreaColorDot, AreaIconView } from "@/components/projects/area-icon";
 import { SettingsNav } from "@/app/(workspace)/settings/_components/settings-nav";
+import {
+  rethrowSettingsLoadError,
+  requireSettingsPageUser,
+} from "@/app/(workspace)/settings/_lib/settings-auth-guard";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -171,13 +175,24 @@ function AreaCard({
   );
 }
 
+const AREAS_SETTINGS_PATH = "/settings/areas";
+
+async function loadAreasSettings(
+  searchParams: AreasSettingsPageProps["searchParams"],
+) {
+  try {
+    return await Promise.all([searchParams, getAreasSettingsModel()]);
+  } catch (error) {
+    rethrowSettingsLoadError(error, AREAS_SETTINGS_PATH);
+  }
+}
+
 export default async function AreasSettingsPage({
   searchParams,
 }: AreasSettingsPageProps) {
-  const [{ success, error }, model] = await Promise.all([
-    searchParams,
-    getAreasSettingsModel(),
-  ]);
+  await requireSettingsPageUser(AREAS_SETTINGS_PATH);
+
+  const [{ success, error }, model] = await loadAreasSettings(searchParams);
   const { areas, projects } = model;
   const unassignedProjects = projects.filter((project) => !project.areaId);
   const unassignedOpenTasks = unassignedProjects.reduce(
