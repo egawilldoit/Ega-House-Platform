@@ -14,7 +14,7 @@ const keyboardDefs = read("lib", "keyboard-shortcuts.ts");
 const sidebarSource = read("components", "layout", "sidebar.tsx");
 const drawerSource = read("components", "layout", "sidebar-mobile-drawer.tsx");
 const controllersSource = read("components", "layout", "global-quick-action-controllers.tsx");
-const appShellSource = read("components", "layout", "app-shell.tsx");
+const appShellSource = read("app", "(workspace)", "layout.tsx");
 const captureActionSource = read("components", "inbox", "capture-action.ts");
 const ideaServiceSource = read("lib", "services", "idea-note-service.ts");
 

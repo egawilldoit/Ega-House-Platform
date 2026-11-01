@@ -5,7 +5,7 @@ import {
   deleteTaskCommentAction,
   toggleTaskCommentReactionAction,
   updateTaskCommentAction,
-} from "@/app/tasks/comment-actions";
+} from "@/app/(workspace)/tasks/comment-actions";
 
 /** Server action bundle for the drawer comments tab. */
 export const TASK_COMMENT_ACTIONS = {

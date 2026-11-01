@@ -12,7 +12,7 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(),
 }));
 
-vi.mock("@/app/tasks/actions", () => ({
+vi.mock("@/app/(workspace)/tasks/actions", () => ({
   createTaskAction: vi.fn(),
   createTasksBulkAction: vi.fn(),
 }));

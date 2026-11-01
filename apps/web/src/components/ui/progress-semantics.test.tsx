@@ -34,10 +34,10 @@ test("ProgressBar rounds its numeric value and tolerates a zero max", () => {
 });
 
 test("work progress, linked-task completion and time allocation are named distinctly", () => {
-  const home = read("app/home/_components/authenticated-home-page.tsx");
-  const goals = read("app/goals/_components/GoalsPageView.tsx");
-  const projects = read("app/tasks/projects/page.tsx");
-  const timer = read("app/timer/_components/TimerPageView.tsx");
+  const home = read("app/(workspace)/home/_components/authenticated-home-page.tsx");
+  const goals = read("app/(workspace)/goals/_components/GoalsPageView.tsx");
+  const projects = read("app/(workspace)/tasks/projects/page.tsx");
+  const timer = read("app/(workspace)/timer/_components/TimerPageView.tsx");
 
   // Work progress: share of today's plan.
   assert.match(home, /label="Today's progress"/);
@@ -108,7 +108,7 @@ test("every authenticated data route has a loading boundary", () => {
     "friction",
   ]) {
     assert.ok(
-      read(`app/${route}/loading.tsx`).length > 0,
+      read(`app/(workspace)/${route}/loading.tsx`).length > 0,
       `/ ${route} needs a loading boundary`,
     );
   }

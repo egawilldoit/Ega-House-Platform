@@ -53,7 +53,7 @@ import { MenuList } from "@/components/ui/menu-list";
 import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { PropertyPill } from "@/components/ui/property-pill";
-import { createTaskSavedViewAction } from "@/app/tasks/saved-views-actions";
+import { createTaskSavedViewAction } from "@/app/(workspace)/tasks/saved-views-actions";
 
 import {
   buildClearTaskFiltersUrl,

@@ -3,7 +3,7 @@
 import { useFormStatus } from "react-dom";
 import type { ReactNode } from "react";
 
-import { stopTimerAction } from "@/app/timer/actions";
+import { stopTimerAction } from "@/app/(workspace)/timer/actions";
 import { Button } from "@/components/ui/button";
 
 type TimerStopFormProps = {

@@ -4,7 +4,7 @@ import {
   createTaskSavedViewAction,
   deleteTaskSavedViewAction,
   updateTaskSavedViewAction,
-} from "@/app/tasks/saved-views-actions";
+} from "@/app/(workspace)/tasks/saved-views-actions";
 import { buildTaskFilterReturnPath } from "@/components/tasks/task-filter-url";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";

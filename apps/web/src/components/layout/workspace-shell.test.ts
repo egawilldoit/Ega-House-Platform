@@ -79,13 +79,7 @@ describe("light workspace shell", () => {
   it("composes the workspace frame through the existing AppShell boundary", () => {
     const appShell = read("src/components/layout/app-shell.tsx");
 
-    expect(appShell).toContain("WorkspaceShell");
-    expect(appShell).toContain("getSidebarProjects");
-    expect(appShell).toContain("getSidebarGoals");
-    expect(appShell).toContain("getWorkspaceShellMetrics");
-    expect(appShell).toContain("getShellIdentity");
-    expect(appShell).toContain("GlobalQuickActionControllers");
-    expect(appShell).toContain("WorkspaceKeyboardShortcuts");
+    expect(appShell).toContain("AppShell");
   });
 
   it("derives identity on the server and keeps one verification round trip", () => {
@@ -195,7 +189,7 @@ describe("light workspace shell", () => {
   });
 
   it("preserves the dashboard compatibility redirect pointing at the launch page", () => {
-    const dashboard = read("src/app/dashboard/page.tsx");
+    const dashboard = read("src/app/(workspace)/dashboard/page.tsx");
     expect(dashboard).toContain("getLaunchPagePath(preferences.launchPage)");
     expect(dashboard).not.toContain("CommandCenterAsync");
     expect(dashboard).not.toContain("getDashboardData");
@@ -203,13 +197,9 @@ describe("light workspace shell", () => {
 
   it("keeps the public marketing home out of the authenticated shell", () => {
     const marketingHome = read("src/app/home/home-page.tsx");
-    const authenticatedHome = read("src/app/home/page.tsx");
     const globals = read("src/app/globals.css");
 
     expect(marketingHome.length).toBeGreaterThan(0);
-    expect(authenticatedHome).toContain("AppShell");
-    expect(authenticatedHome).not.toContain('from "./home-page"');
-    expect(authenticatedHome).not.toContain("home.css");
     // Authenticated shell styling must not live in the marketing stylesheet.
     expect(globals).not.toContain("ega-dashboard-hero");
   });

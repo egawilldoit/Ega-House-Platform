@@ -18,8 +18,8 @@ const quickTaskSheetSource = readFileSync(resolvePathFromImportMeta(
 ), "utf8");
 
 const taskActionsSource = readFileSync(resolvePathFromImportMeta(
-  "../../app/tasks/actions.ts",
-  "src/app/tasks/actions.ts",
+  "../../app/(workspace)/tasks/actions.ts",
+  "src/app/(workspace)/tasks/actions.ts",
 ), "utf8");
 
 function getSection(source: string, start: string, end: string) {

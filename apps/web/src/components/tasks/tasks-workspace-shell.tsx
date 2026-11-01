@@ -1,17 +1,16 @@
 import type { ReactNode } from "react";
-import { AppShell } from "@/components/layout/app-shell";
+import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
 
 type TasksWorkspaceShellProps = {
   children: ReactNode;
-  title: string;
+  title?: string;
   description?: string;
   actions?: ReactNode;
   className?: string;
   contentClassName?: string;
 };
 
-/** Thin wrapper — the page header lives in the shared `AppShell`. */
-export async function TasksWorkspaceShell({
+export function TasksWorkspaceShell({
   children,
   title,
   description,
@@ -20,14 +19,11 @@ export async function TasksWorkspaceShell({
   contentClassName,
 }: TasksWorkspaceShellProps) {
   return (
-    <AppShell
-      title={title}
-      description={description}
-      actions={actions}
-      className={className}
-      contentClassName={contentClassName}
-    >
-      {children}
-    </AppShell>
+    <>
+      <WorkspacePageHeader title={title} description={description} actions={actions} />
+      <div className={className}>
+        <div className={contentClassName}>{children}</div>
+      </div>
+    </>
   );
 }

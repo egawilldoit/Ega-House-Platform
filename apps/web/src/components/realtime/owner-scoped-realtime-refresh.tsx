@@ -49,25 +49,90 @@ export function OwnerScopedRealtimeRefresh({
   const refreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastPayloadUpdatedAtRef = useRef<string | null>(null);
   const isMountedRef = useRef(true);
+  const hasPendingWhileHiddenRef = useRef(false);
 
   useEffect(() => {
+    // Reset mounted state on (re)subscription so a dependency change or remount
+    // does not leave isMountedRef stuck at false from the previous cleanup.
+    isMountedRef.current = true;
+
     if (!ownerUserId || tables.length === 0) {
       return undefined;
     }
 
+    // A cleaned-up subscription must stay inactive after the next effect starts.
+    let isSubscriptionActive = true;
     const supabase = createClient();
+    const scheduleRefresh = () => {
+      if (!isMountedRef.current) {
+        return;
+      }
+      if (typeof document !== "undefined" && document.hidden) {
+        hasPendingWhileHiddenRef.current = true;
+        return;
+      }
+
+      if (refreshTimeoutRef.current) {
+        return;
+      }
+
+      refreshTimeoutRef.current = setTimeout(() => {
+        if (!isMountedRef.current) {
+          refreshTimeoutRef.current = null;
+          return;
+        }
+        if (typeof document !== "undefined" && document.hidden) {
+          refreshTimeoutRef.current = null;
+          hasPendingWhileHiddenRef.current = true;
+          return;
+        }
+        refreshTimeoutRef.current = null;
+        startTransition(() => {
+          router.refresh();
+        });
+      }, refreshDebounceMs);
+    };
+
+    const handleVisibilityChange = () => {
+      if (!isMountedRef.current) {
+        return;
+      }
+      if (typeof document === "undefined") {
+        return;
+      }
+      if (!document.hidden && hasPendingWhileHiddenRef.current) {
+        hasPendingWhileHiddenRef.current = false;
+        if (!refreshTimeoutRef.current) {
+          refreshTimeoutRef.current = setTimeout(() => {
+            if (!isMountedRef.current) {
+              refreshTimeoutRef.current = null;
+              return;
+            }
+            if (typeof document !== "undefined" && document.hidden) {
+              refreshTimeoutRef.current = null;
+              hasPendingWhileHiddenRef.current = true;
+              return;
+            }
+            refreshTimeoutRef.current = null;
+            startTransition(() => {
+              router.refresh();
+            });
+          }, 0);
+        }
+      }
+    };
+
+    if (typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", handleVisibilityChange);
+    }
+
     const unsubscribe = subscribeToOwnerScopedRealtimeChanges(supabase, {
       ownerUserId,
       tables,
       channelPrefix,
       onPayload: (payload) => {
-        // Skip refresh if component unmounted during debounce
-        if (!isMountedRef.current) {
-          return;
-        }
-
-        // Skip refresh when page is in background
-        if (typeof document !== "undefined" && document.hidden) {
+        // Ignore callbacks from an unmounted component or retired subscription.
+        if (!isSubscriptionActive || !isMountedRef.current) {
           return;
         }
 
@@ -102,29 +167,26 @@ export function OwnerScopedRealtimeRefresh({
           lastPayloadUpdatedAtRef.current = payloadUpdatedAt;
         }
 
-        // Avoid duplicate refresh bursts: if timeout is already queued, skip
-        if (refreshTimeoutRef.current) {
+        if (typeof document !== "undefined" && document.hidden) {
+          hasPendingWhileHiddenRef.current = true;
           return;
         }
 
-        refreshTimeoutRef.current = setTimeout(() => {
-          if (!isMountedRef.current) {
-            return;
-          }
-          refreshTimeoutRef.current = null;
-          startTransition(() => {
-            router.refresh();
-          });
-        }, refreshDebounceMs);
+        scheduleRefresh();
       },
     });
 
     return () => {
+      isSubscriptionActive = false;
       isMountedRef.current = false;
+      if (typeof document !== "undefined") {
+        document.removeEventListener("visibilitychange", handleVisibilityChange);
+      }
       if (refreshTimeoutRef.current) {
         clearTimeout(refreshTimeoutRef.current);
         refreshTimeoutRef.current = null;
       }
+      hasPendingWhileHiddenRef.current = false;
       unsubscribe();
     };
   }, [channelPrefix, ownerUserId, refreshDebounceMs, router, tables, eventFilter]);

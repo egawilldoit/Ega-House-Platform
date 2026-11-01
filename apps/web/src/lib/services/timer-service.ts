@@ -678,7 +678,8 @@ export async function getTimerWorkspaceData(options?: {
           "id, task_id, started_at, tasks(id, title, description, status, priority, goals(title), projects(name, slug))",
         )
         .is("ended_at", null)
-        .order("started_at", { ascending: false }),
+        .order("started_at", { ascending: false })
+        .limit(10),
       supabase
         .from("task_sessions")
         .select(
@@ -686,13 +687,14 @@ export async function getTimerWorkspaceData(options?: {
         )
         .not("ended_at", "is", null)
         .order("started_at", { ascending: false })
-        .limit(80),
+        .limit(50),
       supabase
         .from("task_sessions")
         .select("id, task_id, started_at, ended_at, duration_seconds, tasks(id, title)")
         .lt("started_at", nextDayStartIso)
         .or(`ended_at.gte.${todayWindow.startIso},ended_at.is.null`)
-        .order("started_at", { ascending: false }),
+        .order("started_at", { ascending: false })
+        .limit(80),
     ]);
 
   if (tasksResult.error) {

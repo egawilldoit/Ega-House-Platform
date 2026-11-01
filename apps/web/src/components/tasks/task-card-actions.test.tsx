@@ -9,7 +9,7 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: () => refresh() }),
 }));
 
-import type { UpdateTaskEditorFormState } from "@/app/tasks/actions";
+import type { UpdateTaskEditorFormState } from "@/app/(workspace)/tasks/actions";
 import type { TaskReminderRecord } from "@/lib/services/task-service";
 import { TaskCardActions } from "./task-card-actions";
 

@@ -5,7 +5,7 @@ import {
   buildWorkActivityCalendar,
   resolveWorkActivityIntensityLevel,
 } from "./work-activity-service";
-import { toHomeActivityPulse } from "../../app/home/_lib/home-activity-pulse";
+import { toHomeActivityPulse } from "@/app/(workspace)/home/_lib/home-activity-pulse";
 
 test("Work Activity Contract: session-only activity produces active day and correct intensity", () => {
   const calendar = buildWorkActivityCalendar({

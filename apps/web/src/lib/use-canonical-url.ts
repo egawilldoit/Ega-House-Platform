@@ -82,7 +82,26 @@ export function useCanonicalUrl() {
       /**
        * Returns the best href for a navigation link given the current host context.
        */
-      resolve(route: `/${string}`): string {
+      resolve(route: `/${string}` | string): string {
+        if (typeof route !== "string") {
+          return String(route);
+        }
+
+        // Preserve absolute URLs, protocol-relative, hash-only, mailto/tel, etc.
+        if (
+          /^[a-z][a-z0-9+.-]*:/i.test(route) ||
+          route.startsWith("//") ||
+          route.startsWith("#") ||
+          route.startsWith("mailto:") ||
+          route.startsWith("tel:")
+        ) {
+          return route;
+        }
+
+        if (!route.startsWith("/")) {
+          return route;
+        }
+
         if (!hostname || ROOT_HOSTNAMES.has(hostname)) {
           return route;
         }
@@ -93,12 +112,16 @@ export function useCanonicalUrl() {
           return route;
         }
 
+        // Extract pathname for routing decisions while preserving query/hash/auth fragments
+        const pathnameMatch = route.match(/^\/[^?#]*/);
+        const pathname = (pathnameMatch?.[0] || route.split(/[?#]/)[0]) as `/${string}`;
+
         // If the target belongs to the current workspace, keep it relative.
-        if (routeBelongsToWorkspace(route, hostname)) {
+        if (routeBelongsToWorkspace(pathname, hostname)) {
           return route;
         }
 
-        // Otherwise, route to the canonical root host.
+        // Otherwise, route to the canonical root host. Preserve query/hash.
         return `${CANONICAL_ORIGIN}${route}`;
       },
     };

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Clock3, X } from "lucide-react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 
-import type { UpdateSessionTimingFormState } from "@/app/timer/actions";
+import type { UpdateSessionTimingFormState } from "@/app/(workspace)/timer/actions";
 import { formatDurationLabel } from "@/lib/task-session";
 import {
   getTimerCorrectionPreview,

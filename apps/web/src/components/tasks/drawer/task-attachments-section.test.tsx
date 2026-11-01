@@ -11,7 +11,7 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(),
 }));
 
-vi.mock("@/app/tasks/attachments-actions", () => ({
+vi.mock("@/app/(workspace)/tasks/attachments-actions", () => ({
   createAttachmentUploadAction: vi.fn(),
   finalizeAttachmentAction: vi.fn(),
   deleteAttachmentAction: vi.fn(),
@@ -22,7 +22,7 @@ import {
   createAttachmentUploadAction,
   deleteAttachmentAction,
   getAttachmentPreviewAction,
-} from "@/app/tasks/attachments-actions";
+} from "@/app/(workspace)/tasks/attachments-actions";
 import type { TaskAttachmentDto } from "@ega/contracts";
 import { TaskAttachmentsSection } from "./task-attachments-section";
 
