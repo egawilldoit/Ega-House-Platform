@@ -5,7 +5,7 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { RefreshCw, X } from "lucide-react";
 
 import type { AttachmentKind } from "@ega/domain";
-import { getAttachmentPreviewAction } from "@/app/tasks/attachments-actions";
+import { getAttachmentPreviewAction } from "@/app/(workspace)/tasks/attachments-actions";
 
 export type AttachmentPreviewTarget = {
   id: string;

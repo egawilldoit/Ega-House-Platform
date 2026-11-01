@@ -10,7 +10,7 @@ import type {
 import type {
   TaskCommentActionResult,
   TaskCommentReactionActionResult,
-} from "@/app/tasks/comment-actions";
+} from "@/app/(workspace)/tasks/comment-actions";
 import { TASK_COMMENT_BODY_MAX } from "@ega/domain";
 import { CommentComposer } from "./comment-composer";
 import { ReactionBar } from "./reaction-bar";

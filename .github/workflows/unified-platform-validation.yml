@@ -45,6 +45,9 @@ jobs:
       api-client: ${{ steps.filter.outputs.api-client }}
       web: ${{ steps.filter.outputs.web }}
       db: ${{ steps.filter.outputs.db }}
+      packages: ${{ steps.filter.outputs.packages }}
+      code: ${{ steps.filter.outputs.code }}
+      regressions: ${{ steps.filter.outputs.regressions }}
       force_full: ${{ steps.force_full.outputs.force_full }}
     steps:
       - name: Resolve force-full mode
@@ -109,45 +112,38 @@ jobs:
               - '.github/workflows/**'
               - 'package.json'
               - 'package-lock.json'
+            packages:
+              - 'packages/**'
+              - 'package.json'
+              - 'package-lock.json'
+              - '.github/workflows/**'
+            code:
+              - 'apps/**'
+              - 'packages/**'
+              - 'src/**'
+              - 'scripts/**'
+              - 'drizzle/**'
+              - '*.ts'
+              - '*.mjs'
+              - '*.json'
+              - '.github/workflows/**'
+              - 'package.json'
+              - 'package-lock.json'
+            regressions:
+              - '**/AGENTS.md'
+              - 'CONTEXT.md'
+              - 'ARCHITECTURE.md'
+              - '.agents/**'
+              - 'docs/agent-context/**'
+              - 'scripts/agent/**'
+              - 'scripts/ega-runner/**'
+              - '.github/workflows/**'
+              - 'package.json'
+              - 'package-lock.json'
 
-  delivery-map:
-    needs: [changes]
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - name: Checkout exact head
-        uses: actions/checkout@v5
-        with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          fetch-depth: 0
-      - name: Set up Node 22
-        uses: actions/setup-node@v6
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: package-lock.json
-      - run: npm ci --no-audit --no-fund
-      - name: EGA Feature Delivery Map
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            BASE="${{ github.event.pull_request.base.sha }}"
-            HEAD="${{ github.event.pull_request.head.sha }}"
-          elif [ -n "${{ github.event.before }}" ] && [ "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ]; then
-            BASE="${{ github.event.before }}"
-            HEAD="${{ github.sha }}"
-          else
-            BASE="HEAD~1"
-            HEAD="HEAD"
-          fi
-          echo "Base: $BASE"
-          echo "Head: $HEAD"
-          node scripts/ci/feature-delivery-map.mjs --base "$BASE" --head "$HEAD" --summary | tee delivery-map.txt
-          cat delivery-map.txt >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "Android binary: NOT BUILT (binaries are generated only by Mobile Delivery)" >> "$GITHUB_STEP_SUMMARY"
-
+  # Dependency/security/architecture gate. Always runs: it is the check that
+  # proves the lockfile, published dependency surface, security invariants and
+  # layered architecture still hold, independently of which paths changed.
   workspace:
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -194,8 +190,30 @@ jobs:
         run: npm run check:architecture
       - name: Architecture fixture tests
         run: npm run test:architecture
+      - name: EGA Feature Delivery Map
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE="${{ github.event.pull_request.base.sha }}"
+            HEAD="${{ github.event.pull_request.head.sha }}"
+          elif [ -n "${{ github.event.before }}" ] && [ "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ]; then
+            BASE="${{ github.event.before }}"
+            HEAD="${{ github.sha }}"
+          else
+            BASE="HEAD~1"
+            HEAD="HEAD"
+          fi
+          echo "Base: $BASE"
+          echo "Head: $HEAD"
+          node scripts/ci/feature-delivery-map.mjs --base "$BASE" --head "$HEAD" --summary | tee delivery-map.txt
+          cat delivery-map.txt >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Android binary: NOT BUILT (binaries are generated only by Mobile Delivery)" >> "$GITHUB_STEP_SUMMARY"
 
   contracts:
+    needs: [changes]
+    if: needs.changes.outputs.packages == 'true' || needs.changes.outputs.force_full == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -216,6 +234,8 @@ jobs:
       - run: npm run contracts:test
 
   domain:
+    needs: [changes]
+    if: needs.changes.outputs.packages == 'true' || needs.changes.outputs.force_full == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -236,6 +256,8 @@ jobs:
       - run: npm run domain:test
 
   application:
+    needs: [changes]
+    if: needs.changes.outputs.packages == 'true' || needs.changes.outputs.force_full == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -256,6 +278,8 @@ jobs:
       - run: npm run application:test
 
   data-access:
+    needs: [changes]
+    if: needs.changes.outputs.packages == 'true' || needs.changes.outputs.force_full == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -276,6 +300,8 @@ jobs:
       - run: npm run data-access:test
 
   regressions:
+    needs: [changes]
+    if: needs.changes.outputs.regressions == 'true' || needs.changes.outputs.force_full == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -300,6 +326,8 @@ jobs:
         run: npm run test:ega-runner-pr-loop
 
   lint-changed:
+    needs: [changes]
+    if: needs.changes.outputs.code == 'true' || needs.changes.outputs.force_full == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -328,6 +356,8 @@ jobs:
           npm run lint:changed -- --base "$BASE"
 
   lint-report:
+    needs: [changes]
+    if: needs.changes.outputs.force_full == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     continue-on-error: true

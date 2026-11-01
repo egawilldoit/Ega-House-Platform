@@ -1,13 +1,13 @@
 import Link from "next/link";
 import React from "react";
 
-import { startTimerAction } from "@/app/timer/actions";
+import { startTimerAction } from "@/app/(workspace)/timer/actions";
 import {
   completeTodayTaskAction,
   markTodayTaskBlockedAction,
   removeTaskFromTodayAction,
   updateTodayTaskStatusAction,
-} from "@/app/today/actions";
+} from "@/app/(workspace)/today/actions";
 import { TaskDueDateLabel } from "@/components/tasks/task-due-date-label";
 import { TimerStopForm } from "@/components/timer/timer-stop-form";
 import { Badge } from "@/components/ui/badge";

@@ -3,7 +3,7 @@
 import { Check, Monitor, Moon, Sun } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
-import { updateThemePreferenceAction } from "@/app/settings/appearance/actions";
+import { updateThemePreferenceAction } from "@/app/(workspace)/settings/appearance/actions";
 import { useWorkspacePreferences } from "@/components/layout/workspace-preferences-provider";
 import type { WorkspaceThemePreference } from "@/lib/theme-preference";
 import { applyWorkspaceThemeToDocument, watchSystemTheme } from "@/lib/theme-preference.client";

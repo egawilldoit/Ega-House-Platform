@@ -3,7 +3,7 @@ import { act, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { UpdateTaskEditorFormState } from "@/app/tasks/actions";
+import type { UpdateTaskEditorFormState } from "@/app/(workspace)/tasks/actions";
 import type { TaskReminderRecord } from "@/lib/services/task-service";
 
 import { EditTaskModal } from "./edit-task-modal";

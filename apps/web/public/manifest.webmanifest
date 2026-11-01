@@ -2,8 +2,10 @@
   "name": "EGA House",
   "short_name": "EGA House",
   "description": "Personal operating system for projects, goals, tasks, focus sessions, and weekly reviews.",
-  "start_url": "/dashboard",
+  "start_url": "/home",
+  "scope": "/",
   "display": "standalone",
+  "orientation": "portrait-primary",
   "background_color": "#f6f7f2",
   "theme_color": "#177b52",
   "icons": [
