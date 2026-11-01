@@ -43,6 +43,7 @@ const PROTECTED_ROOT_PATH_PREFIXES: Array<`/${string}`> = [
   "/today",
   "/timer",
   "/review",
+  "/settings",
 ];
 
 const SUBDOMAIN_PREFIXES: Record<string, `/${string}`> = {
@@ -86,7 +87,7 @@ function shouldSkipRewrite(pathname: string, prefix: `/${string}`) {
   return pathname === prefix || pathname.startsWith(`${prefix}/`);
 }
 
-function isProtectedRootPath(pathname: string) {
+export function isProtectedRootPath(pathname: string) {
   return PROTECTED_ROOT_PATH_PREFIXES.some((prefix) =>
     shouldSkipRewrite(pathname, prefix),
   );
