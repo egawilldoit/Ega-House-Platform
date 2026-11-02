@@ -204,6 +204,10 @@ Effort is engineering time in this repo; risk is regression risk to merge safety
 
 ### Batch 0 — correctness prerequisites (land before Batch 1)
 
+**Status: implemented.** `f2a39eb7` (aggregate gate), `ee802276` (release evidence),
+`c095a5ca` (concurrency + `.npmrc` routing). All 15 required checks passed on
+`c095a5ca`.
+
 | Item | Change | Why first |
 |---|---|---|
 | Aggregate expectation | expected-execution gate in `hygiene` (§2.2) | without it a mis-skipped `web-tests` is invisible and green |
@@ -213,6 +217,9 @@ Effort is engineering time in this repo; risk is regression risk to merge safety
 | Main cancellation | `cancel-in-progress: ${{ github.event_name == 'pull_request' }}` | a newer push can cancel the SHA's validation; GitHub also replaces *pending* runs in a group, so a cancelled SHA still needs an explicit re-run |
 
 ### Batch 1 — Split the web job (first performance batch)
+
+**Status: implemented** in `f28f0516`; all 15 required checks passed and the measured
+result beat the acceptance target (see §11).
 
 | | |
 |---|---|
@@ -321,30 +328,32 @@ Notes:
 
 ## 5. Expected performance gains
 
-| Scenario | Now (successful p50) | After batch 1 (central) | Optimistic | Conservative |
-|---|---|---|---|---|
-| Web-only PR | 262–281 s (299 s observed) | **~165 s** (−40 %) | ~150 s (−45 %) | ~175 s (−36 %) |
-| Full-matrix main push / force-full | 285–299 s | ~165 s | ~150 s | ~180 s |
-| Server/package PR | ~210 s | ~165 s (web dominates) | ~150 s | ~180 s |
-| Docs-only | ~80 s | ~80 s | ~80 s | ~80 s |
-| Forced full matrix, 15 jobs | 16.7 runner-min | ~19 runner-min | ~18 | ~20 |
+| Scenario | Baseline (matched, `c095a5ca`) | Batch 1 (measured, `f28f0516`) | Change |
+|---|---|---|---|
+| Full-matrix workflow, end to end | **346 s** | **141 s** | **−59 %** |
+| Critical job | `web` 302 s | `web-tests (1)` 106 s | −196 s |
+| Web concern, runner minutes | 5.0 | 6.2 | +1.2 |
+| Whole run, runner minutes | 17.85 | 16.68 | −6.6 % (both runs varied) |
+| Docs-only | ~80 s | ~80 s (unchanged) | — |
 
-Batch 2/3 are now explicitly **experiments**, not commitments: browser caching saves
-at most ~9 s gross (the apt half of the step cannot be cached) and `.next`/dependency
-caching has no measured net benefit yet. Do not plan against 120 s or 110 s.
+Both runs are the same branch at the same full-matrix scope. Other jobs also ran
+faster in the second run, so the aggregate runner-minute drop is not purely
+attributable to the split; the structural change is: one 302 s serial web job became
+a 106 s shard on the critical path.
 
-Where the batch-1 number comes from (measured components, run `41349819428`, plus
-the unmeasured risks):
+Measured composition of the Batch 1 run (`f28f0516`, full matrix, 141 s e2e):
 
 ```
-web (build+E2E)      = 8 checkout/setup + 40 npm ci + 51 build + 26 pw + 6 shell = 131 s
-                       (+0–8 s if the build is slower without the preceding tsc)
-web-tests shard      = 40 npm ci + 66 (ideal 60 test + ~6 startup)               = 106 s
-                       (hash-by-count split, so one shard may be materially larger)
-web-typecheck        = 40 npm ci + 22 typecheck + 8 setup                        =  70 s
-critical path        = max(~131–139, ~106–130, 70) ≈ 134–139 s
-end-to-end           = 8 queue + 137 + 6 hygiene + 3 tail                        = ~154 s  (model, no measurement yet)
+web               92 s  = 2 checkout + 6 node + 24 npm ci + 35 build + 17 pw + 4 shell
+web-typecheck     74 s  = 3 + 5 + 38 npm ci + 24 tsc
+web-tests (1)    106 s  = 2 + 5 + 33 npm ci + 62 tests
+web-tests (2)    101 s  = 2 + 3 + 36 npm ci + 55 tests
+critical path          = max(92, 74, 106) = 106 s
+end-to-end             = 17:08:08 -> 17:10:29 = 141 s (queue + 106 + hygiene 10 + tail)
 ```
+
+The two shards are well balanced in CI (62 s vs 55 s of test time), so a third shard
+has no critical-path case. Batch 2/3 remain experiments, not commitments.
 
 ---
 
@@ -352,19 +361,19 @@ end-to-end           = 8 queue + 137 + 6 hygiene + 3 tail                       
 
 ### 6.1 GitHub-hosted (the only runner that should carry PR validation)
 
-| | Now | After batch 1 |
+| | Baseline | Batch 1 (measured) |
 |---|---|---|
 | Unified workflow runs / 30 d | **277** | ~277 (unchanged) |
-| Avg runner minutes / run | ~11.4 | ~13.5 |
-| Unified runner minutes / 30 d | **~3,160** | **~3,850** |
-| Billable GitHub minutes | **0** (public repo; `/timing` returns `total_ms: 0` — capacity is consumed, cost is not) | **0** |
+| Avg runner minutes / run (full matrix) | 17.85 | **16.68** |
+| Unified runner minutes / 30 d | **~3,160** | ~2,950–3,300 |
+| Billable GitHub minutes | **0** (public repo — capacity is consumed, cost is not) | **0** |
 | All-workflow runs / 30 d | 2,500 (mostly the 9 s Slack notifier) | ~2,500 |
 | Concurrent jobs (peak) | ~13 | ~16 of the account-wide 20 (Free plan; unverified) |
 
-The trade is deliberate: **+~690 runner-minutes/30 d for ~−40 % wall clock, at $0**.
-The concurrency headroom is now thin: the limit is account-wide, so CodeQL, the Slack
-notifier and any other repository share the same 20 slots. If this repository ever
-becomes private, batch 1's +2.5 min/run costs real money and should be re-evaluated.
+In the matched full-matrix pair the split was runner-minute neutral-to-negative
+(−1.2 min) while saving 59 % wall clock: the new jobs cost ~1.2 min, and the run as a
+whole was faster. Concurrency headroom is thinner because the limit is account-wide;
+that is the main reason not to add a third shard.
 
 ### 6.2 Blacksmith free tier
 
@@ -506,3 +515,33 @@ capacity use.
 
 Net position: the job graph is unchanged and still correct; Batch 1 is **not ready to
 implement until Batch 0 lands**.
+
+### 11.1 Batch 2 decisions (evidence-based, no code changes)
+
+| Priority | Measurement | Decision |
+|---|---|---|
+| A. Playwright setup | `Install Playwright Chromium` is 17 s in the Batch 1 run (37 s in the baseline). The `web` job is 92 s and is **not** on the critical path (shard 106 s). A browser cache can remove only the download half (~9 s) because the apt dependency install cannot be cached. | **REJECT** — zero critical-path benefit at the current shape; adds a poisoned-binary surface for no wall-clock gain. Revisit only if `web` becomes the critical job again. |
+| B. Dependency installation | `npm ci` is 33–38 s in each shard; a `node_modules` cache could plausibly remove ~24 s per shard and take the critical path from 106 s to ~82 s. | **DEFER** — meaningful but the program requires provenance, native-binding verification and a clean-install fallback; `workspace` still proves the lockfile. Not adopted without a bounded experiment; risk is not justified by a 141 s pipeline that already beats its target. |
+| C. Build/artifact reuse | `web` already contains build + Playwright + shell contracts (92 s). Uploading/downloading `.next` would add transfer time and a dependency edge to save parallelism that does not exist. | **REJECT** — measured job is already short; artifact transfer would be net negative. |
+| D. Test balance | Shard test time 62 s vs 55 s (12 % spread) in CI; local spread was larger (116 s vs 77 s), but CI is what matters. | **NO CHANGE** — two shards stay; a third has no critical-path case while the shard sits at 106 s and the others are below it. |
+| E. Runner performance | GitHub-hosted 4 vCPU, $0, 141 s e2e. | **REJECT** Blacksmith migration — capped free tier, 2 vCPU, third-party dependency on the only required gate. |
+
+### 11.2 Final measured result
+
+| Metric | Baseline (`c095a5ca`) | Implemented (`f28f0516`) |
+|---|---|---|
+| End-to-end, full matrix | 346 s | **141 s** |
+| Critical job | `web` 302 s | `web-tests (1)` 106 s |
+| Required checks | 15/15 green | 15/15 green |
+| Tests | 306 files / 2313 tests | 306 files / 2313 tests (153+153, 1099+1214) |
+| Runner minutes | 17.85 | 16.68 |
+| Sample size | 1 matched run each | 1 matched run each |
+
+Confidence: the wall-clock delta is structural (one 302 s job replaced by a 106 s
+shard on the critical path), not a variance artifact. The 10-run p50 evaluation is
+incomplete (n=1 matched pair); subsequent runs on this PR add samples without
+manufacturing extra executions.
+
+Remaining bottleneck: `npm ci` is ~34 s of the 106 s critical shard, and the shard's
+test time is 62 s. The next honest lever is dependency-install reuse (priority B),
+which is deferred on safety grounds, not on benefit.

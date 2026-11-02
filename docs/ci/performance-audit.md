@@ -591,3 +591,48 @@ Two reviewer assertions were **not** supported and are rejected:
   never claimed. For a public repository the billable amount is $0, and GitHub's
   billing documentation is the authority. Wording tightened to "billable minutes = 0;
   capacity is still consumed".
+
+---
+
+## 11. Implementation results (2026-11-02)
+
+The plan was implemented in PR #341 (`docs/ci-performance-audit`) as five commits:
+
+| Batch | Commit | Scope |
+|---|---|---|
+| 0A | `f2a39eb7` | strict aggregate gate (`scripts/ci/aggregate-gate.mjs`), workflow guardrail tests run in `workspace` |
+| 0B | `ee802276` | release evidence bound to one run+attempt (`scripts/ci/release-evidence.mjs`), APK + OTA |
+| 0C | `c095a5ca` | per-PR cancellation with per-run protection for main/dispatch/full-matrix; `.npmrc` routing |
+| 1 | `f28f0516` | `web` = build + Playwright + shell; new `web-typecheck`; `web-tests` 2 shards |
+| docs | this commit | results and Batch 2 decisions |
+
+### Measured effect (matched full-matrix scope, same branch)
+
+| Metric | Baseline `c095a5ca` | Implemented `f28f0516` |
+|---|---|---|
+| End-to-end | **346 s** | **141 s** (−59 %) |
+| Critical job | `web` 302 s | `web-tests (1)` 106 s |
+| Web concern runner minutes | 5.0 | 6.2 |
+| Whole-run runner minutes | 17.85 | 16.68 |
+| Required checks | 15/15 | 15/15 |
+| Test parity | 306 files / 2313 tests | 306 files / 2313 tests (153+153; 1099+1214) |
+
+Batch 1 composition (measured): `web` 92 s (24 npm ci + 35 build + 17 Playwright + 4
+shell), `web-typecheck` 74 s (38 npm ci + 24 tsc), shards 106 s / 101 s (33–36 npm ci
++ 55–62 tests), `hygiene` 10 s.
+
+The forecast in §9 of the plan (central 165 s) was conservative on two counts: the
+build ran in 35 s rather than 51 s, and the shards were better balanced in CI (62 s vs
+55 s) than the local split suggested. The 43-item statuses that changed since the
+audit-time assessment: 8 (cancel superseded runs) → implemented, 11/12/16 (web test
+jobs, sharding, parallel typecheck) → implemented. Item 28 (Playwright cache) is
+rejected on evidence: the `web` job is no longer the critical path, and only the
+~9 s download half is cacheable.
+
+### Remaining evidence gaps
+
+- n=1 matched before/after run. The structural change is unambiguous; a 10-run p50 is
+  still pending and is collected from normal PR activity rather than manufactured runs.
+- Live double-push verification of the concurrency policy has not been performed.
+- The release gate's shard names were verified against the live API (`web-tests (1)`,
+  `web-tests (2)`), but no release workflow has been executed with the new contract.
