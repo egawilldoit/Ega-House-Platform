@@ -20,9 +20,14 @@ on:
         type: boolean
         default: false
 
+# PR runs share one stable group per PR so a newer push to the same PR cancels the
+# superseded run. Non-PR runs (push, workflow_dispatch) and release/full-matrix/ PRs
+# get a unique per-run group instead: a group holds at most one *pending* run, and a
+# newer queued run replaces it, so `cancel-in-progress: false` alone cannot guarantee
+# every main push is validated. The `unified-ci-` namespace isolates other workflows.
 concurrency:
-  group: unified-ci-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.event_name == 'pull_request' && !startsWith(github.head_ref, 'release/full-matrix/') && format('unified-ci-pr-{0}', github.ref) || format('unified-ci-run-{0}', github.run_id) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' && !startsWith(github.head_ref, 'release/full-matrix/') }}
 
 permissions:
   contents: read
@@ -78,6 +83,7 @@ jobs:
               - 'packages/api-client/**'
               - 'package.json'
               - 'package-lock.json'
+              - '.npmrc'
               - '.github/workflows/**'
             server:
               - 'apps/server/**'
@@ -87,12 +93,14 @@ jobs:
               - 'packages/data-access/**'
               - 'package.json'
               - 'package-lock.json'
+              - '.npmrc'
               - '.github/workflows/**'
             api-client:
               - 'packages/api-client/**'
               - 'packages/contracts/**'
               - 'package.json'
               - 'package-lock.json'
+              - '.npmrc'
               - '.github/workflows/**'
             web:
               - 'apps/web/**'
@@ -104,6 +112,7 @@ jobs:
               - 'scripts/ci/**'
               - 'package.json'
               - 'package-lock.json'
+              - '.npmrc'
               - '.github/workflows/**'
             db:
               - 'drizzle/**'
@@ -112,10 +121,12 @@ jobs:
               - '.github/workflows/**'
               - 'package.json'
               - 'package-lock.json'
+              - '.npmrc'
             packages:
               - 'packages/**'
               - 'package.json'
               - 'package-lock.json'
+              - '.npmrc'
               - '.github/workflows/**'
             code:
               - 'apps/**'
@@ -129,6 +140,7 @@ jobs:
               - '.github/workflows/**'
               - 'package.json'
               - 'package-lock.json'
+              - '.npmrc'
             regressions:
               - '**/AGENTS.md'
               - 'CONTEXT.md'
@@ -140,6 +152,7 @@ jobs:
               - '.github/workflows/**'
               - 'package.json'
               - 'package-lock.json'
+              - '.npmrc'
 
   # Dependency/security/architecture gate. Always runs: it is the check that
   # proves the lockfile, published dependency surface, security invariants and
@@ -190,6 +203,8 @@ jobs:
         run: npm run check:architecture
       - name: Architecture fixture tests
         run: npm run test:architecture
+      - name: Workflow guardrail tests
+        run: npm run test:ci-workflow
       - name: EGA Feature Delivery Map
         shell: bash
         run: |
@@ -397,18 +412,62 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - if: runner.os == 'Linux'
         run: node scripts/ci/verify-platform-optionals.mjs
-      - name: Web typecheck
-        run: npm run typecheck
-      - name: Web font egress guard
-        run: npm run check:font-egress
-      - name: Web tests
-        run: npm test
       - name: Web production build
         run: npm run build
       - name: Install Playwright Chromium
         run: npm exec --workspace @ega/web -- playwright install --with-deps chromium
       - name: Workspace shell browser contracts
         run: npm run test:visual --workspace @ega/web -- --grep "workspace shell contract"
+
+  web-typecheck:
+    needs: [changes]
+    if: needs.changes.outputs.web == 'true' || needs.changes.outputs.force_full == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact head
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Set up Node 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - if: runner.os == 'Linux'
+        run: node scripts/ci/verify-platform-optionals.mjs
+      - name: Web typecheck
+        run: npm run typecheck
+      - name: Web font egress guard
+        run: npm run check:font-egress
+
+  web-tests:
+    needs: [changes]
+    if: needs.changes.outputs.web == 'true' || needs.changes.outputs.force_full == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
+    steps:
+      - name: Checkout exact head
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Set up Node 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - if: runner.os == 'Linux'
+        run: node scripts/ci/verify-platform-optionals.mjs
+      - name: Web tests (shard ${{ matrix.shard }}/2)
+        run: npm run test --workspace @ega/web -- --shard=${{ matrix.shard }}/2
 
   mobile:
     needs: [changes]
@@ -580,7 +639,7 @@ jobs:
         run: node scripts/db/user-preferences-invariant-verify.mjs --url "$PROOF_DATABASE_URL"
 
   hygiene:
-    needs: [changes, workspace, contracts, domain, application, data-access, regressions, lint-changed, lint-report, web, mobile, server, api-client, db-invariants]
+    needs: [changes, workspace, contracts, domain, application, data-access, regressions, lint-changed, lint-report, web, web-typecheck, web-tests, mobile, server, api-client, db-invariants]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -590,43 +649,11 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
-      - name: Guard against concealed dependency failures
+      - name: Enforce expected validation set
         if: ${{ always() }}
-        shell: bash
-        run: |
-          set -u
-          status=0
-          check() {
-            local name="$1" result="$2"
-            echo "$name=$result"
-            case "$result" in
-              failure|cancelled)
-                echo "::error::hygiene cannot report success while dependency job '$name' concluded '$result'"
-                status=1
-                ;;
-              skipped)
-                if [ "${{ needs.changes.outputs.force_full }}" = "true" ]; then
-                  echo "::error::force-full mode requires job '$name' to execute, but it was skipped"
-                  status=1
-                fi
-                ;;
-            esac
-          }
-          check changes       "${{ needs.changes.result }}"
-          check workspace     "${{ needs.workspace.result }}"
-          check contracts     "${{ needs.contracts.result }}"
-          check domain        "${{ needs.domain.result }}"
-          check application   "${{ needs.application.result }}"
-          check data-access   "${{ needs.data-access.result }}"
-          check regressions   "${{ needs.regressions.result }}"
-          check lint-changed  "${{ needs.lint-changed.result }}"
-          check lint-report   "${{ needs.lint-report.result }}"
-          check web           "${{ needs.web.result }}"
-          check mobile        "${{ needs.mobile.result }}"
-          check server        "${{ needs.server.result }}"
-          check api-client    "${{ needs.api-client.result }}"
-          check db-invariants "${{ needs.db-invariants.result }}"
-          exit $status
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
+        run: node scripts/ci/aggregate-gate.mjs
       - name: Diff hygiene final check
         run: |
           git diff --check

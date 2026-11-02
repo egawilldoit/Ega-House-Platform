@@ -418,10 +418,37 @@ test('api-client still propagates to mobile in unified CI', () => {
   assert.ok(wf);
   const filtersIdx = wf.indexOf('filters:');
   assert.notEqual(filtersIdx, -1);
-  const filtersSlice = wf.slice(filtersIdx, filtersIdx + 2000);
-  const mobileInFilters = filtersSlice.match(/mobile:\s*\n([\s\S]*?)(?=\n\s{8}[a-z-]+:)/);
-  assert.ok(mobileInFilters);
-  assert.match(mobileInFilters[1], /packages\/api-client\//);
+  // Parse the `filters: |` scalar by indentation rather than by fixed
+  // indentation widths: take every following line that is blank or indented at
+  // least as deep as the first filter header, then split it into sections on
+  // header lines. This keeps the assertion independent of YAML re-indentation.
+  const lines = wf.slice(wf.indexOf('\n', filtersIdx) + 1).split('\n');
+  const headerMatch = lines[0].match(/^(\s+)[a-z-]+:\s*$/);
+  assert.ok(headerMatch, 'filters block starts with a filter header');
+  const headerIndent = headerMatch[1].length;
+  const blockLines = [];
+  for (const line of lines) {
+    if (line.trim() === '') {
+      blockLines.push(line);
+      continue;
+    }
+    if (line.match(/^(\s*)/)[1].length < headerIndent) break;
+    blockLines.push(line);
+  }
+  const sections = new Map();
+  let current = null;
+  for (const line of blockLines) {
+    const header = line.match(/^\s{8,16}([a-z-]+):\s*$/);
+    if (header) {
+      current = header[1];
+      sections.set(current, []);
+      continue;
+    }
+    if (current) sections.get(current).push(line);
+  }
+  const mobile = sections.get('mobile');
+  assert.ok(mobile, 'mobile filter section is present');
+  assert.match(mobile.join('\n'), /packages\/api-client\//);
 });
 
 test('old duplicate workflows remain retired', () => {
