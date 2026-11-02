@@ -5,6 +5,8 @@ import { fileURLToPath } from "node:url";
 
 import {
   MANDATORY_RELEASE_JOBS,
+  REQUIRED_RELEASE_JOBS,
+  REQUIRED_WEB_TEST_SHARD_JOBS,
   UNIFIED_WORKFLOW_PATH,
   runReleaseEvidence,
   selectReleaseRun,
@@ -40,7 +42,7 @@ function makeJob(name, conclusion = "success") {
 
 /** Full mandatory matrix, with per-job conclusion overrides. */
 function fullJobs(conclusions = {}) {
-  return MANDATORY_RELEASE_JOBS.map((name) =>
+  return REQUIRED_RELEASE_JOBS.map((name) =>
     makeJob(name, Object.hasOwn(conclusions, name) ? conclusions[name] : "success"),
   );
 }
@@ -100,6 +102,62 @@ test("informational lint-report is ignored by the gate", () => {
   const result = verifyReleaseJobs([...fullJobs(), makeJob("lint-report", "failure")]);
   assert.equal(result.ok, true, evidenceText(result));
   assert.equal(result.summary["lint-report"], undefined);
+});
+
+test("release requires the split web jobs, including both test shards", () => {
+  assert.ok(MANDATORY_RELEASE_JOBS.includes("web"));
+  assert.ok(MANDATORY_RELEASE_JOBS.includes("web-typecheck"));
+  assert.ok(!MANDATORY_RELEASE_JOBS.includes("web-tests"));
+  assert.deepEqual([...REQUIRED_WEB_TEST_SHARD_JOBS], ["web-tests (1)", "web-tests (2)"]);
+
+  const result = verifyReleaseJobs(fullJobs());
+  assert.equal(result.ok, true, evidenceText(result));
+  assert.equal(result.summary["web"], "success");
+  assert.equal(result.summary["web-typecheck"], "success");
+  assert.equal(result.summary["web-tests (1)"], "success");
+  assert.equal(result.summary["web-tests (2)"], "success");
+});
+
+test("a run containing an extra web-tests shard job is still accepted", async () => {
+  const apiGet = fakeApi({ jobs: [...fullJobs(), makeJob("web-tests (3)", "success")] });
+  const result = await runReleaseEvidence({ apiGet, sha: SHA, repoFullName: REPO });
+  assert.equal(result.ok, true, evidenceText(result));
+});
+
+test("missing web-tests (2) shard is rejected", async () => {
+  const jobs = fullJobs().filter((job) => job.name !== "web-tests (2)");
+  const apiGet = fakeApi({ jobs });
+  const result = await runReleaseEvidence({ apiGet, sha: SHA, repoFullName: REPO });
+
+  assert.equal(result.ok, false);
+  assert.match(evidenceText(result), /partial validation: job web-tests \(2\) did not run/);
+});
+
+test("skipped web-tests (1) shard is rejected", async () => {
+  const apiGet = fakeApi({ jobs: fullJobs({ "web-tests (1)": "skipped" }) });
+  const result = await runReleaseEvidence({ apiGet, sha: SHA, repoFullName: REPO });
+
+  assert.equal(result.ok, false);
+  assert.match(evidenceText(result), /partial validation: job web-tests \(1\) was skipped/);
+});
+
+test("a run with only web-tests (1) is rejected for the missing second shard", async () => {
+  const jobs = fullJobs().filter((job) => job.name !== "web-tests (2)");
+  jobs.push(makeJob("web-tests (1)", "success"));
+  const result = verifyReleaseJobs(jobs);
+
+  assert.equal(result.ok, false);
+  assert.match(evidenceText(result), /web-tests \(2\) did not run/);
+  assert.match(evidenceText(result), /duplicate job evidence: 2 jobs named web-tests \(1\)/);
+});
+
+test("missing web-typecheck is rejected", async () => {
+  const jobs = fullJobs().filter((job) => job.name !== "web-typecheck");
+  const apiGet = fakeApi({ jobs });
+  const result = await runReleaseEvidence({ apiGet, sha: SHA, repoFullName: REPO });
+
+  assert.equal(result.ok, false);
+  assert.match(evidenceText(result), /partial validation: job web-typecheck did not run/);
 });
 
 test("workflow_dispatch run on main is trusted evidence", async () => {
