@@ -26,13 +26,14 @@
 ### 1.2 Evidence limits (important)
 
 1. **The workflow changed during the measurement window.** Commit `dee17084`
-   ("ci: cut unprotected work and gate jobs by dependency", 2026-11-01) is the
-   current architecture. Only **3 completed runs** exist under it
-   (`41344085379`, `41348572389`, `41349819428`). The other 97 runs measure the
-   immediately preceding configuration. The `web` job's step sequence is
-   **identical** across both configurations, so the web critical-path numbers are
-   valid across the whole window; aggregate job counts and `lint-report`/
-   `delivery-map` presence are **not**.
+   ("ci: cut unprotected work and gate jobs by dependency", 2026-11-01 18:13:47Z)
+   is the current architecture. **Five** successful runs use it:
+   `41335539897` (dispatch, 18:14), `41335541779` (PR, created 18:14 but first job
+   started 19:46), `41344085379`, `41348572389`, `41349819428`. They are part of
+   the 100-run sample, not additional to it. The other 95 runs measure the
+   preceding configuration; the `web` job step sequence is identical across both,
+   so the web numbers remain comparable, while aggregate job counts and
+   `lint-report`/`delivery-map` presence are **not**.
 2. **The repository is public.** GitHub-hosted standard runners are free and
    unmetered for this repo (verified: `/timing` reports `total_ms: 0` for all 15
    jobs of run `41349819428`). "Runner minutes" below are therefore a
@@ -145,7 +146,12 @@ Current-config runs, individually:
 
 | Job | Runs | p50 | p90 | max | Notes |
 |---|---|---|---|---|---|
-| `web` | 86 | **193 s** | **287 s** | 307 s | critical path in every run |
+
+Rows other than the split `web` rows include failed/cancelled executions that stop
+early, so they understate a completed run. The successful-only `web` figure (262 s
+p50, n=49) is the correct input for the critical-path model.
+| `web` (successful only) | 49 | **262 s** | **299 s** | 307 s | the throughput measure used below |
+| `web` (all executions) | 86 | 193 s | 287 s | 307 s | includes aborted runs that stop early — not a throughput measure |
 | `lint-report` | 86 | 101 s | 127 s | 138 s | legacy always-on; now force-full only |
 | `application` | 88 | 57 s | 63 s | 67 s | 30–40 s of it is `npm ci` |
 | `data-access` | 88 | 55 s | 61 s | 71 s | |
@@ -180,6 +186,10 @@ Current-config runs, individually:
 
 The four heavy steps run **strictly one after another** although only the last one
 (browser contracts) requires the production build.
+
+Note that `next build` itself re-runs TypeScript for **25.1 s** (run `41349819428`);
+the standalone typecheck is a separate gate over the same tsconfig program, not a
+way to remove that cost.
 
 ### 3.4 Where the web tests go
 
@@ -230,8 +240,10 @@ cache cannot remove.
   2–3 s (`Cache hit for: node-cache-Linux-x64-npm-01…`).
 - Keys are version-specific by construction (lockfile hash + Node 22 + Linux x64).
 - `npm ci` still takes **24–40 s after the cache hit**: the cache only supplies the
-  package store; npm must still link `node_modules`. `.npmrc` sets
-  `install-links=true`, so workspace packages are materialised as copies.
+  package store; npm must still extract and link `node_modules`. Workspace packages
+  are symlinks (`"link": true` in `package-lock.json`), and `.npmrc`
+  `install-links=true` applies to `file:` dependencies, not to workspaces — neither
+  explains the install cost.
 - No cache exists for Playwright browsers, `node_modules`, `.next`, or `tsbuildinfo`.
 - Cache writes are skipped on hit ("not saving cache"), so storage churn is low.
 
@@ -264,31 +276,40 @@ cancelled **one `main` push**, which is the release-evidence SHA risk in item 8.
 
 ## 4. Critical path
 
-Measured decomposition of a web-only PR (run `41348572389`, 320 s):
+Exact reconciliation for a web-only PR (run `41348572389`, end-to-end 320 s):
 
 ```
-queue 11 s
-  └─ web job 299 s
-       checkout 2 + node/cache 6 + npm ci 39 + typecheck 24
-       + tests 125 + build 55 + playwright 36 + shell 6
-  └─ hygiene 7 s
-  └─ tail 3 s
-= 320 s
+run created -> first job (web) starts         11 s
+web job (API started_at -> completed_at)     299 s
+  named steps: 2 checkout + 7 node/cache + 39 npm ci + 24 typecheck
+             + 125 tests + 55 build + 36 playwright + 6 shell = 293 s
+  unlisted: per-job setup/complete + step rounding = 6 s
+wait after web ends before hygiene starts      2 s
+hygiene                                        7 s
+run completion tail                            1 s
+                                              ----
+                                              320 s
 ```
 
-Formula (current):
+The 293 s step sum and the 299 s job duration are both correct; the difference is
+GitHub per-job overhead, which any decomposition must add explicitly.
+
+Model for a typical (p50) run, for forecasting only:
 
 ```
 T = queue + npm_ci + typecheck + tests + build + playwright + shell + hygiene + tail
-  = ~8 + 39 + 23 + 122 + 53 + 26 + 6 + 6 + 3   ≈ 286 s  (p50 ≈ 281 s)
+  = ~8 + 39 + 23 + 122 + 53 + 26 + 6 + 6 + 3   ~ 286 s
 ```
+
+Observed end-to-end across the five current-config runs: 197, 285, 299, 320 s, plus
+one run with a 92-minute scheduling gap.
 
 The three independent operations — `typecheck`, `tests`, `build` — are the only
 reorderable blocks, and they are currently chained. `build` must precede the
 browser contracts (the Playwright `webServer` runs `next start` against `.next`).
 
 **Runner-minute critical path is not the same as the wall-clock critical path.**
-For a web PR the web job alone is 4.7–5.0 min of the 7.1 min total; the other
+For a web PR the web job alone is 4.4–5.0 min of the 6.5–7.1 min total; the other
 jobs exist mostly to pay for their own `npm ci`.
 
 ---
@@ -336,7 +357,7 @@ this codebase — most agent PRs touch a package or the server.
 
 ## 6. Findings
 
-### F1 — The `web` job is 95 % of the wall clock, and it serializes independent work
+### F1 — The `web` job is 89–94 % of the wall clock, and it serializes independent work
 
 `typecheck` (23 s), `tests` (122 s) and `build` (53 s) are independent but chained.
 Only `build → playwright → shell contracts` is a genuine dependency. This is the
@@ -365,11 +386,13 @@ save 26 s" is **not supported** by the logs.
 ### F5 — Change detection is good, conservative, and already load-bearing
 
 `dorny/paths-filter@v3`, GitHub-API based for PRs, 6–7 s, and it over-approximates
-transitive consumers (safe direction). No replacement is warranted. Three small
-coverage gaps exist — `vercel.json` matches only `code` (so it is never validated),
-`.npmrc` matches nothing, and root `tsconfig.json` matches only `code` (it is not
-used by `apps/web`) — none is a performance issue and none is a demonstrated
-merge-safety defect today.
+transitive consumers (safe direction). No replacement is warranted. Two real
+coverage gaps exist: `vercel.json` matches only `code` (the deployment config is
+never validated) and `.npmrc` matches nothing (install behaviour is exercised by
+`workspace`'s `npm ci`, but no consumer test runs). Root `tsconfig.json` matching
+only `code` is *not* a gap: it is unused by `apps/web`, and
+`scripts/ega-runner/tsconfig.json` is standalone. None of this is a performance
+issue.
 
 ### F6 — `cancel-in-progress` also cancels `main` runs
 
@@ -437,17 +460,17 @@ delta for the affected scope.
 | 16 | Parallel typecheck/build | **MISSING** | `Web typecheck` (L400), `Web tests` (L404), `Web production build` (L406) sequential | **−23 s** as a ceiling; folded into #11 | +0.9 min | Typecheck also runs inside `next build` (Next 16 type-checks by default) → defense in depth preserved. |
 | 17 | Concurrent independent setup | **ALREADY IMPLEMENTED** | 13 jobs restore the same 328 MB npm cache concurrently in 2–6 s each | — | — | — |
 | 18 | Parallel release packaging | **NOT APPLICABLE** | one APK, sequential preflight → build → smoke → publish by design (`docs/ci/mobile-delivery.md`) | — | — | — |
-| 19 | Resource-aware concurrency | **IMPROVE** (low) | no `max-parallel`; full matrix peaks at 14 of 20 free-plan jobs; queue p90 84 s; `slack-pr-ready.yml` has no `concurrency` group and fires on every `check_run`/`check_suite`/`status` | 0 | ~0 | Adding 3 web jobs raises peak to ~17 (CodeQL +1–2). Recheck queue p90 after rollout; add `concurrency` to the Slack notifier separately. |
+| 19 | Resource-aware concurrency | **IMPROVE** (low) | no `max-parallel`; ~13 concurrent jobs today (`workspace` + 12 leaves; `changes` finishes first); queue p90 84 s; `slack-pr-ready.yml` has no `concurrency` group and fires on every `check_run`/`check_suite`/`status` | 0 | ~0 | The Free-plan limit is **20 concurrent jobs per account**, not per repo (plan unverified here). Adding 3 web jobs -> ~16 concurrent, leaving little room for CodeQL or other repos. Measure scheduling delay after rollout; add `concurrency` to the Slack notifier separately. |
 
 ### 7.3 Caching (20–30)
 
 | # | Item | Status | Current implementation & evidence | Wall clock | Runner cost | Risk / verification |
 |---|---|---|---|---|---|---|
 | 20 | Toolchain caching | **ALREADY IMPLEMENTED** | `actions/setup-node@v6` `cache: npm` in all installing jobs (L169-173 etc.); Node found in `hostedtoolcache` in 0.3 s | — | — | — |
-| 21 | Version-specific keys | **ALREADY IMPLEMENTED** | setup-node key = OS + Node version + lockfile hash (`node-cache-Linux-x64-npm-01…`) | — | — | — |
+| 21 | Version-specific keys | **ALREADY IMPLEMENTED** (caveat) | setup-node key = OS + arch + package manager + lockfile hash; the observed key `node-cache-Linux-x64-npm-01…` contains **no Node version**. Node is pinned to 22, so exposure is limited | — | — | If the Node major changes, the key does not — bump it deliberately. |
 | 22 | npm package-store caching | **ALREADY IMPLEMENTED** | confirmed primary-key hit, 343,659,890 B restored | — | — | — |
 | 23 | Filtered-install cache reuse | **ALREADY IMPLEMENTED** | one repo-wide store shared by every job; no per-filter caches to fragment it | — | — | — |
-| 24 | Lockfile verification caching | **ALREADY IMPLEMENTED** (cheap) | `npm run ci:workspace` 1–2 s; purity/security proofs 0–1 s each | — | — | — |
+| 24 | Lockfile verification caching | **NOT APPLICABLE** | verification runs every time and costs 1–2 s (`npm run ci:workspace`); caching it adds risk for no measurable gain | — | — | Keep executing it; it is the proof, not a cacheable artifact. |
 | 25 | Remote task-result caching | **NOT APPLICABLE** | no Nx/Turbo/Bazel; adding a paid remote cache is out of scope and unnecessary at 3 min | — | — | — |
 | 26 | Per-test result caching | **NOT APPLICABLE** | Vitest has no safe result cache; a wrong hit would silently drop coverage | — | — | — |
 | 27 | Electron caching | **NOT APPLICABLE** | no Electron; mobile is Expo/React Native; no desktop build | — | — | — |
@@ -462,7 +485,7 @@ delta for the affected scope.
 | 31 | Blacksmith runners | **ALREADY IMPLEMENTED** (Gradle only, `mobile-delivery.yml:171`; policy in `docs/ci/mobile-delivery.md`) | keep unified CI on GitHub-hosted runners | — | — | Public repo: GitHub-hosted is $0/unmetered on 4 vCPU; a Blacksmith free tier is capped and 2 vCPU. ~3.2k unified runner-min/30 d would exceed a typical free cap. Only revisit with a measured A/B. |
 | 32 | Runner right-sizing | **ALREADY IMPLEMENTED** | `ubuntu-latest` everywhere; no larger runners, no matrix, timeouts 45 min (10 min for aggregate jobs) | — | — | Timeouts are generous but never approached (max observed 307 s). |
 | 33 | Sparse checkout | **MISSING** (low) | full checkout 1–5 s | ~1–2 s | 0 | `git diff --check`, delivery map and lint need the full tree. Not worth the breakage risk. |
-| 34 | Minimal checkout for change detection | **ALREADY IMPLEMENTED** | `changes` job checks out exact head and uses the GitHub API for PR diffs, 6–7 s total incl. `fetch-depth: 0` needed for push diffs | — | — | Reducing `fetch-depth` would break push-mode base detection. |
+| 34 | Minimal checkout for change detection | **IMPROVE** (low) | `changes` performs a full-history checkout (`fetch-depth: 0`) and uses the GitHub API for PR diffs; 6–7 s total | ~1–2 s | 0 | Not worth doing: push-mode base detection needs history and the step is already 2–3 s. |
 | 35 | Avoid installing unrelated toolchains | **ALREADY IMPLEMENTED** | Node only; no Java/Python/Rust in the PR path; Android toolchain only in the tag/dispatch workflow | — | — | — |
 
 ### 7.5 Local development (36–39)
@@ -481,18 +504,23 @@ delta for the affected scope.
 | 40 | Shared build-artifact reuse | **MISSING** | build output is consumed in-process; nothing uploaded; Vercel builds independently | optional −30 s, complexity +1 artifact | Only worth it if build and browser tests are split into separate jobs. `.next` upload/download ≈ 15–25 s each, so net gain is small. |
 | 41 | Promotion of validated commits | **IMPROVE** | `mobile-delivery.yml:151-170` accepts **any** successful Unified run for the SHA; main pushes are path-filtered (§5) | 0 | **Protection gap, not a speed item.** Recommend requiring a completed `force_full` run for the release SHA (or recording the executed-job set in the gate). |
 | 42 | Release dependency filtering | **ALREADY IMPLEMENTED** | mobile build only on `mobile-v*` tags or dispatch; PRs never build APKs | — | — |
-| 43 | Conditional scheduled release | **ALREADY IMPLEMENTED / N/A** | no scheduled release exists; `ega-weekly-reviews` is a product cron (currently failing, unrelated to CI speed) | — | — |
+| 43 | Conditional scheduled release | **NOT APPLICABLE** | no scheduled release exists; `ega-weekly-reviews` is a product cron (currently failing, unrelated to CI speed) | — | — | — |
 
 ### 7.7 Summary counts
 
+Primary status is one per item, so the four rows below sum to 43. Secondary tags
+(`NEEDS EVIDENCE`, `UNSAFE`) annotate items that already have a primary status and
+must not be added to the total.
+
 | Status | Items |
 |---|---|
-| ALREADY IMPLEMENTED | 1, 2, 3, 5, 7, 9, 10, 14, 15, 17, 20, 21, 22, 23, 24, 30, 31 (Gradle only), 32, 34, 35, 42, 43 → **22** |
-| IMPROVE | 4 (low), 8, 19 (low), 29, 41 → **5** |
-| MISSING | 11, 12, 13, 16, 28, 33 (low), 36, 37, 39 (low), 40 → **10** |
-| NOT APPLICABLE | 6, 18, 25, 26, 27, 38 → **6** |
-| NEEDS EVIDENCE | 13, 29 (and 31 if an A/B is ever requested) |
-| UNSAFE | none as stated; 29 becomes UNSAFE without an A/B run |
+| ALREADY IMPLEMENTED | 1, 2, 3, 5, 7, 9, 10, 14, 15, 17, 20, 21, 22, 23, 30, 31 (Gradle only), 32, 35, 42 -> **19** |
+| IMPROVE | 4 (low), 8, 19 (low), 29, 34 (low, not recommended), 41 -> **6** |
+| MISSING | 11, 12, 13, 16, 28, 33 (low, not recommended), 36, 37, 39 (low), 40 -> **10** |
+| NOT APPLICABLE | 6, 18, 24, 25, 26, 27, 38, 43 -> **8** |
+
+Secondary annotations: `NEEDS EVIDENCE` for 13 and 29; `UNSAFE` for 29 without an
+A/B run; `PARTIAL` for 31 (Gradle only).
 
 ---
 
@@ -530,3 +558,36 @@ Before/after claims must be reported as observed, not projected:
 | Main-run preservation | two consecutive pushes to main | both runs complete |
 | Queue impact | time-to-first-job p90 over 20 runs | no regression beyond +30 s |
 | Free-tier concurrency | max concurrent jobs observed | ≤18 of 20 |
+
+---
+
+## 10. Corrections after independent review (2026-11-02)
+
+An independent reviewer re-derived the numbers from the raw API and re-read the
+workflow. The following statements in the first draft were wrong; the body above is
+corrected, and the reasoning is recorded here so the history is auditable.
+
+| # | Original claim | Corrected | Evidence |
+|---|---|---|---|
+| 1 | 3 current-config runs | **5** successful runs under `dee17084`, inside the 100-run sample rather than additional to it | commit time 18:13:47Z; runs `41335539897`, `41335541779`, `41344085379`, `41348572389`, `41349819428`; the 18:14 runs have no retired `delivery-map` job |
+| 2 | `web` p50 193 s | 193 s is the **all-executions** median; successful web jobs are **262 s p50 / 299 s p90 (n=49)** | jobs API: 86 non-skipped web jobs, 49 successful |
+| 3 | "web is 95 % of wall clock" | **89–94 %** (281/299, 299/320, 176/197) | run arithmetic |
+| 4 | Critical-path decomposition "= 320 s" from 314 s of listed steps | named web steps sum to **293 s**, the job is **299 s**, and the missing 6 s is per-job overhead; full reconciliation 11+299+2+7+1 = 320 s | jobs + steps API |
+| 5 | Vitest `4.0.7` | installed and locked **4.1.5** (`package.json` range `^4.0.7`) | `node_modules/vitest/package.json`; `package-lock.json:20322` |
+| 6 | Sharding is "round-robin over the sequencer order, near-LPT" | Vitest SHA-1 hashes each test path, sorts by hash and slices by **count** — a size-agnostic partition that is not duration-balanced | `node_modules/vitest/dist/chunks/coverage.DM_a_rWm.js:35-47` |
+| 7 | `.npmrc install-links=true` materialises workspace packages as copies | workspaces are **symlinks** (`"link": true`); `install-links` concerns `file:` dependencies | `package-lock.json:1698-1701`; `ls -l node_modules/@ega/*` |
+| 8 | setup-node key includes the Node version | key is OS + arch + package manager + dependency hash; **no Node version** | observed key `node-cache-Linux-x64-npm-01…` |
+| 9 | Free-plan limit is "20 concurrent jobs per repo" | it is **per account** (plan not verified); today's graph is ~13 concurrent, not 14 executed | workflow graph + GitHub plan limits |
+| 10 | Root `tsconfig.json` is a coverage gap | **not a gap**: unused by `apps/web`; `scripts/ega-runner/tsconfig.json` is standalone | both tsconfig files |
+| 11 | "`next build` type-checks by default" used as a coverage backstop | true, and measurable: **25.1 s** of the build is TypeScript (run `41349819428`) | build log |
+
+Two reviewer assertions were **not** supported and are rejected:
+
+- "Root `tsconfig.json` affects Runner typechecking, yet does not select `regressions`."
+  `scripts/ega-runner/tsconfig.json` does not extend the root config, so a root
+  tsconfig change cannot affect that job.
+- "`total_ms: 0` is insufficient evidence for zero billing." It is insufficient for
+  zero *physical* consumption (the run used 6.5 runner-minutes), which this document
+  never claimed. For a public repository the billable amount is $0, and GitHub's
+  billing documentation is the authority. Wording tightened to "billable minutes = 0;
+  capacity is still consumed".
