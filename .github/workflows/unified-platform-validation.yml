@@ -190,6 +190,8 @@ jobs:
         run: npm run check:architecture
       - name: Architecture fixture tests
         run: npm run test:architecture
+      - name: Workflow guardrail tests
+        run: npm run test:ci-workflow
       - name: EGA Feature Delivery Map
         shell: bash
         run: |
@@ -590,43 +592,11 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
-      - name: Guard against concealed dependency failures
+      - name: Enforce expected validation set
         if: ${{ always() }}
-        shell: bash
-        run: |
-          set -u
-          status=0
-          check() {
-            local name="$1" result="$2"
-            echo "$name=$result"
-            case "$result" in
-              failure|cancelled)
-                echo "::error::hygiene cannot report success while dependency job '$name' concluded '$result'"
-                status=1
-                ;;
-              skipped)
-                if [ "${{ needs.changes.outputs.force_full }}" = "true" ]; then
-                  echo "::error::force-full mode requires job '$name' to execute, but it was skipped"
-                  status=1
-                fi
-                ;;
-            esac
-          }
-          check changes       "${{ needs.changes.result }}"
-          check workspace     "${{ needs.workspace.result }}"
-          check contracts     "${{ needs.contracts.result }}"
-          check domain        "${{ needs.domain.result }}"
-          check application   "${{ needs.application.result }}"
-          check data-access   "${{ needs.data-access.result }}"
-          check regressions   "${{ needs.regressions.result }}"
-          check lint-changed  "${{ needs.lint-changed.result }}"
-          check lint-report   "${{ needs.lint-report.result }}"
-          check web           "${{ needs.web.result }}"
-          check mobile        "${{ needs.mobile.result }}"
-          check server        "${{ needs.server.result }}"
-          check api-client    "${{ needs.api-client.result }}"
-          check db-invariants "${{ needs.db-invariants.result }}"
-          exit $status
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
+        run: node scripts/ci/aggregate-gate.mjs
       - name: Diff hygiene final check
         run: |
           git diff --check
