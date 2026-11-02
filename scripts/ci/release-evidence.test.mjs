@@ -10,6 +10,8 @@ import {
   UNIFIED_WORKFLOW_PATH,
   runReleaseEvidence,
   selectReleaseRun,
+  shardJobNames,
+  validateShardContract,
   verifyReleaseJobs,
 } from "./release-evidence.mjs";
 
@@ -118,10 +120,66 @@ test("release requires the split web jobs, including both test shards", () => {
   assert.equal(result.summary["web-tests (2)"], "success");
 });
 
-test("a run containing an extra web-tests shard job is still accepted", async () => {
+test("a run containing an extra web-tests shard job is rejected", async () => {
   const apiGet = fakeApi({ jobs: [...fullJobs(), makeJob("web-tests (3)", "success")] });
   const result = await runReleaseEvidence({ apiGet, sha: SHA, repoFullName: REPO });
-  assert.equal(result.ok, true, evidenceText(result));
+
+  assert.equal(result.ok, false);
+  assert.match(
+    evidenceText(result),
+    /unexpected web-test shard job 'web-tests \(3\)' is not part of the release contract/,
+  );
+});
+
+test("a duplicated required shard is reported once, never as unexpected", () => {
+  const jobs = [...fullJobs(), makeJob("web-tests (1)", "success")];
+  const result = verifyReleaseJobs(jobs);
+
+  assert.equal(result.ok, false);
+  assert.match(evidenceText(result), /duplicate job evidence: 2 jobs named web-tests \(1\)/);
+  assert.equal((evidenceText(result).match(/duplicate job evidence/g) || []).length, 1);
+  assert.doesNotMatch(evidenceText(result), /unexpected web-test shard job/);
+});
+
+test("shardJobNames derives API job names from matrix values", () => {
+  assert.deepEqual(shardJobNames([1, 2]), ["web-tests (1)", "web-tests (2)"]);
+  assert.deepEqual(shardJobNames(["1", "2"]), ["web-tests (1)", "web-tests (2)"]);
+  assert.deepEqual(shardJobNames([]), []);
+});
+
+test("matrix [1, 2] matches the release contract regardless of order", () => {
+  for (const values of [[1, 2], [2, 1], ["1", "2"]]) {
+    const result = validateShardContract(values);
+    assert.equal(result.ok, true, `${JSON.stringify(values)}: ${result.errors.join("; ")}`);
+    assert.deepEqual(result.errors, []);
+  }
+});
+
+test("matrix [1, 2, 3] is rejected as extra shards", () => {
+  const result = validateShardContract([1, 2, 3]);
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /expected .*'web-tests \(1\)'.*'web-tests \(2\)'/);
+  assert.match(result.errors.join("\n"), /unexpected 'web-tests \(3\)'/);
+});
+
+test("matrix [1] is rejected as missing the second shard", () => {
+  const result = validateShardContract([1]);
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /missing 'web-tests \(2\)'/);
+});
+
+test("matrix with duplicate shards is rejected", () => {
+  const result = validateShardContract([1, 1, 2]);
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /duplicate web-test shard value 1/);
+});
+
+test("a non-list matrix shard value fails closed", () => {
+  for (const value of [undefined, null, "1,2", 2]) {
+    const result = validateShardContract(value);
+    assert.equal(result.ok, false);
+    assert.ok(result.errors.length > 0);
+  }
 });
 
 test("missing web-tests (2) shard is rejected", async () => {

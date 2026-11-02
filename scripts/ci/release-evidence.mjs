@@ -49,7 +49,11 @@ export const MANDATORY_RELEASE_JOBS = Object.freeze([
   "hygiene",
 ]);
 
-/** One API job name per `web-tests` shard; extra shards are ignored. */
+/**
+ * One API job name per `web-tests` shard. The workflow matrix must derive
+ * exactly this set: extra shards would be unverified release evidence and are
+ * rejected by `verifyReleaseJobs`.
+ */
 export const REQUIRED_WEB_TEST_SHARD_JOBS = Object.freeze(["web-tests (1)", "web-tests (2)"]);
 
 /** Every API job name the release gate requires exactly once. */
@@ -57,6 +61,69 @@ export const REQUIRED_RELEASE_JOBS = Object.freeze([
   ...MANDATORY_RELEASE_JOBS,
   ...REQUIRED_WEB_TEST_SHARD_JOBS,
 ]);
+
+/** API job name GitHub derives for a `web-tests` matrix shard value. */
+const WEB_TEST_SHARD_JOB_PATTERN = /^web-tests \(\d+\)$/;
+
+/**
+ * Map raw `matrix.shard` values to the API job names GitHub reports, e.g.
+ * `[1, 2]` -> `["web-tests (1)", "web-tests (2)"]`. Values are only
+ * normalised to their string form; no range or type coercion is implied.
+ */
+export function shardJobNames(values) {
+  const list = Array.isArray(values) ? values : [];
+  return list.map((value) => `web-tests (${String(value)})`);
+}
+
+function formatJobNames(names) {
+  return names.length === 0 ? "<none>" : names.map((name) => `'${name}'`).join(", ");
+}
+
+/**
+ * Compare the workflow's `matrix.shard` values against the release contract.
+ * Order-insensitive, but duplicates, missing shards, and extra shards fail.
+ * Returns `{ ok, errors }`.
+ */
+export function validateShardContract(matrixValues) {
+  const expected = [...REQUIRED_WEB_TEST_SHARD_JOBS];
+  if (!Array.isArray(matrixValues)) {
+    return {
+      ok: false,
+      errors: [
+        `web-test shard contract: expected ${formatJobNames(expected)}, observed <not a shard list>`,
+      ],
+    };
+  }
+
+  const observed = shardJobNames(matrixValues);
+  const errors = [];
+
+  const seen = new Set();
+  const duplicates = new Set();
+  for (const name of observed) {
+    if (seen.has(name)) duplicates.add(name);
+    seen.add(name);
+  }
+  for (const name of duplicates) {
+    const value = name.slice("web-tests (".length, -1);
+    errors.push(
+      `duplicate web-test shard value ${value}: expected ${formatJobNames(expected)}, observed repeated ${formatJobNames([name])}`,
+    );
+  }
+
+  const missing = expected.filter((name) => !seen.has(name));
+  const extra = [...seen].filter((name) => !expected.includes(name));
+  if (missing.length > 0 || extra.length > 0) {
+    const detail = [];
+    if (missing.length > 0) detail.push(`missing ${formatJobNames(missing)}`);
+    if (extra.length > 0) detail.push(`unexpected ${formatJobNames(extra)}`);
+    errors.push(
+      `web-test shard contract mismatch: expected ${formatJobNames(expected)}, observed ${formatJobNames([...seen])} (${detail.join("; ")})`,
+    );
+  }
+
+  return { ok: errors.length === 0, errors };
+}
 
 /** Events that can represent production validation of `main`. */
 const TRUSTED_EVENTS = Object.freeze(["push", "workflow_dispatch"]);
@@ -179,6 +246,21 @@ export function verifyReleaseJobs(jobs) {
     } else if (conclusion !== "success") {
       errors.push(`job ${name} did not succeed: conclusion ${describeConclusion(conclusion)}`);
     }
+  }
+
+  // A shard outside the contract means the workflow matrix drifted from what
+  // this gate verifies (or evidence was mixed). Fail rather than ignore it.
+  // Required names are never reported here, so a duplicate required shard is
+  // reported once by the duplicate rule above, not twice.
+  const unexpectedShards = new Set();
+  for (const job of list) {
+    const name = typeof job?.name === "string" ? job.name : "";
+    if (!WEB_TEST_SHARD_JOB_PATTERN.test(name)) continue;
+    if (REQUIRED_WEB_TEST_SHARD_JOBS.includes(name)) continue;
+    unexpectedShards.add(name);
+  }
+  for (const name of unexpectedShards) {
+    errors.push(`unexpected web-test shard job '${name}' is not part of the release contract`);
   }
 
   return { ok: errors.length === 0, errors, summary };
