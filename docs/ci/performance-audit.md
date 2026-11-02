@@ -1,7 +1,9 @@
 # CI/CD Performance Audit — EGA House
 
-**Status:** Audit only. No workflow, script, application, or infrastructure change was made.
-**Date:** 2026-11-02
+**Status:** Historical audit (2026-11-02), preserved as written, then **implemented** in
+PR #341. The audit-time assessment is kept for the record; implemented outcomes and
+measured results are in §11. Not merged at the time of writing.
+**Date:** 2026-11-02 (audit) · 2026-11-02 (implementation results, §11)
 **Repository:** `egawilldoit/Ega-House-Platform`
 **Branch audited:** `origin/main` @ `45f668a2` (merge of PR #340)
 **Audit worktree:** `<worktree>/docs/ci-performance-audit`, branched from `origin/main`
@@ -604,22 +606,28 @@ The plan was implemented in PR #341 (`docs/ci-performance-audit`) as five commit
 | 0B | `ee802276` | release evidence bound to one run+attempt (`scripts/ci/release-evidence.mjs`), APK + OTA |
 | 0C | `c095a5ca` | per-PR cancellation with per-run protection for main/dispatch/full-matrix; `.npmrc` routing |
 | 1 | `f28f0516` | `web` = build + Playwright + shell; new `web-typecheck`; `web-tests` 2 shards |
-| docs | this commit | results and Batch 2 decisions |
+| 1b | `540586cb` | shard matrix pinned to the release contract; extra shards fail closed |
+| docs | this commit | implementation status, results and Batch 2 decisions |
 
 ### Measured effect (matched full-matrix scope, same branch)
 
 | Metric | Baseline `c095a5ca` | Implemented `f28f0516` |
 |---|---|---|
-| End-to-end | **346 s** | **141 s** (−59 %) |
+| End-to-end | **346 s** | **141 s** (run A) / **172 s** (run B) |
 | Critical job | `web` 302 s | `web-tests (1)` 106 s |
 | Web concern runner minutes | 5.0 | 6.2 |
 | Whole-run runner minutes | 17.85 | 16.68 |
 | Required checks | 15/15 | 15/15 |
 | Test parity | 306 files / 2313 tests | 306 files / 2313 tests (153+153; 1099+1214) |
 
-Batch 1 composition (measured): `web` 92 s (24 npm ci + 35 build + 17 Playwright + 4
+Batch 1 composition (run A): `web` 92 s (24 npm ci + 35 build + 17 Playwright + 4
 shell), `web-typecheck` 74 s (38 npm ci + 24 tsc), shards 106 s / 101 s (33–36 npm ci
-+ 55–62 tests), `hygiene` 10 s.
++ 55–62 tests), `hygiene` 10 s. Run B was slower across the board (npm ci 40 s, build
+54 s, shards 125 s / 74 s), which is runner throughput variance, not a structural
+regression.
+
+The two post-change runs are **141 s and 172 s**. Their mean is **156.5 s**; that is a
+mean of two observations, not a statistically established p50.
 
 The forecast in §9 of the plan (central 165 s) was conservative on two counts: the
 build ran in 35 s rather than 51 s, and the shards were better balanced in CI (62 s vs
@@ -629,10 +637,27 @@ jobs, sharding, parallel typecheck) → implemented. Item 28 (Playwright cache) 
 rejected on evidence: the `web` job is no longer the critical path, and only the
 ~9 s download half is cacheable.
 
+### Release-evidence rehearsal (live, read-only)
+
+`scripts/ci/release-evidence.mjs` was run against real Actions data without triggering
+any release:
+
+| Probe | SHA | Observed | Result |
+|---|---|---|---|
+| Partial `main` push (run `41349819428`, 5 of 16 jobs) | `45f668a2` | selected run 41349819428 attempt 1; `contracts`…`db-invariants` skipped, `web-typecheck` and both shards missing | **rejected**, 12 specific errors, exit 1 |
+| Green full-matrix **PR** run (`41485736069`) | `c095a5ca` | rejected candidate: `event pull_request is not trusted release evidence` | **rejected**, exit 1 |
+| Unknown SHA | `000…0` | no runs for SHA | **rejected**, exit 1 |
+
+The second probe matters most: a green, complete run is still not release evidence when
+it came from a PR, which is the intended trust boundary. The positive live path cannot
+exist before merge because no `main` run contains `web-typecheck` and the two shards;
+fixture tests cover it, and a real `force_full=true` run on `main` is required after
+merge (see §11 remaining follow-ups).
+
 ### Remaining evidence gaps
 
-- n=1 matched before/after run. The structural change is unambiguous; a 10-run p50 is
-  still pending and is collected from normal PR activity rather than manufactured runs.
+- n=2 post-change runs (141 s, 172 s; mean 156.5 s). A 10-run sample is operational
+  follow-up, collected from normal PR activity rather than manufactured runs.
 - Live double-push verification of the concurrency policy has not been performed.
-- The release gate's shard names were verified against the live API (`web-tests (1)`,
-  `web-tests (2)`), but no release workflow has been executed with the new contract.
+- No `main` run has yet executed the new release contract, so the positive live path
+  is a post-merge prerequisite, not a proven result.

@@ -1,10 +1,11 @@
 # CI/CD Optimization Plan — EGA House
 
-**Status:** Proposal. Nothing in this document has been implemented, pushed, merged,
-or deployed. Implementation waits for owner approval.
+**Status:** Implemented in PR #341 (batches 0A–2, commits `f2a39eb7`, `ee802276`,
+`c095a5ca`, `f28f0516`, `540586cb`). Not merged. §11 records the measured result, the
+Batch 2 decisions and the release-evidence rehearsal.
 **Date:** 2026-11-02
 **Base:** `origin/main` @ `45f668a2`
-**Evidence:** [`performance-audit.md`](performance-audit.md) (measured, 100 runs + 3 current-config runs)
+**Evidence:** [`performance-audit.md`](performance-audit.md) (measured: 100-run audit sample, 5 current-config runs, 2 post-change runs)
 **Revision:** 2026-11-02 after independent review — forecast lowered, an
 expectation-aware aggregate gate added, and correctness work moved ahead of
 performance work (see §10).
@@ -535,7 +536,7 @@ implement until Batch 0 lands**.
 | Required checks | 15/15 green | 15/15 green |
 | Tests | 306 files / 2313 tests | 306 files / 2313 tests (153+153, 1099+1214) |
 | Runner minutes | 17.85 | 16.68 |
-| Sample size | 1 matched run each | 1 matched run each |
+| Sample size | 1 matched run each | 2 post-change runs (141 s, 172 s; mean 156.5 s, not a p50) |
 
 Confidence: the wall-clock delta is structural (one 302 s job replaced by a 106 s
 shard on the critical path), not a variance artifact. The 10-run p50 evaluation is
@@ -545,3 +546,25 @@ manufacturing extra executions.
 Remaining bottleneck: `npm ci` is ~34 s of the 106 s critical shard, and the shard's
 test time is 62 s. The next honest lever is dependency-install reuse (priority B),
 which is deferred on safety grounds, not on benefit.
+
+### 11.3 Release-evidence rehearsal (Task 2)
+
+Read-only execution against live Actions data, no release triggered:
+
+- partial `main` push `41349819428` (`45f668a2`, 5 of 16 jobs) -> rejected with 12
+  job-level errors;
+- green full-matrix **PR** run `41485736069` (`c095a5ca`) -> rejected because
+  `event pull_request is not trusted release evidence`;
+- unknown SHA -> rejected with "no Unified validation runs found".
+
+Fixture tests still cover the positive path. No pre-merge `main` run can satisfy the
+new contract (it requires `web-typecheck` and both shards), so a post-merge
+`force_full=true` run on `main` is required before the next APK/OTA release.
+
+### 11.4 Shard-contract drift guard (Task 1)
+
+`validateShardContract()` compares the workflow's `matrix.shard` values with
+`REQUIRED_WEB_TEST_SHARD_JOBS`, and `verifyReleaseJobs()` now rejects any
+`web-tests (<n>)` job outside the contract. `npm run test:ci-workflow` reads the real
+workflow, so adding/removing/reordering shards without updating the release gate fails
+CI. Mutation-checked: `[1,2,3]`, `[2,3]` and `[1]` all fail as intended.
