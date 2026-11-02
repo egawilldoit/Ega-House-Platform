@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import { CONTRACTED_JOBS } from "./aggregate-gate.mjs";
+import { validateShardContract } from "./release-evidence.mjs";
 
 const workflowPath = fileURLToPath(
   new URL("../../.github/workflows/unified-platform-validation.yml", import.meta.url),
@@ -68,6 +69,41 @@ function jobSection(name) {
   return next === -1 ? workflow.slice(start) : workflow.slice(start, start + 1 + next);
 }
 
+function matrixValue(raw) {
+  const value = raw.trim().replace(/^['"]|['"]$/g, "");
+  return /^\d+$/.test(value) ? Number(value) : value;
+}
+
+/**
+ * Extract `matrix.shard` from a job section. Supports the inline list
+ * (`shard: [1, 2]`) and the block list (`shard:\n  - 1\n  - 2`).
+ */
+function parseShardMatrix(section) {
+  const inline = section.match(/^[ \t]+shard:[ \t]*\[([^\]]*)\][ \t]*$/m);
+  if (inline) {
+    return inline[1]
+      .split(",")
+      .map((value) => value.trim())
+      .filter((value) => value !== "")
+      .map(matrixValue);
+  }
+
+  const lines = section.split("\n");
+  const headerIdx = lines.findIndex((line) => /^[ \t]+shard:[ \t]*$/.test(line));
+  assert.notEqual(headerIdx, -1, "web-tests matrix declares a shard key");
+  const headerIndent = lines[headerIdx].match(/^(\s*)/)[1].length;
+
+  const values = [];
+  for (const line of lines.slice(headerIdx + 1)) {
+    if (line.trim() === "") continue;
+    const entry = line.match(/^(\s*)-\s*(.+?)\s*$/);
+    if (!entry || entry[1].length <= headerIndent) break;
+    values.push(matrixValue(entry[2]));
+  }
+  assert.ok(values.length > 0, "web-tests matrix shard list is not empty");
+  return values;
+}
+
 test("workflow_dispatch exposes force_full boolean input defaulting to false", () => {
   assert.match(workflow, /workflow_dispatch:\s*\n\s*inputs:\s*\n\s*force_full:/);
   assert.match(workflow, /force_full:\s*\n\s*description: .+\n\s*type: boolean\n\s*default: false/);
@@ -119,6 +155,44 @@ test("web-tests shards exactly [1, 2] without fail-fast or continue-on-error", (
   // The matrix is the only shard source: no hard-coded single-shard invocation.
   assert.equal((section.match(/--shard=/g) || []).length, 1);
   assert.equal((section.match(/matrix\.shard/g) || []).length, 2);
+});
+
+test("web-tests matrix shards match the release evidence contract", () => {
+  const section = jobSection("web-tests");
+  const shards = parseShardMatrix(section);
+
+  // Pin the observed shape so a silent shard addition/removal fails here even
+  // before the contract comparison runs.
+  assert.equal(shards.length, 2, `expected exactly two shard matrix values, observed ${JSON.stringify(shards)}`);
+  assert.equal(
+    new Set(shards.map(String)).size,
+    2,
+    `expected two unique shard matrix values, observed ${JSON.stringify(shards)}`,
+  );
+
+  const contract = validateShardContract(shards);
+  assert.equal(contract.ok, true, contract.errors.join("; "));
+});
+
+test("validateShardContract: [1, 2] and [2, 1] pass", () => {
+  for (const values of [[1, 2], [2, 1]]) {
+    const result = validateShardContract(values);
+    assert.equal(result.ok, true, `${JSON.stringify(values)}: ${result.errors.join("; ")}`);
+    assert.deepEqual(result.errors, []);
+  }
+});
+
+test("validateShardContract: extra, missing, and duplicate shards fail", () => {
+  const cases = [
+    { values: [1, 2, 3], pattern: /unexpected 'web-tests \(3\)'/ },
+    { values: [1], pattern: /missing 'web-tests \(2\)'/ },
+    { values: [1, 1, 2], pattern: /duplicate web-test shard value 1/ },
+  ];
+  for (const { values, pattern } of cases) {
+    const result = validateShardContract(values);
+    assert.equal(result.ok, false, `${JSON.stringify(values)} must fail`);
+    assert.match(result.errors.join("\n"), pattern);
+  }
 });
 
 test("web keeps only build and browser contracts; typecheck and tests moved out", () => {
