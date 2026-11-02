@@ -14,6 +14,7 @@ concurrency:
 
 permissions:
   contents: read
+  actions: read
 
 env:
   EXPO_PROJECT_ID: 0dafbb64-7c1e-49b1-aea1-de1f8159a5e6
@@ -77,21 +78,11 @@ jobs:
           echo "app_version=$APP_VERSION" >> "$GITHUB_OUTPUT"
           echo "App version (app.json): $APP_VERSION"
 
-      - name: Verify Unified Platform Validation is green for exact SOURCE_SHA
+      - name: Verify complete Unified validation for exact SOURCE_SHA
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
-        run: |
-          set -euo pipefail
-          SHA="${{ steps.identity.outputs.source_sha }}"
-          echo "Checking Unified Platform Validation for exact SHA $SHA"
-          SUCCESS="$(gh api "repos/${{ github.repository }}/actions/workflows/unified-platform-validation.yml/runs?per_page=20" --jq "[.workflow_runs[] | select(.head_sha==\"$SHA\" and .conclusion==\"success\" and .status==\"completed\")] | length" 2>/dev/null || echo "0")"
-          echo "Successful runs for $SHA: $SUCCESS"
-          if [ "$SUCCESS" -eq 0 ]; then
-            echo "::error::BLOCKED_CI_NOT_GREEN: No successful Unified Platform Validation for exact SOURCE_SHA $SHA"
-            gh api "repos/${{ github.repository }}/actions/workflows/unified-platform-validation.yml/runs?per_page=5" --jq ".workflow_runs[] | \"\(.head_sha) \(.status) \(.conclusion)\"" || true
-            exit 1
-          fi
+        run: node scripts/ci/release-evidence.mjs --sha "${{ steps.identity.outputs.source_sha }}" --repo "${{ github.repository }}"
 
       - name: Prove clean npm ci
         shell: bash
