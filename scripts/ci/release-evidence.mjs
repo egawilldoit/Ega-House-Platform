@@ -27,8 +27,9 @@ export const UNIFIED_WORKFLOW_PATH = ".github/workflows/unified-platform-validat
 
 /**
  * Jobs that must actually execute and succeed before a production release.
- * This is the pre-split matrix; informational jobs (`lint-report`) are not
- * listed and are ignored by the gate.
+ * Informational jobs (`lint-report`) are not listed and are ignored by the
+ * gate. Matrix jobs report one API job per shard, so they are named exactly as
+ * the API names them rather than by their workflow job id.
  */
 export const MANDATORY_RELEASE_JOBS = Object.freeze([
   "changes",
@@ -40,11 +41,21 @@ export const MANDATORY_RELEASE_JOBS = Object.freeze([
   "regressions",
   "lint-changed",
   "web",
+  "web-typecheck",
   "mobile",
   "server",
   "api-client",
   "db-invariants",
   "hygiene",
+]);
+
+/** One API job name per `web-tests` shard; extra shards are ignored. */
+export const REQUIRED_WEB_TEST_SHARD_JOBS = Object.freeze(["web-tests (1)", "web-tests (2)"]);
+
+/** Every API job name the release gate requires exactly once. */
+export const REQUIRED_RELEASE_JOBS = Object.freeze([
+  ...MANDATORY_RELEASE_JOBS,
+  ...REQUIRED_WEB_TEST_SHARD_JOBS,
 ]);
 
 /** Events that can represent production validation of `main`. */
@@ -149,7 +160,7 @@ export function verifyReleaseJobs(jobs) {
   const errors = [];
   const summary = {};
 
-  for (const name of MANDATORY_RELEASE_JOBS) {
+  for (const name of REQUIRED_RELEASE_JOBS) {
     const matches = list.filter((job) => job && job.name === name);
     if (matches.length === 0) {
       summary[name] = "missing";
@@ -277,7 +288,7 @@ function printRun(result) {
   if (!result.run) return;
   console.log(`selected run ${result.run.id} attempt ${result.attempt} ${result.run.html_url ?? ""}`.trim());
   const verification = verifyReleaseJobs(result.jobs);
-  for (const name of MANDATORY_RELEASE_JOBS) {
+  for (const name of REQUIRED_RELEASE_JOBS) {
     console.log(`  ${name}: ${verification.summary[name]}`);
   }
 }

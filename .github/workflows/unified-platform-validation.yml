@@ -412,18 +412,62 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - if: runner.os == 'Linux'
         run: node scripts/ci/verify-platform-optionals.mjs
-      - name: Web typecheck
-        run: npm run typecheck
-      - name: Web font egress guard
-        run: npm run check:font-egress
-      - name: Web tests
-        run: npm test
       - name: Web production build
         run: npm run build
       - name: Install Playwright Chromium
         run: npm exec --workspace @ega/web -- playwright install --with-deps chromium
       - name: Workspace shell browser contracts
         run: npm run test:visual --workspace @ega/web -- --grep "workspace shell contract"
+
+  web-typecheck:
+    needs: [changes]
+    if: needs.changes.outputs.web == 'true' || needs.changes.outputs.force_full == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact head
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Set up Node 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - if: runner.os == 'Linux'
+        run: node scripts/ci/verify-platform-optionals.mjs
+      - name: Web typecheck
+        run: npm run typecheck
+      - name: Web font egress guard
+        run: npm run check:font-egress
+
+  web-tests:
+    needs: [changes]
+    if: needs.changes.outputs.web == 'true' || needs.changes.outputs.force_full == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
+    steps:
+      - name: Checkout exact head
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Set up Node 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - if: runner.os == 'Linux'
+        run: node scripts/ci/verify-platform-optionals.mjs
+      - name: Web tests (shard ${{ matrix.shard }}/2)
+        run: npm run test --workspace @ega/web -- --shard=${{ matrix.shard }}/2
 
   mobile:
     needs: [changes]
@@ -595,7 +639,7 @@ jobs:
         run: node scripts/db/user-preferences-invariant-verify.mjs --url "$PROOF_DATABASE_URL"
 
   hygiene:
-    needs: [changes, workspace, contracts, domain, application, data-access, regressions, lint-changed, lint-report, web, mobile, server, api-client, db-invariants]
+    needs: [changes, workspace, contracts, domain, application, data-access, regressions, lint-changed, lint-report, web, web-typecheck, web-tests, mobile, server, api-client, db-invariants]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 10

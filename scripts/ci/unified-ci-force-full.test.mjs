@@ -83,6 +83,8 @@ test("changes job outputs force_full resolved from dispatch input or release/ful
 test("every path-filtered leaf job ORs in force_full", () => {
   const leafJobs = {
     web: "web",
+    "web-typecheck": "web",
+    "web-tests": "web",
     mobile: "mobile",
     server: "server",
     "api-client": "api-client",
@@ -104,6 +106,36 @@ test("every path-filtered leaf job ORs in force_full", () => {
       `leaf job ${job} must run under force_full`,
     );
   }
+});
+
+test("web-tests shards exactly [1, 2] without fail-fast or continue-on-error", () => {
+  const section = jobSection("web-tests");
+  assert.match(section, /^    strategy:\n/m);
+  assert.match(section, /^      fail-fast: false\n/m);
+  assert.match(section, /^      matrix:\n        shard: \[1, 2\]\n/m);
+  assert.doesNotMatch(section, /continue-on-error/);
+  assert.match(section, /npm run test --workspace @ega\/web -- --shard=\$\{\{ matrix\.shard \}\}\/2/);
+
+  // The matrix is the only shard source: no hard-coded single-shard invocation.
+  assert.equal((section.match(/--shard=/g) || []).length, 1);
+  assert.equal((section.match(/matrix\.shard/g) || []).length, 2);
+});
+
+test("web keeps only build and browser contracts; typecheck and tests moved out", () => {
+  const webSection = jobSection("web");
+  assert.match(webSection, /- name: Web production build\n        run: npm run build/);
+  assert.match(webSection, /- name: Install Playwright Chromium/);
+  assert.match(webSection, /- name: Workspace shell browser contracts/);
+  assert.doesNotMatch(webSection, /npm test/);
+  assert.doesNotMatch(webSection, /npm run typecheck/);
+  assert.doesNotMatch(webSection, /npm run check:font-egress/);
+
+  const typecheckSection = jobSection("web-typecheck");
+  assert.match(typecheckSection, /- name: Web typecheck\n        run: npm run typecheck/);
+  assert.match(typecheckSection, /- name: Web font egress guard\n        run: npm run check:font-egress/);
+  assert.doesNotMatch(typecheckSection, /npm test/);
+  assert.doesNotMatch(typecheckSection, /continue-on-error/);
+  assert.doesNotMatch(typecheckSection, /npm run build/);
 });
 
 test("lint-report only runs on demand or in force-full mode", () => {

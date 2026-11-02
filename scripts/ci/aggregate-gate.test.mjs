@@ -88,6 +88,59 @@ test("expected job skipped unexpectedly fails", () => {
   assert.match(errorText(result), /job 'regressions': expected result 'success'; observed result 'skipped'/);
 });
 
+test("web scope requires web, web-typecheck and web-tests to succeed", () => {
+  const result = evaluateAggregateGate(
+    needsFor({
+      outputs: { web: "true" },
+      results: { web: "success", "web-typecheck": "success", "web-tests": "success" },
+    }),
+  );
+  assert.equal(result.ok, true, errorText(result));
+  assert.deepEqual(
+    [...result.expected].sort(),
+    ["changes", "web", "web-tests", "web-typecheck", "workspace"],
+  );
+});
+
+test("web scope with skipped web-tests fails", () => {
+  const result = evaluateAggregateGate(
+    needsFor({
+      outputs: { web: "true" },
+      results: { web: "success", "web-typecheck": "success", "web-tests": "skipped" },
+    }),
+  );
+  assert.equal(result.ok, false);
+  assert.match(errorText(result), /job 'web-tests': expected result 'success'; observed result 'skipped'/);
+});
+
+test("web scope with skipped web-typecheck fails", () => {
+  const result = evaluateAggregateGate(
+    needsFor({
+      outputs: { web: "true" },
+      results: { web: "success", "web-typecheck": "skipped", "web-tests": "success" },
+    }),
+  );
+  assert.equal(result.ok, false);
+  assert.match(errorText(result), /job 'web-typecheck': expected result 'success'; observed result 'skipped'/);
+});
+
+test("web scope with cancelled web-tests fails", () => {
+  const result = evaluateAggregateGate(
+    needsFor({
+      outputs: { web: "true" },
+      results: { web: "success", "web-typecheck": "success", "web-tests": "cancelled" },
+    }),
+  );
+  assert.equal(result.ok, false);
+  assert.match(errorText(result), /job 'web-tests': expected result 'success'; observed result 'cancelled'/);
+});
+
+test("missing web-tests job key fails even when the web scope is inactive", () => {
+  const result = evaluateAggregateGate(needsFor({ omit: ["web-tests"] }));
+  assert.equal(result.ok, false);
+  assert.match(errorText(result), /job 'web-tests': missing from needs/);
+});
+
 test("non-expected conditional job legitimately skipped passes", () => {
   const result = evaluateAggregateGate(needsFor());
   assert.equal(result.ok, true, errorText(result));

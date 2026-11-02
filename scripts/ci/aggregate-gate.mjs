@@ -31,6 +31,8 @@ export const SCOPE_JOB_OUTPUTS = Object.freeze({
   regressions: "regressions",
   "lint-changed": "code",
   web: "web",
+  "web-typecheck": "web",
+  "web-tests": "web",
   mobile: "mobile",
   server: "server",
   "api-client": "api-client",
