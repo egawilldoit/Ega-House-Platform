@@ -20,9 +20,14 @@ on:
         type: boolean
         default: false
 
+# PR runs share one stable group per PR so a newer push to the same PR cancels the
+# superseded run. Non-PR runs (push, workflow_dispatch) and release/full-matrix/ PRs
+# get a unique per-run group instead: a group holds at most one *pending* run, and a
+# newer queued run replaces it, so `cancel-in-progress: false` alone cannot guarantee
+# every main push is validated. The `unified-ci-` namespace isolates other workflows.
 concurrency:
-  group: unified-ci-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.event_name == 'pull_request' && !startsWith(github.head_ref, 'release/full-matrix/') && format('unified-ci-pr-{0}', github.ref) || format('unified-ci-run-{0}', github.run_id) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' && !startsWith(github.head_ref, 'release/full-matrix/') }}
 
 permissions:
   contents: read
@@ -78,6 +83,7 @@ jobs:
               - 'packages/api-client/**'
               - 'package.json'
               - 'package-lock.json'
+              - '.npmrc'
               - '.github/workflows/**'
             server:
               - 'apps/server/**'
@@ -87,12 +93,14 @@ jobs:
               - 'packages/data-access/**'
               - 'package.json'
               - 'package-lock.json'
+              - '.npmrc'
               - '.github/workflows/**'
             api-client:
               - 'packages/api-client/**'
               - 'packages/contracts/**'
               - 'package.json'
               - 'package-lock.json'
+              - '.npmrc'
               - '.github/workflows/**'
             web:
               - 'apps/web/**'
@@ -104,6 +112,7 @@ jobs:
               - 'scripts/ci/**'
               - 'package.json'
               - 'package-lock.json'
+              - '.npmrc'
               - '.github/workflows/**'
             db:
               - 'drizzle/**'
@@ -112,10 +121,12 @@ jobs:
               - '.github/workflows/**'
               - 'package.json'
               - 'package-lock.json'
+              - '.npmrc'
             packages:
               - 'packages/**'
               - 'package.json'
               - 'package-lock.json'
+              - '.npmrc'
               - '.github/workflows/**'
             code:
               - 'apps/**'
@@ -129,6 +140,7 @@ jobs:
               - '.github/workflows/**'
               - 'package.json'
               - 'package-lock.json'
+              - '.npmrc'
             regressions:
               - '**/AGENTS.md'
               - 'CONTEXT.md'
@@ -140,6 +152,7 @@ jobs:
               - '.github/workflows/**'
               - 'package.json'
               - 'package-lock.json'
+              - '.npmrc'
 
   # Dependency/security/architecture gate. Always runs: it is the check that
   # proves the lockfile, published dependency surface, security invariants and
