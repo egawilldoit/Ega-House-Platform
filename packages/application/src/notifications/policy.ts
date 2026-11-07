@@ -281,6 +281,8 @@ export function normalizeNotificationEventKey(
   if (!isNotificationType(type)) return null;
   if (typeof key !== "string") return null;
   const trimmed = key.trim();
+  // Legacy reminder events used this persisted key before typed event names.
+  if (type === "task_reminder" && /^task-reminder:[A-Za-z0-9._:-]{1,200}$/.test(trimmed)) return trimmed;
   const prefix = `${type}:`;
   if (!trimmed.startsWith(prefix)) return null;
   return buildNotificationEventKey(type, trimmed.slice(prefix.length));

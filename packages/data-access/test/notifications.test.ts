@@ -28,7 +28,7 @@ test("FCM error classification invalidates only proven token evidence", async ()
     classifyFcmError({
       httpStatus: 404,
       fcmCode: "NOT_FOUND",
-      details: [{ errorCode: "UNREGISTERED" }],
+      details: [{ "@type": "type.googleapis.com/google.firebase.fcm.v1.FcmError", errorCode: "UNREGISTERED" }],
     }),
     "invalid_endpoint",
   );
@@ -173,6 +173,12 @@ test("FcmPushProvider never treats bare 404/410 or config errors as stale tokens
 });
 
 test("FcmPushProvider keeps config/substring/mixed errors non-deactivating", async () => {
+  const unrelatedErrorInfo = await fcmProvider(400, {
+    error: { status: "INVALID_ARGUMENT", details: [{ "@type": "type.googleapis.com/google.rpc.ErrorInfo", reason: "UNREGISTERED" }] },
+  }).send(PUSH);
+  assert.equal(unrelatedErrorInfo.ok, false);
+  if (!unrelatedErrorInfo.ok) assert.equal(unrelatedErrorInfo.errorCode, "permanent");
+
   const project = await fcmProvider(400, {
     error: { status: "UNREGISTERED_PROJECT", message: "Project is unregistered" },
   }).send(PUSH);

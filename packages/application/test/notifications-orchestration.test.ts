@@ -484,6 +484,18 @@ test("duplicate producer trigger yields one event and one delivery per channel/d
   assert.equal(state.deliveries.length, 2);
 });
 
+test("reclaimed legacy reminder reuses its persisted event and queues one delivery per target", async () => {
+  const state = createState();
+  const d = device(state);
+  preference(state, true, true);
+  state.intents.push({ id: "legacy-reminder", ownerUserId: OWNER, taskId: TASK_ID, remindAt: NOW_ISO, deliveryMode: "both", status: "pending", taskTitle: "Legacy" });
+  state.notifications.push({ id: "legacy-notification", ownerUserId: OWNER, type: "task_reminder", title: "Task reminder", body: "Legacy", targetType: "task", targetId: TASK_ID, idempotencyKey: "task-reminder:legacy-reminder", readAt: null, openedAt: null, createdAt: NOW_ISO, updatedAt: NOW_ISO });
+  const result = await processDueTaskReminders(null, dueOptions(state));
+  assert.equal(result.ok, true);
+  assert.equal(state.notifications.length, 1);
+  assert.deepEqual(state.deliveries.map((row) => [row.notificationId, row.channel, row.deviceId]), [["legacy-notification", "email", null], ["legacy-notification", "push", d.id]]);
+});
+
 test("channel opt-out prevents delivery rows but keeps the canonical notification", async () => {
   const state = createState();
   device(state);
@@ -1333,8 +1345,8 @@ test("critical direct mention bypasses enabled quiet hours with missing timezone
   assert.equal(row.status, "provider_accepted");
 });
 
-test("transient and auth provider classifications never deactivate the device", async () => {
-  for (const classification of ["transient", "auth"] as const) {
+test("non-token provider classifications never deactivate the device", async () => {
+  for (const classification of ["transient", "auth", "permanent"] as const) {
     const state = createState();
     const d = device(state);
     const n = notification(state);
