@@ -11,11 +11,20 @@ import type { UserPreferences } from "@ega/domain/preferences";
  * It never persists anything and never schedules a prayer or guidance block.
  * Guidance remains configurable data; the panel is not a scheduler.
  *
+ * Project switching is additive. Submitting another project adds its outcomes
+ * to today and never removes the owner's existing planned work (manual Today
+ * planning is canonical). Primary status is derived, not persisted: the
+ * "Primary" badge appears only when every actionable planned outcome shares one
+ * project. A persisted primary/dismissal contract belongs to #345's daily-check-in
+ * owner/day record, not to this URL-state slice.
+ *
  * Durable per-day startup dismissal is intentionally NOT implemented here.
  * If that requirement arrives, its contract belongs to #345's daily-check-in
  * owner/day record (one owner-scoped day row), not to this URL-state slice.
  * Skip/resume is ephemeral `?startup=skipped` state only: no cookie, table,
- * column or migration.
+ * column or migration. Retry pre-check is also ephemeral: `?startupRetry=...`
+ * only pre-checks ids that are actually rendered candidates; it is never a
+ * second source of planned-task truth.
  */
 
 export const MORNING_STARTUP_OUTCOME_LIMIT = 3;
@@ -23,6 +32,9 @@ export const MORNING_STARTUP_YESTERDAY_LIMIT = 5;
 export const MORNING_STARTUP_CARRYOVER_LIMIT = 5;
 export const MORNING_STARTUP_PROJECT_GROUP_LIMIT = 4;
 export const MORNING_STARTUP_GROUP_TASK_LIMIT = 5;
+export const MORNING_STARTUP_RETRY_LIMIT = 8;
+
+const MORNING_STARTUP_RETRY_ID_PATTERN = /^[A-Za-z0-9_-]{1,80}$/;
 
 export const MORNING_OUTCOME_EMPTY_MESSAGE =
   "Choose at least one outcome task to start your day.";
@@ -30,6 +42,10 @@ export const MORNING_OUTCOME_LIMIT_MESSAGE = "Choose no more than 3 outcome task
 export const MORNING_OUTCOME_UNAVAILABLE_MESSAGE =
   "The selected outcome tasks are unavailable.";
 export const MORNING_OUTCOME_ARCHIVED_MESSAGE = "Archived tasks cannot start your day.";
+export const MORNING_OUTCOME_ARCHIVED_PROJECT_MESSAGE =
+  "Outcomes from an archived project cannot start your day.";
+export const MORNING_OUTCOME_ARCHIVED_GOAL_MESSAGE =
+  "Outcomes from an archived goal cannot start your day.";
 export const MORNING_OUTCOME_COMPLETED_MESSAGE = "Completed tasks cannot start your day.";
 export const MORNING_OUTCOME_BLOCKED_MESSAGE = "Blocked tasks cannot start your day.";
 export const MORNING_OUTCOME_REVIEW_MESSAGE = "Tasks in review cannot start your day.";
@@ -38,6 +54,8 @@ export const MORNING_OUTCOME_MIXED_PROJECT_MESSAGE =
 
 export const MORNING_STARTUP_YESTERDAY_ERROR_MESSAGE =
   "Yesterday's completed work is unavailable right now.";
+export const MORNING_STARTUP_PREFERENCES_ERROR_MESSAGE =
+  "Personal schedule is unavailable right now; showing defaults.";
 
 export const WEEKDAYS = [
   "sunday",
@@ -113,6 +131,8 @@ export type MorningStartupOwnedTaskRow = Readonly<{
   projectId: string;
   projectName: string | null;
   projectSlug: string | null;
+  projectArchivedAt: string | null;
+  goalArchivedAt: string | null;
 }>;
 
 export type MorningStartupModel = Readonly<{
@@ -123,6 +143,7 @@ export type MorningStartupModel = Readonly<{
   workTargetLabel: string;
   isRestDay: boolean;
   paused: boolean;
+  preferencesErrorMessage: string | null;
   yesterday: Readonly<{
     completedCount: number;
     tasks: MorningStartupYesterdayTask[];
@@ -133,9 +154,14 @@ export type MorningStartupModel = Readonly<{
     tasks: MorningStartupCarryoverTask[];
   }>;
   groups: MorningStartupProjectGroup[];
+  /** The displayed planned outcomes (capped at 3). */
   selectedOutcomeIds: string[];
   selectedOutcomes: MorningStartupSelectedOutcome[];
+  /** The true actionable planned-today total, independent of the display cap. */
+  plannedActionableCount: number;
   primaryProject: MorningStartupProject | null;
+  /** Submitted ids preserved on an error redirect, restricted to rendered candidates. */
+  retrySelectedIds: string[];
   skipped: boolean;
 }>;
 
@@ -147,6 +173,9 @@ export type BuildMorningStartupModelInput = Readonly<{
   timezone: string;
   skipped: boolean;
   yesterdayErrorMessage?: string | null;
+  yesterdayCompletedCount?: number | null;
+  preferencesErrorMessage?: string | null;
+  retrySelectedIds?: readonly string[];
 }>;
 
 export type NormalizeOutcomeTaskIdsResult =
@@ -193,6 +222,10 @@ export function formatWorkTargetMinutes(minutes: number): string {
   return `${hours}h ${remainingMinutes}m`;
 }
 
+export function formatMorningStartupSavedMessage(count: number): string {
+  return `Morning startup saved: ${count} ${count === 1 ? "outcome" : "outcomes"} for today.`;
+}
+
 function dedupeTasksById(tasks: readonly OperatorTask[]): OperatorTask[] {
   const byId = new Map<string, OperatorTask>();
   for (const task of tasks) {
@@ -212,22 +245,23 @@ function collectCandidateTasks(snapshot: OperatorSnapshot): OperatorTask[] {
   ]).filter((task) => isActionableStatus(task.status));
 }
 
-function collectSelectedOutcomes(snapshot: OperatorSnapshot): OperatorTask[] {
-  return dedupeTasksById([
-    ...snapshot.plannedToday,
-    ...snapshot.focus.queue.filter((task) => task.isPlannedForToday),
-  ])
-    .filter((task) => isActionableStatus(task.status))
-    .slice(0, MORNING_STARTUP_OUTCOME_LIMIT);
+/**
+ * The full deduped, actionable planned-today set. Primary derivation and the
+ * true planned count use this set, never the display slice.
+ */
+function collectPlannedActionableTasks(snapshot: OperatorSnapshot): OperatorTask[] {
+  return dedupeTasksById(snapshot.plannedToday).filter((task) =>
+    isActionableStatus(task.status),
+  );
 }
 
 function derivePrimaryProject(
-  selectedOutcomes: readonly OperatorTask[],
+  plannedOutcomes: readonly OperatorTask[],
 ): MorningStartupProject | null {
-  if (selectedOutcomes.length === 0) return null;
-  const keys = new Set(selectedOutcomes.map(projectKeyForTask));
+  if (plannedOutcomes.length === 0) return null;
+  const keys = new Set(plannedOutcomes.map(projectKeyForTask));
   if (keys.size !== 1) return null;
-  const first = selectedOutcomes[0];
+  const first = plannedOutcomes[0];
   return {
     key: projectKeyForTask(first),
     projectName: first.projectName,
@@ -305,11 +339,21 @@ export function buildMorningStartupModel(
   const weekday = getMorningStartupWeekday(input.date);
   const target = input.preferences.personalOperations.targets[weekday];
   const workTargetMinutes = Math.max(0, Math.trunc(target?.work ?? 0));
-  const selectedOutcomeTasks = collectSelectedOutcomes(input.snapshot);
-  const primaryProject = derivePrimaryProject(selectedOutcomeTasks);
+  const plannedActionableTasks = collectPlannedActionableTasks(input.snapshot);
+  const displayedOutcomeTasks = plannedActionableTasks.slice(
+    0,
+    MORNING_STARTUP_OUTCOME_LIMIT,
+  );
+  const primaryProject = derivePrimaryProject(plannedActionableTasks);
   const candidateTasks = collectCandidateTasks(input.snapshot);
   const groups = buildProjectGroups(candidateTasks, primaryProject);
   const carryovers = buildCarryovers(input.snapshot);
+  const renderedCandidateIds = new Set(
+    groups.flatMap((group) => group.tasks.map((task) => task.id)),
+  );
+  const retrySelectedIds = (input.retrySelectedIds ?? [])
+    .filter((id) => renderedCandidateIds.has(id))
+    .slice(0, MORNING_STARTUP_RETRY_LIMIT);
 
   return {
     date: input.date,
@@ -319,8 +363,9 @@ export function buildMorningStartupModel(
     workTargetLabel: formatWorkTargetMinutes(workTargetMinutes),
     isRestDay: workTargetMinutes === 0,
     paused: input.preferences.personalOperations.paused,
+    preferencesErrorMessage: input.preferencesErrorMessage ?? null,
     yesterday: {
-      completedCount: input.yesterdayRows.length,
+      completedCount: input.yesterdayCompletedCount ?? input.yesterdayRows.length,
       tasks: input.yesterdayRows
         .slice(0, MORNING_STARTUP_YESTERDAY_LIMIT)
         .map((row) => ({
@@ -334,14 +379,16 @@ export function buildMorningStartupModel(
     },
     carryovers,
     groups,
-    selectedOutcomeIds: selectedOutcomeTasks.map((task) => task.id),
-    selectedOutcomes: selectedOutcomeTasks.map((task) => ({
+    selectedOutcomeIds: displayedOutcomeTasks.map((task) => task.id),
+    selectedOutcomes: displayedOutcomeTasks.map((task) => ({
       id: task.id,
       title: task.title,
       projectName: task.projectName,
       projectSlug: task.projectSlug,
     })),
+    plannedActionableCount: plannedActionableTasks.length,
     primaryProject,
+    retrySelectedIds,
     skipped: input.skipped,
   };
 }
@@ -372,6 +419,42 @@ export function normalizeOutcomeTaskIds(raw: unknown): NormalizeOutcomeTaskIdsRe
   }
 
   return { ok: true, taskIds };
+}
+
+/**
+ * Bounded retry parser for `?startupRetry=...`. Accepts a comma-joined string
+ * or repeated values. Only safe id characters are kept; duplicates are removed
+ * and the list is capped. The result is only ever used to pre-check rendered
+ * candidates, never as a planned-task source.
+ */
+export function parseStartupRetryIds(raw: unknown): string[] {
+  const rawValues = Array.isArray(raw) ? raw : raw == null ? [] : [raw];
+  const values: string[] = [];
+
+  for (const value of rawValues) {
+    if (typeof value !== "string") continue;
+    for (const part of value.split(",")) {
+      const id = part.trim();
+      if (!id || !MORNING_STARTUP_RETRY_ID_PATTERN.test(id)) continue;
+      values.push(id);
+    }
+  }
+
+  return [...new Set(values)].slice(0, MORNING_STARTUP_RETRY_LIMIT);
+}
+
+/**
+ * Append preserved retry ids to an error return path. An empty list returns the
+ * path unchanged, so the success path never carries retry state.
+ */
+export function buildStartupErrorReturnPath(
+  returnPath: string,
+  retryIds: readonly string[],
+): string {
+  if (retryIds.length === 0) return returnPath;
+  const url = new URL(returnPath, "https://ega-house.invalid");
+  url.searchParams.set("startupRetry", retryIds.join(","));
+  return `${url.pathname}${url.search}${url.hash}`;
 }
 
 function dedupeOwnedRows(
@@ -405,6 +488,12 @@ export function validateMorningOutcomeTasks(
   for (const row of uniqueRows) {
     if (row.archivedAt) {
       return { ok: false, errorMessage: MORNING_OUTCOME_ARCHIVED_MESSAGE };
+    }
+    if (row.projectArchivedAt) {
+      return { ok: false, errorMessage: MORNING_OUTCOME_ARCHIVED_PROJECT_MESSAGE };
+    }
+    if (row.goalArchivedAt) {
+      return { ok: false, errorMessage: MORNING_OUTCOME_ARCHIVED_GOAL_MESSAGE };
     }
 
     const status = String(row.status ?? "").trim().toLowerCase();

@@ -6,7 +6,10 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
-import type { MorningStartupModel } from "@/lib/morning-startup";
+import {
+  MORNING_STARTUP_PREFERENCES_ERROR_MESSAGE,
+  type MorningStartupModel,
+} from "@/lib/morning-startup";
 import { formatTaskEstimate } from "@/lib/task-estimate";
 
 function pluralize(count: number, singular: string, plural: string) {
@@ -28,6 +31,8 @@ export function MorningStartupPanel({
   model: MorningStartupModel;
   returnTo?: string;
 }) {
+  const retrySelectedIds = new Set(model.retrySelectedIds);
+
   if (model.skipped) {
     return (
       <Card
@@ -84,6 +89,15 @@ export function MorningStartupPanel({
               className="text-[length:var(--text-meta-lg)] text-[color:var(--ega-text-secondary)]"
             >
               Personal schedule is paused; the target above is informational.
+            </p>
+          ) : null}
+          {model.preferencesErrorMessage ? (
+            <p
+              data-testid="morning-startup-preferences-error"
+              role="status"
+              className="text-[length:var(--text-meta-lg)] text-[color:var(--ega-text-secondary)]"
+            >
+              {MORNING_STARTUP_PREFERENCES_ERROR_MESSAGE}
             </p>
           ) : null}
         </div>
@@ -189,7 +203,11 @@ export function MorningStartupPanel({
               id="morning-startup-planned-heading"
               className="text-[length:var(--text-micro)] font-semibold uppercase tracking-[var(--tracking-widest)] text-[color:var(--ega-text-tertiary)]"
             >
-              Planned for today ({model.selectedOutcomes.length})
+              Planned for today ({model.selectedOutcomes.length}
+              {model.plannedActionableCount > model.selectedOutcomes.length
+                ? ` of ${model.plannedActionableCount}`
+                : ""}
+              )
             </h4>
             <ul className="flex flex-col gap-1">
               {model.selectedOutcomes.map((task) => (
@@ -237,8 +255,9 @@ export function MorningStartupPanel({
             id="morning-startup-outcomes-help"
             className="text-[length:var(--text-meta-lg)] leading-[var(--leading-relaxed)] text-[color:var(--ega-text-secondary)]"
           >
-            Pick one project and 1 to 3 outcome tasks. The first project you submit becomes the
-            primary focus for today.
+            Pick one project and 1 to 3 outcome tasks. Choosing a project adds its outcomes to
+            today; existing planned work stays. The Primary badge appears only when every planned
+            outcome shares one project.
           </p>
 
           {model.groups.length === 0 ? (
@@ -290,6 +309,7 @@ export function MorningStartupPanel({
                                   name="taskIds"
                                   value={task.id}
                                   aria-describedby={helpId}
+                                  defaultChecked={retrySelectedIds.has(task.id)}
                                   className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--ega-accent)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ega-accent)]"
                                 />
                                 <label

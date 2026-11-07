@@ -6,6 +6,8 @@ import { getLocalDayWindow } from "@ega/domain";
 import { DEFAULT_USER_PREFERENCES } from "@ega/domain/preferences";
 
 import {
+  MORNING_OUTCOME_ARCHIVED_GOAL_MESSAGE,
+  MORNING_OUTCOME_ARCHIVED_PROJECT_MESSAGE,
   MORNING_OUTCOME_MIXED_PROJECT_MESSAGE,
   MORNING_OUTCOME_UNAVAILABLE_MESSAGE,
   MORNING_STARTUP_YESTERDAY_ERROR_MESSAGE,
@@ -18,6 +20,9 @@ import {
 } from "./morning-startup-service";
 
 type QueryCall = { method: string; args: unknown[] };
+
+const YESTERDAY_ROW_COLUMNS =
+  "id, title, status, completed_at, project_id, projects(name, slug)";
 
 function snapshot(overrides: Partial<OperatorSnapshot> = {}): OperatorSnapshot {
   return {
@@ -54,27 +59,30 @@ function snapshot(overrides: Partial<OperatorSnapshot> = {}): OperatorSnapshot {
 
 function createSupabaseMock(options: {
   rows?: unknown[] | null;
-  error?: unknown;
+  count?: number | null;
+  rowError?: unknown;
+  countError?: unknown;
   calls?: QueryCall[];
 }) {
   const calls = options.calls ?? [];
-  const builder: Record<string, unknown> = {};
 
-  for (const method of ["eq", "gte", "lt", "order", "limit", "in"]) {
-    builder[method] = (...args: unknown[]) => {
-      calls.push({ method, args });
-      return builder;
-    };
+  function createBuilder(result: { data: unknown; error: unknown; count: number | null }) {
+    const builder: Record<string, unknown> = {};
+
+    for (const method of ["eq", "gte", "lt", "order", "limit", "in"]) {
+      builder[method] = (...args: unknown[]) => {
+        calls.push({ method, args });
+        return builder;
+      };
+    }
+
+    builder.then = (
+      onFulfilled?: (value: { data: unknown; error: unknown; count: number | null }) => unknown,
+      onRejected?: (reason: unknown) => unknown,
+    ) => Promise.resolve(result).then(onFulfilled, onRejected);
+
+    return builder;
   }
-
-  builder.then = (
-    onFulfilled?: (value: { data: unknown; error: unknown }) => unknown,
-    onRejected?: (reason: unknown) => unknown,
-  ) =>
-    Promise.resolve({
-      data: options.error ? null : options.rows ?? [],
-      error: options.error ?? null,
-    }).then(onFulfilled, onRejected);
 
   return {
     calls,
@@ -82,9 +90,17 @@ function createSupabaseMock(options: {
       from(table: string) {
         calls.push({ method: "from", args: [table] });
         return {
-          select(columns: string) {
-            calls.push({ method: "select", args: [columns] });
-            return builder;
+          select(columns: string, selectOptions?: { count?: string; head?: boolean }) {
+            calls.push({
+              method: "select",
+              args: selectOptions === undefined ? [columns] : [columns, selectOptions],
+            });
+            const isCount = Boolean(selectOptions?.head);
+            return createBuilder({
+              data: isCount ? null : options.rowError ? null : options.rows ?? [],
+              error: isCount ? options.countError ?? null : options.rowError ?? null,
+              count: isCount ? options.count ?? null : null,
+            });
           },
         };
       },
@@ -92,11 +108,39 @@ function createSupabaseMock(options: {
   };
 }
 
+function allCalls(calls: QueryCall[], method: string): QueryCall[] {
+  return calls.filter((entry) => entry.method === method);
+}
+
 function call(calls: QueryCall[], method: string): QueryCall | undefined {
   return calls.find((entry) => entry.method === method);
 }
 
-test("yesterday read uses the owner timezone's half-open [dayStart, dayEnd) window", async () => {
+function ownedRow(
+  overrides: {
+    id: string;
+    status?: string;
+    projectId?: string;
+    projects?: unknown;
+    goals?: unknown;
+  },
+) {
+  const project = overrides.projects ?? {
+    name: "Alpha",
+    slug: "alpha",
+    archived_at: null,
+  };
+  return {
+    id: overrides.id,
+    status: overrides.status ?? "todo",
+    archived_at: null,
+    project_id: overrides.projectId ?? "project-a",
+    projects: project,
+    goals: overrides.goals ?? null,
+  };
+}
+
+test("yesterday read uses all completed aliases and the owner timezone's half-open window", async () => {
   const { supabase, calls } = createSupabaseMock({
     rows: [
       {
@@ -108,6 +152,7 @@ test("yesterday read uses the owner timezone's half-open [dayStart, dayEnd) wind
         projects: { name: "Alpha", slug: "alpha" },
       },
     ],
+    count: 1,
   });
 
   const model = await getMorningStartupData(snapshot(), {
@@ -116,11 +161,21 @@ test("yesterday read uses the owner timezone's half-open [dayStart, dayEnd) wind
   });
 
   const expectedWindow = getLocalDayWindow("Africa/Lagos", "2026-11-06");
+  const selects = allCalls(calls, "select");
 
   assert.deepEqual(call(calls, "from")?.args, ["tasks"]);
-  assert.deepEqual(call(calls, "eq")?.args, ["status", "done"]);
-  assert.deepEqual(call(calls, "gte")?.args, ["completed_at", expectedWindow.startUtcIso]);
-  assert.deepEqual(call(calls, "lt")?.args, ["completed_at", expectedWindow.endUtcIso]);
+  assert.deepEqual(selects[0]?.args, [YESTERDAY_ROW_COLUMNS]);
+  assert.deepEqual(selects[1]?.args, ["id", { count: "exact", head: true }]);
+  assert.equal(allCalls(calls, "in").length, 2);
+  for (const entry of allCalls(calls, "in")) {
+    assert.deepEqual(entry.args, ["status", ["done", "complete", "completed"]]);
+  }
+  for (const entry of allCalls(calls, "gte")) {
+    assert.deepEqual(entry.args, ["completed_at", expectedWindow.startUtcIso]);
+  }
+  for (const entry of allCalls(calls, "lt")) {
+    assert.deepEqual(entry.args, ["completed_at", expectedWindow.endUtcIso]);
+  }
   assert.deepEqual(call(calls, "order")?.args, ["completed_at", { ascending: false }]);
   assert.deepEqual(call(calls, "limit")?.args, [20]);
   assert.equal(model.yesterday.completedCount, 1);
@@ -138,7 +193,8 @@ test("yesterday read uses the owner timezone's half-open [dayStart, dayEnd) wind
 test("a failed yesterday read returns a non-fatal inline error instead of throwing", async () => {
   const { supabase } = createSupabaseMock({
     rows: null,
-    error: { message: "boom" },
+    rowError: { message: "boom" },
+    count: 0,
   });
 
   const model = await getMorningStartupData(snapshot(), {
@@ -151,23 +207,70 @@ test("a failed yesterday read returns a non-fatal inline error instead of throwi
   assert.equal(model.skipped, false);
 });
 
+test("the exact yesterday count is independent of the capped row list", async () => {
+  const manyRows = Array.from({ length: 20 }, (_, index) => ({
+    id: `y${index}`,
+    title: `Yesterday ${index}`,
+    status: "done",
+    completed_at: "2026-11-06T18:00:00.000Z",
+    project_id: "project-a",
+    projects: { name: "Alpha", slug: "alpha" },
+  }));
+  const { supabase } = createSupabaseMock({ rows: manyRows, count: 21 });
+
+  const model = await getMorningStartupData(snapshot(), {
+    supabase,
+    preferences: DEFAULT_USER_PREFERENCES,
+  });
+
+  assert.equal(model.yesterday.completedCount, 21);
+  assert.equal(model.yesterday.tasks.length, 5);
+});
+
+test("a failed count query falls back to the bounded row count", async () => {
+  const threeRows = Array.from({ length: 3 }, (_, index) => ({
+    id: `y${index}`,
+    title: `Yesterday ${index}`,
+    status: "done",
+    completed_at: "2026-11-06T18:00:00.000Z",
+    project_id: "project-a",
+    projects: { name: "Alpha", slug: "alpha" },
+  }));
+  const { supabase } = createSupabaseMock({
+    rows: threeRows,
+    countError: { message: "count unavailable" },
+  });
+
+  const model = await getMorningStartupData(snapshot(), {
+    supabase,
+    preferences: DEFAULT_USER_PREFERENCES,
+  });
+
+  assert.equal(model.yesterday.completedCount, 3);
+  assert.equal(model.yesterday.tasks.length, 3);
+});
+
+test("preferences failure is carried through the model as a degraded note", async () => {
+  const { supabase } = createSupabaseMock({ rows: [], count: 0 });
+
+  const model = await getMorningStartupData(snapshot(), {
+    supabase,
+    preferences: DEFAULT_USER_PREFERENCES,
+    preferencesErrorMessage: "Unable to load preferences right now.",
+  });
+
+  assert.equal(model.preferencesErrorMessage, "Unable to load preferences right now.");
+});
+
 test("startMorningOutcomes dedupes ids and plans each task in submitted order", async () => {
   const { supabase, calls } = createSupabaseMock({
     rows: [
-      {
-        id: "a",
-        status: "todo",
-        archived_at: null,
-        project_id: "project-a",
-        projects: { name: "Alpha", slug: "alpha" },
-      },
-      {
+      ownedRow({ id: "a", projects: { name: "Alpha", slug: "alpha", archived_at: null } }),
+      ownedRow({
         id: "b",
         status: "in_progress",
-        archived_at: null,
-        project_id: "project-a",
-        projects: { name: "Alpha", slug: "alpha" },
-      },
+        projects: { name: "Alpha", slug: "alpha", archived_at: null },
+      }),
     ],
   });
 
@@ -186,6 +289,10 @@ test("startMorningOutcomes dedupes ids and plans each task in submitted order", 
   });
 
   assert.deepEqual(call(calls, "in")?.args, ["id", ["b", "a"]]);
+  assert.match(
+    String(call(calls, "select")?.args[0] ?? ""),
+    /goals\(archived_at\)/,
+  );
   assert.deepEqual(planned, [
     { taskId: "b", localDate: "2026-11-07" },
     { taskId: "a", localDate: "2026-11-07" },
@@ -220,20 +327,12 @@ test("invalid input makes no query and no write", async () => {
 test("mixed-project rows are rejected before any plan write", async () => {
   const { supabase } = createSupabaseMock({
     rows: [
-      {
-        id: "a",
-        status: "todo",
-        archived_at: null,
-        project_id: "project-a",
-        projects: { name: "Alpha", slug: "alpha" },
-      },
-      {
+      ownedRow({ id: "a", projects: { name: "Alpha", slug: "alpha", archived_at: null } }),
+      ownedRow({
         id: "b",
-        status: "todo",
-        archived_at: null,
-        project_id: "project-b",
-        projects: { name: "Beta", slug: "beta" },
-      },
+        projectId: "project-b",
+        projects: { name: "Beta", slug: "beta", archived_at: null },
+      }),
     ],
   });
 
@@ -250,17 +349,54 @@ test("mixed-project rows are rejected before any plan write", async () => {
   assert.equal(planned, false);
 });
 
+test("archived project and goal ancestry are rejected before any plan write", async () => {
+  for (const scenario of [
+    {
+      rows: [
+        ownedRow({
+          id: "archived-project",
+          projects: {
+            name: "Alpha",
+            slug: "alpha",
+            archived_at: "2026-11-01T00:00:00.000Z",
+          },
+        }),
+      ],
+      expected: MORNING_OUTCOME_ARCHIVED_PROJECT_MESSAGE,
+    },
+    {
+      rows: [
+        ownedRow({
+          id: "archived-goal",
+          projects: { name: "Alpha", slug: "alpha", archived_at: null },
+          goals: { archived_at: "2026-11-01T00:00:00.000Z" },
+        }),
+      ],
+      expected: MORNING_OUTCOME_ARCHIVED_GOAL_MESSAGE,
+    },
+  ]) {
+    const { supabase } = createSupabaseMock({ rows: scenario.rows });
+    let planned = false;
+    const planTask: MorningStartupPlanTask = async () => {
+      planned = true;
+      return { errorMessage: null };
+    };
+
+    const result = await startMorningOutcomes({
+      taskIds: [String((scenario.rows[0] as { id: string }).id)],
+      supabase,
+      planTask,
+    });
+
+    assert.equal(result.errorMessage, scenario.expected);
+    assert.equal(result.appliedCount, 0);
+    assert.equal(planned, false);
+  }
+});
+
 test("a missing owned row is rejected instead of silently planning a subset", async () => {
   const { supabase } = createSupabaseMock({
-    rows: [
-      {
-        id: "a",
-        status: "todo",
-        archived_at: null,
-        project_id: "project-a",
-        projects: { name: "Alpha", slug: "alpha" },
-      },
-    ],
+    rows: [ownedRow({ id: "a" })],
   });
 
   let planned = false;
@@ -278,22 +414,7 @@ test("a missing owned row is rejected instead of silently planning a subset", as
 
 test("a mid-loop failure reports the applied count and never a success result", async () => {
   const { supabase } = createSupabaseMock({
-    rows: [
-      {
-        id: "a",
-        status: "todo",
-        archived_at: null,
-        project_id: "project-a",
-        projects: { name: "Alpha", slug: "alpha" },
-      },
-      {
-        id: "b",
-        status: "todo",
-        archived_at: null,
-        project_id: "project-a",
-        projects: { name: "Alpha", slug: "alpha" },
-      },
-    ],
+    rows: [ownedRow({ id: "a" }), ownedRow({ id: "b" })],
   });
 
   const planTask: MorningStartupPlanTask = async (taskId) => {
@@ -314,7 +435,7 @@ test("a mid-loop failure reports the applied count and never a success result", 
 test("a query failure returns an actionable error and makes no plan write", async () => {
   const { supabase } = createSupabaseMock({
     rows: null,
-    error: { message: "rls denied" },
+    rowError: { message: "rls denied" },
   });
 
   let planned = false;

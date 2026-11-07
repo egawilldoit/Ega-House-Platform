@@ -102,7 +102,10 @@ function model(overrides: Partial<MorningStartupModel> = {}): MorningStartupMode
         projectSlug: "alpha",
       },
     ],
+    plannedActionableCount: 1,
     primaryProject: { key: "alpha", projectName: "Alpha", projectSlug: "alpha" },
+    retrySelectedIds: [],
+    preferencesErrorMessage: null,
     skipped: false,
     ...overrides,
   };
@@ -211,4 +214,58 @@ test("renders rest-day and paused copy without relying on colour", () => {
 
   const pausedMarkup = renderToStaticMarkup(<MorningStartupPanel model={model({ paused: true })} />);
   assert.match(pausedMarkup, /Personal schedule is paused; the target above is informational\./);
+});
+
+test("renders a degraded note when the personal schedule read failed", () => {
+  const markup = renderToStaticMarkup(
+    <MorningStartupPanel
+      model={model({ preferencesErrorMessage: "Unable to load preferences right now." })}
+    />,
+  );
+
+  assert.match(markup, /data-testid="morning-startup-preferences-error"/);
+  assert.match(markup, /Personal schedule is unavailable right now; showing defaults\./);
+});
+
+test("pre-checks preserved retry ids only for rendered candidates", () => {
+  const markup = renderToStaticMarkup(
+    <MorningStartupPanel model={model({ retrySelectedIds: ["a1", "b1", "not-rendered"] })} />,
+  );
+  const inputTags = [...markup.matchAll(/<input[^>]*>/g)].map((match) => match[0]);
+  const tagFor = (id: string) =>
+    inputTags.find((tag) => tag.includes(`id="${id}"`)) ?? "";
+
+  assert.match(tagFor("morning-startup-task-a1"), /checked/);
+  assert.match(tagFor("morning-startup-task-b1"), /checked/);
+  assert.doesNotMatch(tagFor("morning-startup-task-a2"), /checked/);
+  assert.doesNotMatch(markup, /not-rendered/);
+});
+
+test("shows the true planned total when the display list is capped", () => {
+  const selectedOutcomes = [
+    { id: "a1", title: "Alpha one", projectName: "Alpha", projectSlug: "alpha" },
+    { id: "a2", title: "Alpha two", projectName: "Alpha", projectSlug: "alpha" },
+    { id: "b1", title: "Beta one", projectName: "Beta", projectSlug: "beta" },
+  ];
+  const markup = renderToStaticMarkup(
+    <MorningStartupPanel
+      model={model({
+        plannedActionableCount: 4,
+        selectedOutcomeIds: ["a1", "a2", "b1"],
+        selectedOutcomes,
+      })}
+    />,
+  );
+
+  assert.match(markup, /Planned for today \(3 of 4\)/);
+});
+
+test("states additive project-switch semantics instead of a false primary claim", () => {
+  const markup = renderToStaticMarkup(<MorningStartupPanel model={model()} />);
+
+  assert.match(
+    markup,
+    /Choosing a project adds its outcomes to today; existing planned work stays\./,
+  );
+  assert.doesNotMatch(markup, /first project you submit/i);
 });
