@@ -315,7 +315,10 @@ type MockTimerSession = {
   } | null;
 };
 
-function createTimerServiceSupabaseMock(sessions: MockTimerSession[]) {
+function createTimerServiceSupabaseMock(
+  sessions: MockTimerSession[],
+  hooks: { beforeFinalize?: (session: MockTimerSession) => void } = {},
+) {
   function createSelectQuery(columns: string) {
     const filters = {
       endedAtIsNull: false,
@@ -433,6 +436,7 @@ function createTimerServiceSupabaseMock(sessions: MockTimerSession[]) {
                     if (!session) {
                       return { data: null, error: null };
                     }
+                    hooks.beforeFinalize?.(session);
                     if (state.requireOpen && session.ended_at !== null) {
                       return { data: null, error: null };
                     }
@@ -525,6 +529,38 @@ test("stopTimerSession acknowledges an already-stopped session without changing 
   assert.equal(result.errorMessage, null);
   assert.equal(result.stoppedTaskId, "task-1");
   assert.equal(result.outcome, "already_stopped");
+  assert.equal(mock.sessions[0]?.ended_at, "2026-04-21T10:00:00.000Z");
+  assert.equal(mock.sessions[0]?.duration_seconds, 1800);
+});
+
+test("stopTimerSession acknowledges a concurrent finalize that won the race", async () => {
+  const mock = createTimerServiceSupabaseMock(
+    [
+      {
+        id: "session-racy",
+        task_id: "task-1",
+        started_at: "2026-04-21T09:30:00.000Z",
+        ended_at: null,
+        duration_seconds: null,
+      },
+    ],
+    {
+      beforeFinalize: (session) => {
+        session.ended_at = "2026-04-21T10:00:00.000Z";
+        session.duration_seconds = 1800;
+      },
+    },
+  );
+
+  const result = await stopTimerSession({
+    sessionId: "session-racy",
+    supabase: mock.supabase,
+    nowIso: "2026-04-21T10:30:00.000Z",
+  });
+
+  assert.equal(result.errorMessage, null);
+  assert.equal(result.outcome, "already_stopped");
+  assert.equal(result.stoppedTaskId, "task-1");
   assert.equal(mock.sessions[0]?.ended_at, "2026-04-21T10:00:00.000Z");
   assert.equal(mock.sessions[0]?.duration_seconds, 1800);
 });
