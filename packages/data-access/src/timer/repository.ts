@@ -112,6 +112,21 @@ export class SupabaseTimerSessionRepository implements TimerSessionRepository {
     return { ok: true, value: result.data ? mapSession(asRow(result.data)) : null };
   }
 
+  async findSessionById(
+    actor: AuthenticatedActor,
+    input: Readonly<{ sessionId: string }>,
+  ): Promise<RepositoryResult<TimerSessionRecord | null>> {
+    const result = await this.supabase
+      .from("task_sessions")
+      .select(SESSION_SELECT)
+      .eq("id", input.sessionId)
+      .eq("owner_user_id", actor.userId)
+      .maybeSingle();
+
+    if (result.error) return { ok: false, error: sanitizeSupabaseError(result.error) };
+    return { ok: true, value: result.data ? mapSession(asRow(result.data)) : null };
+  }
+
   async insertOpenSession(
     actor: AuthenticatedActor,
     input: Readonly<{
