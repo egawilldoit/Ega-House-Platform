@@ -179,6 +179,34 @@ describe("TimerSyncStatus", () => {
     expect(retryButton()).toBeUndefined();
   });
 
+  it("dedupes an automatic focus immediately after a successful Retry", async () => {
+    reconcileTimerSurface.mockResolvedValueOnce({
+      ok: false,
+      reason: "unavailable",
+      message: "Could not confirm the timer state with the server. Showing the last synced state.",
+    });
+
+    mount();
+    await fire(() => window.dispatchEvent(new Event("focus")));
+    expect(reconcileTimerSurface).toHaveBeenCalledTimes(1);
+
+    // Retry a couple of seconds later, then focus 500ms after it. The forced
+    // attempt must move the watermark so this automatic burst is deduped
+    // instead of issuing a redundant third reconcile.
+    now = 12_000;
+    reconcileTimerSurface.mockResolvedValueOnce({
+      ok: true,
+      syncedAt: "2026-11-07T12:05:00.000Z",
+      activeSessionId: "session-1",
+    });
+    await fire(() => retryButton()?.click());
+    expect(reconcileTimerSurface).toHaveBeenCalledTimes(2);
+
+    now = 12_500;
+    await fire(() => window.dispatchEvent(new Event("focus")));
+    expect(reconcileTimerSurface).toHaveBeenCalledTimes(2);
+  });
+
   it("times out to a stale state with Retry after ten seconds", async () => {
     vi.useFakeTimers();
     const pending = deferred<never>();

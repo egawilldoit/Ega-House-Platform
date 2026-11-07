@@ -386,31 +386,27 @@ test("POST /api/timer/stop returns 404 NOT_FOUND for an unknown session id", asy
   assert.ok(!fake.calls[0]?.steps.some((step) => step.method === "update"));
 });
 
-test("POST /api/timer/stop makes a foreign-owner session indistinguishable from unknown and never writes", async () => {
+test("POST /api/timer/stop returns 409 CONFLICT when the fenced finalize loses and the session re-reads open", async () => {
   const fake = new FakeSupabase();
-  // Owner-scoped RLS/predicate returns no row for another owner's session id.
-  fake.push("task_sessions", { data: null, error: null });
+  // Read the session as open, lose the fenced UPDATE (no row returned), then
+  // re-read the same row as still open. That is the canonical application
+  // branch that yields TIMER_SESSION_NO_LONGER_RUNNING_MESSAGE.
+  fake.push("task_sessions", { data: sessionRow(), error: null });
+  fake.push("task_sessions", { data: [], error: null });
+  fake.push("task_sessions", { data: sessionRow(), error: null });
 
-  const foreignResponse = await makeApp(fake).request("/api/timer/stop", {
+  const response = await makeApp(fake).request("/api/timer/stop", {
     method: "POST",
     headers: JSON_HEADERS,
-    body: JSON.stringify({ sessionId: UNKNOWN_SESSION_ID }),
+    body: JSON.stringify({ sessionId: SESSION_ID }),
   });
-  const foreignBody = await foreignResponse.json();
 
-  const unknownFake = new FakeSupabase();
-  unknownFake.push("task_sessions", { data: null, error: null });
-  const unknownResponse = await makeApp(unknownFake).request("/api/timer/stop", {
-    method: "POST",
-    headers: JSON_HEADERS,
-    body: JSON.stringify({ sessionId: UNKNOWN_SESSION_ID }),
-  });
-  const unknownBody = await unknownResponse.json();
-
-  assert.equal(foreignResponse.status, 404);
-  assert.deepEqual(foreignBody, unknownBody);
-  assert.equal(fake.calls.length, 1);
-  assert.ok(!fake.calls[0]?.steps.some((step) => step.method === "update"));
+  assert.equal(response.status, 409);
+  const body = await response.json();
+  assert.equal(body.error.code, "CONFLICT");
+  assert.match(body.error.message, /no longer running/i);
+  assert.equal(fake.calls.length, 3);
+  assert.ok(fake.calls[1]?.steps.some((step) => step.method === "update"));
 });
 
 test("POST /api/timer/stop rejects a non-UUID session id before any query", async () => {
