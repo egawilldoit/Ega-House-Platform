@@ -91,6 +91,7 @@ export function PersonalOperationsForm({
   const [ignoredState, setIgnoredState] =
     useState<PersonalOperationsActionState | null>(null);
   const inFlightRef = useRef(false);
+  const formRef = useRef<HTMLFormElement>(null);
   const focusEditorRef = useRef(false);
   const editorHeadingRef = useRef<HTMLHeadingElement>(null);
   const errorRef = useRef<HTMLSpanElement>(null);
@@ -121,6 +122,7 @@ export function PersonalOperationsForm({
     submittedRef.current = null;
     if (state.ok) {
       setBaseline(submitted);
+      formRef.current?.focus({ preventScroll: true });
       return;
     }
     errorRef.current?.focus();
@@ -261,11 +263,13 @@ export function PersonalOperationsForm({
 
   return (
     <form
+      ref={formRef}
       action={submitAction}
       className={styles.formShim}
       data-personal-operations-form="true"
       onSubmit={handleSubmit}
       aria-label="Personal schedule"
+      tabIndex={-1}
     >
       <input type="hidden" name="schedule" value={JSON.stringify(draft)} />
       <fieldset
@@ -349,6 +353,7 @@ export function PersonalOperationsForm({
                 setSelectedIndex((current) =>
                   Math.max(0, Math.min(current, baseline.guidance.length - 1)),
                 );
+                formRef.current?.focus({ preventScroll: true });
               }}
             >
               Discard

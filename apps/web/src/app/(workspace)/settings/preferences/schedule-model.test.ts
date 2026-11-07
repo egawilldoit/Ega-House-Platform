@@ -35,6 +35,18 @@ describe("weekly totals", () => {
     expect(formatHours(totals.jobSearch)).toBe("7.5h");
   });
 
+  it("derives 2820 work minutes / 47h from Monday 450 and Saturday 210", () => {
+    const schedule = defaultSchedule();
+    schedule.targets.monday.work = 450;
+    schedule.targets.saturday.work = 210;
+
+    const totals = getWeeklyTotals(schedule);
+
+    expect(totals).toEqual({ work: 2820, jobSearch: 450 });
+    expect(formatHours(totals.work)).toBe("47h");
+    expect(formatHours(totals.jobSearch)).toBe("7.5h");
+  });
+
   it("keeps the new-user defaults at 2880 work and 450 job-search minutes", () => {
     const totals = getWeeklyTotals(defaultSchedule());
 
