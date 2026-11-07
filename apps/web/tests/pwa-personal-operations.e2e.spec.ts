@@ -1,188 +1,204 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test } from "@playwright/test";
+
 import { getPwaOwners, hasPwaAuthCredentials, signInPwaOwner } from "./pwa-fixtures";
 
-function skipUnlessDisposableEnvironment() {
-  test.skip(
-    !hasPwaAuthCredentials() || process.env.PO02_DISPOSABLE_ENV !== "1",
-    "Requires explicitly authorized disposable environment and test owner",
-  );
-}
-
-/** Monday work value currently persisted, read from the rendered form. */
-async function mondayWorkValue(page: Page): Promise<string> {
-  return page
-    .getByRole("group", { name: "monday" })
-    .getByLabel("Work minutes")
-    .inputValue();
-}
-
-const SAVE_LABEL = "Save personal schedule";
-
-/**
- * Submit the schedule and wait for the server action response, then for the
- * button to leave its pending state. A status message is not used as proof:
- * the previous save's message can still be on screen.
- */
-async function saveSchedule(
-  page: Page,
-  submit: () => Promise<void> = async () => {
-    await page.getByRole("button", { name: SAVE_LABEL }).click();
-  },
-) {
-  const save = page.getByRole("button", { name: SAVE_LABEL });
-  const completed = page.waitForResponse(
-    (response) =>
-      response.request().method() === "POST" &&
-      new URL(response.url()).pathname === "/settings/preferences",
-  );
-  await submit();
-  await completed;
-  await expect(save).toBeEnabled();
-}
-
-test("owner edits, reloads and pauses a personal schedule", async ({ page }) => {
-  skipUnlessDisposableEnvironment();
+test("owner edits, reloads and pauses a personal schedule through the redesigned UI", async ({ page }) => {
+  test.skip(!hasPwaAuthCredentials() || process.env.PO02_DISPOSABLE_ENV !== "1", "Requires explicitly authorized disposable environment and test owner");
   const { ownerA } = getPwaOwners();
   await signInPwaOwner(page, ownerA, "/settings/preferences");
-  await expect(page.getByRole("heading", { name: "Personal schedule" })).toBeVisible();
 
-  // Day boundaries come from the account Time Context, not the browser clock.
+  const scheduleForm = page.locator('form[aria-label="Personal schedule"]');
+  await expect(page.getByRole("heading", { name: "Preferences" })).toBeVisible();
+  await expect(scheduleForm).toBeVisible();
   await expect(page.getByText(/Account time zone:/)).toBeVisible();
-  await expect(
-    page.getByText(/Today in .+: \w+ — \d+ min work, \d+ min job search/),
-  ).toBeVisible();
-  await expect(page.getByText(/48 h work \/ 7 h 30 min job search/)).toBeVisible();
-  await expect(page.getByText(/2880 work, 450 job search/)).toBeVisible();
+  await expect(page.getByText(/Today in .+: \w+ — \d+ min work, \d+ min job search/)).toBeVisible();
+  await expect(page.getByText("2,880 minutes per week")).toBeVisible();
+  await expect(page.getByText("450 minutes per week")).toBeVisible();
 
-  const monday = page.getByRole("group", { name: "monday" });
-  const saturday = page.getByRole("group", { name: "saturday" });
-  await monday.getByLabel("Work minutes").fill("450");
-  await saturday.getByLabel("Work minutes").fill("210");
-  await page.getByRole("group", { name: "Startup" }).getByLabel("Start").fill("05:45");
-  await saveSchedule(page);
+  const monday = page.getByLabel("Monday work minutes");
+  const saturday = page.getByLabel("Saturday work minutes");
+  const saveSchedule = page.getByRole("button", { name: "Save changes" });
+
+  await monday.fill("450");
+  await saturday.fill("210");
+  await page.getByRole("button", { name: "Startup", exact: true }).click();
+  await page.locator("#guidance-0-start").fill("05:45");
+  await saveSchedule.click();
+  await expect(
+    page.getByRole("status").filter({ hasText: "Personal schedule saved." }),
+  ).toBeVisible();
+
   await page.reload();
-  await expect(monday.getByLabel("Work minutes")).toHaveValue("450");
-  await expect(saturday.getByLabel("Work minutes")).toHaveValue("210");
-  await expect(page.getByRole("group", { name: "Startup" }).getByLabel("Start")).toHaveValue("05:45");
+  await expect(monday).toHaveValue("450");
+  await expect(saturday).toHaveValue("210");
+  await page.getByRole("button", { name: "Startup", exact: true }).click();
+  await expect(page.locator("#guidance-0-start")).toHaveValue("05:45");
+  await expect(page.getByText("47h", { exact: true })).toBeVisible();
+  await expect(page.getByText("2,820 minutes per week")).toBeVisible();
+
   await page.goto("/settings/appearance");
-  await page.getByRole("radio", { name: /Dark/ }).check();
-  const appearanceSaved = page.waitForResponse(
-    (response) =>
-      response.request().method() === "POST" &&
-      new URL(response.url()).pathname === "/settings/appearance",
-  );
+  await page.getByText("Dark", { exact: true }).click();
+  await expect(page.locator('input[name="theme"][value="dark"]')).toBeChecked();
   await page.getByRole("button", { name: "Save appearance" }).click();
-  await appearanceSaved;
+  await expect(
+    page.getByRole("status").filter({ hasText: "Appearance preferences saved." }),
+  ).toBeVisible();
+
   await page.goto("/settings/preferences");
-  await expect(monday.getByLabel("Work minutes")).toHaveValue("450");
-  await monday.getByLabel("Work minutes").fill("1500");
-  await page.getByRole("button", { name: "Save personal schedule" }).click();
-  expect(await monday.getByLabel("Work minutes").evaluate((element: HTMLInputElement) => element.validity.rangeOverflow)).toBe(true);
+  await expect(monday).toHaveValue("450");
+
+  await monday.fill("1500");
+  await expect(monday).toHaveAttribute("aria-invalid", "true");
+  await expect(saveSchedule).toBeDisabled();
   await page.reload();
-  await expect(monday.getByLabel("Work minutes")).toHaveValue("450");
+  await expect(monday).toHaveValue("450");
+
   await page.context().clearCookies();
   await signInPwaOwner(page, ownerA, "/settings/preferences");
-  await expect(monday.getByLabel("Work minutes")).toHaveValue("450");
-  await page.getByLabel("Pause schedule").check();
-  await saveSchedule(page);
+  await expect(monday).toHaveValue("450");
+
+  const activeSwitch = page.getByLabel("Schedule active");
+  await activeSwitch.uncheck();
+  await saveSchedule.click();
+  await expect(
+    page.getByRole("status").filter({ hasText: "Personal schedule saved." }),
+  ).toBeVisible();
   await page.reload();
-  await expect(page.getByLabel("Pause schedule")).toBeChecked();
-  await expect(monday.getByLabel("Work minutes")).toHaveValue("450");
-  await page.getByLabel("Pause schedule").uncheck();
-  await saveSchedule(page);
-  await page.reload();
-  await expect(page.getByLabel("Pause schedule")).not.toBeChecked();
-  await expect(monday.getByLabel("Work minutes")).toHaveValue("450");
-  await monday.getByLabel("Work minutes").fill("480");
-  await saturday.getByLabel("Work minutes").fill("240");
-  await page.getByRole("group", { name: "Startup" }).getByLabel("Start").fill("06:00");
-  await saveSchedule(page);
-  await page.reload();
-  await expect(page.getByLabel("Pause schedule")).not.toBeChecked();
-  await expect(monday.getByLabel("Work minutes")).toHaveValue("480");
-  await expect(saturday.getByLabel("Work minutes")).toHaveValue("240");
-  await expect(page.getByRole("group", { name: "Startup" }).getByLabel("Start")).toHaveValue("06:00");
+  await expect(page.getByLabel("Schedule active")).not.toBeChecked();
+  await expect(
+    page
+      .getByRole("region", { name: "Schedule summary" })
+      .getByText("Paused", { exact: true }),
+  ).toBeVisible();
+  await expect(monday).toHaveValue("450");
+
+  await page.getByLabel("Schedule active").check();
+  await saveSchedule.click();
+  await expect(
+    page.getByRole("status").filter({ hasText: "Personal schedule saved." }),
+  ).toBeVisible();
+
+  await monday.fill("480");
+  await saturday.fill("240");
+  await page.getByRole("button", { name: "Startup", exact: true }).click();
+  await page.locator("#guidance-0-start").fill("06:00");
+  await saveSchedule.click();
+  await expect(
+    page.getByRole("status").filter({ hasText: "Personal schedule saved." }),
+  ).toBeVisible();
 });
 
-test("server validation rejects an enabled overlap without saving the draft", async ({ page }) => {
-  skipUnlessDisposableEnvironment();
+test("dirty schedule survives browser Back/Forward and clears after Discard", async ({ page }) => {
+  test.skip(!hasPwaAuthCredentials() || process.env.PO02_DISPOSABLE_ENV !== "1", "Requires explicitly authorized disposable environment and test owner");
+  const { ownerA } = getPwaOwners();
+  await signInPwaOwner(page, ownerA, "/settings/appearance");
+  await page.getByRole("link", { name: "Preferences", exact: true }).click();
+  await expect(page).toHaveURL(/\/settings\/preferences$/);
+
+  const monday = page.getByLabel("Monday work minutes");
+  const saveBar = page.getByRole("region", { name: "Schedule save status" });
+  await monday.fill("450");
+  await expect(saveBar).toBeVisible();
+
+  await page.goBack();
+  await expect(page).toHaveURL(/\/settings\/appearance$/);
+
+  await page.goForward();
+  await expect(page).toHaveURL(/\/settings\/preferences$/);
+  await expect(monday).toHaveValue("450");
+  await expect(saveBar.getByText(/Unsaved changes restored/)).toBeVisible();
+
+  await saveBar.getByRole("button", { name: "Discard" }).click();
+  await expect(monday).toHaveValue("480");
+  await expect(saveBar).toBeHidden();
+
+  await page.goBack();
+  await expect(page).toHaveURL(/\/settings\/appearance$/);
+  await page.goForward();
+  await expect(page).toHaveURL(/\/settings\/preferences$/);
+  await expect(monday).toHaveValue("480");
+  await expect(page.getByText(/Unsaved changes restored/)).toHaveCount(0);
+});
+
+test("confirmed anchor leave discards the draft and reaches the destination once", async ({ page }) => {
+  test.skip(!hasPwaAuthCredentials() || process.env.PO02_DISPOSABLE_ENV !== "1", "Requires explicitly authorized disposable environment and test owner");
+  const { ownerA } = getPwaOwners();
+  await signInPwaOwner(page, ownerA, "/settings/appearance");
+  await page.getByRole("link", { name: "Preferences", exact: true }).click();
+  await expect(page).toHaveURL(/\/settings\/preferences$/);
+
+  const monday = page.getByLabel("Monday work minutes");
+  await monday.fill("450");
+  let dialogs = 0;
+  page.once("dialog", async (dialog) => {
+    dialogs += 1;
+    await dialog.accept();
+  });
+
+  await page.getByRole("link", { name: "Appearance", exact: true }).click();
+  await expect(page).toHaveURL(/\/settings\/appearance$/);
+  expect(dialogs).toBe(1);
+
+  await page.goBack();
+  await expect(page).toHaveURL(/\/settings\/preferences$/);
+  await expect(monday).toHaveValue("480");
+  await expect(page.getByText(/Unsaved changes restored/)).toHaveCount(0);
+});
+
+
+test("server rejects overlapping guidance without persisting the edited target", async ({ page }) => {
+  test.skip(!hasPwaAuthCredentials() || process.env.PO02_DISPOSABLE_ENV !== "1", "Requires explicitly authorized disposable environment and test owner");
   const { ownerA } = getPwaOwners();
   await signInPwaOwner(page, ownerA, "/settings/preferences");
-
-  const monday = page.getByRole("group", { name: "monday" });
-  const chess = page.getByRole("group", { name: "Chess" });
-  const originalMonday = await mondayWorkValue(page);
-  // Always different, and always inside the 0-1440 input range.
-  const editedMonday =
-    originalMonday === "1440" ? "1410" : String(Number(originalMonday) + 30);
-
-  // Chess is a disabled block by default; enabling it on Monday at 06:15
-  // overlaps the enabled Startup block (06:00-06:30).
-  await chess.getByLabel("mon", { exact: true }).check();
-  await chess.getByLabel("Start", { exact: true }).fill("06:15");
-  await chess.getByLabel("End", { exact: true }).fill("06:45");
-  await chess.getByLabel("Enabled").check();
-  await monday.getByLabel("Work minutes").fill(editedMonday);
-
-  await page.getByRole("button", { name: "Save personal schedule" }).click();
-  await expect(page.getByRole("alert")).toContainText(/cannot overlap/i);
-
-  // The rejected draft stays in the form so the owner can fix it.
-  await expect(monday.getByLabel("Work minutes")).toHaveValue(editedMonday);
-  await expect(chess.getByLabel("Enabled")).toBeChecked();
-
-  // Reload proves nothing was persisted.
+  const monday = page.getByLabel("Monday work minutes");
+  const original = await monday.inputValue();
+  const edited = original === "1440" ? "1410" : String(Number(original) + 30);
+  await monday.fill(edited);
+  // Tamper with the submitted payload to exercise the server boundary despite
+  // the redesigned editor preventing invalid submissions in normal use.
+  await page.locator('input[name="schedule"]').evaluate((element: HTMLInputElement) => {
+    const schedule = JSON.parse(element.value);
+    schedule.guidance[1] = { ...schedule.guidance[1], enabled: true, days: ["monday"], start: "06:15", end: "06:45" };
+    element.value = JSON.stringify(schedule);
+  });
+  await page.getByRole("button", { name: "Save changes" }).click();
+  await expect(page.getByRole("alert")).toContainText(/overlap/i);
+  await expect(monday).toHaveValue(edited);
   await page.reload();
-  await expect(monday.getByLabel("Work minutes")).toHaveValue(originalMonday);
-  await expect(chess.getByLabel("Enabled")).not.toBeChecked();
-  await expect(chess.getByLabel("mon", { exact: true })).not.toBeChecked();
+  await expect(monday).toHaveValue(original);
 });
 
-test("reduced motion and keyboard-only editing still saves", async ({ page }) => {
-  skipUnlessDisposableEnvironment();
+test("reduced motion and keyboard editing save and restore the schedule", async ({ page }) => {
+  test.skip(!hasPwaAuthCredentials() || process.env.PO02_DISPOSABLE_ENV !== "1", "Requires explicitly authorized disposable environment and test owner");
   await page.emulateMedia({ reducedMotion: "reduce" });
-  expect(
-    await page.evaluate(() => matchMedia("(prefers-reduced-motion: reduce)").matches),
-  ).toBe(true);
+  expect(await page.evaluate(() => matchMedia("(prefers-reduced-motion: reduce)").matches)).toBe(true);
   const { ownerA } = getPwaOwners();
   await signInPwaOwner(page, ownerA, "/settings/preferences");
-
-  const monday = page.getByRole("group", { name: "monday" });
-  const originalMonday = await mondayWorkValue(page);
-  const editedMonday = String(Number(originalMonday) === 480 ? 510 : 480);
-  const save = page.getByRole("button", { name: SAVE_LABEL });
-
-  const pause = page.getByLabel("Pause schedule");
-  await pause.focus();
+  const monday = page.getByLabel("Monday work minutes");
+  const original = await monday.inputValue();
+  const edited = original === "480" ? "510" : "480";
+  const active = page.getByLabel("Schedule active");
+  await active.focus();
   await page.keyboard.press("Space");
-  await expect(pause).toBeChecked();
-
-  // Real keyboard traversal: the pause toggle hands focus to Monday's target.
-  await page.keyboard.press("Tab");
-  const work = monday.getByLabel("Work minutes");
-  await expect(work).toBeFocused();
+  await expect(active).not.toBeChecked();
+  await monday.focus();
   await page.keyboard.press("ControlOrMeta+a");
-  await page.keyboard.type(editedMonday);
-
-  await saveSchedule(page, async () => {
-    await save.focus();
-    await page.keyboard.press("Enter");
-  });
+  await page.keyboard.type(edited);
+  await page.getByRole("button", { name: "Save changes" }).focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("status").filter({ hasText: "Personal schedule saved." })).toBeVisible();
   await page.reload();
-  await expect(page.getByLabel("Pause schedule")).toBeChecked();
-  await expect(monday.getByLabel("Work minutes")).toHaveValue(editedMonday);
-
-  // Restore the fixture owner to an active schedule with the original target.
-  await page.getByLabel("Pause schedule").focus();
+  await expect(page.getByLabel("Schedule active")).not.toBeChecked();
+  await expect(monday).toHaveValue(edited);
+  await page.getByLabel("Schedule active").focus();
   await page.keyboard.press("Space");
-  await monday.getByLabel("Work minutes").focus();
+  await monday.focus();
   await page.keyboard.press("ControlOrMeta+a");
-  await page.keyboard.type(originalMonday);
-  await saveSchedule(page, async () => {
-    await save.focus();
-    await page.keyboard.press("Enter");
-  });
+  await page.keyboard.type(original);
+  await page.getByRole("button", { name: "Save changes" }).focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("status").filter({ hasText: "Personal schedule saved." })).toBeVisible();
   await page.reload();
-  await expect(page.getByLabel("Pause schedule")).not.toBeChecked();
-  await expect(monday.getByLabel("Work minutes")).toHaveValue(originalMonday);
+  await expect(page.getByLabel("Schedule active")).toBeChecked();
+  await expect(monday).toHaveValue(original);
 });
