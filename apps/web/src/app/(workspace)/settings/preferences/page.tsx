@@ -7,8 +7,12 @@ import {
 } from "@/app/(workspace)/settings/preferences/actions";
 import { PersonalOperationsForm } from "@/app/(workspace)/settings/preferences/personal-operations-form";
 import { WorkspaceDefaultsForm } from "@/app/(workspace)/settings/preferences/workspace-defaults-form";
+import {
+  redirectToSettingsLogin,
+  requireSettingsPageUser,
+} from "@/app/(workspace)/settings/_lib/settings-auth-guard";
 import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
-import { getCurrentUser } from "@/lib/services/auth-service";
+import { isAuthServiceError } from "@/lib/services/auth-service";
 import { getWebTimeContext } from "@/lib/services/time-context-service";
 import { getWebUserPreferencesState } from "@/lib/services/user-preferences-service";
 
@@ -18,6 +22,8 @@ export const metadata: Metadata = {
     "Weekly targets, guidance blocks, launch page and task presentation.",
 };
 
+const PREFERENCES_PATH = "/settings/preferences";
+
 type WorkspacePreferencesPageProps = {
   searchParams: Promise<{ success?: string; error?: string }>;
 };
@@ -25,16 +31,29 @@ type WorkspacePreferencesPageProps = {
 export default async function WorkspacePreferencesPage({
   searchParams,
 }: WorkspacePreferencesPageProps) {
-  const [{ success, error }, state, timeContext, account] = await Promise.all([
+  // Verify the request identity before any protected read. The returned user is
+  // the request-memoized verified identity used only to scope the local draft
+  // snapshot so same-baseline accounts in one tab cannot share a draft.
+  const account = await requireSettingsPageUser(PREFERENCES_PATH);
+
+  const [{ success, error }, state] = await Promise.all([
     searchParams,
     getWebUserPreferencesState(),
-    // Display-only: upcoming guidance is expressed in the account time zone.
-    // A missing context keeps the schedule usable and hides that one line.
-    getWebTimeContext().catch(() => null),
-    // Request-memoized verified identity, used only to scope the local draft
-    // snapshot so same-baseline accounts in one tab cannot share a draft.
-    getCurrentUser().catch(() => null),
   ]);
+
+  // The schedule can still be edited when the account time context is
+  // unavailable; the form is told there is no local date to resolve. An expired
+  // session is not a degradation, so auth failures still go to the login page.
+  let timeContext: Awaited<ReturnType<typeof getWebTimeContext>> | null = null;
+  try {
+    timeContext = await getWebTimeContext();
+  } catch (loadError) {
+    if (isAuthServiceError(loadError)) {
+      redirectToSettingsLogin(PREFERENCES_PATH);
+    }
+    timeContext = null;
+  }
+
   const preferences = state.preferences;
   const loadError = error ?? state.errorMessage;
 
@@ -49,7 +68,10 @@ export default async function WorkspacePreferencesPage({
 
         {loadError ? (
           <div role="alert" className="feedback-block feedback-block-error">
-            {loadError} The defaults are shown; saving replaces the stored values.
+            {loadError}
+            {state.errorMessage
+              ? " The schedule is read-only until preferences load."
+              : null}
           </div>
         ) : null}
 
@@ -62,8 +84,17 @@ export default async function WorkspacePreferencesPage({
         <PersonalOperationsForm
           initial={preferences.personalOperations}
           disabled={Boolean(state.errorMessage)}
-          timezone={timeContext?.timezone ?? null}
-          accountScope={account?.id ?? null}
+          timeContext={
+            timeContext
+              ? {
+                  timezone: timeContext.timezone,
+                  persistedTimezone: timeContext.persistedTimezone,
+                  fallback: timeContext.fallback,
+                  localDate: timeContext.localDate,
+                }
+              : null
+          }
+          accountScope={account.id}
           action={updatePersonalOperationsAction}
         />
 

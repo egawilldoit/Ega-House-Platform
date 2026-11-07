@@ -12,6 +12,9 @@ import {
   type FormEvent,
 } from "react";
 
+import { getPersonalOperationsDayPlan } from "@ega/domain/preferences";
+import { getLocalDateInTimezone, getLocalDayWindow } from "@ega/domain/time-context";
+
 import { DailyTargets } from "./daily-targets";
 import { BlockEditor } from "./block-editor";
 import {
@@ -24,6 +27,7 @@ import {
 import styles from "./preferences.module.css";
 import {
   type Day,
+  type PersonalOperationsTimeContext,
   type Schedule,
   getGuidanceConflicts,
   getTargetSeries,
@@ -34,6 +38,8 @@ import {
 import { ScheduleCheck } from "./schedule-check";
 import { SummaryStrip } from "./summary-strip";
 import { WeeklyPlanner } from "./weekly-planner";
+
+export type { PersonalOperationsTimeContext } from "./schedule-model";
 
 export type PersonalOperationsActionState = { message: string; ok: boolean };
 export type PersonalOperationsAction = (
@@ -68,18 +74,19 @@ type TargetKey = "work" | "jobSearch";
 export function PersonalOperationsForm({
   initial,
   disabled,
-  timezone,
+  timeContext = null,
   accountScope = null,
   action,
 }: {
   initial: Schedule;
   disabled: boolean;
-  timezone: string | null;
+  timeContext?: PersonalOperationsTimeContext | null;
   accountScope?: string | null;
   action: PersonalOperationsAction;
 }) {
   const [draft, setDraft] = useState<Schedule>(initial);
   const [baseline, setBaseline] = useState<Schedule>(initial);
+  const [localDate, setLocalDate] = useState(timeContext?.localDate ?? null);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [restoredNotice, setRestoredNotice] = useState(false);
   const restoredCheckedRef = useRef(false);
@@ -89,6 +96,36 @@ export function PersonalOperationsForm({
     [initial, accountScope],
   );
   const now = useMinuteNow();
+
+  // Refresh the owner-local date at local midnight and whenever the tab
+  // resumes, so the schedule day and today's plan do not drift from the
+  // account Time Context. The server's localDate is the initial value.
+  useEffect(() => {
+    const timezone = timeContext?.timezone;
+    if (!timezone) return;
+    const zone = timezone;
+    let timer: ReturnType<typeof setTimeout>;
+    function refreshDate() {
+      clearTimeout(timer);
+      const current = new Date();
+      const date = getLocalDateInTimezone(current, zone);
+      setLocalDate(date);
+      const end = getLocalDayWindow(zone, date).endUtcIso;
+      timer = setTimeout(
+        refreshDate,
+        Math.max(1000, Date.parse(end) - current.getTime()),
+      );
+    }
+    refreshDate();
+    document.addEventListener("visibilitychange", refreshDate);
+    window.addEventListener("focus", refreshDate);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener("visibilitychange", refreshDate);
+      window.removeEventListener("focus", refreshDate);
+    };
+  }, [timeContext?.timezone]);
+
   const submit = useCallback(
     async (state: PersonalOperationsActionState, formData: FormData) => {
       try {
@@ -121,6 +158,12 @@ export function PersonalOperationsForm({
   );
   const invalidTargets = hasInvalidTargets(draft);
   const totals = getWeeklyTotals(draft);
+  // Canonical day plan: the draft is the edited schedule, the date is already
+  // resolved in the account Time Context.
+  const today =
+    timeContext && localDate
+      ? getPersonalOperationsDayPlan(draft, localDate)
+      : null;
   const blocked = invalidTargets || conflicts.messages.length > 0;
   const canSave = !disabled && !blocked;
 
@@ -232,6 +275,18 @@ export function PersonalOperationsForm({
       }
       const href = anchor.getAttribute("href");
       if (!href || href.startsWith("#")) return;
+      // The active Settings link (and any same-path anchor) does not leave the
+      // page. Never prompt for it or clear a draft that stays restorable.
+      try {
+        const destination = new URL(anchor.href);
+        // mailto:/tel: and other non-document schemes do not remount this page.
+        if (destination.protocol !== "http:" && destination.protocol !== "https:") {
+          return;
+        }
+        if (destination.origin === window.location.origin && destination.pathname === window.location.pathname) return;
+      } catch {
+        return;
+      }
       const confirmed = warnBeforeLeaving(
         "You have unsaved schedule changes. Leave this page and discard them?",
       );
@@ -249,15 +304,15 @@ export function PersonalOperationsForm({
       if (!(form instanceof HTMLFormElement)) return;
       if (form.dataset.personalOperationsForm === "true") return;
       const confirmed = warnBeforeLeaving(
-        "You have unsaved schedule changes. Continue with this submission? The schedule draft will be kept and restored if this page reloads.",
+        "You have unsaved schedule changes. Continue with this submission? The schedule draft will be kept while you stay on this page, but leaving or reloading may discard it.",
       );
       if (!confirmed) {
         event.preventDefault();
         event.stopPropagation();
       }
       // Deliberately do not clear the snapshot here. This form may stay mounted
-      // (for example Workspace defaults) or navigate; either way the dirty
-      // schedule must remain restorable.
+      // (for example Workspace defaults) or navigate. A full navigation or
+      // reload clears the snapshot via the pagehide handler.
     };
 
     window.addEventListener("beforeunload", beforeUnload);
@@ -355,6 +410,13 @@ export function PersonalOperationsForm({
         className={styles.formShim}
         style={{ border: 0, padding: 0, margin: 0 }}
       >
+        {disabled ? (
+          <p className={styles.disabledNote}>
+            Read-only until your preferences load. Nothing here can overwrite the
+            stored schedule.
+          </p>
+        ) : null}
+
         <SummaryStrip
           schedule={draft}
           onPauseChange={(paused) =>
@@ -397,7 +459,8 @@ export function PersonalOperationsForm({
           <ScheduleCheck
             schedule={draft}
             conflicts={conflicts}
-            timezone={timezone}
+            timeContext={timeContext}
+            today={today}
             now={now}
           />
         </div>

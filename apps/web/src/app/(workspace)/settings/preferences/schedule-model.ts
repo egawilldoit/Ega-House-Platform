@@ -11,6 +11,17 @@ import type { UserPreferences } from "@ega/domain/preferences";
 export type Schedule = UserPreferences["personalOperations"];
 export type GuidanceBlock = Schedule["guidance"][number];
 
+/**
+ * The account Time Context already resolved on the server, plus the raw stored
+ * zone so the UI can distinguish a missing/invalid fallback from a valid one.
+ */
+export type PersonalOperationsTimeContext = Readonly<{
+  timezone: string;
+  persistedTimezone?: string | null;
+  fallback: "none" | "missing_timezone" | "invalid_timezone";
+  localDate: string;
+}>;
+
 export const DAYS = [
   "monday",
   "tuesday",

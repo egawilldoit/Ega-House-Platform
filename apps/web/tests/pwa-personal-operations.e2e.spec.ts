@@ -10,6 +10,8 @@ test("owner edits, reloads and pauses a personal schedule through the redesigned
   const scheduleForm = page.locator('form[aria-label="Personal schedule"]');
   await expect(page.getByRole("heading", { name: "Preferences" })).toBeVisible();
   await expect(scheduleForm).toBeVisible();
+  await expect(page.getByText(/Account time zone:/)).toBeVisible();
+  await expect(page.getByText(/Today in .+: \w+ — \d+ min work, \d+ min job search/)).toBeVisible();
   await expect(page.getByText("2,880 minutes per week")).toBeVisible();
   await expect(page.getByText("450 minutes per week")).toBeVisible();
 
@@ -141,4 +143,62 @@ test("confirmed anchor leave discards the draft and reaches the destination once
   await expect(page).toHaveURL(/\/settings\/preferences$/);
   await expect(monday).toHaveValue("480");
   await expect(page.getByText(/Unsaved changes restored/)).toHaveCount(0);
+});
+
+
+test("server rejects overlapping guidance without persisting the edited target", async ({ page }) => {
+  test.skip(!hasPwaAuthCredentials() || process.env.PO02_DISPOSABLE_ENV !== "1", "Requires explicitly authorized disposable environment and test owner");
+  const { ownerA } = getPwaOwners();
+  await signInPwaOwner(page, ownerA, "/settings/preferences");
+  const monday = page.getByLabel("Monday work minutes");
+  const original = await monday.inputValue();
+  const edited = original === "1440" ? "1410" : String(Number(original) + 30);
+  await monday.fill(edited);
+  // Tamper with the submitted payload to exercise the server boundary despite
+  // the redesigned editor preventing invalid submissions in normal use.
+  await page.locator('input[name="schedule"]').evaluate((element: HTMLInputElement) => {
+    const schedule = JSON.parse(element.value);
+    schedule.guidance[1] = { ...schedule.guidance[1], enabled: true, days: ["monday"], start: "06:15", end: "06:45" };
+    element.value = JSON.stringify(schedule);
+  });
+  await page.getByRole("button", { name: "Save changes" }).click();
+  await expect(page.getByRole("alert")).toContainText(/overlap/i);
+  await expect(monday).toHaveValue(edited);
+  await page.reload();
+  await expect(monday).toHaveValue(original);
+});
+
+test("reduced motion and keyboard editing save and restore the schedule", async ({ page }) => {
+  test.skip(!hasPwaAuthCredentials() || process.env.PO02_DISPOSABLE_ENV !== "1", "Requires explicitly authorized disposable environment and test owner");
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  expect(await page.evaluate(() => matchMedia("(prefers-reduced-motion: reduce)").matches)).toBe(true);
+  const { ownerA } = getPwaOwners();
+  await signInPwaOwner(page, ownerA, "/settings/preferences");
+  const monday = page.getByLabel("Monday work minutes");
+  const original = await monday.inputValue();
+  const edited = original === "480" ? "510" : "480";
+  const active = page.getByLabel("Schedule active");
+  await active.focus();
+  await page.keyboard.press("Space");
+  await expect(active).not.toBeChecked();
+  await monday.focus();
+  await page.keyboard.press("ControlOrMeta+a");
+  await page.keyboard.type(edited);
+  await page.getByRole("button", { name: "Save changes" }).focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("status").filter({ hasText: "Personal schedule saved." })).toBeVisible();
+  await page.reload();
+  await expect(page.getByLabel("Schedule active")).not.toBeChecked();
+  await expect(monday).toHaveValue(edited);
+  await page.getByLabel("Schedule active").focus();
+  await page.keyboard.press("Space");
+  await monday.focus();
+  await page.keyboard.press("ControlOrMeta+a");
+  await page.keyboard.type(original);
+  await page.getByRole("button", { name: "Save changes" }).focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("status").filter({ hasText: "Personal schedule saved." })).toBeVisible();
+  await page.reload();
+  await expect(page.getByLabel("Schedule active")).toBeChecked();
+  await expect(monday).toHaveValue(original);
 });
