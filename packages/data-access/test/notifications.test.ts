@@ -21,6 +21,8 @@ import { classifyFcmError } from "@ega/application/notifications/delivery";
 test("FCM error classification mirrors provider expectations", async () => {
   // Invalid endpoint
   assert.equal(classifyFcmError({ httpStatus: 404, fcmCode: "UNREGISTERED" }), "invalid_endpoint");
+  assert.equal(classifyFcmError({ httpStatus: 404 }), "invalid_endpoint");
+  assert.equal(classifyFcmError({ httpStatus: 410 }), "invalid_endpoint");
   assert.equal(classifyFcmError({ httpStatus: 400, fcmCode: "INVALID_ARGUMENT" }), "invalid_endpoint");
 
   // Transient
@@ -29,6 +31,7 @@ test("FCM error classification mirrors provider expectations", async () => {
 
   // Auth
   assert.equal(classifyFcmError({ httpStatus: 401 }), "auth");
+  assert.equal(classifyFcmError({ httpStatus: 403 }), "auth");
 
   // Permanent
   assert.equal(classifyFcmError({ httpStatus: 400, fcmCode: "INVALID_PAYLOAD" }), "permanent");

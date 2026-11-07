@@ -43,18 +43,26 @@ export function classifyFcmError(input: {
   const code = (input.fcmCode ?? "").toUpperCase();
   const status = input.httpStatus ?? 0;
 
-  // Invalid/unregistered token
+  // Terminal endpoint failures: the token/registration no longer exists.
+  // 404/410 without a code still means the endpoint is gone.
   if (
+    status === 404 ||
+    status === 410 ||
     code === "UNREGISTERED" ||
     code === "INVALID_ARGUMENT" ||
     code === "SENDER_ID_MISMATCH" ||
+    code === "REGISTRATION_TOKEN_NOT_REGISTERED" ||
+    code === "INVALID_TOKEN" ||
+    code === "NOT_FOUND" ||
     code.includes("UNREGISTERED") ||
-    code.includes("INVALID_REGISTRATION")
+    code.includes("INVALID_REGISTRATION") ||
+    code.includes("INVALID_TOKEN")
   ) {
     return "invalid_endpoint";
   }
 
-  // Auth/config failures
+  // Auth/config failures are permanent for this attempt (retrying will not fix
+  // a missing/rotated service credential without operator action).
   if (
     status === 401 ||
     status === 403 ||
@@ -65,13 +73,12 @@ export function classifyFcmError(input: {
     return "auth";
   }
 
-  // Transient: 429, 5xx, UNAVAILABLE, INTERNAL, DEADLINE_EXCEEDED, RESOURCE_EXHAUSTED
+  // Transient: 408, 429, 5xx, UNAVAILABLE, INTERNAL, DEADLINE_EXCEEDED,
+  // RESOURCE_EXHAUSTED, ABORTED
   if (
+    status === 408 ||
     status === 429 ||
-    status === 500 ||
-    status === 502 ||
-    status === 503 ||
-    status === 504 ||
+    (status >= 500 && status <= 599) ||
     code === "UNAVAILABLE" ||
     code === "INTERNAL" ||
     code === "DEADLINE_EXCEEDED" ||
@@ -81,18 +88,15 @@ export function classifyFcmError(input: {
     return "transient";
   }
 
-  // 4xx client errors that are not invalid token are permanent
+  // Other 4xx client errors are permanent for this endpoint/payload.
   if (status >= 400 && status < 500) {
     return "permanent";
   }
 
-  // Unknown but map codes like NOT_FOUND for token? treat as invalid
-  if (code === "NOT_FOUND") return "invalid_endpoint";
-
-  // Fallback: treat as transient for retry if unknown, or permanent?
-  // We prefer transient for safety unless explicitly invalid.
+  // Unknown codes are not safe to retry indefinitely; treat them permanently.
   if (code) return "permanent";
 
+  // Network/unknown status: prefer a bounded retry.
   return "transient";
 }
 
