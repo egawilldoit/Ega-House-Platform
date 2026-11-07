@@ -169,6 +169,33 @@ describe("PersonalOperationsForm", () => {
     expect(window.sessionStorage.getItem(key)).toBeNull();
   });
 
+  it.each(["target", "time"])("restores an intermediate %s edit alongside other changes", async (kind) => {
+    const initial = schedule();
+    const renderForm = () => (
+      <PersonalOperationsForm initial={initial} disabled={false} timeContext={UTC_CONTEXT} action={vi.fn()} />
+    );
+    await act(async () => root.render(renderForm()));
+    await act(async () => {
+      setInputValue(field<HTMLInputElement>('input[aria-label="Tuesday work minutes"]'), "450");
+      if (kind === "target") {
+        setInputValue(field<HTMLInputElement>('input[aria-label="Monday work minutes"]'), "1500");
+      } else {
+        setInputValue(field<HTMLInputElement>('#guidance-0-start'), "");
+      }
+    });
+    expect(buttonByText("Save changes").disabled).toBe(true);
+    await act(async () => root.unmount());
+    root = createRoot(container);
+    await act(async () => {
+      root.render(renderForm());
+      await Promise.resolve();
+    });
+    expect(field<HTMLInputElement>('input[aria-label="Tuesday work minutes"]').value).toBe("450");
+    expect(field<HTMLInputElement>(kind === "target" ? 'input[aria-label="Monday work minutes"]' : '#guidance-0-start').value).toBe(kind === "target" ? "1500" : "");
+    expect(buttonByText("Save changes").disabled).toBe(true);
+    expect(container.textContent).toContain("Unsaved changes restored");
+  });
+
   it("keeps the restorable draft when an unrelated confirmed submit stays on the page", async () => {
     const initial = schedule();
     const key = createScheduleDraftKey("/settings/preferences", initial);

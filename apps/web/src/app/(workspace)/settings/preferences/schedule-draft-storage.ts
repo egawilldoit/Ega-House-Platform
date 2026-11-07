@@ -31,7 +31,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function isTime(value: unknown): value is string {
-  return typeof value === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
+  return (
+    typeof value === "string" &&
+    (value === "" || /^([01]\d|2[0-3]):[0-5]\d$/.test(value))
+  );
 }
 
 /**
@@ -49,12 +52,7 @@ export function isRestorableSchedule(value: unknown): value is Schedule {
     if (!isRecord(target)) return false;
     for (const field of ["work", "jobSearch"] as const) {
       const minutes = target[field];
-      if (
-        typeof minutes !== "number" ||
-        !Number.isInteger(minutes) ||
-        minutes < -1 ||
-        minutes > 1440
-      ) {
+      if (typeof minutes !== "number" || !Number.isInteger(minutes)) {
         return false;
       }
     }

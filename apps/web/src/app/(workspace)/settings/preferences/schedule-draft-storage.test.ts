@@ -79,6 +79,18 @@ describe("schedule draft storage", () => {
     expect(readScheduleDraft(storage, key, 1234)).toEqual(draft);
   });
 
+  it.each(["target", "time"])("round-trips intermediate %s edits with other changes", (kind) => {
+    const storage = memoryStorage();
+    const key = createScheduleDraftKey("/settings/preferences", schedule());
+    const draft = schedule();
+    draft.targets.tuesday.work = 450;
+    if (kind === "target") draft.targets.monday.work = 1500;
+    else draft.guidance[0] = { ...draft.guidance[0]!, start: "" };
+
+    writeScheduleDraft(storage, key, draft, 1234);
+    expect(readScheduleDraft(storage, key, 1234)).toEqual(draft);
+  });
+
   it("clears the stored draft", () => {
     const storage = memoryStorage();
     const key = createScheduleDraftKey("/settings/preferences", schedule());
