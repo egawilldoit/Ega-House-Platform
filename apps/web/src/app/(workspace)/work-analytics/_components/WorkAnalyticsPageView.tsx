@@ -105,9 +105,9 @@ export function WorkAnalyticsPageView({ model }: { model: WorkAnalyticsPageModel
     workTargets !== null &&
     !workTargets.jobSearchConfigured &&
     workTargets.week.targetJobSearchMinutes > 0;
-  const targetsProvisional =
-    workTargets !== null &&
-    (workTargets.includeOpenSessions || workTargets.quality === "provisional");
+  // The label reflects evidence quality, not merely the opt-in flag: including
+  // open sessions that do not overlap the week still yields sufficient quality.
+  const targetsProvisional = workTargets !== null && workTargets.quality === "provisional";
 
   return (
     <div className="flex flex-col gap-6" data-testid="work-analytics-workspace">

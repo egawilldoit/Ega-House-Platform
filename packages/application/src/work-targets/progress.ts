@@ -131,6 +131,31 @@ function allocateWholeMinutes(
   });
 }
 
+/**
+ * Cumulative rounding can make a search day one minute larger than its work
+ * day. Search is a subset of work, so cap each day and carry the excess to the
+ * next day with spare work capacity; if the excess is stranded, fill backwards
+ * too. Total capacity is sufficient because total search <= total work.
+ */
+function capSearchToWork(workMinutes: number[], searchMinutes: number[]): number[] {
+  const capped = [...searchMinutes];
+  let carry = 0;
+  for (let index = 0; index < capped.length; index += 1) {
+    const desired = (capped[index] ?? 0) + carry;
+    const allowed = Math.max(0, workMinutes[index] ?? 0);
+    const assigned = Math.min(desired, allowed);
+    capped[index] = assigned;
+    carry = desired - assigned;
+  }
+  for (let index = capped.length - 1; index >= 0 && carry > 0; index -= 1) {
+    const spare = Math.max(0, (workMinutes[index] ?? 0) - (capped[index] ?? 0));
+    const added = Math.min(spare, carry);
+    capped[index] = (capped[index] ?? 0) + added;
+    carry -= added;
+  }
+  return capped;
+}
+
 export function calculateWorkTargetProgress(
   input: WorkTargetProgressInput,
 ): WorkTargetProgress {
@@ -192,7 +217,10 @@ export function calculateWorkTargetProgress(
   const workSecondsByDay = evidence?.trackedSecondsByDay ?? new Map<string, number>();
   const dates = Array.from({ length: 7 }, (_, index) => addDaysToIsoDate(week.weekStart, index));
   const workMinutesByDay = allocateWholeMinutes(workSecondsByDay, dates);
-  const searchMinutesByDay = allocateWholeMinutes(searchSecondsByDay, dates);
+  const searchMinutesByDay = capSearchToWork(
+    workMinutesByDay,
+    allocateWholeMinutes(searchSecondsByDay, dates),
+  );
   const days: WorkTargetDay[] = [];
   for (let index = 0; index < 7; index += 1) {
     const date = dates[index] as string;

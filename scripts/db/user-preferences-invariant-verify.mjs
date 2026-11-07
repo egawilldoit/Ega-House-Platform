@@ -247,15 +247,40 @@ async function main() {
     const savedRef = await ownerA.run(tx => tx.unsafe(`SELECT job_search_reference FROM public.user_preferences WHERE user_id = auth.uid()`));
     assert(savedRef[0].job_search_reference?.kind === "task" && savedRef[0].job_search_reference?.id === TASK_REF, "valid task reference must persist");
 
+    // Clearing sends JSONB null; the RPC must convert it to SQL NULL so the
+    // CHECK (which allows SQL NULL) does not reject the patch.
+    await ownerA.run(tx => tx.unsafe(`SELECT public.patch_user_preferences($1::jsonb)`, [
+      { jobSearchReference: null },
+    ]));
+    const clearedRef = await ownerA.run(tx => tx.unsafe(`SELECT job_search_reference FROM public.user_preferences WHERE user_id = auth.uid()`));
+    assert(clearedRef[0].job_search_reference === null, "clearing must store SQL NULL, not JSONB null");
+
+    // A subsequent schedule/theme patch must still succeed after clearing.
+    await ownerA.run(tx => tx.unsafe(`SELECT public.patch_user_preferences($1::jsonb)`, [
+      { personalOperations: schedule, theme: "dark" },
+    ]));
+    const afterClear = await ownerA.run(tx => tx.unsafe(`SELECT theme, personal_operations FROM public.user_preferences WHERE user_id = auth.uid()`));
+    assert(afterClear[0].theme === "dark" && afterClear[0].personal_operations?.targets?.monday?.work === 480, "3-key schedule patch must succeed after clearing the reference");
+    log("REFERENCE", "clear-to-null and subsequent 3-key schedule/theme patch verified");
+    await ownerA.run(tx => tx.unsafe(`UPDATE public.user_preferences SET theme = 'system' WHERE user_id = auth.uid()`));
+
     await expectFailure("RPC rejects a project reference", () => ownerA.run(tx => tx.unsafe(`SELECT public.patch_user_preferences($1::jsonb)`, [
       { jobSearchReference: { kind: "project", id: TASK_REF } },
     ])), ["23514"]);
     await expectFailure("RPC rejects an invalid reference UUID", () => ownerA.run(tx => tx.unsafe(`SELECT public.patch_user_preferences($1::jsonb)`, [
       { jobSearchReference: { kind: "task", id: "not-a-uuid" } },
     ])), ["23514"]);
+    // The exact 0078 3-key validator body is restored by 0089, so a database
+    // that ever applied the deleted branch 0079 converges here. The 4-key
+    // rejection plus the copied body is the convergence proof.
     await expectFailure("RPC rejects a 4-key personal schedule", () => ownerA.run(tx => tx.unsafe(`SELECT public.patch_user_preferences($1::jsonb)`, [
       { personalOperations: { ...schedule, jobSearchReference: { kind: "task", id: TASK_REF } } },
     ])), ["23514"]);
+    await ownerA.run(tx => tx.unsafe(`SELECT public.patch_user_preferences($1::jsonb)`, [
+      { personalOperations: schedule },
+    ]));
+    const acceptedSchedule = await ownerA.run(tx => tx.unsafe(`SELECT personal_operations FROM public.user_preferences WHERE user_id = auth.uid()`));
+    assert(acceptedSchedule[0].personal_operations?.targets?.monday?.work === 480, "3-key personal schedule must remain accepted");
     await expectFailure("RPC rejects caller identity plus reference", () => ownerB.run(tx => tx.unsafe(`SELECT public.patch_user_preferences($1::jsonb)`, [
       { userId: OWNER_A, jobSearchReference: { kind: "task", id: TASK_REF } },
     ])), ["P0001"]);
@@ -354,6 +379,9 @@ async function main() {
 
     const reapplied = await applyFile(sql, MIGRATION_TAG);
     log("IDEMPOTENCE", `${MIGRATION_TAG} re-applied (${reapplied} statement(s))`);
+
+    const reappliedRef = await applyFile(sql, "0089_job_search_reference");
+    log("IDEMPOTENCE", `0089_job_search_reference re-applied (${reappliedRef} statement(s))`);
 
     const stillThere = await ownerA.run((tx) =>
       tx.unsafe(`SELECT theme FROM public.user_preferences WHERE user_id = auth.uid()`),
