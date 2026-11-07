@@ -74,7 +74,7 @@ export async function getWorkTargetProgress(
 
     // A Time Context failure degrades to UTC, matching the analytics report's
     // documented fallback, instead of hiding the whole targets section.
-    let timezone = "UTC";
+    let timezone: string;
     try {
       timezone = await (dependencies.getTimezone ?? defaultTimezone)();
     } catch {
