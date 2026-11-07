@@ -270,9 +270,15 @@ export function createNotificationsRoutes(): Hono<{ Variables: ServerVariables }
     });
     if (!result.ok) {
       const isValidation = result.code === "validation";
+      const isConflict = result.code === "conflict";
       return c.json(
-        { error: { code: isValidation ? "VALIDATION" : "INTERNAL", message: result.errorMessage } },
-        isValidation ? 400 : 500,
+        {
+          error: {
+            code: isValidation ? "VALIDATION" : isConflict ? "CONFLICT" : "INTERNAL",
+            message: result.errorMessage,
+          },
+        },
+        isValidation ? 400 : isConflict ? 409 : 500,
       );
     }
     return c.json({ ok: true as const, settings: result.data });

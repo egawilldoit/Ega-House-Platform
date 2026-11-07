@@ -648,6 +648,10 @@ export const notificationSettings = pgTable(
       "notification_settings_quiet_hours_end_check",
       sql`${table.quietHoursEnd} ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'`,
     ),
+    check(
+      "notification_settings_quiet_hours_window_check",
+      sql`${table.quietHoursStart} <> ${table.quietHoursEnd}`,
+    ),
   ],
 );
 

@@ -35,53 +35,73 @@ export function nextRetryAt(attempt: number, now: Date): string | null {
 
 export type FcmErrorClassification = "invalid_endpoint" | "transient" | "permanent" | "auth";
 
-function lowerText(value: unknown): string {
-  if (value === null || value === undefined) return "";
-  try {
-    return JSON.stringify(value).toLowerCase();
-  } catch {
-    return "";
-  }
+const VERIFIED_TOKEN_INVALID_CODES = new Set([
+  "unregistered",
+  "registration_token_not_registered",
+  "registration-token-not-registered",
+  "invalid_registration",
+  "invalid-registration",
+]);
+
+/** Extract structured errorCode/reason/code values; never substring-match details. */
+function collectDetailCodes(details: unknown): string[] {
+  const codes: string[] = [];
+  const visit = (value: unknown, depth = 0): void => {
+    if (depth > 5 || value === null || value === undefined) return;
+    if (Array.isArray(value)) {
+      for (const item of value) visit(item, depth + 1);
+      return;
+    }
+    if (typeof value === "object") {
+      const record = value as Record<string, unknown>;
+      for (const key of ["errorCode", "error_code", "reason", "code"]) {
+        const candidate = record[key];
+        if (typeof candidate === "string") codes.push(candidate.trim().toLowerCase());
+      }
+      for (const nested of Object.values(record)) {
+        if (nested && typeof nested === "object") visit(nested, depth + 1);
+      }
+    }
+  };
+  visit(details);
+  return codes;
 }
+
+/**
+ * Anchored proof: the registration token itself must be described as invalid.
+ * "The registration token is valid; the message payload is invalid." must not
+ * match.
+ */
+const TOKEN_INVALID_MESSAGE_RE =
+  /registration token\s+(?:is|was)?\s*(?:not\s+(?:a\s+)?valid|invalid|not\s+registered|no longer valid|unregistered)\b/i;
 
 export function classifyFcmError(input: {
   httpStatus?: number | null;
   fcmCode?: string | null;
   message?: string | null;
-  /** Structured FCM `error.details`, searched for explicit token-invalid codes. */
+  /** Structured FCM `error.details`, searched only by exact structured codes. */
   details?: unknown;
 }): FcmErrorClassification {
   const code = (input.fcmCode ?? "").toUpperCase();
   const status = input.httpStatus ?? 0;
-  const message = (input.message ?? "").toLowerCase();
-  const details = lowerText(input.details);
+  const message = input.message ?? "";
 
-  // Endpoint invalidation requires specific verified token-invalid evidence.
-  // HTTP 404/410, generic NOT_FOUND, or SENDER_ID_MISMATCH alone are not proof.
-  const detailTokenInvalid =
-    details.includes("unregistered")
-    || details.includes("registration_token_not_registered")
-    || details.includes("registration-token-not-registered")
-    || details.includes("invalid_registration")
-    || details.includes("invalid-registration");
-  const messageTokenInvalid =
-    /registration token[^.]*(not (a )?valid|invalid|not registered|no longer valid|unregistered)/i.test(
-      message,
-    );
-  const tokenText = `${message} ${details}`;
+  // Endpoint invalidation requires verified token-invalid evidence. Exact
+  // structured codes only: UNREGISTERED_PROJECT, UNREGISTERED_APP, or
+  // `reason: "app unregistered"` must not match.
+  const codeTokenInvalid = VERIFIED_TOKEN_INVALID_CODES.has(code.toLowerCase());
+  const detailTokenInvalid = collectDetailCodes(input.details).some((candidate) =>
+    VERIFIED_TOKEN_INVALID_CODES.has(candidate),
+  );
+  const messageTokenInvalid = TOKEN_INVALID_MESSAGE_RE.test(message);
   const invalidArgumentTokenProof =
-    code === "INVALID_ARGUMENT"
-    && /registration token/i.test(tokenText)
-    && /(not (a )?valid|invalid|not registered|no longer valid|unregistered)/i.test(tokenText);
+    code === "INVALID_ARGUMENT" && (messageTokenInvalid || detailTokenInvalid);
 
   if (
-    code === "UNREGISTERED"
-    || code === "REGISTRATION_TOKEN_NOT_REGISTERED"
-    || code === "INVALID_REGISTRATION"
-    || code.includes("UNREGISTERED")
-    || detailTokenInvalid
-    || messageTokenInvalid
-    || invalidArgumentTokenProof
+    codeTokenInvalid ||
+    detailTokenInvalid ||
+    messageTokenInvalid ||
+    invalidArgumentTokenProof
   ) {
     return "invalid_endpoint";
   }
