@@ -757,4 +757,63 @@ describe("OwnerScopedRealtimeRefresh", () => {
     assert.equal(routerRefreshCalls.length, 1);
     unmount();
   });
+
+  test("reconcileOnVisibility=false drops a payload buffered while hidden", () => {
+    mount({
+      ownerUserId: "user-1",
+      channelPrefix: "timer",
+      tables: ["task_sessions"],
+      refreshDebounceMs: 100,
+      reconcileOnVisibility: false,
+    });
+
+    Object.defineProperty(document, "hidden", { configurable: true, value: true });
+    assert.ok(activeOnPayload);
+    act(() => {
+      activeOnPayload!(createPayload("INSERT", { updated_at: "2026-04-18T00:01:00.000Z" }));
+    });
+    act(() => { vi.advanceTimersByTime(200); });
+    assert.equal(routerRefreshCalls.length, 0);
+
+    // The verified TimerSyncStatus owns this transition; the realtime
+    // component must drop the pending flag rather than refresh as well.
+    Object.defineProperty(document, "hidden", { configurable: true, value: false });
+    act(() => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    act(() => { vi.advanceTimersByTime(200); });
+    assert.equal(routerRefreshCalls.length, 0, "verified reconcile owns visibility");
+
+    // A subsequent visible payload still refreshes normally.
+    act(() => {
+      activeOnPayload!(createPayload("UPDATE", { updated_at: "2026-04-18T00:02:00.000Z" }));
+    });
+    act(() => { vi.advanceTimersByTime(101); });
+    assert.equal(routerRefreshCalls.length, 1);
+
+    unmount();
+  });
+
+  test("reconcileOnVisibility defaults to true for other pages", () => {
+    mount({
+      ownerUserId: "user-1",
+      channelPrefix: "dashboard",
+      tables: ["task_sessions"],
+      refreshDebounceMs: 100,
+    });
+
+    Object.defineProperty(document, "hidden", { configurable: true, value: true });
+    assert.ok(activeOnPayload);
+    act(() => {
+      activeOnPayload!(createPayload("INSERT", { updated_at: "2026-04-18T00:01:00.000Z" }));
+    });
+    Object.defineProperty(document, "hidden", { configurable: true, value: false });
+    act(() => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    act(() => { vi.advanceTimersByTime(1); });
+    assert.equal(routerRefreshCalls.length, 1, "default behavior must keep the catch-up refresh");
+
+    unmount();
+  });
 });

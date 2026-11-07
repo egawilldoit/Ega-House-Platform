@@ -257,17 +257,29 @@ async function finalizeOpenSessionById(args: {
   sessionId: string;
   startedAtIso: string;
   endedAtIso: string;
+  /**
+   * Exact-id stop passes the verified owner so the write cannot finalize a
+   * foreign row if a transport-level RLS policy were ever missing. Bulk
+   * task-stop/conflict resolution leave this undefined to preserve their
+   * existing owner-scoped-by-RLS semantics.
+   */
+  ownerUserId?: string;
 }) {
   const durationSeconds = getSafeDurationSeconds(args.startedAtIso, args.endedAtIso);
 
-  const { data, error } = await args.supabase
+  const baseUpdate = args.supabase
     .from("task_sessions")
     .update({
       ended_at: args.endedAtIso,
       duration_seconds: durationSeconds,
       updated_at: args.endedAtIso,
     })
-    .eq("id", args.sessionId)
+    .eq("id", args.sessionId);
+  const ownedUpdate = args.ownerUserId
+    ? baseUpdate.eq("owner_user_id", args.ownerUserId)
+    : baseUpdate;
+
+  const { data, error } = await ownedUpdate
     .is("ended_at", null)
     .select("id")
     .maybeSingle();
@@ -479,12 +491,13 @@ export type StopTimerSessionResult = {
 async function findTimerSessionById(args: {
   supabase: SupabaseServerClient;
   sessionId: string;
+  ownerUserId: string;
 }) {
   return args.supabase
     .from("task_sessions")
     .select("id, task_id, started_at, ended_at, duration_seconds")
     .eq("id", args.sessionId)
-    .not("owner_user_id", "is", null)
+    .eq("owner_user_id", args.ownerUserId)
     .maybeSingle();
 }
 
@@ -501,7 +514,24 @@ export async function stopTimerSession(
   }
 
   const supabase = await resolveSupabaseClient(options?.supabase);
-  const { data: session, error } = await findTimerSessionById({ supabase, sessionId });
+
+  // Fail closed: an unverified identity must not read or write session state,
+  // even if the request-scoped client would be filtered by RLS.
+  const { data: authData, error: authError } = await supabase.auth.getUser();
+  const ownerUserId = authData?.user?.id;
+  if (authError || !ownerUserId) {
+    return {
+      errorMessage: "Your session expired. Sign in again to stop the timer.",
+      stoppedTaskId: null,
+      outcome: null,
+    };
+  }
+
+  const { data: session, error } = await findTimerSessionById({
+    supabase,
+    sessionId,
+    ownerUserId,
+  });
 
   if (error) {
     return {
@@ -535,6 +565,7 @@ export async function stopTimerSession(
     sessionId: session.id,
     startedAtIso: session.started_at,
     endedAtIso,
+    ownerUserId,
   });
 
   if (finalizeResult.errorMessage) {
@@ -549,6 +580,7 @@ export async function stopTimerSession(
     const { data: reread, error: rereadError } = await findTimerSessionById({
       supabase,
       sessionId,
+      ownerUserId,
     });
     if (rereadError) {
       return {

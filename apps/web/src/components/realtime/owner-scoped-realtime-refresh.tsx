@@ -15,6 +15,13 @@ type OwnerScopedRealtimeRefreshProps = {
   tables: readonly ("task_sessions" | "tasks" | "week_reviews")[];
   refreshDebounceMs?: number;
   /**
+   * When false, a payload buffered while the tab was hidden is dropped on
+   * visibility instead of triggering a refresh. Use this only when a verified
+   * reconcile component (e.g. TimerSyncStatus) owns the visibility refresh, so
+   * the two do not refresh the same surface twice. Defaults to true.
+   */
+  reconcileOnVisibility?: boolean;
+  /**
    * Optional table/event filter: only refresh for specific event types
    * or specific tables. If omitted, all matching events trigger refresh.
    */
@@ -43,6 +50,7 @@ export function OwnerScopedRealtimeRefresh({
   channelPrefix,
   tables,
   refreshDebounceMs = 1000,
+  reconcileOnVisibility = true,
   eventFilter,
 }: OwnerScopedRealtimeRefreshProps) {
   const router = useRouter();
@@ -106,6 +114,11 @@ export function OwnerScopedRealtimeRefresh({
       }
       if (!document.hidden && hasPendingWhileHiddenRef.current) {
         hasPendingWhileHiddenRef.current = false;
+        // A verified reconcile component handles this transition; refreshing
+        // here too would duplicate the same server work.
+        if (!reconcileOnVisibility) {
+          return;
+        }
         if (!refreshTimeoutRef.current) {
           refreshTimeoutRef.current = setTimeout(() => {
             if (!isMountedRef.current) {
@@ -193,7 +206,7 @@ export function OwnerScopedRealtimeRefresh({
       hasPendingWhileHiddenRef.current = false;
       unsubscribe();
     };
-  }, [channelPrefix, ownerUserId, refreshDebounceMs, router, tables, eventFilter]);
+  }, [channelPrefix, ownerUserId, reconcileOnVisibility, refreshDebounceMs, router, tables, eventFilter]);
 
   return null;
 }

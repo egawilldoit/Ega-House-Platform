@@ -93,8 +93,9 @@ export function TimerPageView({ model }: { model: TimerPageModel }) {
         ownerUserId={ownerUserId}
         channelPrefix="timer"
         tables={["task_sessions", "tasks"]}
+        reconcileOnVisibility={false}
       />
-      <TimerSyncStatus />
+      <TimerSyncStatus surface="timer" ownerUserId={ownerUserId} />
 
       {hasSessionConflict ? (
         <div className="feedback-block feedback-block-warn justify-between">
