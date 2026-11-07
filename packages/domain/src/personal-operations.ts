@@ -76,8 +76,12 @@ export type PersonalOperationsDayPlanResult =
 function dayOfIsoDate(dateStr: string): Day {
   const [year, month, day] = dateStr.split("-").map(Number);
   // The calendar date is already the owner's local date, so weekday lookup
-  // stays on the calendar axis and never performs timezone math.
-  const weekday = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+  // stays on the calendar axis and never performs timezone math. Build from a
+  // fixed base and set the full year afterwards: Date.UTC maps years 0-99 to
+  // 1900+year, which would resolve the wrong weekday for "0099-01-01".
+  const date = new Date(Date.UTC(2000, 0, 1));
+  date.setUTCFullYear(year, month - 1, day);
+  const weekday = date.getUTCDay();
   return DAYS[(weekday + 6) % 7];
 }
 

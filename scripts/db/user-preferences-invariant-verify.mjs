@@ -12,7 +12,10 @@
  *   RLS READ   - an owner sees only their own row.
  *   RLS WRITE  - an owner cannot insert under another owner's id, update or
  *                delete another owner's row.
- *   ANON       - anon cannot call the RPC or read/update the table.
+ *   ANON       - under Supabase-default grants anon holds the table privileges
+ *                and the RPC EXECUTE grant; RLS still returns zero rows for
+ *                reads and updates and the RPC's auth.uid() guard rejects the
+ *                call (P0001).
  *   AUTH       - authenticated without a JWT subject has no auth.uid().
  *   CROSS OWNER- owner B's RPC patch never changes owner A's row.
  *   GUIDANCE   - overlapping enabled blocks fail; the same overlap disabled is
@@ -22,7 +25,11 @@
  *   IDEMPOTENCE- re-applying the migration succeeds (up-only).
  *
  * Usage:
- *   node scripts/db/user-preferences-invariant-verify.mjs --url <postgres-url>
+ *   node scripts/db/user-preferences-invariant-verify.mjs --url <postgres-url> [--socket <dir|file>]
+ *
+ * --socket points postgres.js at a Unix socket. Pass the socket directory (the
+ * .s.PGSQL.<port> file name is derived) or the socket file itself. When the URL
+ * carries ?port=, that port wins over the URL authority port.
  *
  * The database identified by --url is destroyed by this script (DROP SCHEMA
  * public/auth CASCADE). Only point it at a throwaway container.
@@ -93,7 +100,18 @@ async function applySupabaseShim(sql) {
   `);
   await sql.unsafe(`CREATE SCHEMA IF NOT EXISTS auth;`);
   await sql.unsafe(`GRANT USAGE ON SCHEMA public TO anon, authenticated, supabase_auth_admin;`);
-  await sql.unsafe(`GRANT USAGE ON SCHEMA auth TO authenticated;`);
+  await sql.unsafe(`GRANT USAGE ON SCHEMA auth TO anon, authenticated;`);
+  // Supabase grants every new public object to anon and authenticated, then
+  // relies on RLS and function guards for denial. Mirror that here so the proof
+  // exercises the production security outcome instead of a missing grant.
+  await sql.unsafe(`
+    ALTER DEFAULT PRIVILEGES IN SCHEMA public
+    GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO authenticated, anon;
+  `);
+  await sql.unsafe(`
+    ALTER DEFAULT PRIVILEGES IN SCHEMA public
+    GRANT EXECUTE ON FUNCTIONS TO authenticated, anon;
+  `);
   await sql.unsafe(`
     CREATE TABLE IF NOT EXISTS auth.users (
       id uuid PRIMARY KEY,
@@ -112,6 +130,8 @@ async function applySupabaseShim(sql) {
       SELECT COALESCE(NULLIF(current_setting('request.jwt.claims', true), '')::jsonb, '{}'::jsonb)
     $fn$;
   `);
+  await sql.unsafe(`GRANT EXECUTE ON FUNCTION auth.uid() TO anon, authenticated;`);
+  await sql.unsafe(`GRANT EXECUTE ON FUNCTION auth.jwt() TO anon, authenticated;`);
   await sql.unsafe(`
     INSERT INTO auth.users (id, email) VALUES
       ('11111111-1111-4111-8111-111111111111'::uuid, 'ab.mortaki@gmail.com')
@@ -177,7 +197,10 @@ function unauthenticatedJwtSession(sql) {
   };
 }
 
-/** Anonymous client role: no table privileges and no RPC EXECUTE grant. */
+/**
+ * Anonymous client role. It keeps Supabase's default table and function grants;
+ * RLS and the RPC's auth.uid() guard are what deny it.
+ */
 function anonymousSession(sql) {
   return {
     run(fn) {
@@ -216,11 +239,20 @@ async function main() {
   assert(tags.includes(MIGRATION_TAG), `journal must include ${MIGRATION_TAG}`);
 
   // --socket may name the socket directory (as the disposable-cluster
-  // instructions do) or the socket file itself.
-  const socketPath = socket && !socket.includes(".s.PGSQL.")
-    ? join(socket, `.s.PGSQL.${new URL(url).port || "5432"}`)
-    : socket;
-  const sql = postgres(url, { max: 4, onnotice: () => {}, ...(socketPath ? { path: socketPath } : {}) });
+  // instructions do) or the socket file itself. An explicit ?port= wins over
+  // the URL authority port when deriving the socket file name.
+  const parsedUrl = new URL(url);
+  const socketPort = parsedUrl.searchParams.get("port") || parsedUrl.port || "5432";
+  const socketPath =
+    socket && !socket.includes(".s.PGSQL.") ? join(socket, `.s.PGSQL.${socketPort}`) : socket;
+  // postgres.js forwards unrecognised query parameters as server startup
+  // settings, so consume ?port= locally instead of letting it reach the server.
+  if (socketPath) parsedUrl.searchParams.delete("port");
+  const sql = postgres(parsedUrl.toString(), {
+    max: 4,
+    onnotice: () => {},
+    ...(socketPath ? { path: socketPath } : {}),
+  });
   try {
     await reset(sql);
     await applySupabaseShim(sql);
@@ -238,7 +270,27 @@ async function main() {
     const legacy = await sql.unsafe(`SELECT theme, personal_operations FROM public.user_preferences WHERE user_id = '44444444-4444-4444-8444-444444444444'`);
     assert(legacy[0].theme === "light" && legacy[0].personal_operations === null, "legacy preference row survives upgrade");
 
-    await sql.unsafe(`GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.user_preferences TO authenticated`);
+    // The Supabase-default privileges installed above must already cover the
+    // new table. Fail loudly if the shim stops modelling that reality.
+    const [tablePrivilege] = await sql.unsafe(
+      `SELECT has_table_privilege('anon', 'public.user_preferences', 'SELECT,INSERT,UPDATE,DELETE') AS granted`,
+    );
+    assert(tablePrivilege.granted, "Supabase-default grants must reach user_preferences");
+
+    // 0078 revokes the function from PUBLIC and grants authenticated only.
+    // Supabase-default EXECUTE still reaches anon; grant it explicitly if this
+    // shim changes, so the guard (not a missing grant) rejects the call.
+    let [functionPrivilege] = await sql.unsafe(
+      `SELECT has_function_privilege('anon', 'public.patch_user_preferences(jsonb)', 'EXECUTE') AS granted`,
+    );
+    if (!functionPrivilege.granted) {
+      await sql.unsafe(`GRANT EXECUTE ON FUNCTION public.patch_user_preferences(jsonb) TO anon`);
+      [functionPrivilege] = await sql.unsafe(
+        `SELECT has_function_privilege('anon', 'public.patch_user_preferences(jsonb)', 'EXECUTE') AS granted`,
+      );
+    }
+    assert(functionPrivilege.granted, "anon must hold RPC EXECUTE so auth.uid() is what denies it");
+
     await sql.unsafe(`
       INSERT INTO auth.users (id, email) VALUES
         ('${OWNER_A}'::uuid, 'owner-a@example.test'),
@@ -343,23 +395,34 @@ async function main() {
     log("RLS", "owner isolation on insert/update/delete proven");
 
     // ANONYMOUS DENIAL ---------------------------------------------------------
+    // Supabase gives anon the default privileges, so denial must come from RLS
+    // (zero rows) and the RPC's auth.uid() guard (P0001), not missing grants.
     const anonymous = anonymousSession(sql);
+    const anonSelect = await anonymous.run((tx) =>
+      tx.unsafe(`SELECT count(*)::int AS count FROM public.user_preferences`),
+    );
+    assert(anonSelect[0].count === 0, "anon SELECT must return zero rows under RLS, not a privilege error");
+
+    const anonUpdate = await anonymous.run((tx) =>
+      tx.unsafe(`UPDATE public.user_preferences SET theme = 'dark' RETURNING user_id`),
+    );
+    assert(anonUpdate.count === 0, "anon UPDATE must affect zero rows under RLS, not a privilege error");
+
     await expectFailure(
       "anon RPC patch",
       () => anonymous.run((tx) => tx.unsafe(`SELECT public.patch_user_preferences($1::jsonb)`, [{ theme: "dark" }])),
-      ["42501"],
+      ["P0001"],
+      /authentication required/i,
     );
-    await expectFailure(
-      "anon SELECT user_preferences",
-      () => anonymous.run((tx) => tx.unsafe(`SELECT count(*) FROM public.user_preferences`)),
-      ["42501"],
+
+    const afterAnon = await ownerA.run((tx) =>
+      tx.unsafe(`SELECT theme FROM public.user_preferences WHERE user_id = auth.uid()`),
     );
-    await expectFailure(
-      "anon UPDATE user_preferences",
-      () => anonymous.run((tx) => tx.unsafe(`UPDATE public.user_preferences SET theme = 'dark'`)),
-      ["42501"],
+    assert(afterAnon[0].theme === "system", "anon attempts must leave owner A's row unchanged");
+    log(
+      "ANON",
+      "RLS returned zero rows and the auth.uid() guard rejected the RPC under Supabase-default grants",
     );
-    log("ANON", "anonymous role cannot call the RPC or touch the table");
 
     // AUTHENTICATED WITHOUT A SUBJECT -----------------------------------------
     const noSubject = unauthenticatedJwtSession(sql);

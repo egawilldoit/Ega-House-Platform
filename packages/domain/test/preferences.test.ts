@@ -205,6 +205,15 @@ test("getPersonalOperationsDayPlan resolves the weekday and targets", () => {
   }
 });
 
+test("years below 100 resolve the real weekday instead of 1900+year", () => {
+  // 0099-01-01 is a Thursday; Date.UTC(99, 0, 1) would land on 1999 (Friday).
+  const plan = getPersonalOperationsDayPlan(DEFAULT_PERSONAL_OPERATIONS, "0099-01-01");
+  assert.equal(plan.ok, true);
+  if (!plan.ok) return;
+  assert.equal(plan.value.day, "thursday");
+  assert.equal(plan.value.date, "0099-01-01");
+});
+
 test("a paused schedule still reports its full targets", () => {
   const paused = { ...DEFAULT_PERSONAL_OPERATIONS, paused: true };
   const plan = getPersonalOperationsDayPlan(paused, "2026-02-16");

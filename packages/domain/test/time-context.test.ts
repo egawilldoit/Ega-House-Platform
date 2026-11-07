@@ -510,13 +510,14 @@ test("Africa/Casablanca week window follows local midnight across the DST change
 });
 
 test("Africa/Casablanca local date stays on the local calendar across DST", () => {
-  // UTC+1 in February: local midnight is 23:00Z on the previous day.
-  assert.equal(getLocalDateInTimezone(new Date("2026-02-15T01:59:59Z"), "Africa/Casablanca"), "2026-02-15");
-  assert.equal(getLocalDateInTimezone(new Date("2026-02-15T02:00:00Z"), "Africa/Casablanca"), "2026-02-15");
+  // UTC+1 in February: local midnight is 23:00Z on the previous day, so the
+  // last second of 2026-02-14 local is the last second before the boundary.
+  assert.equal(getLocalDateInTimezone(new Date("2026-02-14T22:59:59Z"), "Africa/Casablanca"), "2026-02-14");
+  assert.equal(getLocalDateInTimezone(new Date("2026-02-14T23:00:00Z"), "Africa/Casablanca"), "2026-02-15");
 
-  // UTC+0 during Ramadan: the boundary is 00:00Z.
-  assert.equal(getLocalDateInTimezone(new Date("2026-03-22T01:59:59Z"), "Africa/Casablanca"), "2026-03-22");
-  assert.equal(getLocalDateInTimezone(new Date("2026-03-22T02:00:00Z"), "Africa/Casablanca"), "2026-03-22");
+  // UTC+0 during Ramadan: the boundary is local midnight at 00:00Z.
+  assert.equal(getLocalDateInTimezone(new Date("2026-03-21T23:59:59Z"), "Africa/Casablanca"), "2026-03-21");
+  assert.equal(getLocalDateInTimezone(new Date("2026-03-22T00:00:00Z"), "Africa/Casablanca"), "2026-03-22");
 });
 
 test("the Casablanca local date resolves the schedule day without new timezone math", () => {
