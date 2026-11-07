@@ -3,7 +3,7 @@ import test from "node:test";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-import { expenseCreateFingerprint } from "@ega/domain/expenses";
+import { expenseReceiptFingerprint } from "@ega/application";
 
 import { createApp } from "../src/index";
 
@@ -134,7 +134,7 @@ const BODY = {
   idempotencyKey: "key-1",
 };
 
-const FINGERPRINT = expenseCreateFingerprint({
+const FINGERPRINT = expenseReceiptFingerprint({
   occurredAt: "2026-11-07T08:30:00.000Z",
   amountMinor: 2250,
   category: "coffee",
@@ -225,7 +225,7 @@ test("POST /api/expenses replays a prior receipt with 200", async () => {
 test("POST /api/expenses rejects a same-key different-payload conflict with 409", async () => {
   const fake = new FakeSupabase();
   fake.push("personal_expenses", {
-    data: row({ amount_minor: 999, create_fingerprint: "different-original" }),
+    data: row({ amount_minor: 999, create_fingerprint: "f".repeat(64) }),
     error: null,
   });
 

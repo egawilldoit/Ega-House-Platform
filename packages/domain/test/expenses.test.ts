@@ -7,7 +7,7 @@ import {
   EXPENSE_CURRENCY,
   EXPENSE_NEED_VS_WANT_VALUES,
   EXPENSE_PAYMENT_METHOD_VALUES,
-  expenseCreateFingerprint,
+  canonicalExpenseCreatePayload,
   isExpenseId,
   parseCreateExpenseInput,
   parseExpenseListQuery,
@@ -152,7 +152,7 @@ test("create accepts 500 code points (emoji) and rejects 501", () => {
   if (!rejected.ok) assert.equal(rejected.field, "note");
 });
 
-test("max-length quote/backslash/multiline metadata stays within the fingerprint bound", () => {
+test("canonical create payload preserves max escaped metadata for the application hash", () => {
   const longNote = "\"\\\n".repeat(167).slice(0, 500);
   const longMerchant = "\"\\".repeat(60);
   const longKey = `key-${"\"\\".repeat(30)}`;
@@ -167,18 +167,11 @@ test("max-length quote/backslash/multiline metadata stays within the fingerprint
   assert.equal(Array.from(parsed.value.note ?? "").length, 500);
   assert.equal(Array.from(parsed.value.merchant ?? "").length, 120);
 
-  const fingerprint = expenseCreateFingerprint(parsed.value);
-  assert.ok(fingerprint.length <= 2048, `fingerprint length ${fingerprint.length}`);
-  assert.ok(fingerprint.length > 1024, "regression exceeds the old 1024 bound");
-
-  const mixed = Array.from({ length: 500 }, (_, index) =>
-    ["a", "\"", "\\", "\n", "😀"][index % 5],
-  ).join("");
-  const mixedParsed = parseCreateExpenseInput({ ...VALID_CREATE, note: mixed });
-  assert.equal(mixedParsed.ok, true);
-  if (mixedParsed.ok) {
-    assert.ok(expenseCreateFingerprint(mixedParsed.value).length <= 2048);
-  }
+  // The raw canonical payload may be long; the application hashes it to a
+  // fixed 64-character SHA-256 receipt before persistence.
+  const canonical = canonicalExpenseCreatePayload(parsed.value);
+  assert.ok(canonical.includes("\\\""));
+  assert.ok(canonical.length > 1024);
 });
 
 test("create rejects NUL, unpaired surrogates and disallowed control characters", () => {
@@ -347,16 +340,16 @@ test("list rejects unknown query keys and invalid timezones", () => {
   if (!timezone.ok) assert.equal(timezone.field, "timezone");
 });
 
-test("create fingerprint binds the canonical original payload deterministically", () => {
+test("canonical create payload binds the original payload deterministically", () => {
   const parsed = parseCreateExpenseInput(VALID_CREATE);
   assert.equal(parsed.ok, true);
   if (!parsed.ok) return;
 
-  const fingerprint = expenseCreateFingerprint(parsed.value);
-  assert.equal(fingerprint, expenseCreateFingerprint({ ...parsed.value }));
+  const fingerprint = canonicalExpenseCreatePayload(parsed.value);
+  assert.equal(fingerprint, canonicalExpenseCreatePayload({ ...parsed.value }));
   assert.equal(
     fingerprint,
-    expenseCreateFingerprint({
+    canonicalExpenseCreatePayload({
       ...parsed.value,
       occurredAt: "2026-11-07T08:30:00.000Z",
     }),
@@ -364,15 +357,15 @@ test("create fingerprint binds the canonical original payload deterministically"
   );
   assert.notEqual(
     fingerprint,
-    expenseCreateFingerprint({ ...parsed.value, amountMinor: 2251 }),
+    canonicalExpenseCreatePayload({ ...parsed.value, amountMinor: 2251 }),
   );
   assert.notEqual(
     fingerprint,
-    expenseCreateFingerprint({ ...parsed.value, note: "different" }),
+    canonicalExpenseCreatePayload({ ...parsed.value, note: "different" }),
   );
   assert.notEqual(
     fingerprint,
-    expenseCreateFingerprint({ ...parsed.value, idempotencyKey: "key-2" }),
+    canonicalExpenseCreatePayload({ ...parsed.value, idempotencyKey: "key-2" }),
   );
   assert.ok(fingerprint.includes("1794040200000"));
 });

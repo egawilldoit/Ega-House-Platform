@@ -650,13 +650,14 @@ export function parseExpenseListQuery(
 }
 
 /**
- * Deterministic, platform-neutral fingerprint of the immutable original
- * create payload. It is stored with the receipt so a retry is compared with
- * the request that created the row, not with fields that later edits may
- * change. JSON arrays keep a stable field order and epoch milliseconds make
- * equivalent `Z`/offset spellings equal.
+ * Deterministic, platform-neutral canonical payload for the immutable original
+ * create request. The application hashes this string before persistence, so a
+ * retry is compared with the request that created the row, not with fields
+ * that later edits may change, and the raw note/merchant are never duplicated
+ * in the receipt column. JSON arrays keep a stable field order and epoch
+ * milliseconds make equivalent `Z`/offset spellings equal.
  */
-export function expenseCreateFingerprint(values: ExpenseCreateValues): string {
+export function canonicalExpenseCreatePayload(values: ExpenseCreateValues): string {
   return JSON.stringify([
     Date.parse(values.occurredAt),
     values.amountMinor,

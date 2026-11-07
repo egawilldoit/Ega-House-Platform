@@ -31,8 +31,7 @@ const ROW = {
   updated_at: "2026-11-07T08:31:00+00:00",
 };
 
-const FINGERPRINT =
-  '[1794030600000,2250,"coffee","morning coffee",null,"want","card","key-1"]';
+const FINGERPRINT = "0123456789abcdef".repeat(4);
 
 const CREATE_VALUES = {
   occurredAt: "2026-11-07T08:30:00.000Z",

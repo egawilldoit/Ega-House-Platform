@@ -15,7 +15,8 @@
  *                 non-blank note/merchant/idempotency constraints are enforced.
  *   UNIQUE      - (owner_user_id, idempotency_key) is unique per owner and the
  *                 same key is allowed for a different owner; the internal
- *                 create_fingerprint binds the key to the original payload.
+ *                 create_fingerprint is a SHA-256 hex receipt of the original
+ *                 create payload, not a copy of it.
  *   RLS         - owners cannot read/write each other's rows; anonymous and
  *                 OAuth client_id tokens are denied; hard DELETE is not
  *                 granted. Authenticated immutable-column changes are denied by
@@ -35,6 +36,7 @@
  * The database identified by --url is destroyed by this script (DROP SCHEMA
  * public/auth/automation CASCADE). Only point it at a throwaway database.
  */
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { argv, exit } from "node:process";
 
@@ -46,6 +48,11 @@ const CONSTRAINT = "personal_expenses_owner_idempotency_key_unique";
 
 const OWNER_A = "11111111-1111-4111-8111-111111111111";
 const OWNER_B = "22222222-2222-4222-8222-222222222222";
+
+/** Proof-only fixed-size receipt; the application produces the same shape. */
+function receiptFingerprint(label) {
+  return createHash("sha256").update(String(label)).digest("hex");
+}
 
 function parseArgs() {
   const args = {};
@@ -244,7 +251,7 @@ function insertExpense(tx, input) {
     input.needVsWant ?? "need",
     input.paymentMethod ?? null,
     input.idempotencyKey,
-    input.createFingerprint ?? `fingerprint:${input.idempotencyKey}`,
+    input.createFingerprint ?? receiptFingerprint(input.idempotencyKey),
   ];
   const placeholders = ["$1::timestamptz", "$2", "$3", "$4", "$5", "$6", "$7", "$8", "$9", "$10"];
 
@@ -333,7 +340,7 @@ async function main() {
       ["need_vs_want", "character varying", 8, "NO", null],
       ["payment_method", "character varying", 32, "YES", null],
       ["idempotency_key", "character varying", 128, "NO", null],
-      ["create_fingerprint", "character varying", 2048, "NO", null],
+      ["create_fingerprint", "character varying", 64, "NO", null],
       ["version", "integer", null, "NO", /^1$/],
       ["deleted_at", "timestamp with time zone", null, "YES", null],
       ["created_at", "timestamp with time zone", null, "NO", /now\(\)/],
@@ -620,7 +627,7 @@ async function main() {
           await tx.unsafe(
             `INSERT INTO public.personal_expenses
                (occurred_at, amount_minor, category, need_vs_want, idempotency_key, create_fingerprint, version)
-             VALUES ('2026-11-07T08:31:00Z', 100, 'coffee', 'need', 'version-a', 'fingerprint:version-a', 0)`,
+             VALUES ('2026-11-07T08:31:00Z', 100, 'coffee', 'need', 'version-a', '${receiptFingerprint("version-a")}', 0)`,
           );
         }),
       "23514",
@@ -701,7 +708,7 @@ async function main() {
           tx.unsafe(
             `INSERT INTO public.personal_expenses
                (owner_user_id, occurred_at, amount_minor, category, need_vs_want, idempotency_key, create_fingerprint)
-             VALUES ('${OWNER_A}', '2026-11-07T10:00:00Z', 100, 'coffee', 'need', 'spoof-b', 'fingerprint:spoof-b')`,
+             VALUES ('${OWNER_A}', '2026-11-07T10:00:00Z', 100, 'coffee', 'need', 'spoof-b', '${receiptFingerprint("spoof-b")}')`,
           ),
         ),
       "42501",
@@ -733,7 +740,7 @@ async function main() {
           tx.unsafe(
             `INSERT INTO public.personal_expenses
                (occurred_at, amount_minor, category, need_vs_want, idempotency_key, create_fingerprint)
-             VALUES ('2026-11-07T10:00:00Z', 100, 'coffee', 'need', 'anon', 'fingerprint:anon')`,
+             VALUES ('2026-11-07T10:00:00Z', 100, 'coffee', 'need', 'anon', '${receiptFingerprint("anon")}')`,
           ),
         ),
       ["42501"],
