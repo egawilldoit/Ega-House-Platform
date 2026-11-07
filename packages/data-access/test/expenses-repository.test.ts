@@ -255,6 +255,38 @@ test("42501 permission failures map to forbidden", async () => {
   if (!result.ok) assert.equal(result.error.code, "forbidden");
 });
 
+test("42501 on update maps to forbidden", async () => {
+  const updateFake = new FakeSupabase([
+    {
+      data: null,
+      error: { code: "42501", message: "permission denied for table personal_expenses" },
+    },
+  ]);
+  const updateResult = await repository(updateFake).update(ACTOR, ID, {
+    changes: { note: "new" },
+    expectedVersion: 1,
+    updatedAt: "2026-11-07T10:00:00.000Z",
+  });
+  assert.equal(updateResult.ok, false);
+  if (!updateResult.ok) assert.equal(updateResult.error.code, "forbidden");
+});
+
+test("42501 on soft delete maps to forbidden", async () => {
+  const deleteFake = new FakeSupabase([
+    {
+      data: null,
+      error: { code: "42501", message: "permission denied for table personal_expenses" },
+    },
+  ]);
+  const deleteResult = await repository(deleteFake).softDelete(
+    ACTOR,
+    ID,
+    "2026-11-07T10:00:00.000Z",
+  );
+  assert.equal(deleteResult.ok, false);
+  if (!deleteResult.ok) assert.equal(deleteResult.error.code, "forbidden");
+});
+
 test("list applies owner, soft-delete, window, ordering and bounded range", async () => {
   const fake = new FakeSupabase([{ data: [ROW], error: null }]);
   const result = await repository(fake).list(ACTOR, {
