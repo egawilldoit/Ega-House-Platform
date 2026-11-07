@@ -219,31 +219,114 @@ export function getPlannerRange(guidance: readonly GuidanceBlock[]): PlannerRang
 
 export type ZonedClock = Readonly<{ dayIndex: number; minutes: number }>;
 
-/** Current weekday (Monday = 0) and minutes since midnight in an IANA zone. */
-export function getZonedClock(timezone: string, now: Date): ZonedClock | null {
+type ZonedParts = Readonly<{
+  year: number;
+  month: number;
+  day: number;
+  hour: number;
+  minute: number;
+  second: number;
+  dayIndex: number;
+}>;
+
+function getZonedParts(timezone: string, date: Date): ZonedParts | null {
   try {
     const parts = new Intl.DateTimeFormat("en-US", {
       timeZone: timezone,
       weekday: "short",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
       hour: "2-digit",
       minute: "2-digit",
+      second: "2-digit",
       hourCycle: "h23",
-    }).formatToParts(now);
+    }).formatToParts(date);
     const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
     const dayIndex = values.weekday ? WEEKDAY_INDEX[values.weekday] : undefined;
+    const year = Number(values.year);
+    const month = Number(values.month);
+    const day = Number(values.day);
     const hour = Number(values.hour);
     const minute = Number(values.minute);
+    const second = Number(values.second);
     if (
       dayIndex === undefined ||
-      !Number.isInteger(hour) ||
-      !Number.isInteger(minute)
+      ![year, month, day, hour, minute, second].every(Number.isInteger)
     ) {
       return null;
     }
-    return { dayIndex, minutes: hour * 60 + minute };
+    return { year, month, day, hour, minute, second, dayIndex };
   } catch {
     return null;
   }
+}
+
+/** True only when `Intl` can resolve the zone (so a bad stored zone is visible). */
+export function isValidTimeZone(timezone: string): boolean {
+  return getZonedParts(timezone, new Date()) !== null;
+}
+
+/** Current weekday (Monday = 0) and minutes since midnight in an IANA zone. */
+export function getZonedClock(timezone: string, now: Date): ZonedClock | null {
+  const parts = getZonedParts(timezone, now);
+  if (!parts) return null;
+  return { dayIndex: parts.dayIndex, minutes: parts.hour * 60 + parts.minute };
+}
+
+function zoneOffsetMs(timezone: string, date: Date): number | null {
+  const parts = getZonedParts(timezone, date);
+  if (!parts) return null;
+  const asUtc = Date.UTC(
+    parts.year,
+    parts.month - 1,
+    parts.day,
+    parts.hour,
+    parts.minute,
+    parts.second,
+  );
+  return asUtc - Math.floor(date.getTime() / 1000) * 1000;
+}
+
+/**
+ * Converts a wall-clock date/time in a zone to an absolute instant.
+ *
+ * A fixed `dayOffset * 1440` would be wrong across a DST change. Two offset
+ * refinements are enough for the minute-resolution values this UI stores; a
+ * nonexistent spring-forward wall time resolves to the nearest valid instant
+ * the runtime can express.
+ */
+function zonedWallTimeToInstant(
+  timezone: string,
+  year: number,
+  month: number,
+  day: number,
+  hour: number,
+  minute: number,
+): Date | null {
+  const guess = Date.UTC(year, month - 1, day, hour, minute, 0, 0);
+  const offset = zoneOffsetMs(timezone, new Date(guess));
+  if (offset === null) return null;
+  let instant = new Date(guess - offset);
+  const refined = zoneOffsetMs(timezone, instant);
+  if (refined !== null && refined !== offset) {
+    instant = new Date(guess - refined);
+  }
+  return instant;
+}
+
+function addCalendarDays(
+  year: number,
+  month: number,
+  day: number,
+  offset: number,
+): Readonly<{ year: number; month: number; day: number }> {
+  const date = new Date(Date.UTC(year, month - 1, day + offset));
+  return {
+    year: date.getUTCFullYear(),
+    month: date.getUTCMonth() + 1,
+    day: date.getUTCDate(),
+  };
 }
 
 export type NextGuidance = Readonly<{
@@ -268,12 +351,14 @@ export function getNextGuidance(
 ): NextGuidance | null {
   if (schedule.paused) return null;
   const clock = getZonedClock(timezone, now);
-  if (!clock) return null;
+  const anchor = getZonedParts(timezone, now);
+  if (!clock || !anchor) return null;
 
   for (let dayOffset = 0; dayOffset <= 7; dayOffset += 1) {
     const dayIndex = (clock.dayIndex + dayOffset) % 7;
     const day = DAYS[dayIndex];
     if (!day) continue;
+    const targetDate = addCalendarDays(anchor.year, anchor.month, anchor.day, dayOffset);
 
     let best: NextGuidance | null = null;
     for (const [index, block] of schedule.guidance.entries()) {
@@ -281,8 +366,16 @@ export function getNextGuidance(
       const start = parseTimeToMinutes(block.start);
       const end = parseTimeToMinutes(block.end);
       if (start === null || end === null || end <= start) continue;
-      if (dayOffset === 0 && start < clock.minutes) continue;
-      const startsInMinutes = dayOffset * 1440 + start - clock.minutes;
+      const instant = zonedWallTimeToInstant(
+        timezone,
+        targetDate.year,
+        targetDate.month,
+        targetDate.day,
+        Math.floor(start / 60),
+        start % 60,
+      );
+      if (!instant || instant.getTime() < now.getTime()) continue;
+      const startsInMinutes = Math.round((instant.getTime() - now.getTime()) / 60_000);
       if (!best || startsInMinutes < best.startsInMinutes) {
         best = {
           index,

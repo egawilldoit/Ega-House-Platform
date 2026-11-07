@@ -431,6 +431,12 @@
   margin: 0;
   font-size: var(--text-panel-title);
   font-weight: 600;
+  scroll-margin-top: 16px;
+}
+
+.editorName:focus {
+  outline: var(--ega-focus-outline);
+  outline-offset: 4px;
 }
 
 .editorStatus {
@@ -601,21 +607,7 @@
   color: var(--ega-text-secondary);
 }
 
-.targetsLegend {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  margin-top: 8px;
-  font-size: var(--text-meta);
-  color: var(--ega-text-secondary);
-}
-
 /* ── Schedule check ────────────────────────────────────── */
-
-.check {
-  position: sticky;
-  top: 12px;
-}
 
 .checkBody {
   display: flex;
@@ -705,72 +697,6 @@
   display: flex;
   flex-direction: column;
   gap: 18px;
-}
-
-.workspaceGroup {
-  margin: 0;
-}
-
-.workspaceGrid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 10px;
-}
-
-.optionCard {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  min-width: 0;
-  padding: 12px;
-  border: 1px solid var(--ega-border);
-  border-radius: var(--radius-md);
-  background: var(--ega-surface);
-  cursor: pointer;
-  transition:
-    border-color var(--duration-fast) var(--ease-default),
-    background var(--duration-fast) var(--ease-default);
-}
-
-.optionCard:hover {
-  border-color: var(--ega-border-strong);
-  background: var(--ega-surface-hover);
-}
-
-.optionCard:has(input:checked) {
-  border-color: var(--ega-ink);
-  background: var(--ega-surface-subtle);
-  box-shadow: 0 0 0 1px var(--ega-ink);
-}
-
-.optionCard:has(input:focus-visible) {
-  outline: var(--ega-focus-outline);
-  outline-offset: 2px;
-}
-
-.optionRadio {
-  margin: 2px 0 0;
-  flex: none;
-  accent-color: var(--ega-ink);
-}
-
-.optionCopy {
-  min-width: 0;
-}
-
-.optionLabel {
-  display: block;
-  font-size: var(--text-body);
-  font-weight: 600;
-  color: var(--ega-text);
-}
-
-.optionDescription {
-  display: block;
-  margin-top: 2px;
-  font-size: var(--text-meta);
-  line-height: var(--leading-snug);
-  color: var(--ega-text-secondary);
 }
 
 .miniPreview {
@@ -976,10 +902,6 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .check {
-    position: static;
-  }
-
   .targets {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
@@ -1023,11 +945,7 @@
     padding: 10px;
   }
 
-  :global(.app-shell[data-collapsed="true"]) .saveBar {
-  left: calc(var(--sidebar-collapsed-width) + var(--content-gutter));
-}
-
-.saveBarStatus {
+  .saveBarStatus {
     flex-basis: 100%;
   }
 
@@ -1052,8 +970,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .switchTrack,
-  .switchTrack::after,
-  .optionCard {
+  .switchTrack::after {
     transition: none;
   }
 }

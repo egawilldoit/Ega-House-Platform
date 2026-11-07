@@ -47,7 +47,7 @@ export function DailyTargets({
                     type="number"
                     min={0}
                     max={1440}
-                    step={15}
+                    step={1}
                     inputMode="numeric"
                     value={target.work < 0 ? "" : target.work}
                     aria-label={`${DAY_LABELS[day]} work minutes`}
@@ -62,7 +62,7 @@ export function DailyTargets({
                     type="number"
                     min={0}
                     max={1440}
-                    step={15}
+                    step={1}
                     inputMode="numeric"
                     value={target.jobSearch < 0 ? "" : target.jobSearch}
                     aria-label={`${DAY_LABELS[day]} job-search minutes`}

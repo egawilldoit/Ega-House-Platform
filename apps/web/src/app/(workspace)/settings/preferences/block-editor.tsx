@@ -1,4 +1,4 @@
-import type { CSSProperties } from "react";
+import type { CSSProperties, Ref } from "react";
 
 import { getGuidanceColor } from "./guidance-colors";
 import styles from "./preferences.module.css";
@@ -17,11 +17,13 @@ export function BlockEditor({
   block,
   index,
   conflictMessages,
+  headingRef,
   onChange,
 }: {
   block: GuidanceBlock;
   index: number;
   conflictMessages: readonly string[];
+  headingRef?: Ref<HTMLHeadingElement>;
   onChange: (patch: Partial<GuidanceBlock>) => void;
 }) {
   const start = parseTimeToMinutes(block.start);
@@ -54,7 +56,12 @@ export function BlockEditor({
               aria-hidden="true"
               style={{ "--block-color": getGuidanceColor(block.name) } as ColorStyle}
             />
-            <h2 id={`guidance-${index}-title`} className={styles.editorName}>
+            <h2
+              id={`guidance-${index}-title`}
+              ref={headingRef}
+              tabIndex={-1}
+              className={styles.editorName}
+            >
               {block.name}
             </h2>
           </div>

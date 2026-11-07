@@ -9,6 +9,7 @@ import { AppearanceForm } from "../appearance/appearance-form";
 import {
   PersonalOperationsForm,
   type PersonalOperationsAction,
+  type PersonalOperationsActionState,
 } from "./personal-operations-form";
 import type { Schedule } from "./schedule-model";
 import { WorkspaceDefaultsForm } from "./workspace-defaults-form";
@@ -69,6 +70,23 @@ async function submit(form: HTMLFormElement) {
   });
 }
 
+/**
+ * jsdom does not implement the browser's native Enter/Space activation for a
+ * button, so this mirrors the default action after dispatching the key event.
+ * The resulting click is what a real browser synthesizes for keyboard input.
+ */
+function pressEnterOn(button: HTMLButtonElement) {
+  button.focus();
+  button.dispatchEvent(
+    new KeyboardEvent("keydown", {
+      key: "Enter",
+      bubbles: true,
+      cancelable: true,
+    }),
+  );
+  button.click();
+}
+
 describe("PersonalOperationsForm", () => {
   it("hydrates saved values, including a saved Monday 450 target", async () => {
     const initial = schedule();
@@ -96,6 +114,7 @@ describe("PersonalOperationsForm", () => {
     expect(container.textContent).toContain("2,850 minutes per week");
     expect(container.textContent).toContain("7.5h");
     expect(field<HTMLInputElement>('input[id="guidance-0-start"]').value).toBe("06:00");
+    expect(container.querySelector('[role="status"]')).not.toBeNull();
   });
 
   it("shows the paused state without misleading upcoming text", async () => {
@@ -118,7 +137,7 @@ describe("PersonalOperationsForm", () => {
     expect(container.textContent).not.toContain("Next: Job search");
   });
 
-  it("selects a block with the keyboard and updates the planner preview immediately", async () => {
+  it("moves focus to the editor when a block is selected with the keyboard", async () => {
     await act(async () => {
       root.render(
         <PersonalOperationsForm
@@ -134,10 +153,12 @@ describe("PersonalOperationsForm", () => {
       'button[aria-label="Lunch on Monday from 12:00 to 13:00"]',
     );
     await act(async () => {
-      lunch.click();
+      pressEnterOn(lunch);
     });
 
-    expect(field<HTMLElement>("#guidance-2-title").textContent).toBe("Lunch");
+    const editorHeading = field<HTMLElement>("#guidance-2-title");
+    expect(editorHeading.textContent).toBe("Lunch");
+    expect(document.activeElement).toBe(editorHeading);
     const startInput = field<HTMLInputElement>('input[id="guidance-2-start"]');
     expect(startInput.value).toBe("12:00");
 
@@ -150,6 +171,81 @@ describe("PersonalOperationsForm", () => {
         'button[aria-label="Lunch on Monday from 12:30 to 13:00"]',
       ),
     ).toBeTruthy();
+  });
+
+  it("accepts and submits any integer minute value, not only multiples of 15", async () => {
+    const action = vi.fn<PersonalOperationsAction>(async () => ({
+      ok: true,
+      message: "Personal schedule saved.",
+    }));
+
+    await act(async () => {
+      root.render(
+        <PersonalOperationsForm
+          initial={schedule()}
+          disabled={false}
+          timezone="UTC"
+          action={action}
+        />,
+      );
+    });
+
+    const mondayWork = field<HTMLInputElement>(
+      'input[aria-label="Monday work minutes"]',
+    );
+    expect(mondayWork.step).toBe("1");
+    await act(async () => {
+      setInputValue(mondayWork, "100");
+    });
+
+    expect(buttonByText("Save changes").disabled).toBe(false);
+    await submit(field<HTMLFormElement>("form"));
+
+    expect(action).toHaveBeenCalledTimes(1);
+    const submitted = action.mock.calls[0]?.[1] as FormData;
+    const payload = JSON.parse(String(submitted.get("schedule"))) as Schedule;
+    expect(payload.targets.monday.work).toBe(100);
+  });
+
+  it("blocks a synchronous duplicate submit", async () => {
+    let resolveAction: ((value: PersonalOperationsActionState) => void) | null = null;
+    const action = vi.fn<PersonalOperationsAction>(
+      () =>
+        new Promise((resolve) => {
+          resolveAction = resolve;
+        }),
+    );
+
+    await act(async () => {
+      root.render(
+        <PersonalOperationsForm
+          initial={schedule()}
+          disabled={false}
+          timezone="UTC"
+          action={action}
+        />,
+      );
+    });
+
+    const mondayWork = field<HTMLInputElement>(
+      'input[aria-label="Monday work minutes"]',
+    );
+    await act(async () => {
+      setInputValue(mondayWork, "450");
+    });
+
+    await act(async () => {
+      const form = field<HTMLFormElement>("form");
+      form.requestSubmit();
+      form.requestSubmit();
+      await Promise.resolve();
+    });
+
+    expect(action).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      resolveAction?.({ ok: true, message: "Personal schedule saved." });
+      await Promise.resolve();
+    });
   });
 
   it("reports overlaps inline and keeps the invalid draft unsaveable", async () => {
@@ -222,6 +318,9 @@ describe("PersonalOperationsForm", () => {
     expect(payload.targets.monday.work).toBe(450);
     expect(submitted.get("theme")).toBeNull();
     expect(container.textContent).toContain("Personal schedule saved.");
+    expect(field<HTMLElement>('[role="status"]').textContent).toContain(
+      "Personal schedule saved.",
+    );
   });
 
   it("keeps edits and shows an accessible error when the server rejects a save", async () => {
@@ -284,6 +383,94 @@ describe("PersonalOperationsForm", () => {
       "Unable to save the personal schedule right now. Your changes are still here.",
     );
     expect(buttonByText("Save changes").disabled).toBe(false);
+  });
+
+  it("clears a failed action message when discarding", async () => {
+    const action = vi.fn<PersonalOperationsAction>(async () => ({
+      ok: false,
+      message: "Unable to save preferences right now.",
+    }));
+
+    await act(async () => {
+      root.render(
+        <PersonalOperationsForm
+          initial={schedule()}
+          disabled={false}
+          timezone="UTC"
+          action={action}
+        />,
+      );
+    });
+
+    const mondayWork = field<HTMLInputElement>(
+      'input[aria-label="Monday work minutes"]',
+    );
+    await act(async () => {
+      setInputValue(mondayWork, "450");
+    });
+    await submit(field<HTMLFormElement>("form"));
+    expect(container.querySelector('[role="alert"]')).not.toBeNull();
+
+    await act(async () => {
+      buttonByText("Discard").click();
+    });
+
+    expect(container.querySelector('[role="alert"]')).toBeNull();
+    expect(container.textContent).not.toContain("Unable to save preferences");
+    expect(container.textContent).not.toContain("Unsaved changes");
+  });
+
+  it("clears a previous success message when discarding", async () => {
+    const action = vi.fn<PersonalOperationsAction>(async () => ({
+      ok: true,
+      message: "Personal schedule saved.",
+    }));
+
+    await act(async () => {
+      root.render(
+        <PersonalOperationsForm
+          initial={schedule()}
+          disabled={false}
+          timezone="UTC"
+          action={action}
+        />,
+      );
+    });
+
+    const mondayWork = field<HTMLInputElement>(
+      'input[aria-label="Monday work minutes"]',
+    );
+    await act(async () => {
+      setInputValue(mondayWork, "450");
+    });
+    await submit(field<HTMLFormElement>("form"));
+    expect(container.textContent).toContain("Personal schedule saved.");
+
+    await act(async () => {
+      buttonByText("Discard").click();
+    });
+
+    expect(container.textContent).not.toContain("Personal schedule saved.");
+    expect(container.querySelector('[role="status"]')?.textContent).toBe("");
+  });
+
+  it("distinguishes an invalid account time zone from no guidance", async () => {
+    await act(async () => {
+      root.render(
+        <PersonalOperationsForm
+          initial={schedule()}
+          disabled={false}
+          timezone="Mars/Olympus"
+          action={vi.fn()}
+        />,
+      );
+    });
+
+    expect(container.textContent).toContain("not a valid IANA time zone");
+    expect(container.textContent).toContain("Mars/Olympus (invalid)");
+    expect(container.textContent).not.toContain(
+      "No enabled guidance in the next seven days.",
+    );
   });
 
   it("discards unsaved edits back to the last confirmed values", async () => {
