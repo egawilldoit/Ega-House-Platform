@@ -1332,3 +1332,27 @@ test("critical direct mention bypasses enabled quiet hours with missing timezone
   assert.equal(result.ok ? result.data.accepted : -1, 1);
   assert.equal(row.status, "provider_accepted");
 });
+
+test("transient and auth provider classifications never deactivate the device", async () => {
+  for (const classification of ["transient", "auth"] as const) {
+    const state = createState();
+    const d = device(state);
+    const n = notification(state);
+    const row = delivery(state, { notificationId: n.id, deviceId: d.id });
+    preference(state, true, true);
+
+    const provider: PushProvider = {
+      async send() {
+        return { ok: false, errorCode: classification, errorReason: "provider failure" };
+      },
+    };
+
+    const result = await processPendingNotificationDeliveries(
+      deliveryOptions(state, provider, { async send() { return { ok: true }; } }),
+    );
+    assert.equal(result.ok, true);
+    assert.equal(result.ok ? result.data.invalidated : -1, 0);
+    assert.deepEqual(state.deactivatedTokens, []);
+    assert.notEqual(row.status, "invalid_endpoint");
+  }
+});

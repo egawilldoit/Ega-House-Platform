@@ -86,6 +86,31 @@ export function classifyFcmError(input: {
   const status = input.httpStatus ?? 0;
   const message = input.message ?? "";
 
+  // Precedence matters: transient/auth evidence must win over any token-invalid
+  // text. A 503 body that mentions a token is a retryable provider failure, not
+  // proof that the endpoint is dead.
+  const transient =
+    status === 408 ||
+    status === 429 ||
+    (status >= 500 && status <= 599) ||
+    code === "UNAVAILABLE" ||
+    code === "INTERNAL" ||
+    code === "DEADLINE_EXCEEDED" ||
+    code === "RESOURCE_EXHAUSTED" ||
+    code === "ABORTED";
+  if (transient) return "transient";
+
+  // Auth/config failures: retrying will not fix a missing/rotated credential.
+  // SENDER_ID_MISMATCH means the token belongs to another project; do not purge.
+  const auth =
+    status === 401 ||
+    status === 403 ||
+    code === "UNAUTHENTICATED" ||
+    code === "PERMISSION_DENIED" ||
+    code === "SENDER_ID_MISMATCH" ||
+    code.includes("AUTH");
+  if (auth) return "auth";
+
   // Endpoint invalidation requires verified token-invalid evidence. Exact
   // structured codes only: UNREGISTERED_PROJECT, UNREGISTERED_APP, or
   // `reason: "app unregistered"` must not match.
@@ -104,34 +129,6 @@ export function classifyFcmError(input: {
     invalidArgumentTokenProof
   ) {
     return "invalid_endpoint";
-  }
-
-  // Auth/config failures: retrying will not fix a missing/rotated credential.
-  // SENDER_ID_MISMATCH means the token belongs to another project; do not purge.
-  if (
-    status === 401 ||
-    status === 403 ||
-    code === "UNAUTHENTICATED" ||
-    code === "PERMISSION_DENIED" ||
-    code === "SENDER_ID_MISMATCH" ||
-    code.includes("AUTH")
-  ) {
-    return "auth";
-  }
-
-  // Transient: 408, 429, 5xx, UNAVAILABLE, INTERNAL, DEADLINE_EXCEEDED,
-  // RESOURCE_EXHAUSTED, ABORTED
-  if (
-    status === 408 ||
-    status === 429 ||
-    (status >= 500 && status <= 599) ||
-    code === "UNAVAILABLE" ||
-    code === "INTERNAL" ||
-    code === "DEADLINE_EXCEEDED" ||
-    code === "RESOURCE_EXHAUSTED" ||
-    code === "ABORTED"
-  ) {
-    return "transient";
   }
 
   // Other 4xx client errors (bare 404/410, NOT_FOUND, malformed INVALID_ARGUMENT)

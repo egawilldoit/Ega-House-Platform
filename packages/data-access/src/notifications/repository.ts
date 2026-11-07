@@ -678,11 +678,19 @@ export class SupabaseNotificationSettingsRepository implements NotificationSetti
     }
 
     const settingsFailure = (
-      error: { code?: string; message?: string } | null,
-    ): RepositoryResult<NotificationSettingsRecord> =>
-      error?.code === "23514"
+      error: {
+        code?: string;
+        message?: string;
+        constraint?: string;
+      } | null,
+    ): RepositoryResult<NotificationSettingsRecord> => {
+      const namesWindowConstraint =
+        error?.constraint === "notification_settings_quiet_hours_window_check" ||
+        /notification_settings_quiet_hours_window_check/.test(error?.message ?? "");
+      return error?.code === "23514" && namesWindowConstraint
         ? { ok: false, error: { code: "conflict" } }
         : failure(error);
+    };
 
     // Atomic per-field update for an existing row. Only supplied columns change,
     // so concurrent stale writers cannot clobber each other's fields.

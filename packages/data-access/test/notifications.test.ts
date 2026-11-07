@@ -77,6 +77,31 @@ test("FCM error classification invalidates only proven token evidence", async ()
   assert.equal(classifyFcmError({ httpStatus: 503, fcmCode: "UNAVAILABLE" }), "transient");
   assert.equal(classifyFcmError({ httpStatus: 401 }), "auth");
   assert.equal(classifyFcmError({ httpStatus: 403 }), "auth");
+
+  // Precedence: transient/auth evidence wins over token-invalid text/details.
+  assert.equal(
+    classifyFcmError({
+      httpStatus: 503,
+      message: "The registration token is not a valid FCM registration token",
+    }),
+    "transient",
+  );
+  assert.equal(
+    classifyFcmError({ httpStatus: 429, details: [{ errorCode: "UNREGISTERED" }] }),
+    "transient",
+  );
+  assert.equal(classifyFcmError({ httpStatus: 500, fcmCode: "UNREGISTERED" }), "transient");
+  assert.equal(
+    classifyFcmError({
+      httpStatus: 401,
+      message: "The registration token is not a valid FCM registration token",
+    }),
+    "auth",
+  );
+  assert.equal(
+    classifyFcmError({ httpStatus: 403, details: [{ errorCode: "UNREGISTERED" }] }),
+    "auth",
+  );
 });
 
 test("FcmPushProvider returns permanent for missing service account", async () => {
@@ -174,6 +199,43 @@ test("FcmPushProvider keeps config/substring/mixed errors non-deactivating", asy
   }).send(PUSH);
   assert.equal(mixedMessage.ok, false);
   if (!mixedMessage.ok) assert.equal(mixedMessage.errorCode, "permanent");
+});
+
+test("FcmPushProvider lets transient/auth evidence win over token-invalid text", async () => {
+  const unavailable = await fcmProvider(503, {
+    error: {
+      status: "UNAVAILABLE",
+      message: "The registration token is not a valid FCM registration token",
+      details: [{ errorCode: "UNREGISTERED" }],
+    },
+  }).send(PUSH);
+  assert.equal(unavailable.ok, false);
+  if (!unavailable.ok) assert.equal(unavailable.errorCode, "transient");
+
+  const throttled = await fcmProvider(429, {
+    error: { status: "RESOURCE_EXHAUSTED", details: [{ errorCode: "UNREGISTERED" }] },
+  }).send(PUSH);
+  assert.equal(throttled.ok, false);
+  if (!throttled.ok) assert.equal(throttled.errorCode, "transient");
+
+  const internal = await fcmProvider(500, { error: { status: "UNREGISTERED" } }).send(PUSH);
+  assert.equal(internal.ok, false);
+  if (!internal.ok) assert.equal(internal.errorCode, "transient");
+
+  const unauthorized = await fcmProvider(401, {
+    error: {
+      status: "UNAUTHENTICATED",
+      message: "The registration token is not a valid FCM registration token",
+    },
+  }).send(PUSH);
+  assert.equal(unauthorized.ok, false);
+  if (!unauthorized.ok) assert.equal(unauthorized.errorCode, "auth");
+
+  const forbidden = await fcmProvider(403, {
+    error: { status: "PERMISSION_DENIED", details: [{ errorCode: "UNREGISTERED" }] },
+  }).send(PUSH);
+  assert.equal(forbidden.ok, false);
+  if (!forbidden.ok) assert.equal(forbidden.errorCode, "auth");
 });
 
 test("FcmPushProvider keeps transient 429/5xx retry semantics", async () => {  const throttled = await fcmProvider(429, { error: { status: "RESOURCE_EXHAUSTED" } }).send(PUSH);
@@ -370,7 +432,7 @@ test("patchSettings surfaces update errors instead of success-shaped data", asyn
 
 test("patchSettings maps the quiet-hours window check violation to a conflict", async () => {
   const updatePath = fakeSettingsWriteClient([
-    { data: null, error: { code: "23514", message: "check constraint violated" } },
+    { data: null, error: { code: "23514", message: 'new row violates check constraint "notification_settings_quiet_hours_window_check"' } },
   ]);
   const updateRepo = new SupabaseNotificationSettingsRepository(updatePath.client);
   const updateResult = await updateRepo.patchSettings(
@@ -382,7 +444,7 @@ test("patchSettings maps the quiet-hours window check violation to a conflict", 
 
   const insertPath = fakeSettingsWriteClient([
     { data: null, error: null },
-    { data: null, error: { code: "23514", message: "check constraint violated" } },
+    { data: null, error: { code: "23514", message: 'new row violates check constraint "notification_settings_quiet_hours_window_check"' } },
   ]);
   const insertRepo = new SupabaseNotificationSettingsRepository(insertPath.client);
   const insertResult = await insertRepo.patchSettings(
@@ -391,4 +453,20 @@ test("patchSettings maps the quiet-hours window check violation to a conflict", 
   );
   assert.equal(insertResult.ok, false);
   if (!insertResult.ok) assert.equal(insertResult.error.code, "conflict");
+});
+
+test("patchSettings leaves unrelated 23514 check violations as generic failures", async () => {
+  const { client } = fakeSettingsWriteClient([
+    {
+      data: null,
+      error: {
+        code: "23514",
+        message: 'new row violates check constraint "notification_settings_quiet_hours_start_check"',
+      },
+    },
+  ]);
+  const repository = new SupabaseNotificationSettingsRepository(client);
+  const result = await repository.patchSettings({ userId: "user-1" }, { quietHoursStart: "23:00" });
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.equal(result.error.code, "unknown");
 });
