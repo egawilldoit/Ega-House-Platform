@@ -19,6 +19,7 @@ import {
   MORNING_OUTCOME_LIMIT_MESSAGE,
   MORNING_OUTCOME_MIXED_PROJECT_MESSAGE,
   MORNING_OUTCOME_REVIEW_MESSAGE,
+  MORNING_OUTCOME_UNAVAILABLE_MESSAGE,
   normalizeOutcomeTaskIds,
   parseStartupRetryIds,
   validateMorningOutcomeTasks,
@@ -125,7 +126,10 @@ function ownedRow(
     projectName: "Project A",
     projectSlug: "project-a",
     projectArchivedAt: null,
+    goalId: null,
     goalArchivedAt: null,
+    projectRelationPresent: true,
+    goalRelationPresent: true,
     ...rest,
   };
 }
@@ -338,6 +342,33 @@ test("validateMorningOutcomeTasks rejects completed, blocked, review and archive
     ok: false,
     errorMessage: "The selected outcome tasks are unavailable.",
   });
+});
+
+test("validateMorningOutcomeTasks fails closed when a referenced relation is missing", () => {
+  assert.deepEqual(
+    validateMorningOutcomeTasks([
+      ownedRow({ id: "missing-project", projectRelationPresent: false }),
+    ]),
+    { ok: false, errorMessage: MORNING_OUTCOME_UNAVAILABLE_MESSAGE },
+  );
+  assert.deepEqual(
+    validateMorningOutcomeTasks([
+      ownedRow({
+        id: "missing-goal",
+        goalId: "goal-1",
+        goalRelationPresent: false,
+      }),
+    ]),
+    { ok: false, errorMessage: MORNING_OUTCOME_UNAVAILABLE_MESSAGE },
+  );
+
+  const accepted = validateMorningOutcomeTasks([
+    ownedRow({ id: "no-goal", goalId: null }),
+  ]);
+  assert.equal(accepted.ok, true);
+  if (accepted.ok) {
+    assert.deepEqual(accepted.tasks.map((row) => row.id), ["no-goal"]);
+  }
 });
 
 test("weekend targets and rest days come from the configured weekday target", () => {

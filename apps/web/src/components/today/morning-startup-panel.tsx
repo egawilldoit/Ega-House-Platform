@@ -19,10 +19,11 @@ function pluralize(count: number, singular: string, plural: string) {
 /**
  * Concise after-Fajr startup flow inside the existing Today page.
  *
- * Exactly one primary project is chosen by submitting one project's form; the
- * server derives the single project from the validated task rows. Creating a
- * new task is intentionally not offered here; the link points at Tasks so this
- * flow cannot become a second task-creation surface.
+ * Project switching is additive: submitting a project's form adds its outcomes
+ * to today; existing planned work stays. Primary status is derived, not chosen:
+ * the "Primary" badge appears only when every actionable planned outcome shares
+ * one project. Creating a new task is intentionally not offered here; the link
+ * points at Tasks so this flow cannot become a second task-creation surface.
  */
 export function MorningStartupPanel({
   model,

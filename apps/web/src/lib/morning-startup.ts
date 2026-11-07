@@ -132,7 +132,10 @@ export type MorningStartupOwnedTaskRow = Readonly<{
   projectName: string | null;
   projectSlug: string | null;
   projectArchivedAt: string | null;
+  goalId: string | null;
   goalArchivedAt: string | null;
+  projectRelationPresent: boolean;
+  goalRelationPresent: boolean;
 }>;
 
 export type MorningStartupModel = Readonly<{
@@ -489,6 +492,19 @@ export function validateMorningOutcomeTasks(
     if (row.archivedAt) {
       return { ok: false, errorMessage: MORNING_OUTCOME_ARCHIVED_MESSAGE };
     }
+
+    // Fail closed when a referenced relation is missing or unreadable. A task
+    // with a project_id must have a readable project relation, and a task with
+    // a goal_id must have a readable goal relation. A null goal_id is valid.
+    const projectId = row.projectId?.trim() ?? "";
+    if (projectId && !row.projectRelationPresent) {
+      return { ok: false, errorMessage: MORNING_OUTCOME_UNAVAILABLE_MESSAGE };
+    }
+    const goalId = row.goalId?.trim() ?? "";
+    if (goalId && !row.goalRelationPresent) {
+      return { ok: false, errorMessage: MORNING_OUTCOME_UNAVAILABLE_MESSAGE };
+    }
+
     if (row.projectArchivedAt) {
       return { ok: false, errorMessage: MORNING_OUTCOME_ARCHIVED_PROJECT_MESSAGE };
     }
