@@ -64,8 +64,18 @@ class FakeTimerQueryBuilder {
     return this;
   }
 
+  update(payload: unknown) {
+    this.steps.push(`update:${JSON.stringify(payload)}`);
+    return this;
+  }
+
   single() {
     this.steps.push("single");
+    return Promise.resolve(this.supabase.nextResult());
+  }
+
+  maybeSingle() {
+    this.steps.push("maybeSingle");
     return Promise.resolve(this.supabase.nextResult());
   }
 
@@ -151,6 +161,96 @@ test("listOpenSessions bounds the active-session read to the single-owner invari
     "order:started_at",
     "limit:1",
   ]);
+});
+
+test("findSessionById scopes the exact id read by actor owner", async () => {
+  const fake = new FakeTimerSupabase([
+    {
+      data: {
+        id: "session-1",
+        task_id: "task-1",
+        started_at: "2026-08-22T10:00:00.000Z",
+        ended_at: null,
+        duration_seconds: null,
+        tasks: { title: "Proof task" },
+      },
+      error: null,
+    },
+  ]);
+  const builderCapture: FakeTimerQueryBuilder[] = [];
+  const originalFrom = fake.from.bind(fake);
+  fake.from = (table: string) => {
+    const builder = originalFrom(table) as FakeTimerQueryBuilder;
+    builderCapture.push(builder);
+    return builder;
+  };
+
+  const result = await timerRepository(fake).findSessionById(ACTOR, {
+    sessionId: "session-1",
+  });
+
+  assert.equal(result.ok, true);
+  if (result.ok) {
+    assert.equal(result.value?.id, "session-1");
+    assert.equal(result.value?.endedAt, null);
+  }
+  assert.deepEqual(builderCapture[0]?.recordedSteps(), [
+    "select:id, task_id, started_at, ended_at, duration_seconds, tasks(title)",
+    "eq:id=session-1",
+    "eq:owner_user_id=user-timer",
+    "maybeSingle",
+  ]);
+});
+
+test("findSessionById returns null rather than leaking another owner's row", async () => {
+  const fake = new FakeTimerSupabase([{ data: null, error: null }]);
+
+  const result = await timerRepository(fake).findSessionById(ACTOR, {
+    sessionId: "foreign-session",
+  });
+
+  assert.equal(result.ok, true);
+  if (result.ok) assert.equal(result.value, null);
+});
+
+test("finalizeOpenSession is fenced to id, owner and ended_at IS NULL", async () => {
+  const fake = new FakeTimerSupabase([{ data: [{ id: "session-1" }], error: null }]);
+  const builderCapture: FakeTimerQueryBuilder[] = [];
+  const originalFrom = fake.from.bind(fake);
+  fake.from = (table: string) => {
+    const builder = originalFrom(table) as FakeTimerQueryBuilder;
+    builderCapture.push(builder);
+    return builder;
+  };
+
+  const result = await timerRepository(fake).finalizeOpenSession(ACTOR, {
+    sessionId: "session-1",
+    endedAtIso: "2026-08-22T11:00:00.000Z",
+    durationSeconds: 3600,
+  });
+
+  assert.equal(result.ok, true);
+  if (result.ok) assert.equal(result.value, true);
+  assert.deepEqual(builderCapture[0]?.recordedSteps(), [
+    'update:{"ended_at":"2026-08-22T11:00:00.000Z","duration_seconds":3600,"updated_at":"2026-08-22T11:00:00.000Z"}',
+    "eq:id=session-1",
+    "eq:owner_user_id=user-timer",
+    "is:ended_at=null",
+    "select:id",
+  ]);
+});
+
+test("finalizeOpenSession reports false when the row is already ended", async () => {
+  const fake = new FakeTimerSupabase([{ data: [], error: null }]);
+
+  const result = await timerRepository(fake).finalizeOpenSession(ACTOR, {
+    sessionId: "session-1",
+    endedAtIso: "2026-08-22T11:00:00.000Z",
+    durationSeconds: 3600,
+  });
+
+  assert.equal(result.ok, true);
+  if (result.ok) assert.equal(result.value, false);
 });
 
 test("insertOpenSession returns the mapped session row on success and scopes writes to the actor owner", async () => {

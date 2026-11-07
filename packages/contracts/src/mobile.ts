@@ -308,4 +308,9 @@ export type TimerWorkspaceState = {
 export type TimerActiveSession = NonNullable<TimerWorkspaceState["activeSession"]>;
 
 export type TimerStartResponse = { ok: true; activeSession: TimerActiveSession };
-export type TimerStopResponse = { ok: true; sessionId: string; taskId: string };
+export type TimerStopResponse = {
+  ok: true;
+  sessionId: string;
+  taskId: string;
+  outcome: "stopped" | "already_stopped";
+};
