@@ -4,6 +4,11 @@
 -- centimes (22.50 MAD = 2250) so no floating point amount can be persisted.
 -- One row per expense, soft-delete only, optimistic concurrency via `version`.
 --
+-- Migration sequencing: 0079-0087 are reserved by the known remote
+-- feat/mcp-platform-hardening-expansion branch; this migration is 0088 so
+-- whichever lands second has clean sequencing. No historical migration is
+-- edited by this file.
+--
 -- Owner isolation:
 --   * `owner_user_id` defaults to the verified `auth.uid()`.
 --   * RLS and every data-access statement scope by the owner.
@@ -14,6 +19,13 @@
 --   * `(owner_user_id, idempotency_key)` is unique. A concurrent double submit
 --     can create only one row; the loser classifies the winner as a replay or
 --     a conflicting payload.
+--   * `create_fingerprint` is an internal receipt binding the key to the
+--     immutable original create payload. It is never exposed on the wire and
+--     authenticated callers cannot update it.
+--
+-- Mutation policy: soft delete only. Authenticated has SELECT/INSERT and
+-- column-level UPDATE on mutable columns; DELETE is not granted and no DELETE
+-- RLS policy exists.
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "public"."personal_expenses" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
@@ -27,6 +39,7 @@ CREATE TABLE IF NOT EXISTS "public"."personal_expenses" (
 	"need_vs_want" varchar(8) NOT NULL,
 	"payment_method" varchar(32),
 	"idempotency_key" varchar(128) NOT NULL,
+	"create_fingerprint" varchar(1024) NOT NULL,
 	"version" integer DEFAULT 1 NOT NULL,
 	"deleted_at" timestamp with time zone,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
@@ -45,6 +58,8 @@ CREATE TABLE IF NOT EXISTS "public"."personal_expenses" (
 		CHECK ("version" > 0),
 	CONSTRAINT "personal_expenses_idempotency_key_check"
 		CHECK (btrim("idempotency_key") <> ''),
+	CONSTRAINT "personal_expenses_create_fingerprint_check"
+		CHECK (length("create_fingerprint") between 1 and 1024),
 	CONSTRAINT "personal_expenses_note_check"
 		CHECK ("note" is null OR btrim("note") <> ''),
 	CONSTRAINT "personal_expenses_merchant_check"
@@ -58,6 +73,8 @@ CREATE INDEX IF NOT EXISTS "personal_expenses_owner_occurred_at_idx"
 	ON "public"."personal_expenses" USING btree ("owner_user_id", "occurred_at" DESC, "id" DESC);
 --> statement-breakpoint
 ALTER TABLE "public"."personal_expenses" ENABLE ROW LEVEL SECURITY;
+--> statement-breakpoint
+ALTER TABLE "public"."personal_expenses" FORCE ROW LEVEL SECURITY;
 --> statement-breakpoint
 DROP POLICY IF EXISTS "personal_expenses_direct_user_select" ON "public"."personal_expenses";
 CREATE POLICY "personal_expenses_direct_user_select" ON "public"."personal_expenses"
@@ -88,13 +105,24 @@ CREATE POLICY "personal_expenses_direct_user_update" ON "public"."personal_expen
   );
 --> statement-breakpoint
 DROP POLICY IF EXISTS "personal_expenses_direct_user_delete" ON "public"."personal_expenses";
-CREATE POLICY "personal_expenses_direct_user_delete" ON "public"."personal_expenses"
-  FOR DELETE TO authenticated
-  USING (
-    owner_user_id = (SELECT auth.uid())
-    AND ((SELECT auth.jwt()) ->> 'client_id') IS NULL
-  );
 --> statement-breakpoint
 REVOKE ALL ON TABLE "public"."personal_expenses" FROM anon;
 --> statement-breakpoint
-GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE "public"."personal_expenses" TO authenticated;
+REVOKE ALL ON TABLE "public"."personal_expenses" FROM authenticated;
+--> statement-breakpoint
+GRANT SELECT ON TABLE "public"."personal_expenses" TO authenticated;
+--> statement-breakpoint
+GRANT INSERT ON TABLE "public"."personal_expenses" TO authenticated;
+--> statement-breakpoint
+GRANT UPDATE (
+	"occurred_at",
+	"amount_minor",
+	"category",
+	"note",
+	"merchant",
+	"need_vs_want",
+	"payment_method",
+	"version",
+	"deleted_at",
+	"updated_at"
+) ON TABLE "public"."personal_expenses" TO authenticated;

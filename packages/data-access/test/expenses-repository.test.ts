@@ -31,6 +31,20 @@ const ROW = {
   updated_at: "2026-11-07T08:31:00+00:00",
 };
 
+const FINGERPRINT =
+  '[1794030600000,2250,"coffee","morning coffee",null,"want","card","key-1"]';
+
+const CREATE_VALUES = {
+  occurredAt: "2026-11-07T08:30:00.000Z",
+  amountMinor: 2250,
+  category: "coffee" as const,
+  note: "morning coffee",
+  merchant: null,
+  needVsWant: "want" as const,
+  paymentMethod: "card" as const,
+  idempotencyKey: "key-1",
+};
+
 class FakeBuilder {
   private readonly steps: string[] = [];
 
@@ -124,34 +138,48 @@ test("get scopes by owner, excludes deleted rows and maps snake_case", async () 
   assert.ok(steps.some((step) => step === "is:deleted_at=null"));
 });
 
-test("idempotency lookup includes soft-deleted rows for replay", async () => {
+test("idempotency lookup includes soft-deleted rows and the immutable fingerprint", async () => {
   const fake = new FakeSupabase([
-    { data: { ...ROW, deleted_at: "2026-11-08T00:00:00+00:00" }, error: null },
+    {
+      data: {
+        ...ROW,
+        deleted_at: "2026-11-08T00:00:00+00:00",
+        create_fingerprint: FINGERPRINT,
+      },
+      error: null,
+    },
   ]);
   const result = await repository(fake).findByIdempotencyKey(ACTOR, "key-1");
 
   assert.equal(result.ok, true);
-  if (result.ok) assert.equal(result.value?.deletedAt, "2026-11-08T00:00:00+00:00");
+  if (result.ok) {
+    assert.equal(result.value?.expense.deletedAt, "2026-11-08T00:00:00+00:00");
+    assert.equal(result.value?.createFingerprint, FINGERPRINT);
+  }
   const steps = fake.calls[0]?.steps ?? [];
   assert.ok(steps.some((step) => step === "eq:idempotency_key=key-1"));
   assert.ok(!steps.some((step) => step.startsWith("is:deleted_at")));
+  assert.ok(
+    steps.some((step) => step.startsWith("select:") && step.includes("create_fingerprint")),
+    "idempotency lookup must select the immutable fingerprint",
+  );
 });
 
-test("create sends canonical snake_case values and maps unique violations to conflict", async () => {
-  const created = await repository(
-    new FakeSupabase([{ data: ROW, error: null }]),
-  ).create(ACTOR, {
-    occurredAt: "2026-11-07T08:30:00.000Z",
-    amountMinor: 2250,
-    category: "coffee",
-    note: "morning coffee",
-    merchant: null,
-    needVsWant: "want",
-    paymentMethod: "card",
-    idempotencyKey: "key-1",
+test("create sends canonical snake_case values and the fingerprint", async () => {
+  const fake = new FakeSupabase([{ data: ROW, error: null }]);
+  const created = await repository(fake).create(ACTOR, {
+    values: CREATE_VALUES,
+    createFingerprint: FINGERPRINT,
   });
   assert.equal(created.ok, true);
 
+  const insertStep = fake.calls[0]?.steps.find((step) => step.startsWith("insert:"));
+  assert.ok(insertStep?.includes('"create_fingerprint":'));
+  const selectStep = fake.calls[0]?.steps.find((step) => step.startsWith("select:"));
+  assert.ok(selectStep && !selectStep.includes("create_fingerprint"));
+});
+
+test("only the named idempotency unique constraint maps to conflict", async () => {
   const duplicate = await repository(
     new FakeSupabase([
       {
@@ -163,18 +191,38 @@ test("create sends canonical snake_case values and maps unique violations to con
         },
       },
     ]),
-  ).create(ACTOR, {
-    occurredAt: "2026-11-07T08:30:00.000Z",
-    amountMinor: 2250,
-    category: "coffee",
-    note: null,
-    merchant: null,
-    needVsWant: "want",
-    paymentMethod: null,
-    idempotencyKey: "key-1",
-  });
+  ).create(ACTOR, { values: CREATE_VALUES, createFingerprint: FINGERPRINT });
   assert.equal(duplicate.ok, false);
   if (!duplicate.ok) assert.equal(duplicate.error.code, "conflict");
+
+  const unrelated = await repository(
+    new FakeSupabase([
+      {
+        data: null,
+        error: {
+          code: "23505",
+          message: 'duplicate key value violates unique constraint "some_other_unique"',
+        },
+      },
+    ]),
+  ).create(ACTOR, { values: CREATE_VALUES, createFingerprint: FINGERPRINT });
+  assert.equal(unrelated.ok, false);
+  if (!unrelated.ok) assert.equal(unrelated.error.code, "unknown");
+});
+
+test("42501 permission failures map to forbidden", async () => {
+  const fake = new FakeSupabase([
+    {
+      data: null,
+      error: { code: "42501", message: "permission denied for table personal_expenses" },
+    },
+  ]);
+  const result = await repository(fake).create(ACTOR, {
+    values: CREATE_VALUES,
+    createFingerprint: FINGERPRINT,
+  });
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.equal(result.error.code, "forbidden");
 });
 
 test("list applies owner, soft-delete, window, ordering and bounded range", async () => {

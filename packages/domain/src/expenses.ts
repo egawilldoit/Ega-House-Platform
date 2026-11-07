@@ -119,7 +119,7 @@ export type ExpenseValidationFailure = Readonly<{
 }>;
 
 const ISO_DATE_TIME_RE =
-  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,9})?)?(?:Z|[+-]\d{2}:\d{2})$/;
+  /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,9}))?)?(Z|([+-])(\d{2}):(\d{2}))$/;
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const INTEGER_STRING_RE = /^\d+$/;
@@ -215,9 +215,27 @@ function parseOccurredAt(
     return failure("occurredAt", "Date and time are required.");
   }
   const trimmed = raw.trim();
-  if (!trimmed || !ISO_DATE_TIME_RE.test(trimmed)) {
+  const match = ISO_DATE_TIME_RE.exec(trimmed);
+  if (!match) {
     return failure("occurredAt", "Date and time must be an ISO timestamp.");
   }
+
+  const [, year, month, day, hour, minute, second, , zone, , offsetHour, offsetMinute] =
+    match;
+  if (!isIsoDate(`${year}-${month}-${day}`)) {
+    return failure("occurredAt", "Date and time must be a real calendar date.");
+  }
+  if (
+    Number(hour) > 23 ||
+    Number(minute) > 59 ||
+    (second !== undefined && Number(second) > 59)
+  ) {
+    return failure("occurredAt", "Date and time must use a valid clock time.");
+  }
+  if (zone !== "Z" && (Number(offsetHour) > 23 || Number(offsetMinute) > 59)) {
+    return failure("occurredAt", "Date and time must use a valid UTC offset.");
+  }
+
   const parsed = Date.parse(trimmed);
   if (!Number.isFinite(parsed)) {
     return failure("occurredAt", "Date and time must be an ISO timestamp.");
@@ -225,11 +243,41 @@ function parseOccurredAt(
   return { ok: true, value: new Date(parsed).toISOString() };
 }
 
+/**
+ * Reject NUL, unpaired UTF-16 surrogates and disallowed C0/DEL control
+ * characters. Note and merchant may contain tab/newline/CR; an idempotency
+ * key is a stable token and may not contain any control character.
+ */
+function findUnsupportedCharacters(
+  value: string,
+  allowLineControls: boolean,
+): string | null {
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    if (code === 0) return "NUL";
+    if (code >= 0xd800 && code <= 0xdbff) {
+      const next = value.charCodeAt(index + 1);
+      if (!(next >= 0xdc00 && next <= 0xdfff)) return "surrogate";
+      index += 1;
+      continue;
+    }
+    if (code >= 0xdc00 && code <= 0xdfff) return "surrogate";
+    if (code === 0x7f) return "control";
+    if (
+      code < 0x20 &&
+      !(allowLineControls && (code === 0x09 || code === 0x0a || code === 0x0d))
+    ) {
+      return "control";
+    }
+  }
+  return null;
+}
+
 function parseBoundedText(
   raw: unknown,
   field: string,
   maxLength: number,
-  options: Readonly<{ required: boolean }>,
+  options: Readonly<{ required: boolean; allowLineControls: boolean }>,
 ): { ok: true; value: string | null } | ExpenseValidationFailure {
   if (raw === undefined || raw === null) {
     return options.required
@@ -238,6 +286,10 @@ function parseBoundedText(
   }
   if (typeof raw !== "string") {
     return failure(field, "This value must be text.");
+  }
+  const unsupported = findUnsupportedCharacters(raw, options.allowLineControls);
+  if (unsupported) {
+    return failure(field, "This value contains unsupported characters.");
   }
   const trimmed = raw.trim();
   if (!trimmed) {
@@ -301,6 +353,7 @@ export function parseCreateExpenseInput(
 
   const note = parseBoundedText(input.note, "note", EXPENSE_NOTE_MAX_LENGTH, {
     required: false,
+    allowLineControls: true,
   });
   if (!note.ok) return note;
 
@@ -308,7 +361,7 @@ export function parseCreateExpenseInput(
     input.merchant,
     "merchant",
     EXPENSE_MERCHANT_MAX_LENGTH,
-    { required: false },
+    { required: false, allowLineControls: true },
   );
   if (!merchant.ok) return merchant;
 
@@ -328,7 +381,7 @@ export function parseCreateExpenseInput(
     input.idempotencyKey,
     "idempotencyKey",
     EXPENSE_IDEMPOTENCY_KEY_MAX_LENGTH,
-    { required: true },
+    { required: true, allowLineControls: false },
   );
   if (!idempotencyKey.ok) return idempotencyKey;
 
@@ -419,6 +472,7 @@ export function parseUpdateExpenseInput(
   if (input.note !== undefined) {
     const parsed = parseBoundedText(input.note, "note", EXPENSE_NOTE_MAX_LENGTH, {
       required: false,
+      allowLineControls: true,
     });
     if (!parsed.ok) return parsed;
     changes.note = parsed.value;
@@ -429,7 +483,7 @@ export function parseUpdateExpenseInput(
       input.merchant,
       "merchant",
       EXPENSE_MERCHANT_MAX_LENGTH,
-      { required: false },
+      { required: false, allowLineControls: true },
     );
     if (!parsed.ok) return parsed;
     changes.merchant = parsed.value;
@@ -596,9 +650,30 @@ export function parseExpenseListQuery(
 }
 
 /**
+ * Deterministic, platform-neutral fingerprint of the immutable original
+ * create payload. It is stored with the receipt so a retry is compared with
+ * the request that created the row, not with fields that later edits may
+ * change. JSON arrays keep a stable field order and epoch milliseconds make
+ * equivalent `Z`/offset spellings equal.
+ */
+export function expenseCreateFingerprint(values: ExpenseCreateValues): string {
+  return JSON.stringify([
+    Date.parse(values.occurredAt),
+    values.amountMinor,
+    values.category,
+    values.note,
+    values.merchant,
+    values.needVsWant,
+    values.paymentMethod,
+    values.idempotencyKey,
+  ]);
+}
+
+/**
  * Compare a persisted expense with a create payload using the canonical
- * values that define an idempotent replay. Timestamps compare as instants so
- * `Z` and `+00:00` spellings of the same time are the same request.
+ * values that define an idempotent replay. Kept for callers that need value
+ * comparison; create idempotency itself uses `expenseCreateFingerprint` so
+ * edits cannot rewrite the original receipt.
  */
 export function expenseMatchesCreateValues(
   record: PersonalExpense,

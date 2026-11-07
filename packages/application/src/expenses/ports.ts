@@ -20,6 +20,21 @@ export type ExpenseListRecordQuery = Readonly<{
   endUtcExclusiveIso: string | null;
 }>;
 
+/**
+ * Internal receipt for owner+idempotency-key lookup. `createFingerprint` binds
+ * the key to the immutable original create payload and is never exposed on the
+ * wire.
+ */
+export type ExpenseIdempotencyReceipt = Readonly<{
+  expense: PersonalExpense;
+  createFingerprint: string;
+}>;
+
+export type ExpenseCreateRecordInput = Readonly<{
+  values: ExpenseCreateValues;
+  createFingerprint: string;
+}>;
+
 export type ExpenseUpdateRecordInput = Readonly<{
   changes: ExpenseUpdateChanges;
   expectedVersion: number;
@@ -36,10 +51,10 @@ export type ExpenseRepository = {
   findByIdempotencyKey(
     actor: AuthenticatedActor,
     idempotencyKey: string,
-  ): Promise<RepositoryResult<PersonalExpense | null>>;
+  ): Promise<RepositoryResult<ExpenseIdempotencyReceipt | null>>;
   create(
     actor: AuthenticatedActor,
-    input: ExpenseCreateValues,
+    input: ExpenseCreateRecordInput,
   ): Promise<RepositoryResult<PersonalExpense>>;
   get(
     actor: AuthenticatedActor,

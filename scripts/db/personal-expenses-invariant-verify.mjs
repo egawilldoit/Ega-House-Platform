@@ -14,15 +14,18 @@
  *   CHECKS      - currency, category, need-vs-want, payment method, version and
  *                 non-blank note/merchant/idempotency constraints are enforced.
  *   UNIQUE      - (owner_user_id, idempotency_key) is unique per owner and the
- *                 same key is allowed for a different owner.
+ *                 same key is allowed for a different owner; the internal
+ *                 create_fingerprint binds the key to the original payload.
  *   RLS         - owners cannot read/write each other's rows; anonymous and
- *                 OAuth client_id tokens are denied.
+ *                 OAuth client_id tokens are denied; hard DELETE is not
+ *                 granted and immutable columns cannot be UPDATEed.
+ *   GRANTS      - column-level UPDATE only on mutable columns with forced RLS.
  *   SOFT DELETE - deleted rows remain durable but are excluded from active
  *                 list/total queries; repeating a delete does not change totals.
  *   PAGE/ORDER  - occurred_at desc, id desc with bounded offset/limit.
  *   WINDOW      - half-open [start, end) occurred_at boundaries, including the
  *                 2026-03-08 America/New_York DST spring-forward day.
- *   IDEMPOTENCE - re-applying 0079 preserves rows, policies and indexes.
+ *   IDEMPOTENCE - re-applying 0088 preserves rows, policies and indexes.
  *
  * Usage:
  *   node scripts/db/personal-expenses-invariant-verify.mjs --url <postgres-url>
@@ -36,7 +39,7 @@ import { argv, exit } from "node:process";
 import postgres from "postgres";
 
 const DRIZZLE_DIR = new URL("../../drizzle/", import.meta.url);
-const MIGRATION_TAG = "0079_personal_expenses";
+const MIGRATION_TAG = "0088_personal_expenses";
 const CONSTRAINT = "personal_expenses_owner_idempotency_key_unique";
 
 const OWNER_A = "11111111-1111-4111-8111-111111111111";
@@ -227,6 +230,7 @@ function insertExpense(tx, input) {
     "need_vs_want",
     "payment_method",
     "idempotency_key",
+    "create_fingerprint",
   ];
   const values = [
     input.occurredAt,
@@ -238,8 +242,9 @@ function insertExpense(tx, input) {
     input.needVsWant ?? "need",
     input.paymentMethod ?? null,
     input.idempotencyKey,
+    input.createFingerprint ?? `fingerprint:${input.idempotencyKey}`,
   ];
-  const placeholders = ["$1::timestamptz", "$2", "$3", "$4", "$5", "$6", "$7", "$8", "$9"];
+  const placeholders = ["$1::timestamptz", "$2", "$3", "$4", "$5", "$6", "$7", "$8", "$9", "$10"];
 
   if (input.id) {
     columns.unshift("id");
@@ -286,36 +291,92 @@ async function main() {
       await applyFile(sql, tag);
       applied += 1;
     }
-    await sql.unsafe(
-      `GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO authenticated;`,
-    );
     await sql.unsafe(`GRANT USAGE ON SCHEMA public TO authenticated;`);
     log("MIGRATE", `${applied} journal migrations applied`);
 
     const [table] = await sql.unsafe(
-      `SELECT relrowsecurity AS enabled FROM pg_class
-       WHERE oid = 'public.personal_expenses'::regclass`,
+      `SELECT relrowsecurity AS enabled, relforcerowsecurity AS forced
+       FROM pg_class WHERE oid = 'public.personal_expenses'::regclass`,
     );
     assert(table?.enabled === true, "personal_expenses must have RLS enabled");
+    assert(table?.forced === true, "personal_expenses must force RLS");
+
     const policies = await sql.unsafe(
       `SELECT policyname FROM pg_policies
        WHERE schemaname = 'public' AND tablename = 'personal_expenses'
        ORDER BY policyname`,
     );
-    assert(policies.length === 4, "personal_expenses must expose four owner policies");
-    const [amountColumn] = await sql.unsafe(
-      `SELECT data_type, numeric_scale FROM information_schema.columns
+    const policyNames = policies.map((entry) => entry.policyname);
+    assert(policyNames.length === 3, "personal_expenses must expose three owner policies");
+    assert(
+      !policyNames.some((name) => name.endsWith("_delete")),
+      "personal_expenses must not expose a DELETE policy",
+    );
+
+    const columns = await sql.unsafe(
+      `SELECT column_name, data_type, character_maximum_length, is_nullable, column_default
+       FROM information_schema.columns
        WHERE table_schema = 'public' AND table_name = 'personal_expenses'
-         AND column_name = 'amount_minor'`,
+       ORDER BY ordinal_position`,
     );
-    assert(
-      amountColumn?.data_type === "integer",
-      "amount_minor must be an integer column (no fractional centimes)",
+    const expectedColumns = [
+      ["id", "uuid", null, "NO", /gen_random_uuid\(\)/],
+      ["owner_user_id", "uuid", null, "NO", /auth\.uid\(\)/],
+      ["occurred_at", "timestamp with time zone", null, "NO", null],
+      ["amount_minor", "integer", null, "NO", null],
+      ["currency", "character varying", 3, "NO", /'MAD'/],
+      ["category", "character varying", 32, "NO", null],
+      ["note", "character varying", 500, "YES", null],
+      ["merchant", "character varying", 120, "YES", null],
+      ["need_vs_want", "character varying", 8, "NO", null],
+      ["payment_method", "character varying", 32, "YES", null],
+      ["idempotency_key", "character varying", 128, "NO", null],
+      ["create_fingerprint", "character varying", 1024, "NO", null],
+      ["version", "integer", null, "NO", /^1$/],
+      ["deleted_at", "timestamp with time zone", null, "YES", null],
+      ["created_at", "timestamp with time zone", null, "NO", /now\(\)/],
+      ["updated_at", "timestamp with time zone", null, "NO", /now\(\)/],
+    ];
+    assert(columns.length === expectedColumns.length, "expected column count");
+    for (const [name, dataType, maxLength, nullable, defaultPattern] of expectedColumns) {
+      const column = columns.find((entry) => entry.column_name === name);
+      assert(column, `expected column ${name}`);
+      assert(column.data_type === dataType, `${name} has expected data type`);
+      assert(
+        (column.character_maximum_length ?? null) === maxLength,
+        `${name} has expected varchar length`,
+      );
+      assert(column.is_nullable === nullable, `${name} has expected nullability`);
+      if (defaultPattern) {
+        assert(
+          defaultPattern.test(String(column.column_default ?? "")),
+          `${name} has the documented default`,
+        );
+      }
+    }
+    const [amountColumn] = columns.filter((entry) => entry.column_name === "amount_minor");
+    assert(amountColumn?.data_type === "integer", "amount_minor is an integer column");
+
+    const checks = await sql.unsafe(
+      `SELECT conname FROM pg_constraint
+       WHERE conrelid = 'public.personal_expenses'::regclass AND contype = 'c'`,
     );
-    assert(
-      Number(amountColumn?.numeric_scale ?? -1) === 0,
-      "amount_minor must have zero numeric scale",
-    );
+    const checkNames = checks.map((entry) => entry.conname);
+    for (const checkName of [
+      "personal_expenses_amount_minor_check",
+      "personal_expenses_currency_check",
+      "personal_expenses_category_check",
+      "personal_expenses_need_vs_want_check",
+      "personal_expenses_payment_method_check",
+      "personal_expenses_version_check",
+      "personal_expenses_idempotency_key_check",
+      "personal_expenses_create_fingerprint_check",
+      "personal_expenses_note_check",
+      "personal_expenses_merchant_check",
+    ]) {
+      assert(checkNames.includes(checkName), `${checkName} must exist`);
+    }
+
     const indexes = await sql.unsafe(
       `SELECT indexname FROM pg_indexes
        WHERE schemaname = 'public' AND tablename = 'personal_expenses'
@@ -330,7 +391,56 @@ async function main() {
       indexNames.includes("personal_expenses_owner_occurred_at_idx"),
       "owner/time index must exist",
     );
-    log("SCHEMA", "RLS, four policies, integer money and both indexes present");
+
+    const [privileges] = await sql.unsafe(
+      `SELECT
+         has_table_privilege('authenticated', 'public.personal_expenses', 'SELECT') AS can_select,
+         has_table_privilege('authenticated', 'public.personal_expenses', 'INSERT') AS can_insert,
+         has_table_privilege('authenticated', 'public.personal_expenses', 'UPDATE') AS table_update,
+         has_table_privilege('authenticated', 'public.personal_expenses', 'DELETE') AS can_delete`,
+    );
+    assert(privileges.can_select === true, "authenticated can SELECT");
+    assert(privileges.can_insert === true, "authenticated can INSERT");
+    assert(privileges.table_update === false, "authenticated must not have table-level UPDATE");
+    assert(privileges.can_delete === false, "authenticated must not have DELETE");
+
+    const mutableColumns = [
+      "occurred_at",
+      "amount_minor",
+      "category",
+      "note",
+      "merchant",
+      "need_vs_want",
+      "payment_method",
+      "version",
+      "deleted_at",
+      "updated_at",
+    ];
+    for (const column of mutableColumns) {
+      const [row] = await sql.unsafe(
+        `SELECT has_column_privilege('authenticated', 'public.personal_expenses', $1, 'UPDATE') AS allowed`,
+        [column],
+      );
+      assert(row?.allowed === true, `authenticated can UPDATE ${column}`);
+    }
+    for (const column of [
+      "id",
+      "owner_user_id",
+      "currency",
+      "idempotency_key",
+      "create_fingerprint",
+      "created_at",
+    ]) {
+      const [row] = await sql.unsafe(
+        `SELECT has_column_privilege('authenticated', 'public.personal_expenses', $1, 'UPDATE') AS allowed`,
+        [column],
+      );
+      assert(row?.allowed === false, `authenticated cannot UPDATE ${column}`);
+    }
+    log(
+      "SCHEMA",
+      "columns/defaults/checks/indexes, forced RLS, three policies and column grant matrix verified",
+    );
 
     const ownerA = asUser(sql, OWNER_A);
     const ownerB = asUser(sql, OWNER_B);
@@ -455,6 +565,19 @@ async function main() {
       "23514",
     );
     await expectCode(
+      "blank create fingerprint",
+      () =>
+        ownerA.run((tx) =>
+          insertExpense(tx, {
+            occurredAt: "2026-11-07T08:31:00Z",
+            amountMinor: 100,
+            idempotencyKey: "fingerprint-a",
+            createFingerprint: "",
+          }),
+        ),
+      "23514",
+    );
+    await expectCode(
       "blank note",
       () =>
         ownerA.run((tx) =>
@@ -486,8 +609,8 @@ async function main() {
         ownerA.run(async (tx) => {
           await tx.unsafe(
             `INSERT INTO public.personal_expenses
-               (occurred_at, amount_minor, category, need_vs_want, idempotency_key, version)
-             VALUES ('2026-11-07T08:31:00Z', 100, 'coffee', 'need', 'version-a', 0)`,
+               (occurred_at, amount_minor, category, need_vs_want, idempotency_key, create_fingerprint, version)
+             VALUES ('2026-11-07T08:31:00Z', 100, 'coffee', 'need', 'version-a', 'fingerprint:version-a', 0)`,
           );
         }),
       "23514",
@@ -549,13 +672,17 @@ async function main() {
     );
     assert(bUpdate.length === 0, "owner B must not update owner A's expenses");
 
-    const bDelete = await ownerB.run((tx) =>
-      tx.unsafe(
-        `DELETE FROM public.personal_expenses
-         WHERE owner_user_id = '${OWNER_A}' RETURNING id`,
-      ),
+    await expectFailure(
+      "authenticated hard delete is denied",
+      () =>
+        ownerA.run((tx) =>
+          tx.unsafe(
+            `DELETE FROM public.personal_expenses
+             WHERE owner_user_id = auth.uid() RETURNING id`,
+          ),
+        ),
+      ["42501"],
     );
-    assert(bDelete.length === 0, "owner B must not delete owner A's expenses");
 
     await expectCode(
       "cross-owner insert",
@@ -563,12 +690,26 @@ async function main() {
         ownerB.run((tx) =>
           tx.unsafe(
             `INSERT INTO public.personal_expenses
-               (owner_user_id, occurred_at, amount_minor, category, need_vs_want, idempotency_key)
-             VALUES ('${OWNER_A}', '2026-11-07T10:00:00Z', 100, 'coffee', 'need', 'spoof-b')`,
+               (owner_user_id, occurred_at, amount_minor, category, need_vs_want, idempotency_key, create_fingerprint)
+             VALUES ('${OWNER_A}', '2026-11-07T10:00:00Z', 100, 'coffee', 'need', 'spoof-b', 'fingerprint:spoof-b')`,
           ),
         ),
       "42501",
     );
+
+    for (const column of ["create_fingerprint", "idempotency_key", "owner_user_id"]) {
+      await expectFailure(
+        `immutable column ${column} update is denied`,
+        () =>
+          ownerA.run((tx) =>
+            tx.unsafe(
+              `UPDATE public.personal_expenses SET ${column} = ${column}
+               WHERE owner_user_id = auth.uid()`,
+            ),
+          ),
+        ["42501"],
+      );
+    }
 
     await expectFailure(
       "anonymous select",
@@ -581,8 +722,8 @@ async function main() {
         anon.run((tx) =>
           tx.unsafe(
             `INSERT INTO public.personal_expenses
-               (occurred_at, amount_minor, category, need_vs_want, idempotency_key)
-             VALUES ('2026-11-07T10:00:00Z', 100, 'coffee', 'need', 'anon')`,
+               (occurred_at, amount_minor, category, need_vs_want, idempotency_key, create_fingerprint)
+             VALUES ('2026-11-07T10:00:00Z', 100, 'coffee', 'need', 'anon', 'fingerprint:anon')`,
           ),
         ),
       ["42501"],
@@ -660,15 +801,18 @@ async function main() {
       "active list excludes the soft-deleted row",
     );
 
-    // Repeating the delete is an idempotent update that changes no totals.
-    await ownerA.run((tx) =>
+    // A repeated soft delete updates zero active rows and leaves the version
+    // and deleted_at untouched.
+    const repeated = await ownerA.run((tx) =>
       tx.unsafe(
         `UPDATE public.personal_expenses
-         SET deleted_at = deleted_at, updated_at = updated_at, version = version
-         WHERE id = $1::uuid AND owner_user_id = auth.uid()`,
+         SET deleted_at = now(), updated_at = now(), version = version + 1
+         WHERE id = $1::uuid AND owner_user_id = auth.uid() AND deleted_at IS NULL
+         RETURNING id`,
         [softId],
       ),
     );
+    assert(repeated.length === 0, "repeat soft delete matches zero active rows");
     const afterRepeat = await ownerA.run((tx) => activeTotal(tx));
     assert(afterRepeat === afterTotal, "repeat delete must not change active totals");
 
@@ -678,6 +822,10 @@ async function main() {
     );
     assert(durable.deleted_at instanceof Date, "soft-deleted row remains durable");
     assert(Number(durable.version) === 2, "first delete bumps version exactly once");
+    assert(
+      durable.deleted_at.getTime() === softDeleted.deleted_at.getTime(),
+      "repeat delete does not rewrite deleted_at",
+    );
     log("SOFT DELETE", "active totals/list exclude deletion; repeat delete is inert");
 
     // PAGINATION / ORDERING ----------------------------------------------------
@@ -764,7 +912,12 @@ async function main() {
       `SELECT policyname FROM pg_policies
        WHERE schemaname = 'public' AND tablename = 'personal_expenses'`,
     );
-    assert(policiesAfter.length === 4, "re-applying the migration preserves four policies");
+    assert(policiesAfter.length === 3, "re-applying the migration preserves three policies");
+    const [rlsAfter] = await sql.unsafe(
+      `SELECT relrowsecurity AS enabled, relforcerowsecurity AS forced
+       FROM pg_class WHERE oid = 'public.personal_expenses'::regclass`,
+    );
+    assert(rlsAfter?.enabled === true && rlsAfter?.forced === true, "RLS stays enabled/forced");
     const indexesAfter = await sql.unsafe(
       `SELECT indexname FROM pg_indexes
        WHERE schemaname = 'public' AND tablename = 'personal_expenses'`,
@@ -781,7 +934,7 @@ async function main() {
 
     log(
       "PROOF",
-      "personal_expenses defaults, centime bounds, enums, idempotency uniqueness, RLS, soft delete, pagination, DST window and migration idempotence verified",
+      "personal_expenses defaults, schema/grants, centime bounds, enums, idempotency uniqueness, forced RLS, soft-delete-only, pagination, DST window and migration idempotence verified",
     );
   } finally {
     await sql.end({ timeout: 5 });

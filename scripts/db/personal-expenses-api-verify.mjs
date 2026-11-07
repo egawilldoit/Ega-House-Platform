@@ -15,16 +15,21 @@
  *   CRUD        - owner A create -> get -> list -> edit -> delete with durable
  *                 database state; owner B cannot read/update/delete owner A's
  *                 rows and sees an empty list.
- *   IDEMPOTENCY - concurrent double submit of one key creates exactly one row;
- *                 the same key with a conflicting payload answers 409.
+ *   IDEMPOTENCY - the owner+key receipt is bound to the immutable original
+ *                 create payload, so retries replay the current row after edits
+ *                 or soft deletes, while edited/different payloads conflict;
+ *                 concurrent double submit creates exactly one row.
  *   MONEY       - centimes are exact; zero/negative/fractional/overflow/string
- *                 amounts answer 400 VALIDATION.
+ *                 amounts, impossible calendar dates/clock values and control
+ *                 characters answer 400 VALIDATION.
  *   TIME        - explicit IANA timezone and owner time-context windows use
  *                 half-open UTC boundaries including a DST day.
  *   PAGINATION  - occurred_at desc, id desc with bounded limit/offset and an
  *                 exact hasMore flag.
- *   SOFT DELETE - deleted rows disappear from get/list; repeat delete is
- *                 idempotent and does not bump the version again.
+ *   SOFT DELETE - deleted rows disappear from get/list; repeat and concurrent
+ *                 deletes are idempotent and bump the version once.
+ *   AUTHZ       - a verified client_id token cannot insert (403 FORBIDDEN) and
+ *                 sees no owner rows.
  *
  * Usage:
  *   node --import tsx scripts/db/personal-expenses-api-verify.mjs --url <postgres-url>
@@ -40,12 +45,13 @@ import postgres from "postgres";
 import { createApp } from "@ega/server";
 
 const DRIZZLE_DIR = new URL("../../drizzle/", import.meta.url);
-const MIGRATION_TAG = "0079_personal_expenses";
+const MIGRATION_TAG = "0088_personal_expenses";
 
 const OWNER_A = "11111111-1111-4111-8111-111111111111";
 const OWNER_B = "22222222-2222-4222-8222-222222222222";
 const TOKEN_A = "proof-token-owner-a";
 const TOKEN_B = "proof-token-owner-b";
+const TOKEN_OAUTH_A = "proof-token-oauth-owner-a";
 const NOW = new Date("2026-11-07T12:00:00.000Z");
 
 function parseArgs() {
@@ -401,9 +407,10 @@ class QueryBuilder {
 }
 
 class PostgrestShim {
-  constructor(sql, userId) {
+  constructor(sql, userId, clientId = null) {
     this.sql = sql;
     this.userId = userId;
+    this.clientId = clientId;
   }
   from(table) {
     return new QueryBuilder(this, table);
@@ -414,7 +421,9 @@ class PostgrestShim {
       await tx.unsafe(`SELECT set_config('request.jwt.claim.sub', $1, true)`, [
         this.userId,
       ]);
-      await tx.unsafe(`SELECT set_config('request.jwt.claims', '{}', true)`);
+      await tx.unsafe(`SELECT set_config('request.jwt.claims', $1, true)`, [
+        this.clientId ? JSON.stringify({ client_id: this.clientId }) : "{}",
+      ]);
       return tx.unsafe(text, params);
     });
   }
@@ -425,15 +434,16 @@ class PostgrestShim {
 // ---------------------------------------------------------------------------
 
 function createProofApp(sql) {
-  const tokens = new Map([
-    [TOKEN_A, OWNER_A],
-    [TOKEN_B, OWNER_B],
+  const principals = new Map([
+    [TOKEN_A, { userId: OWNER_A, clientId: null }],
+    [TOKEN_B, { userId: OWNER_B, clientId: null }],
+    [TOKEN_OAUTH_A, { userId: OWNER_A, clientId: "mcp-client" }],
   ]);
   const app = createApp({
-    verifyToken: async (token) => tokens.get(token) ?? null,
+    verifyToken: async (token) => principals.get(token)?.userId ?? null,
     createRequestClient: (token) => {
-      const userId = tokens.get(token) ?? null;
-      return new PostgrestShim(sql, userId);
+      const principal = principals.get(token) ?? { userId: null, clientId: null };
+      return new PostgrestShim(sql, principal.userId, principal.clientId);
     },
     now: () => NOW,
   });
@@ -488,10 +498,8 @@ async function main() {
       await applyFile(sql, tag);
       applied += 1;
     }
-    await sql.unsafe(
-      `GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO authenticated;`,
-    );
     await sql.unsafe(`GRANT USAGE ON SCHEMA public TO authenticated;`);
+    await sql.unsafe(`GRANT SELECT ON TABLE public.user_time_context TO authenticated;`);
     log("MIGRATE", `${applied} journal migrations applied`);
 
     const { request } = createProofApp(sql);
@@ -557,6 +565,42 @@ async function main() {
     assert(updated.body.expense.version === 2, "update increments version");
     assert(updated.body.expense.amountMinor === 2400, "update persists the amount");
     assert(updated.body.expense.note === "updated coffee", "update persists the note");
+    assert(
+      !("createFingerprint" in updated.body.expense) &&
+        !("create_fingerprint" in updated.body.expense),
+      "the internal create fingerprint is never exposed on the wire",
+    );
+
+    const [afterEditSum] = await sql.unsafe(
+      `SELECT coalesce(sum(amount_minor), 0)::int AS total
+       FROM public.personal_expenses
+       WHERE owner_user_id = $1::uuid AND deleted_at IS NULL`,
+      [OWNER_A],
+    );
+    assert(afterEditSum.total === 2400, "active sum equals the edited amount exactly once");
+
+    // A retry of the ORIGINAL create payload replays the current (edited) row.
+    const replayOriginal = await request("POST", "/api/expenses", TOKEN_A, baseExpense());
+    assert(replayOriginal.status === 200, "original payload after edit answers 200");
+    assert(replayOriginal.body.replayed === true, "original payload after edit is a replay");
+    assert(replayOriginal.body.expense.id === expenseId, "replay returns the same row");
+    assert(replayOriginal.body.expense.amountMinor === 2400, "replay returns the edited row");
+    assert(replayOriginal.body.expense.note === "updated coffee", "replay returns the edited note");
+
+    // Retrying the edited values is NOT the original payload and must conflict.
+    const replayEdited = await request("POST", "/api/expenses", TOKEN_A, {
+      ...baseExpense(),
+      amountMinor: 2400,
+      note: "updated coffee",
+    });
+    assert(replayEdited.status === 409, "edited values cannot rewrite the original receipt");
+    assert(replayEdited.body.error.code === "CONFLICT", "edited-values conflict envelope");
+
+    const replayDifferent = await request("POST", "/api/expenses", TOKEN_A, {
+      ...baseExpense(),
+      amountMinor: 9999,
+    });
+    assert(replayDifferent.status === 409, "different payload remains a conflict");
 
     const stale = await request("PATCH", `/api/expenses/${expenseId}`, TOKEN_A, {
       version: 1,
@@ -585,6 +629,13 @@ async function main() {
       !listedAfterDelete.body.expenses.some((entry) => entry.id === expenseId),
       "soft-deleted row is excluded from list",
     );
+    const [afterDeleteSum] = await sql.unsafe(
+      `SELECT coalesce(sum(amount_minor), 0)::int AS total
+       FROM public.personal_expenses
+       WHERE owner_user_id = $1::uuid AND deleted_at IS NULL`,
+      [OWNER_A],
+    );
+    assert(afterDeleteSum.total === 0, "active sum is zero after the only row is deleted");
 
     const repeatDelete = await request("DELETE", `/api/expenses/${expenseId}`, TOKEN_A);
     assert(repeatDelete.status === 200, "repeat delete answers 200");
@@ -616,7 +667,51 @@ async function main() {
     assert(replayAgain.status === 200, "same-key replay after soft delete answers 200");
     assert(replayAgain.body.replayed === true, "soft-deleted replay is flagged");
     assert(replayAgain.body.expense.id === replayId, "soft-deleted replay returns the prior row");
+    assert(
+      replayAgain.body.expense.deletedAt === replayDeleted.body.deletedAt,
+      "soft-deleted replay exposes the existing deletedAt",
+    );
     log("SOFT DELETE", "get/list exclude deletion; repeat delete is idempotent; replay keeps receipt");
+
+    // CONCURRENT DELETE / DELETE ------------------------------------------------
+    const deleteRaceBody = baseExpense({
+      idempotencyKey: "api-concurrent-delete-1",
+      amountMinor: 450,
+      note: "delete race",
+      merchant: null,
+      paymentMethod: null,
+    });
+    const deleteRaceCreated = await request("POST", "/api/expenses", TOKEN_A, deleteRaceBody);
+    assert(deleteRaceCreated.status === 201, "delete-race fixture created");
+    const deleteRaceId = deleteRaceCreated.body.expense.id;
+    const [deleteOne, deleteTwo] = await Promise.all([
+      request("DELETE", `/api/expenses/${deleteRaceId}`, TOKEN_A),
+      request("DELETE", `/api/expenses/${deleteRaceId}`, TOKEN_A),
+    ]);
+    assert(deleteOne.status === 200 && deleteTwo.status === 200, "both deletes answer 200");
+    const deleteFlags = [deleteOne.body.alreadyDeleted, deleteTwo.body.alreadyDeleted].sort();
+    assert(
+      deleteFlags[0] === false && deleteFlags[1] === true,
+      "exactly one concurrent delete performs the soft delete",
+    );
+    assert(
+      deleteOne.body.deletedAt === deleteTwo.body.deletedAt,
+      "concurrent deletes share one deletedAt",
+    );
+    const [deleteRaceRow] = await sql.unsafe(
+      `SELECT deleted_at, version FROM public.personal_expenses WHERE id = $1::uuid`,
+      [deleteRaceId],
+    );
+    assert(deleteRaceRow.deleted_at instanceof Date, "delete-race row remains durable");
+    assert(Number(deleteRaceRow.version) === 2, "concurrent delete bumps version exactly once");
+    const [deleteRaceSum] = await sql.unsafe(
+      `SELECT coalesce(sum(amount_minor), 0)::int AS total
+       FROM public.personal_expenses
+       WHERE owner_user_id = $1::uuid AND deleted_at IS NULL`,
+      [OWNER_A],
+    );
+    assert(deleteRaceSum.total === 0, "concurrent delete leaves no active amount");
+    log("SOFT DELETE", "concurrent delete/delete bumps version once and leaves totals unchanged");
 
     // CONCURRENT DOUBLE SUBMIT -------------------------------------------------
     const concurrentBody = baseExpense({
@@ -672,6 +767,41 @@ async function main() {
       assert(response.status === 400, `amount ${String(amount)} must answer 400`);
       assert(response.body.error.code === "VALIDATION", "invalid amount envelope");
     }
+    for (const [index, occurredAt] of [
+      "2026-02-30T10:00:00Z",
+      "2026-04-31T10:00:00Z",
+      "2026-11-07T24:00:00Z",
+      "2026-11-07T23:60:00Z",
+      "2026-11-07T10:00:00+24:00",
+    ].entries()) {
+      const response = await request(
+        "POST",
+        "/api/expenses",
+        TOKEN_A,
+        baseExpense({ idempotencyKey: `invalid-date-${index}`, occurredAt }),
+      );
+      assert(response.status === 400, `occurredAt ${occurredAt} must answer 400`);
+      assert(response.body.error.code === "VALIDATION", "invalid date envelope");
+    }
+    for (const [index, field] of ["note", "merchant", "idempotencyKey"].entries()) {
+      const response = await request(
+        "POST",
+        "/api/expenses",
+        TOKEN_A,
+        baseExpense({ idempotencyKey: `invalid-char-${index}`, [field]: "bad\u0000value" }),
+      );
+      assert(response.status === 400, `NUL in ${field} must answer 400`);
+      assert(response.body.error.code === "VALIDATION", "NUL envelope");
+    }
+    const unpaired = await request(
+      "POST",
+      "/api/expenses",
+      TOKEN_A,
+      baseExpense({ idempotencyKey: "invalid-surrogate", note: "bad\ud800value" }),
+    );
+    assert(unpaired.status === 400, "unpaired surrogate must answer 400");
+    assert(unpaired.body.error.code === "VALIDATION", "surrogate envelope");
+
     const unknownOwner = await request("POST", "/api/expenses", TOKEN_A, {
       ...baseExpense({ idempotencyKey: "invalid-owner" }),
       ownerUserId: OWNER_B,
@@ -722,6 +852,28 @@ async function main() {
     );
     assert(crossOwnerKeys.count === 2, "same key is scoped per owner");
     log("RLS", "cross-owner get/patch/delete answer 404 and keys are owner-scoped");
+
+    // OAUTH / CLIENT_ID CLAIM --------------------------------------------------
+    const oauthCreate = await request(
+      "POST",
+      "/api/expenses",
+      TOKEN_OAUTH_A,
+      baseExpense({ idempotencyKey: "oauth-insert", amountMinor: 555 }),
+    );
+    assert(oauthCreate.status === 403, "client_id token insert answers 403");
+    assert(oauthCreate.body.error.code === "FORBIDDEN", "client_id insert envelope");
+    const [oauthRows] = await sql.unsafe(
+      `SELECT count(*)::int AS count FROM public.personal_expenses
+       WHERE idempotency_key = 'oauth-insert'`,
+    );
+    assert(oauthRows.count === 0, "client_id insert leaves no row");
+
+    const oauthGet = await request("GET", `/api/expenses/${activeA.id}`, TOKEN_OAUTH_A);
+    assert(oauthGet.status === 404, "client_id token cannot read another owner's row");
+    const oauthList = await request("GET", "/api/expenses", TOKEN_OAUTH_A);
+    assert(oauthList.status === 200, "client_id list answers 200 with no rows");
+    assert(oauthList.body.expenses.length === 0, "client_id token sees no expenses");
+    log("RLS", "client_id claim insert is 403 and reads are empty/404");
 
     // DST / TIMEZONE WINDOWS ---------------------------------------------------
     const dstRows = [

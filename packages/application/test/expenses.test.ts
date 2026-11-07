@@ -3,11 +3,16 @@ import test from "node:test";
 
 import { createAuthenticatedActor } from "../src/auth/actor";
 import type {
+  ExpenseIdempotencyReceipt,
   ExpenseListRecordQuery,
   ExpenseRepository,
   ExpenseUpdateRecordInput,
 } from "../src/expenses/ports";
-import type { PersonalExpense } from "@ega/domain/expenses";
+import {
+  expenseCreateFingerprint,
+  type ExpenseCreateValues,
+  type PersonalExpense,
+} from "@ega/domain/expenses";
 
 import {
   createExpense,
@@ -51,13 +56,33 @@ const CREATE_BODY = {
   idempotencyKey: "key-1",
 };
 
+const ORIGINAL_VALUES: ExpenseCreateValues = {
+  occurredAt: "2026-11-07T08:30:00.000Z",
+  amountMinor: 2250,
+  category: "coffee",
+  note: "morning coffee",
+  merchant: "Cafe Atlas",
+  needVsWant: "want",
+  paymentMethod: "card",
+  idempotencyKey: "key-1",
+};
+
+const ORIGINAL_FINGERPRINT = expenseCreateFingerprint(ORIGINAL_VALUES);
+
+function receipt(
+  value: PersonalExpense,
+  createFingerprint = ORIGINAL_FINGERPRINT,
+): ExpenseIdempotencyReceipt {
+  return { expense: value, createFingerprint };
+}
+
 type FakeState = {
-  existing: PersonalExpense | null;
+  existing: ExpenseIdempotencyReceipt | null;
   createResults: Array<
     | { ok: true; value: PersonalExpense }
     | { ok: false; error: { code: "conflict" | "unknown" | "notFound" | "forbidden" } }
   >;
-  racedExisting: PersonalExpense | null;
+  racedExisting: ExpenseIdempotencyReceipt | null;
   updateResult:
     | { ok: true; value: PersonalExpense }
     | { ok: false; error: { code: "conflict" | "unknown" | "notFound" | "forbidden" } };
@@ -126,7 +151,7 @@ test("create persists a validated expense and reports a fresh receipt", async ()
 });
 
 test("create replays the prior receipt for the same canonical payload", async () => {
-  const { repository, calls } = makeRepository({ existing: expense() });
+  const { repository, calls } = makeRepository({ existing: receipt(expense()) });
   const result = await createExpense(ACTOR, repository, CREATE_BODY);
 
   assert.equal(result.ok, true);
@@ -136,8 +161,41 @@ test("create replays the prior receipt for the same canonical payload", async ()
   assert.equal(calls.create, 0);
 });
 
-test("create rejects the same key with a different payload as a conflict", async () => {
-  const { repository, calls } = makeRepository({ existing: expense({ amountMinor: 999 }) });
+test("create replays the original payload after the row was edited", async () => {
+  const edited = expense({ amountMinor: 2400, note: "updated coffee", version: 2 });
+  const { repository } = makeRepository({ existing: receipt(edited) });
+  const result = await createExpense(ACTOR, repository, CREATE_BODY);
+
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.data.replayed, true);
+  assert.equal(result.data.expense.amountMinor, 2400);
+  assert.equal(result.data.expense.note, "updated coffee");
+  assert.equal(result.data.expense.version, 2);
+});
+
+test("create rejects edited values even though they match the current row", async () => {
+  const edited = expense({ amountMinor: 2400, note: "updated coffee", version: 2 });
+  const { repository, calls } = makeRepository({ existing: receipt(edited) });
+  const result = await createExpense(ACTOR, repository, {
+    ...CREATE_BODY,
+    amountMinor: 2400,
+    note: "updated coffee",
+  });
+
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.equal(result.code, "conflict");
+  assert.equal(calls.create, 0);
+});
+
+test("create rejects the same key with a different original payload", async () => {
+  const otherFingerprint = expenseCreateFingerprint({
+    ...ORIGINAL_VALUES,
+    amountMinor: 999,
+  });
+  const { repository, calls } = makeRepository({
+    existing: receipt(expense({ amountMinor: 999 }), otherFingerprint),
+  });
   const result = await createExpense(ACTOR, repository, CREATE_BODY);
 
   assert.equal(result.ok, false);
@@ -145,10 +203,24 @@ test("create rejects the same key with a different payload as a conflict", async
   assert.equal(calls.create, 0);
 });
 
+test("create replays the original payload after a soft delete", async () => {
+  const deleted = expense({
+    version: 2,
+    deletedAt: "2026-11-08T00:00:00.000Z",
+  });
+  const { repository } = makeRepository({ existing: receipt(deleted) });
+  const result = await createExpense(ACTOR, repository, CREATE_BODY);
+
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.data.replayed, true);
+  assert.equal(result.data.expense.deletedAt, "2026-11-08T00:00:00.000Z");
+});
+
 test("create classifies a concurrent unique-constraint race as a replay", async () => {
   const { repository, calls } = makeRepository({
     createResults: [{ ok: false, error: { code: "conflict" } }],
-    racedExisting: expense(),
+    racedExisting: receipt(expense()),
   });
   const result = await createExpense(ACTOR, repository, CREATE_BODY);
 

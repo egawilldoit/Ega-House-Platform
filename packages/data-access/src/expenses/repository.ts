@@ -1,6 +1,8 @@
 import type {
   AuthenticatedActor,
+  ExpenseCreateRecordInput,
   ExpenseDeleteOutcome,
+  ExpenseIdempotencyReceipt,
   ExpenseListRecordQuery,
   ExpenseRepository,
   ExpenseUpdateRecordInput,
@@ -9,7 +11,6 @@ import type {
 import {
   EXPENSE_CURRENCY,
   type ExpenseCategory,
-  type ExpenseCreateValues,
   type ExpenseNeedVsWant,
   type ExpensePaymentMethod,
   type PersonalExpense,
@@ -34,6 +35,9 @@ const IDEMPOTENCY_CONSTRAINT = "personal_expenses_owner_idempotency_key_unique";
 const EXPENSE_COLUMNS =
   "id, occurred_at, amount_minor, currency, category, note, merchant, need_vs_want, payment_method, idempotency_key, version, deleted_at, created_at, updated_at";
 
+const EXPENSE_COLUMNS_WITH_FINGERPRINT =
+  "id, occurred_at, amount_minor, currency, category, note, merchant, need_vs_want, payment_method, idempotency_key, version, deleted_at, created_at, updated_at, create_fingerprint";
+
 type ExpenseRow = {
   id: string;
   occurred_at: string;
@@ -49,6 +53,10 @@ type ExpenseRow = {
   deleted_at: string | null;
   created_at: string;
   updated_at: string;
+};
+
+type ExpenseIdempotencyRow = ExpenseRow & {
+  create_fingerprint: string;
 };
 
 type ExpenseVersionRow = {
@@ -80,28 +88,21 @@ function toRecord(row: ExpenseRow): PersonalExpense {
 
 function toInsertPayload(
   actor: AuthenticatedActor,
-  input: {
-    occurredAt: string;
-    amountMinor: number;
-    category: ExpenseCategory;
-    note: string | null;
-    merchant: string | null;
-    needVsWant: ExpenseNeedVsWant;
-    paymentMethod: ExpensePaymentMethod | null;
-    idempotencyKey: string;
-  },
+  input: ExpenseCreateRecordInput,
 ): Record<string, unknown> {
+  const values = input.values;
   return {
     owner_user_id: actor.userId,
-    occurred_at: input.occurredAt,
-    amount_minor: input.amountMinor,
+    occurred_at: values.occurredAt,
+    amount_minor: values.amountMinor,
     currency: EXPENSE_CURRENCY,
-    category: input.category,
-    note: input.note,
-    merchant: input.merchant,
-    need_vs_want: input.needVsWant,
-    payment_method: input.paymentMethod,
-    idempotency_key: input.idempotencyKey,
+    category: values.category,
+    note: values.note,
+    merchant: values.merchant,
+    need_vs_want: values.needVsWant,
+    payment_method: values.paymentMethod,
+    idempotency_key: values.idempotencyKey,
+    create_fingerprint: input.createFingerprint,
   };
 }
 
@@ -131,22 +132,29 @@ export class SupabaseExpenseRepository implements ExpenseRepository {
   async findByIdempotencyKey(
     actor: AuthenticatedActor,
     idempotencyKey: string,
-  ): Promise<RepositoryResult<PersonalExpense | null>> {
+  ): Promise<RepositoryResult<ExpenseIdempotencyReceipt | null>> {
     const { data, error } = await this.supabase
       .from(TABLE)
-      .select(EXPENSE_COLUMNS)
+      .select(EXPENSE_COLUMNS_WITH_FINGERPRINT)
       .eq("owner_user_id", actor.userId)
       .eq("idempotency_key", idempotencyKey)
       .maybeSingle();
 
     if (error) return { ok: false, error: sanitizeSupabaseError(error) };
     if (!data) return { ok: true, value: null };
-    return { ok: true, value: toRecord(data as ExpenseRow) };
+    const row = data as ExpenseIdempotencyRow;
+    return {
+      ok: true,
+      value: {
+        expense: toRecord(row),
+        createFingerprint: String(row.create_fingerprint),
+      },
+    };
   }
 
   async create(
     actor: AuthenticatedActor,
-    input: ExpenseCreateValues,
+    input: ExpenseCreateRecordInput,
   ): Promise<RepositoryResult<PersonalExpense>> {
     const { data, error } = await this.supabase
       .from(TABLE)
@@ -157,6 +165,9 @@ export class SupabaseExpenseRepository implements ExpenseRepository {
     if (error) {
       if (isSupabaseUniqueConstraintViolation(error, IDEMPOTENCY_CONSTRAINT)) {
         return { ok: false, error: { code: "conflict" } };
+      }
+      if (error.code === "23505") {
+        return { ok: false, error: { code: "unknown" } };
       }
       return { ok: false, error: sanitizeSupabaseError(error) };
     }

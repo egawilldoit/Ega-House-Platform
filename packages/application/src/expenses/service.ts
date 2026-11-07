@@ -1,10 +1,9 @@
 import {
-  expenseMatchesCreateValues,
+  expenseCreateFingerprint,
   isExpenseId,
   parseCreateExpenseInput,
   parseExpenseListQuery,
   parseUpdateExpenseInput,
-  type ExpenseCreateValues,
   type ExpenseListValues,
   type PersonalExpense,
 } from "@ega/domain/expenses";
@@ -18,7 +17,7 @@ import {
   type RepositoryFailure,
   type RepositoryResult,
 } from "../shared/result";
-import type { ExpenseRepository } from "./ports";
+import type { ExpenseIdempotencyReceipt, ExpenseRepository } from "./ports";
 
 /**
  * Expense use cases (PO-06 Slice A, issue #346).
@@ -71,13 +70,13 @@ function validateId(id: unknown): string | null {
 }
 
 function replayOutcome(
-  existing: PersonalExpense,
-  values: ExpenseCreateValues,
+  existing: ExpenseIdempotencyReceipt,
+  createFingerprint: string,
 ): ApplicationResult<CreateExpenseOutcome> {
-  if (!expenseMatchesCreateValues(existing, values)) {
+  if (existing.createFingerprint !== createFingerprint) {
     return applicationFailure(IDEMPOTENCY_CONFLICT, "conflict");
   }
-  return applicationSuccess({ expense: existing, replayed: true });
+  return applicationSuccess({ expense: existing.expense, replayed: true });
 }
 
 export async function createExpense(
@@ -90,6 +89,7 @@ export async function createExpense(
     return applicationFailure(parsed.message, "validation");
   }
   const values = parsed.value;
+  const createFingerprint = expenseCreateFingerprint(values);
 
   const existing = await repository.findByIdempotencyKey(
     actor,
@@ -98,9 +98,9 @@ export async function createExpense(
   if (!existing.ok) {
     return failureFor(existing.error.code, "Unable to save the expense right now.");
   }
-  if (existing.value) return replayOutcome(existing.value, values);
+  if (existing.value) return replayOutcome(existing.value, createFingerprint);
 
-  const created = await repository.create(actor, values);
+  const created = await repository.create(actor, { values, createFingerprint });
   if (created.ok) {
     return applicationSuccess({ expense: created.value, replayed: false });
   }
@@ -113,7 +113,7 @@ export async function createExpense(
       values.idempotencyKey,
     );
     if (raced.ok) {
-      if (raced.value) return replayOutcome(raced.value, values);
+      if (raced.value) return replayOutcome(raced.value, createFingerprint);
       return applicationFailure(IDEMPOTENCY_CONFLICT, "conflict");
     }
     return failureFor(raced.error.code, "Unable to save the expense right now.");

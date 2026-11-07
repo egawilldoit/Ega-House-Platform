@@ -1303,6 +1303,7 @@ export const personalExpenses = pgTable(
     needVsWant: varchar("need_vs_want", { length: 8 }).notNull(),
     paymentMethod: varchar("payment_method", { length: 32 }),
     idempotencyKey: varchar("idempotency_key", { length: 128 }).notNull(),
+    createFingerprint: varchar("create_fingerprint", { length: 1024 }).notNull(),
     version: integer("version").default(1).notNull(),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
@@ -1339,6 +1340,10 @@ export const personalExpenses = pgTable(
     check(
       "personal_expenses_idempotency_key_check",
       sql`length(btrim(${table.idempotencyKey})) > 0`,
+    ),
+    check(
+      "personal_expenses_create_fingerprint_check",
+      sql`length(${table.createFingerprint}) between 1 and 1024`,
     ),
     check(
       "personal_expenses_note_check",
