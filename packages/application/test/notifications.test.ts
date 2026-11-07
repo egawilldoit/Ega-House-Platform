@@ -67,7 +67,7 @@ test("classifyFcmError only invalidates endpoints on proven token evidence", () 
     classifyFcmError({
       httpStatus: 404,
       fcmCode: "NOT_FOUND",
-      details: [{ errorCode: "UNREGISTERED" }],
+      details: [{ "@type": "type.googleapis.com/google.firebase.fcm.v1.FcmError", errorCode: "UNREGISTERED" }],
     }),
     "invalid_endpoint",
   );
@@ -118,6 +118,8 @@ test("classifyFcmError only invalidates endpoints on proven token evidence", () 
   assert.equal(classifyFcmError({ httpStatus: 503, fcmCode: "UNAVAILABLE" }), "transient");
   assert.equal(classifyFcmError({ httpStatus: 401, fcmCode: "UNAUTHENTICATED" }), "auth");
   assert.equal(classifyFcmError({ httpStatus: 403 }), "auth");
+  assert.equal(classifyFcmError({ httpStatus: 400, details: [{ "@type": "type.googleapis.com/google.rpc.ErrorInfo", reason: "UNREGISTERED" }] }), "permanent");
+  assert.equal(classifyFcmError({ httpStatus: 403, details: [{ "@type": "type.googleapis.com/google.rpc.ErrorInfo", code: "UNREGISTERED" }] }), "auth");
 
   // Precedence: transient/auth evidence wins over token-invalid text/details.
   assert.equal(

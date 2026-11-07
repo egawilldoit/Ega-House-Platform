@@ -477,11 +477,13 @@ export async function processDueTaskReminders(
 
     const title = "Task reminder";
     const body = claimed.value.taskTitle?.trim() || "You have a task reminder";
-    const eventKey = buildNotificationEventKey("task_reminder", claimed.value.id);
-    if (!eventKey) {
+    const typedEventKey = buildNotificationEventKey("task_reminder", claimed.value.id);
+    if (!typedEventKey) {
       counts.skipped += 1;
       continue;
     }
+    // Preserve the persisted reminder identity across the event taxonomy change.
+    const eventKey = typedEventKey.replace("task_reminder:", "task-reminder:");
 
     // Every producer goes through the canonical use case so copy and target
     // policy are enforced at one boundary even for the live cron producer.

@@ -185,4 +185,5 @@ test("provided event keys must match the canonical type prefix and canonicalize 
   assert.equal(normalizeNotificationEventKey("task_reminder", "task_reminder:rem 1"), null);
   assert.equal(normalizeNotificationEventKey("task_reminder", " task_reminder :rem-1 "), null);
   assert.equal(normalizeNotificationEventKey("not_a_type", "not_a_type:1"), null);
+  assert.equal(normalizeNotificationEventKey("task_reminder", "task-reminder:rem-1"), "task-reminder:rem-1");
 });

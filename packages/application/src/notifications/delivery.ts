@@ -43,28 +43,18 @@ const VERIFIED_TOKEN_INVALID_CODES = new Set([
   "invalid-registration",
 ]);
 
-/** Extract structured errorCode/reason/code values; never substring-match details. */
-function collectDetailCodes(details: unknown): string[] {
-  const codes: string[] = [];
-  const visit = (value: unknown, depth = 0): void => {
-    if (depth > 5 || value === null || value === undefined) return;
-    if (Array.isArray(value)) {
-      for (const item of value) visit(item, depth + 1);
-      return;
-    }
-    if (typeof value === "object") {
-      const record = value as Record<string, unknown>;
-      for (const key of ["errorCode", "error_code", "reason", "code"]) {
-        const candidate = record[key];
-        if (typeof candidate === "string") codes.push(candidate.trim().toLowerCase());
-      }
-      for (const nested of Object.values(record)) {
-        if (nested && typeof nested === "object") visit(nested, depth + 1);
-      }
-    }
-  };
-  visit(details);
-  return codes;
+/** Read only documented typed FCM detail; generic google.rpc details are not token proof. */
+function hasFcmTokenInvalidDetail(details: unknown): boolean {
+  if (!Array.isArray(details)) return false;
+  return details.some((detail) => {
+    if (!detail || typeof detail !== "object") return false;
+    const record = detail as Record<string, unknown>;
+    return (
+      record["@type"] === "type.googleapis.com/google.firebase.fcm.v1.FcmError" &&
+      typeof record.errorCode === "string" &&
+      VERIFIED_TOKEN_INVALID_CODES.has(record.errorCode.trim().toLowerCase())
+    );
+  });
 }
 
 /**
@@ -115,9 +105,7 @@ export function classifyFcmError(input: {
   // structured codes only: UNREGISTERED_PROJECT, UNREGISTERED_APP, or
   // `reason: "app unregistered"` must not match.
   const codeTokenInvalid = VERIFIED_TOKEN_INVALID_CODES.has(code.toLowerCase());
-  const detailTokenInvalid = collectDetailCodes(input.details).some((candidate) =>
-    VERIFIED_TOKEN_INVALID_CODES.has(candidate),
-  );
+  const detailTokenInvalid = hasFcmTokenInvalidDetail(input.details);
   const messageTokenInvalid = TOKEN_INVALID_MESSAGE_RE.test(message);
   const invalidArgumentTokenProof =
     code === "INVALID_ARGUMENT" && (messageTokenInvalid || detailTokenInvalid);
