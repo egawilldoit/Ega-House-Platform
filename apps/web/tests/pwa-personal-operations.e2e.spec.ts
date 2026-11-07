@@ -85,3 +85,60 @@ test("owner edits, reloads and pauses a personal schedule through the redesigned
     page.getByRole("status").filter({ hasText: "Personal schedule saved." }),
   ).toBeVisible();
 });
+
+test("dirty schedule survives browser Back/Forward and clears after Discard", async ({ page }) => {
+  test.skip(!hasPwaAuthCredentials() || process.env.PO02_DISPOSABLE_ENV !== "1", "Requires explicitly authorized disposable environment and test owner");
+  const { ownerA } = getPwaOwners();
+  await signInPwaOwner(page, ownerA, "/settings/appearance");
+  await page.getByRole("link", { name: "Preferences", exact: true }).click();
+  await expect(page).toHaveURL(/\/settings\/preferences$/);
+
+  const monday = page.getByLabel("Monday work minutes");
+  const saveBar = page.getByRole("region", { name: "Schedule save status" });
+  await monday.fill("450");
+  await expect(saveBar).toBeVisible();
+
+  await page.goBack();
+  await expect(page).toHaveURL(/\/settings\/appearance$/);
+
+  await page.goForward();
+  await expect(page).toHaveURL(/\/settings\/preferences$/);
+  await expect(monday).toHaveValue("450");
+  await expect(saveBar.getByText(/Unsaved changes restored/)).toBeVisible();
+
+  await saveBar.getByRole("button", { name: "Discard" }).click();
+  await expect(monday).toHaveValue("480");
+  await expect(saveBar).toBeHidden();
+
+  await page.goBack();
+  await expect(page).toHaveURL(/\/settings\/appearance$/);
+  await page.goForward();
+  await expect(page).toHaveURL(/\/settings\/preferences$/);
+  await expect(monday).toHaveValue("480");
+  await expect(page.getByText(/Unsaved changes restored/)).toHaveCount(0);
+});
+
+test("confirmed anchor leave discards the draft and reaches the destination once", async ({ page }) => {
+  test.skip(!hasPwaAuthCredentials() || process.env.PO02_DISPOSABLE_ENV !== "1", "Requires explicitly authorized disposable environment and test owner");
+  const { ownerA } = getPwaOwners();
+  await signInPwaOwner(page, ownerA, "/settings/appearance");
+  await page.getByRole("link", { name: "Preferences", exact: true }).click();
+  await expect(page).toHaveURL(/\/settings\/preferences$/);
+
+  const monday = page.getByLabel("Monday work minutes");
+  await monday.fill("450");
+  let dialogs = 0;
+  page.once("dialog", async (dialog) => {
+    dialogs += 1;
+    await dialog.accept();
+  });
+
+  await page.getByRole("link", { name: "Appearance", exact: true }).click();
+  await expect(page).toHaveURL(/\/settings\/appearance$/);
+  expect(dialogs).toBe(1);
+
+  await page.goBack();
+  await expect(page).toHaveURL(/\/settings\/preferences$/);
+  await expect(monday).toHaveValue("480");
+  await expect(page.getByText(/Unsaved changes restored/)).toHaveCount(0);
+});

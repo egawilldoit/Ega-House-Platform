@@ -13,6 +13,13 @@ import {
 
 import { DailyTargets } from "./daily-targets";
 import { BlockEditor } from "./block-editor";
+import {
+  clearScheduleDraft,
+  createScheduleDraftKey,
+  getSessionStorage,
+  readScheduleDraft,
+  writeScheduleDraft,
+} from "./schedule-draft-storage";
 import styles from "./preferences.module.css";
 import {
   type Day,
@@ -71,6 +78,13 @@ export function PersonalOperationsForm({
   const [draft, setDraft] = useState<Schedule>(initial);
   const [baseline, setBaseline] = useState<Schedule>(initial);
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [restoredNotice, setRestoredNotice] = useState(false);
+  const restoredCheckedRef = useRef(false);
+  const hadDirtyRef = useRef(false);
+  const draftKey = useMemo(
+    () => createScheduleDraftKey("/settings/preferences", initial),
+    [initial],
+  );
   const now = useMinuteNow();
   const submit = useCallback(
     async (state: PersonalOperationsActionState, formData: FormData) => {
@@ -122,11 +136,57 @@ export function PersonalOperationsForm({
     submittedRef.current = null;
     if (state.ok) {
       setBaseline(submitted);
+      setRestoredNotice(false);
+      clearScheduleDraft(getSessionStorage(), draftKey);
+      hadDirtyRef.current = false;
       formRef.current?.focus({ preventScroll: true });
       return;
     }
     errorRef.current?.focus();
-  }, [state]);
+  }, [state, draftKey]);
+
+  // Restore a preserved draft after an App Router Back/Forward remount. The
+  // key contains the loaded baseline fingerprint, so a different account or
+  // stored schedule cannot inherit this draft.
+  useEffect(() => {
+    if (disabled || restoredCheckedRef.current) return;
+    restoredCheckedRef.current = true;
+    const storage = getSessionStorage();
+    const restored = readScheduleDraft(storage, draftKey);
+    if (!restored) return;
+    if (schedulesEqual(restored, initial)) {
+      clearScheduleDraft(storage, draftKey);
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      setDraft(restored);
+      setRestoredNotice(true);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [disabled, draftKey, initial]);
+
+  // Keep the snapshot in sync with the editable draft. A first mount with no
+  // edits must not clear a snapshot before the restore effect has read it.
+  useEffect(() => {
+    const storage = getSessionStorage();
+    if (dirty) {
+      writeScheduleDraft(storage, draftKey, draft);
+      hadDirtyRef.current = true;
+      return;
+    }
+    if (hadDirtyRef.current) {
+      clearScheduleDraft(storage, draftKey);
+      hadDirtyRef.current = false;
+    }
+  }, [draft, dirty, draftKey]);
+
+  // A real tab close/navigation must not leave a draft for a later account.
+  useEffect(() => {
+    const storage = getSessionStorage();
+    const onPageHide = () => clearScheduleDraft(storage, draftKey);
+    window.addEventListener("pagehide", onPageHide);
+    return () => window.removeEventListener("pagehide", onPageHide);
+  }, [draftKey]);
 
   useEffect(() => {
     if (!focusEditorRef.current) return;
@@ -146,10 +206,16 @@ export function PersonalOperationsForm({
       event.returnValue = "";
     };
 
-    const warnBeforeLeaving = () =>
-      window.confirm(
+    const warnBeforeLeaving = () => {
+      const confirmed = window.confirm(
         "You have unsaved schedule changes. Leave this page and discard them?",
       );
+      if (confirmed) {
+        clearScheduleDraft(getSessionStorage(), draftKey);
+        hadDirtyRef.current = false;
+      }
+      return confirmed;
+    };
 
     const onClick = (event: MouseEvent) => {
       if (
@@ -194,7 +260,7 @@ export function PersonalOperationsForm({
       document.removeEventListener("click", onClick, true);
       document.removeEventListener("submit", onSubmit, true);
     };
-  }, [dirty, disabled]);
+  }, [dirty, disabled, draftKey]);
 
   function selectGuidance(index: number) {
     if (index === resolvedSelectedIndex) {
@@ -247,9 +313,11 @@ export function PersonalOperationsForm({
     status = visibleState.message;
     statusIsError = true;
   } else if (dirty) {
-    status = blocked
-      ? "Fix the highlighted schedule problems before saving."
-      : "Unsaved changes";
+    status = restoredNotice
+      ? "Unsaved changes restored. Review and save, or discard."
+      : blocked
+        ? "Fix the highlighted schedule problems before saving."
+        : "Unsaved changes";
   } else if (visibleState.ok && visibleState.message) {
     status = visibleState.message;
   }
@@ -259,7 +327,9 @@ export function PersonalOperationsForm({
     ? "Saving personal schedule…"
     : visibleState.ok && visibleState.message && !dirty
       ? visibleState.message
-      : "";
+      : restoredNotice && dirty
+        ? "Unsaved changes restored. Review and save, or discard."
+        : "";
 
   return (
     <form
@@ -330,7 +400,11 @@ export function PersonalOperationsForm({
       </div>
 
       {showBar ? (
-        <div className={styles.saveBar}>
+        <div
+          className={styles.saveBar}
+          role="region"
+          aria-label="Schedule save status"
+        >
           <span
             ref={errorRef}
             tabIndex={statusIsError ? -1 : undefined}
@@ -350,6 +424,9 @@ export function PersonalOperationsForm({
               onClick={() => {
                 setIgnoredState(state);
                 setDraft(baseline);
+                setRestoredNotice(false);
+                clearScheduleDraft(getSessionStorage(), draftKey);
+                hadDirtyRef.current = false;
                 setSelectedIndex((current) =>
                   Math.max(0, Math.min(current, baseline.guidance.length - 1)),
                 );

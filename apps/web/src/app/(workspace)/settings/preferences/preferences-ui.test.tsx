@@ -12,6 +12,10 @@ import {
   type PersonalOperationsActionState,
 } from "./personal-operations-form";
 import type { Schedule } from "./schedule-model";
+import {
+  createScheduleDraftKey,
+  writeScheduleDraft,
+} from "./schedule-draft-storage";
 import { WorkspaceDefaultsForm } from "./workspace-defaults-form";
 
 let container: HTMLDivElement;
@@ -20,6 +24,7 @@ let root: Root;
 beforeEach(() => {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
     true;
+  window.sessionStorage.clear();
   container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);
@@ -29,6 +34,7 @@ afterEach(() => {
   act(() => root.unmount());
   container.remove();
   document.body.innerHTML = "";
+  window.sessionStorage.clear();
   vi.restoreAllMocks();
 });
 
@@ -115,6 +121,106 @@ describe("PersonalOperationsForm", () => {
     expect(container.textContent).toContain("7.5h");
     expect(field<HTMLInputElement>('input[id="guidance-0-start"]').value).toBe("06:00");
     expect(container.querySelector('[role="status"]')).not.toBeNull();
+  });
+
+  it("restores a dirty draft after a remount and clears it on Discard", async () => {
+    const initial = schedule();
+    const draft = structuredClone(initial);
+    draft.targets.monday.work = 450;
+    const key = createScheduleDraftKey("/settings/preferences", initial);
+    writeScheduleDraft(window.sessionStorage, key, draft);
+
+    await act(async () => {
+      root.render(
+        <PersonalOperationsForm
+          initial={initial}
+          disabled={false}
+          timezone="UTC"
+          action={vi.fn()}
+        />,
+      );
+    });
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 20));
+    });
+
+    const mondayWork = field<HTMLInputElement>(
+      'input[aria-label="Monday work minutes"]',
+    );
+    expect(mondayWork.value).toBe("450");
+    expect(container.textContent).toContain("Unsaved changes restored");
+    expect(field<HTMLElement>('[role="status"]').textContent).toContain(
+      "Unsaved changes restored",
+    );
+    expect(buttonByText("Discard")).not.toBeNull();
+
+    await act(async () => {
+      buttonByText("Discard").click();
+    });
+
+    expect(mondayWork.value).toBe("480");
+    expect(container.textContent).not.toContain("Unsaved changes restored");
+    expect(window.sessionStorage.getItem(key)).toBeNull();
+  });
+
+  it("does not restore a draft keyed to a different baseline", async () => {
+    const initial = schedule();
+    const otherBaseline = structuredClone(initial);
+    otherBaseline.targets.monday.work = 451;
+    const otherKey = createScheduleDraftKey(
+      "/settings/preferences",
+      otherBaseline,
+    );
+    writeScheduleDraft(window.sessionStorage, otherKey, otherBaseline);
+
+    await act(async () => {
+      root.render(
+        <PersonalOperationsForm
+          initial={initial}
+          disabled={false}
+          timezone="UTC"
+          action={vi.fn()}
+        />,
+      );
+    });
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 20));
+    });
+
+    expect(
+      field<HTMLInputElement>('input[aria-label="Monday work minutes"]').value,
+    ).toBe("480");
+    expect(container.textContent).not.toContain("Unsaved changes restored");
+  });
+
+  it("clears the preserved draft on pagehide", async () => {
+    const initial = schedule();
+    const key = createScheduleDraftKey("/settings/preferences", initial);
+
+    await act(async () => {
+      root.render(
+        <PersonalOperationsForm
+          initial={initial}
+          disabled={false}
+          timezone="UTC"
+          action={vi.fn()}
+        />,
+      );
+    });
+
+    const mondayWork = field<HTMLInputElement>(
+      'input[aria-label="Monday work minutes"]',
+    );
+    await act(async () => {
+      setInputValue(mondayWork, "450");
+    });
+    expect(window.sessionStorage.getItem(key)).not.toBeNull();
+
+    await act(async () => {
+      window.dispatchEvent(new Event("pagehide"));
+    });
+
+    expect(window.sessionStorage.getItem(key)).toBeNull();
   });
 
   it("shows the paused state without misleading upcoming text", async () => {
@@ -288,6 +394,7 @@ describe("PersonalOperationsForm", () => {
       ok: true,
       message: "Personal schedule saved.",
     }));
+    const draftKey = createScheduleDraftKey("/settings/preferences", schedule());
 
     await act(async () => {
       root.render(
@@ -309,6 +416,7 @@ describe("PersonalOperationsForm", () => {
 
     expect(container.textContent).toContain("47.5h");
     expect(container.textContent).toContain("Unsaved changes");
+    expect(window.sessionStorage.getItem(draftKey)).not.toBeNull();
 
     await submit(field<HTMLFormElement>("form"));
 
@@ -322,6 +430,7 @@ describe("PersonalOperationsForm", () => {
       "Personal schedule saved.",
     );
     expect(document.activeElement).toBe(field<HTMLFormElement>("form"));
+    expect(window.sessionStorage.getItem(draftKey)).toBeNull();
   });
 
   it("keeps edits and shows an accessible error when the server rejects a save", async () => {
@@ -329,6 +438,7 @@ describe("PersonalOperationsForm", () => {
       ok: false,
       message: "Check schedule targets and guidance; enabled blocks cannot overlap.",
     }));
+    const draftKey = createScheduleDraftKey("/settings/preferences", schedule());
 
     await act(async () => {
       root.render(
@@ -353,6 +463,7 @@ describe("PersonalOperationsForm", () => {
     const alert = field<HTMLElement>('[role="alert"]');
     expect(alert.textContent).toContain("enabled blocks cannot overlap");
     expect(buttonByText("Save changes").disabled).toBe(false);
+    expect(window.sessionStorage.getItem(draftKey)).not.toBeNull();
   });
 
   it("keeps edits when the action itself rejects", async () => {
