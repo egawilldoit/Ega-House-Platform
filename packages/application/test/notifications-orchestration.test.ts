@@ -54,6 +54,9 @@ type State = {
   preferencesUnavailable: boolean;
   settingsUnavailable: boolean;
   timeContextUnavailable: boolean;
+  devicesUnavailable: boolean;
+  notificationReadUnavailable: boolean;
+  deliveryUpdateUnavailable: boolean;
 };
 
 function createState(overrides: Partial<State> = {}): State {
@@ -70,6 +73,9 @@ function createState(overrides: Partial<State> = {}): State {
     preferencesUnavailable: false,
     settingsUnavailable: false,
     timeContextUnavailable: false,
+    devicesUnavailable: false,
+    notificationReadUnavailable: false,
+    deliveryUpdateUnavailable: false,
     ...overrides,
   };
 }
@@ -181,6 +187,7 @@ function createRepositories(state: State) {
       return ok({ notification: record, created: true });
     },
     async getNotification(actor: { userId: string }, id: string) {
+      if (state.notificationReadUnavailable) return { ok: false as const, error: { code: "unknown" as const } };
       return ok(
         state.notifications.find((n) => n.id === id && n.ownerUserId === actor.userId) ?? null,
       );
@@ -272,6 +279,7 @@ function createRepositories(state: State) {
       return ok([]);
     },
     async updateDelivery(id: string, patch: Partial<NotificationDeliveryRecord>) {
+      if (state.deliveryUpdateUnavailable) return { ok: false as const, error: { code: "unknown" as const } };
       const index = state.deliveries.findIndex((d) => d.id === id);
       if (index < 0) return ok(null);
       Object.assign(state.deliveries[index]!, { ...patch, updatedAt: NOW_ISO });
@@ -296,6 +304,7 @@ function createRepositories(state: State) {
       return ok(null);
     },
     async listActiveDevices(actor: { userId: string }) {
+      if (state.devicesUnavailable) return { ok: false as const, error: { code: "unknown" as const } };
       return ok(state.devices.filter((d) => d.isActive && d.ownerUserId === actor.userId));
     },
     async deactivateByToken(_ownerUserId: string, token: string) {
@@ -827,7 +836,7 @@ test("queue-time preference read failure leaves the intent retryable with no fan
   assert.equal(state.intents[0]!.status, "processing");
 });
 
-test("queue-time quiet-hours settings read failure leaves the intent retryable", async () => {
+test("queue-time quiet-hours read failure creates the event and queued deliveries; dispatch fails closed", async () => {
   const state = createState({ settingsUnavailable: true });
   device(state);
   preference(state, true, true);
@@ -843,10 +852,35 @@ test("queue-time quiet-hours settings read failure leaves the intent retryable",
 
   const result = await processDueTaskReminders(null, dueOptions(state));
   assert.equal(result.ok, true);
-  assert.equal(result.ok ? result.data.skipped : -1, 1);
-  assert.equal(state.notifications.length, 0);
-  assert.equal(state.deliveries.length, 0);
-  assert.equal(state.intents[0]!.status, "processing");
+  assert.equal(result.ok ? result.data.notificationsCreated : -1, 1);
+  assert.equal(result.ok ? result.data.deliveriesQueued : -1, 2);
+  assert.equal(result.ok ? result.data.suppressed : -1, 0);
+  assert.equal(result.ok ? result.data.skipped : -1, 0);
+  assert.equal(state.notifications.length, 1);
+  assert.equal(state.deliveries.length, 2);
+  for (const row of state.deliveries) {
+    assert.equal(row.status, "queued");
+  }
+  assert.equal(state.intents[0]!.status, "processed");
+
+  // Dispatch is authoritative and fails closed on the same settings outage.
+  let calls = 0;
+  const provider: PushProvider = {
+    async send() {
+      calls += 1;
+      return { ok: true, providerMessageId: "should-not-happen" };
+    },
+  };
+  const dispatchResult = await processPendingNotificationDeliveries(
+    deliveryOptions(state, provider, { async send() { calls += 1; return { ok: true }; } }),
+  );
+  assert.equal(dispatchResult.ok, true);
+  assert.equal(dispatchResult.ok ? dispatchResult.data.retried : -1, 2);
+  assert.equal(calls, 0);
+  for (const row of state.deliveries) {
+    assert.equal(row.status, "retry_scheduled");
+    assert.equal(row.lastErrorCode, "quiet_hours_unavailable");
+  }
 });
 
 test("live task producer routes through the canonical use case (non-UUID target degrades)", async () => {
@@ -973,5 +1007,123 @@ test("dispatch time-context read failure defers without provider calls", async (
   assert.equal(result.ok ? result.data.retried : -1, 1);
   assert.equal(row.status, "retry_scheduled");
   assert.equal(row.lastErrorCode, "quiet_hours_unavailable");
+  assert.equal(calls, 0);
+});
+
+test("missing notification_settings table degrades to legacy quiet-hours-disabled behavior", async () => {
+  // The repository maps a missing table (0079 not applied) to ok(null).
+  const state = createState({ settings: null });
+  device(state);
+  preference(state, true, true);
+  state.intents.push({
+    id: "reminder-1",
+    ownerUserId: OWNER,
+    taskId: TASK_ID,
+    remindAt: NOW_ISO,
+    deliveryMode: "both",
+    status: "pending",
+    taskTitle: "Close payroll review",
+  });
+
+  const result = await processDueTaskReminders(null, dueOptions(state));
+  assert.equal(result.ok, true);
+  assert.equal(result.ok ? result.data.notificationsCreated : -1, 1);
+  assert.equal(result.ok ? result.data.deliveriesQueued : -1, 2);
+  assert.equal(result.ok ? result.data.suppressed : -1, 0);
+  assert.equal(result.ok ? result.data.skipped : -1, 0);
+  assert.equal(state.notifications.length, 1);
+  assert.equal(state.deliveries.length, 2);
+  for (const row of state.deliveries) {
+    assert.equal(row.status, "queued");
+  }
+  assert.equal(state.intents[0]!.status, "processed");
+});
+
+test("queue-time device read failure skips the intent instead of silently dropping push", async () => {
+  const state = createState({ devicesUnavailable: true });
+  device(state);
+  preference(state, true, true);
+  state.intents.push({
+    id: "reminder-1",
+    ownerUserId: OWNER,
+    taskId: TASK_ID,
+    remindAt: NOW_ISO,
+    deliveryMode: "both",
+    status: "pending",
+    taskTitle: "Close payroll review",
+  });
+
+  const result = await processDueTaskReminders(null, dueOptions(state));
+  assert.equal(result.ok, true);
+  assert.equal(result.ok ? result.data.skipped : -1, 1);
+  assert.equal(state.deliveries.length, 0);
+  // Event may already exist idempotently, but the intent must remain retryable.
+  assert.equal(state.intents[0]!.status, "processing");
+});
+
+test("notification read failure defers without provider calls; null notification is terminal", async () => {
+  const state = createState({ notificationReadUnavailable: true });
+  const d = device(state);
+  const n = notification(state);
+  const row = delivery(state, { notificationId: n.id, deviceId: d.id });
+  preference(state, true, true);
+
+  let calls = 0;
+  const provider: PushProvider = {
+    async send() {
+      calls += 1;
+      return { ok: true, providerMessageId: "should-not-happen" };
+    },
+  };
+
+  const deferred = await processPendingNotificationDeliveries(
+    deliveryOptions(state, provider, { async send() { calls += 1; return { ok: true }; } }),
+  );
+  assert.equal(deferred.ok, true);
+  assert.equal(deferred.ok ? deferred.data.retried : -1, 1);
+  assert.equal(row.status, "retry_scheduled");
+  assert.equal(row.lastErrorCode, "notification_unavailable");
+  assert.equal(calls, 0);
+
+  // A null notification (not a read failure) is terminal.
+  const missingState = createState();
+  const missingDevice = device(missingState);
+  const missingRow = delivery(missingState, { notificationId: "does-not-exist", deviceId: missingDevice.id });
+  preference(missingState, true, true);
+  const missing = await processPendingNotificationDeliveries(
+    deliveryOptions(missingState, provider, { async send() { calls += 1; return { ok: true }; } }),
+  );
+  assert.equal(missing.ok, true);
+  assert.equal(missing.ok ? missing.data.failed : -1, 1);
+  assert.equal(missingRow.status, "failed");
+  assert.equal(missingRow.lastErrorCode, "missing_notification");
+  assert.equal(calls, 0);
+});
+
+test("deferral persistence failure is reported honestly and left to stale-lease reclaim", async () => {
+  const state = createState({
+    preferencesUnavailable: true,
+    deliveryUpdateUnavailable: true,
+  });
+  const d = device(state);
+  const n = notification(state);
+  const row = delivery(state, { notificationId: n.id, deviceId: d.id });
+
+  let calls = 0;
+  const provider: PushProvider = {
+    async send() {
+      calls += 1;
+      return { ok: true, providerMessageId: "should-not-happen" };
+    },
+  };
+
+  const result = await processPendingNotificationDeliveries(
+    deliveryOptions(state, provider, { async send() { calls += 1; return { ok: true }; } }),
+  );
+  assert.equal(result.ok, true);
+  assert.equal(result.ok ? result.data.retried : -1, 0);
+  assert.equal(result.ok ? result.data.failed : -1, 0);
+  assert.equal(result.ok ? result.data.persistenceErrors : -1, 1);
+  assert.equal(row.status, "sending");
   assert.equal(calls, 0);
 });

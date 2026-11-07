@@ -26,6 +26,19 @@ import { sanitizeSupabaseError } from "../supabase/errors";
 const REMINDER_LEASE_MS = 5 * 60 * 1000;
 const DELIVERY_LEASE_MS = 5 * 60 * 1000;
 
+function isMissingNotificationSettingsTable(error: unknown): boolean {
+  const candidate = error as { code?: unknown; message?: unknown } | null;
+  const code = typeof candidate?.code === "string" ? candidate.code : "";
+  const message = typeof candidate?.message === "string" ? candidate.message : "";
+
+  return (
+    code === "42P01"
+    || code === "PGRST205"
+    || (/notification_settings/.test(message)
+      && /does not exist|schema cache|could not find/i.test(message))
+  );
+}
+
 type Row = Record<string, unknown>;
 
 function asRow(value: unknown): Row {
@@ -622,7 +635,15 @@ export class SupabaseNotificationSettingsRepository implements NotificationSetti
       .select("*")
       .eq("owner_user_id", actor.userId)
       .maybeSingle();
-    if (result.error) return failure(result.error);
+    if (result.error) {
+      // 0079 is additive. Until it is present in a deployment, quiet hours
+      // safely degrade to the legacy disabled behavior rather than stalling
+      // the reminder producer.
+      if (isMissingNotificationSettingsTable(result.error)) {
+        return { ok: true, value: null };
+      }
+      return failure(result.error);
+    }
     if (!result.data) return { ok: true, value: null };
     return { ok: true, value: mapSettings(asRow(result.data)) };
   }

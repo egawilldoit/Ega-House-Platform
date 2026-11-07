@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import type { SupabaseClient } from "@supabase/supabase-js";
+
 import { FcmPushProvider } from "../src/notifications/fcm-provider";
+import { SupabaseNotificationSettingsRepository } from "../src/notifications/repository";
 
 function mockFetch(status: number, body: unknown): typeof fetch {
   return (async () => {
@@ -56,5 +59,42 @@ test("FcmPushProvider handles invalid token response", async () => {
   // For true unit test of classification, we already covered above. This test ensures provider surfaces auth failure when key invalid.
   const result = await provider.send({ token: "bad-token", title: "t", body: "b", data: { notificationId: "n1", type: "task_reminder" } });
   // With invalid private key, auth will fail -> permanent or auth, not invalid_endpoint. That's acceptable.
+  assert.equal(result.ok, false);
+});
+
+function fakeSettingsClient(error: { code: string; message: string }): SupabaseClient {
+  return {
+    from(_table: string) {
+      return {
+        select() {
+          return this;
+        },
+        eq() {
+          return this;
+        },
+        async maybeSingle() {
+          return { data: null, error };
+        },
+      };
+    },
+  } as unknown as SupabaseClient;
+}
+
+test("notification settings missing table degrades to disabled quiet hours", async () => {
+  const repository = new SupabaseNotificationSettingsRepository(
+    fakeSettingsClient({
+      code: "PGRST205",
+      message: "Could not find the table 'public.notification_settings' in the schema cache",
+    }),
+  );
+  const result = await repository.getSettings({ userId: "user-1" });
+  assert.deepEqual(result, { ok: true, value: null });
+});
+
+test("notification settings genuine read failures stay failures", async () => {
+  const repository = new SupabaseNotificationSettingsRepository(
+    fakeSettingsClient({ code: "500", message: "connection reset" }),
+  );
+  const result = await repository.getSettings({ userId: "user-1" });
   assert.equal(result.ok, false);
 });
