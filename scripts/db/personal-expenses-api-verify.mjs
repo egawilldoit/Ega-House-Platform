@@ -545,6 +545,41 @@ async function main() {
     assert(durableCreate.deleted_at === null, "fresh row is active");
     log("CREATE", "201 + durable owner-scoped row with exact centimes");
 
+    const longNote = "\"\\\n".repeat(167).slice(0, 500);
+    const longMerchant = "\"\\".repeat(60);
+    const longFingerprintCreate = await request("POST", "/api/expenses", TOKEN_A, {
+      ...baseExpense({
+        idempotencyKey: "api-long-fingerprint-1",
+        amountMinor: 3300,
+        note: longNote,
+        merchant: longMerchant,
+      }),
+    });
+    assert(
+      longFingerprintCreate.status === 201,
+      `quote/backslash max metadata must create, got ${longFingerprintCreate.status}`,
+    );
+    assert(
+      longFingerprintCreate.body.expense.note === longNote,
+      "long note round-trips unchanged",
+    );
+    const [longFingerprintRow] = await sql.unsafe(
+      `SELECT length(create_fingerprint)::int AS fingerprint_length, note, merchant
+       FROM public.personal_expenses
+       WHERE owner_user_id = $1::uuid AND idempotency_key = 'api-long-fingerprint-1'`,
+      [OWNER_A],
+    );
+    assert(longFingerprintRow, "long-metadata row persisted");
+    assert(longFingerprintRow.note === longNote, "long note persisted");
+    assert(longFingerprintRow.merchant === longMerchant, "long merchant persisted");
+    assert(
+      longFingerprintRow.fingerprint_length > 1024 &&
+        longFingerprintRow.fingerprint_length <= 2048,
+      `fingerprint length ${longFingerprintRow.fingerprint_length} fits 2048`,
+    );
+    await request("DELETE", `/api/expenses/${longFingerprintCreate.body.expense.id}`, TOKEN_A);
+    log("CREATE", "max-length quote/backslash metadata fits the 2048 fingerprint receipt");
+
     const got = await request("GET", `/api/expenses/${expenseId}`, TOKEN_A);
     assert(got.status === 200, "owner get answers 200");
     assert(got.body.expense.id === expenseId, "get returns the same expense");

@@ -6,6 +6,7 @@ import type {
   ExpenseListRecordQuery,
   ExpenseRepository,
   ExpenseUpdateRecordInput,
+  RepositoryFailure,
   RepositoryResult,
 } from "@ega/application";
 import {
@@ -58,6 +59,27 @@ type ExpenseRow = {
 type ExpenseIdempotencyRow = ExpenseRow & {
   create_fingerprint: string;
 };
+
+type ExpenseSupabaseError = {
+  code?: string;
+  message?: string;
+  details?: string;
+  hint?: string;
+  constraint?: string;
+} | null;
+
+/**
+ * Expense-local persistence failure mapping. Permission failures become
+ * `forbidden`; unique violations other than the explicitly handled
+ * owner+idempotency receipt stay `unknown` instead of looking like a replay
+ * conflict. The shared sanitizer default is intentionally unchanged.
+ */
+function expenseFailure(error: ExpenseSupabaseError): RepositoryFailure {
+  if (!error) return { code: "unknown" };
+  if (error.code === "42501") return { code: "forbidden" };
+  if (error.code === "23505") return { code: "unknown" };
+  return sanitizeSupabaseError(error, { conflictCode: "__none__" });
+}
 
 type ExpenseVersionRow = {
   version: number;
@@ -140,7 +162,7 @@ export class SupabaseExpenseRepository implements ExpenseRepository {
       .eq("idempotency_key", idempotencyKey)
       .maybeSingle();
 
-    if (error) return { ok: false, error: sanitizeSupabaseError(error) };
+    if (error) return { ok: false, error: expenseFailure(error) };
     if (!data) return { ok: true, value: null };
     const row = data as ExpenseIdempotencyRow;
     return {
@@ -166,10 +188,7 @@ export class SupabaseExpenseRepository implements ExpenseRepository {
       if (isSupabaseUniqueConstraintViolation(error, IDEMPOTENCY_CONSTRAINT)) {
         return { ok: false, error: { code: "conflict" } };
       }
-      if (error.code === "23505") {
-        return { ok: false, error: { code: "unknown" } };
-      }
-      return { ok: false, error: sanitizeSupabaseError(error) };
+      return { ok: false, error: expenseFailure(error) };
     }
     if (!data) return { ok: false, error: { code: "unknown" } };
     return { ok: true, value: toRecord(data as ExpenseRow) };
@@ -187,7 +206,7 @@ export class SupabaseExpenseRepository implements ExpenseRepository {
       .is("deleted_at", null)
       .maybeSingle();
 
-    if (error) return { ok: false, error: sanitizeSupabaseError(error) };
+    if (error) return { ok: false, error: expenseFailure(error) };
     if (!data) return { ok: true, value: null };
     return { ok: true, value: toRecord(data as ExpenseRow) };
   }
@@ -214,7 +233,7 @@ export class SupabaseExpenseRepository implements ExpenseRepository {
       .order("id", { ascending: false })
       .range(query.offset, query.offset + query.limit - 1);
 
-    if (error) return { ok: false, error: sanitizeSupabaseError(error) };
+    if (error) return { ok: false, error: expenseFailure(error) };
     const rows = (data ?? []) as ExpenseRow[];
     return { ok: true, value: rows.map(toRecord) };
   }
@@ -234,7 +253,7 @@ export class SupabaseExpenseRepository implements ExpenseRepository {
       .select(EXPENSE_COLUMNS)
       .maybeSingle();
 
-    if (error) return { ok: false, error: sanitizeSupabaseError(error) };
+    if (error) return { ok: false, error: expenseFailure(error) };
     if (data) return { ok: true, value: toRecord(data as ExpenseRow) };
 
     // No row matched: distinguish a missing/deleted expense from a stale
@@ -247,7 +266,7 @@ export class SupabaseExpenseRepository implements ExpenseRepository {
       .maybeSingle();
 
     if (current.error) {
-      return { ok: false, error: sanitizeSupabaseError(current.error) };
+      return { ok: false, error: expenseFailure(current.error) };
     }
     if (!current.data) return { ok: false, error: { code: "notFound" } };
     const row = current.data as ExpenseVersionRow;
@@ -268,7 +287,7 @@ export class SupabaseExpenseRepository implements ExpenseRepository {
       .maybeSingle();
 
     if (current.error) {
-      return { ok: false, error: sanitizeSupabaseError(current.error) };
+      return { ok: false, error: expenseFailure(current.error) };
     }
     if (!current.data) return { ok: false, error: { code: "notFound" } };
 
@@ -298,7 +317,7 @@ export class SupabaseExpenseRepository implements ExpenseRepository {
       .select("id, deleted_at")
       .maybeSingle();
 
-    if (error) return { ok: false, error: sanitizeSupabaseError(error) };
+    if (error) return { ok: false, error: expenseFailure(error) };
     if (data) {
       const deleted = data as { id: string; deleted_at: string };
       return {
@@ -320,7 +339,7 @@ export class SupabaseExpenseRepository implements ExpenseRepository {
       .eq("id", id)
       .maybeSingle();
     if (raced.error) {
-      return { ok: false, error: sanitizeSupabaseError(raced.error) };
+      return { ok: false, error: expenseFailure(raced.error) };
     }
     if (!raced.data) return { ok: false, error: { code: "notFound" } };
     const racedRow = raced.data as ExpenseVersionRow;

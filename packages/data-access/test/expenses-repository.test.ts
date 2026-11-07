@@ -210,6 +210,36 @@ test("only the named idempotency unique constraint maps to conflict", async () =
   if (!unrelated.ok) assert.equal(unrelated.error.code, "unknown");
 });
 
+test("non-idempotency unique violations on update/soft delete stay unknown", async () => {
+  const updateFake = new FakeSupabase([
+    {
+      data: null,
+      error: { code: "23505", message: 'duplicate key value violates unique constraint "some_other_unique"' },
+    },
+  ]);
+  const updateResult = await repository(updateFake).update(ACTOR, ID, {
+    changes: { note: "new" },
+    expectedVersion: 1,
+    updatedAt: "2026-11-07T10:00:00.000Z",
+  });
+  assert.equal(updateResult.ok, false);
+  if (!updateResult.ok) assert.equal(updateResult.error.code, "unknown");
+
+  const deleteFake = new FakeSupabase([
+    {
+      data: null,
+      error: { code: "23505", message: 'duplicate key value violates unique constraint "some_other_unique"' },
+    },
+  ]);
+  const deleteResult = await repository(deleteFake).softDelete(
+    ACTOR,
+    ID,
+    "2026-11-07T10:00:00.000Z",
+  );
+  assert.equal(deleteResult.ok, false);
+  if (!deleteResult.ok) assert.equal(deleteResult.error.code, "unknown");
+});
+
 test("42501 permission failures map to forbidden", async () => {
   const fake = new FakeSupabase([
     {

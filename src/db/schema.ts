@@ -1287,7 +1287,9 @@ export const operatorProposals = pgTable(
 /**
  * Owner-scoped personal expense ledger (PO-06 Slice A, issue #346). Amounts
  * are positive integer centimes of MAD; soft delete and optimistic version
- * concurrency keep the ledger bounded and idempotent.
+ * concurrency keep the ledger bounded and idempotent. The BEFORE UPDATE
+ * mutation guard lives in drizzle/0088_personal_expenses.sql because Drizzle
+ * cannot express triggers.
  */
 export const personalExpenses = pgTable(
   "personal_expenses",
@@ -1303,7 +1305,7 @@ export const personalExpenses = pgTable(
     needVsWant: varchar("need_vs_want", { length: 8 }).notNull(),
     paymentMethod: varchar("payment_method", { length: 32 }),
     idempotencyKey: varchar("idempotency_key", { length: 128 }).notNull(),
-    createFingerprint: varchar("create_fingerprint", { length: 1024 }).notNull(),
+    createFingerprint: varchar("create_fingerprint", { length: 2048 }).notNull(),
     version: integer("version").default(1).notNull(),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
@@ -1343,7 +1345,7 @@ export const personalExpenses = pgTable(
     ),
     check(
       "personal_expenses_create_fingerprint_check",
-      sql`length(${table.createFingerprint}) between 1 and 1024`,
+      sql`length(${table.createFingerprint}) between 1 and 2048`,
     ),
     check(
       "personal_expenses_note_check",

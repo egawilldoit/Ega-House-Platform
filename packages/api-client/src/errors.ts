@@ -72,7 +72,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  * Prefers the `{ error: { code, message } }` envelope when present; falls
  * back to the HTTP status when the body is missing or malformed. Unknown
  * envelope codes are normalized to INTERNAL so callers only ever see the
- * five documented codes.
+ * six documented codes.
  */
 export function parseErrorEnvelope(
   body: unknown,

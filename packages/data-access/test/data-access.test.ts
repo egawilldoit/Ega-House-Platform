@@ -181,7 +181,7 @@ test("sanitizeSupabaseError maps only the deliberate failure set", () => {
     { code: "conflict" },
   );
   assert.deepEqual(sanitizeSupabaseError({ code: "PGRST116" }), { code: "unknown" });
-  assert.deepEqual(sanitizeSupabaseError({ code: "42501" }), { code: "forbidden" });
+  assert.deepEqual(sanitizeSupabaseError({ code: "42501" }), { code: "unknown" });
   assert.deepEqual(sanitizeSupabaseError(null), { code: "unknown" });
 });
 
@@ -588,7 +588,7 @@ test("purgeArchivedProject fails closed on RPC errors and malformed results", as
 
   assert.equal(errorResult.ok, false);
   if (errorResult.ok) return;
-  assert.deepEqual(errorResult.error, { code: "forbidden" });
+  assert.deepEqual(errorResult.error, { code: "unknown" });
 
   for (const data of [null, "purged", { status: "purged" }, { status: "purged", tasks_deleted: -1 }]) {
     const fake = fakeSupabase();

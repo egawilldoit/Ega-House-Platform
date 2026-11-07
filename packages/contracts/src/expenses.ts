@@ -103,7 +103,7 @@ export type DeleteExpenseResponse = Readonly<{
   alreadyDeleted: boolean;
 }>;
 
-/** The five transport error codes used by the expense routes. */
+/** The six transport error codes used by the expense routes. */
 export type ExpenseErrorCode =
   | "VALIDATION"
   | "NOT_FOUND"

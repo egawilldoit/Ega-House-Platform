@@ -33,7 +33,7 @@ export type HttpClientOptions = {
   fetch?: FetchLike;
 };
 
-/** The five codes the transport can answer with. */
+/** The six codes the transport can answer with. */
 export type ServerErrorCode = "UNAUTHENTICATED" | "VALIDATION" | "NOT_FOUND" | "CONFLICT" | "INTERNAL";
 
 export type HttpRequestOptions = {

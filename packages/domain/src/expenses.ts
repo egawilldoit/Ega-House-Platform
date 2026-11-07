@@ -297,7 +297,7 @@ function parseBoundedText(
       ? failure(field, "This value is required.")
       : { ok: true, value: null };
   }
-  if (trimmed.length > maxLength) {
+  if (Array.from(trimmed).length > maxLength) {
     return failure(field, `This value must be ${maxLength} characters or fewer.`);
   }
   return { ok: true, value: trimmed };
@@ -667,27 +667,4 @@ export function expenseCreateFingerprint(values: ExpenseCreateValues): string {
     values.paymentMethod,
     values.idempotencyKey,
   ]);
-}
-
-/**
- * Compare a persisted expense with a create payload using the canonical
- * values that define an idempotent replay. Kept for callers that need value
- * comparison; create idempotency itself uses `expenseCreateFingerprint` so
- * edits cannot rewrite the original receipt.
- */
-export function expenseMatchesCreateValues(
-  record: PersonalExpense,
-  values: ExpenseCreateValues,
-): boolean {
-  return (
-    Date.parse(record.occurredAt) === Date.parse(values.occurredAt) &&
-    record.amountMinor === values.amountMinor &&
-    record.currency === EXPENSE_CURRENCY &&
-    record.category === values.category &&
-    record.note === values.note &&
-    record.merchant === values.merchant &&
-    record.needVsWant === values.needVsWant &&
-    record.paymentMethod === values.paymentMethod &&
-    record.idempotencyKey === values.idempotencyKey
-  );
 }
