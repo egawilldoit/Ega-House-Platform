@@ -41,6 +41,7 @@ test("owner edits, reloads and pauses a personal schedule", async ({ page }) => 
   await page.getByRole("button", { name: "Save personal schedule" }).click();
   await expect(page.getByRole("status").filter({ hasText: "Personal schedule saved" })).toBeVisible();
   await monday.getByLabel("Work minutes").fill("480");
+  await expect(page.getByRole("status").filter({ hasText: "Personal schedule saved" })).toHaveCount(0);
   await saturday.getByLabel("Work minutes").fill("240");
   await page.getByRole("group", { name: "Startup" }).getByLabel("Start").fill("06:00");
   await page.getByRole("button", { name: "Save personal schedule" }).click();
