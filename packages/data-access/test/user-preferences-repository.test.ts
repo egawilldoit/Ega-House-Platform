@@ -16,13 +16,12 @@ type QueryResult = {
 
 class FakePreferencesSupabase {
   calls: Array<{ table: string; steps: string[] }> = [];
+  rpcCalls: Array<{ name: string; args: unknown }> = [];
   constructor(private readonly queue: QueryResult[]) {}
 
   rpc(name: string, args: unknown) {
-    assert.equal(name, "patch_user_preferences");
-    const builder = new FakeBuilder("user_preferences", this.queue, this.calls);
-    builder.upsert(args);
-    return builder;
+    this.rpcCalls.push({ name, args });
+    return new FakeBuilder("user_preferences", this.queue, this.calls, `rpc:${name}`);
   }
 
   from(table: string) {
@@ -31,13 +30,16 @@ class FakePreferencesSupabase {
   }
 }
 
-class FakeBuilder {
+class FakeBuilder implements PromiseLike<QueryResult> {
   private steps: string[] = [];
   constructor(
     private readonly table: string,
     private readonly queue: QueryResult[],
     private readonly calls: Array<{ table: string; steps: string[] }>,
-  ) {}
+    prefix?: string,
+  ) {
+    if (prefix) this.steps.push(prefix);
+  }
 
   select(columns: string) {
     this.steps.push(`select:${columns}`);
@@ -49,23 +51,26 @@ class FakeBuilder {
     return this;
   }
 
-  maybeSingle() {
-    this.steps.push("maybeSingle");
+  private settle(label: string): QueryResult {
+    this.steps.push(label);
     const result = this.queue.shift() ?? { data: null, error: null };
     this.calls.push({ table: this.table, steps: [...this.steps] });
-    return Promise.resolve(result);
+    return result;
+  }
+
+  maybeSingle() {
+    return Promise.resolve(this.settle("maybeSingle"));
   }
 
   single() {
-    this.steps.push("single");
-    const result = this.queue.shift() ?? { data: null, error: null };
-    this.calls.push({ table: this.table, steps: [...this.steps] });
-    return Promise.resolve(result);
+    return Promise.resolve(this.settle("single"));
   }
 
-  upsert(payload: unknown, options?: unknown) {
-    this.steps.push(`upsert:${JSON.stringify(payload)} options:${JSON.stringify(options)}`);
-    return this;
+  then<TResult1 = QueryResult, TResult2 = never>(
+    onfulfilled?: ((value: QueryResult) => TResult1 | PromiseLike<TResult1>) | null,
+    onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
+  ): Promise<TResult1 | TResult2> {
+    return Promise.resolve(this.settle("await")).then(onfulfilled, onrejected);
   }
 }
 
@@ -81,6 +86,23 @@ const STORED_ROW = {
   launch_page: "today",
   task_layout: "kanban",
   task_open_mode: "full",
+};
+
+/** Non-default persisted schedule: every value differs from the defaults. */
+const PERSISTED_SCHEDULE = {
+  paused: true,
+  targets: {
+    monday: { work: 450, jobSearch: 60 },
+    tuesday: { work: 480, jobSearch: 90 },
+    wednesday: { work: 480, jobSearch: 90 },
+    thursday: { work: 480, jobSearch: 90 },
+    friday: { work: 480, jobSearch: 90 },
+    saturday: { work: 240, jobSearch: 0 },
+    sunday: { work: 240, jobSearch: 0 },
+  },
+  guidance: [
+    { name: "Deep work", days: ["monday"], start: "09:00", end: "10:30", enabled: true },
+  ],
 };
 
 test("get reads the owner row scoped by verified user_id", async () => {
@@ -103,6 +125,18 @@ test("get reads the owner row scoped by verified user_id", async () => {
   assert.ok(fake.calls[0]?.steps.some((step) => step.includes("eq:user_id=owner-preferences")));
   assert.ok(fake.calls[0]?.steps.some((step) => step.startsWith("select:")));
   assert.ok(fake.calls[0]?.steps.includes("maybeSingle"));
+});
+
+test("get maps a persisted non-null personal_operations column", async () => {
+  const fake = new FakePreferencesSupabase([
+    { data: { ...STORED_ROW, personal_operations: PERSISTED_SCHEDULE }, error: null },
+  ]);
+  const result = await repo(fake).get(ACTOR);
+
+  assert.equal(result.ok, true);
+  if (!result.ok || !result.value) return;
+  assert.equal(result.value.theme, "dark");
+  assert.deepEqual(result.value.personalOperations, PERSISTED_SCHEDULE);
 });
 
 test("get returns null when the owner has no row", async () => {
@@ -156,9 +190,63 @@ test("patch sends only requested fields to the owner-scoped RPC", async () => {
   const fake = new FakePreferencesSupabase([{ data: STORED_ROW, error: null }]);
   const result = await repo(fake).patch(ACTOR, { theme: "light" });
   assert.equal(result.ok, true);
-  const step = fake.calls[0]?.steps.find(entry => entry.startsWith("upsert:"));
-  assert.ok(step?.includes('"theme":"light"'));
-  assert.ok(!step?.includes('"accent"'));
+  assert.deepEqual(fake.rpcCalls, [
+    { name: "patch_user_preferences", args: { patch: { theme: "light" } } },
+  ]);
+});
+
+test("patch never sends a user or actor id in the payload", async () => {
+  const fake = new FakePreferencesSupabase([{ data: STORED_ROW, error: null }]);
+  await repo(fake).patch(ACTOR, { theme: "light" });
+
+  const args = fake.rpcCalls[0]?.args as Record<string, unknown>;
+  assert.deepEqual(Object.keys(args), ["patch"]);
+  assert.equal("userId" in args, false);
+  assert.equal("actorId" in args, false);
+  const patch = args.patch as Record<string, unknown>;
+  assert.equal("userId" in patch, false);
+  assert.equal("ownerUserId" in patch, false);
+});
+
+test("patch reads the returned composite object", async () => {
+  const fake = new FakePreferencesSupabase([
+    {
+      data: { ...STORED_ROW, theme: "light", personal_operations: PERSISTED_SCHEDULE },
+      error: null,
+    },
+  ]);
+  const result = await repo(fake).patch(ACTOR, { theme: "light" });
+
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.value.theme, "light");
+  assert.equal(result.value.accent, "violet");
+  assert.deepEqual(result.value.personalOperations, PERSISTED_SCHEDULE);
+});
+
+test("patch reads a one-element array response", async () => {
+  const fake = new FakePreferencesSupabase([
+    {
+      data: [{ ...STORED_ROW, theme: "light", personal_operations: PERSISTED_SCHEDULE }],
+      error: null,
+    },
+  ]);
+  const result = await repo(fake).patch(ACTOR, { theme: "light" });
+
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.value.theme, "light");
+  assert.equal(result.value.density, "compact");
+  assert.deepEqual(result.value.personalOperations, PERSISTED_SCHEDULE);
+});
+
+test("patch treats a null response as failure", async () => {
+  for (const data of [null, []]) {
+    const fake = new FakePreferencesSupabase([{ data, error: null }]);
+    const result = await repo(fake).patch(ACTOR, { theme: "dark" });
+    assert.equal(result.ok, false, `data=${JSON.stringify(data)} must fail`);
+    if (!result.ok) assert.deepEqual(result.error, { code: "unknown" });
+  }
 });
 
 test("patch returns failure when persistence fails", async () => {
@@ -166,11 +254,22 @@ test("patch returns failure when persistence fails", async () => {
   assert.equal((await repo(fake).patch(ACTOR, { theme: "dark" })).ok, false);
 });
 
-test("patch returns an error when the database returns no row", async () => {
-  const fake = new FakePreferencesSupabase([{ data: null, error: null }]);
-  const result = await repo(fake).patch(ACTOR, { theme: "dark" });
-  assert.equal(result.ok, false);
-  if (!result.ok) assert.deepEqual(result.error, { code: "unknown" });
+test("a null personal_operations column falls back to defaults and keeps appearance", async () => {
+  const fake = new FakePreferencesSupabase([
+    { data: { ...STORED_ROW, theme: "light", personal_operations: null }, error: null },
+  ]);
+  const result = await repo(fake).get(ACTOR);
+
+  assert.equal(result.ok, true);
+  if (!result.ok || !result.value) return;
+  assert.equal(result.value.theme, "light");
+  assert.equal(result.value.accent, "violet");
+  assert.equal(result.value.personalOperations.paused, false);
+  assert.deepEqual(
+    result.value.personalOperations.targets.monday,
+    { work: 480, jobSearch: 90 },
+  );
+  assert.equal(result.value.personalOperations.guidance.length, 7);
 });
 
 test("owner isolation: another actor produces a different scoped query", async () => {
