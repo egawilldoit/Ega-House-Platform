@@ -162,6 +162,17 @@ remains the existing shared Time Context authority
   canonical inbox notification may still exist with zero deliveries.
 - Dispatch re-checks current opt-out and quiet hours before calling a provider;
   an affected delivery becomes `suppressed` (`opt_out` / `quiet_hours`).
+- Preference/settings/time-context **read failures fail closed**: queue-time
+  work is left retryable with no fan-out, and dispatch defers explicitly as
+  `retry_scheduled` (`preferences_unavailable` / `quiet_hours_unavailable`),
+  then `failed` after the bounded retry budget. A missing preference row keeps
+  the legacy enabled default; a missing/invalid owner timezone or invalid
+  `HH:MM` keeps the documented no-suppress default (these are configuration
+  states, not read failures).
+- Event keys must use the canonical `${type}:` prefix; outer whitespace is
+  trimmed before persistence and a mismatched type prefix is rejected.
+- Entity target ids must be UUIDs (the `target_id` column is `uuid`); invalid
+  ids degrade to no target instead of reaching Postgres with `22P02`.
 
 
 ## 5. Data Access / Providers
@@ -289,10 +300,12 @@ no analytics platform, no Kafka/Redis/broker, no microservices.
 The taxonomy includes future event types (`timer_state_change`,
 `routine_reminder`, `money_threshold`, `daily_review`, `weekly_review`,
 `job_search_reminder`) so contracts/schema are stable, but **this baseline adds
-producers only for source features that actually exist** (task reminders and
-direct mentions). There is no expense ledger, routine store, daily check-in
-store, or per-owner review/job-search producer, so none is invented here. The
-legacy weekly-review single-owner email cron is not claimed as a per-owner
+producers only for source features that actually exist**: task reminders
+(`processDueTaskReminders`). Direct mentions (`task_comment_mention`) exist only
+as taxonomy/policy (`critical`, quiet-hours bypass) and have **no producer** on
+this baseline. There is no expense ledger, routine store, daily check-in store,
+or per-owner review/job-search producer, so none is invented here. The legacy
+weekly-review single-owner email cron is not claimed as a per-owner
 notification producer.
 
 Adding APNs later is a new `ApnsPushProvider` behind the same `PushProvider`
@@ -313,8 +326,9 @@ port.
 ## 19. PWA-18 / #347 — current evidence and unverified gaps
 
 **Observed (repository evidence):**
-- Contracts/application/data-access/server/web/mobile typechecks and the
-  notification unit suites pass.
+- Contracts/application/data-access/api-client/server notification checks pass in
+  this worktree; application orchestration covers fail-closed preference and
+  quiet-hours reads, canonical event keys, and canonical target/copy policy.
 - Disposable local PostgreSQL 18 proof applied `0045` + `0079` and verified:
   owner A/B select/update isolation on notifications; duplicate
   `(owner, idempotency_key)` rejection; duplicate channel/device delivery
@@ -322,6 +336,14 @@ port.
   invalid status rejected; taxonomy target/preference constraint rejection;
   `notification_settings` owner isolation (insert/select/update) and invalid
   `HH:MM` rejection. The disposable DB was dropped afterward.
+- Environment-dependent suites are not treated as repository-wide proof:
+  - In this Windows worktree `mobile:typecheck`/`mobile:test` passed; the
+    independent reviewer environment reported pre-existing `jest-expo`/
+    `react-native` export-map failures in untouched files.
+  - Full `web:test`/`server:test` have pre-existing Windows failures (timezone
+    and CRLF assertions, relative-URL fetch, `spawn EINVAL`) reproduced on base
+    `b3f367cc`; the PR CI run (`db-invariants`, `server`, `web`, `mobile`,
+    packages) passed on the hosted runner.
 
 **Not verified / gaps:**
 - Real FCM/Android device delivery and real Resend email delivery.
@@ -332,3 +354,7 @@ port.
 - Track C (#346) migration-sequencing reconciliation before any merge.
 - Web test suite has unrelated pre-existing failures in this Windows
   environment (timezone/CRLF); see the PR report.
+- Adapter-level `SupabaseNotificationRepository.createNotification` replay,
+  partial `createDeliveries`, and real `listPending` SQL behavior are evidenced
+  by the disposable-DB unique constraints plus application fakes; there is no
+  real Supabase-client adapter test in this worktree.

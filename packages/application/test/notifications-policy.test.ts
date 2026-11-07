@@ -7,6 +7,7 @@ import {
   isNotificationTypeCritical,
   isTerminalDeliveryStatus,
   isWithinQuietHours,
+  normalizeNotificationEventKey,
   normalizeNotificationTarget,
   sanitizeNotificationCopy,
 } from "../src/notifications/policy";
@@ -149,13 +150,18 @@ test("standard copy is trimmed and length capped", () => {
   assert.equal(long.body?.length, 500);
 });
 
-test("target normalization rejects unknown/raw ids and keeps singletons id-less", () => {
-  assert.deepEqual(normalizeNotificationTarget("task", " task-123 "), { type: "task", id: "task-123" });
+test("target normalization requires UUIDs for entity targets and keeps singletons id-less", () => {
+  const taskId = "22222222-2222-2222-2222-222222222222";
+  assert.deepEqual(normalizeNotificationTarget("task", ` ${taskId} `), { type: "task", id: taskId });
+  assert.deepEqual(normalizeNotificationTarget("timer", taskId), { type: "timer", id: taskId });
   assert.deepEqual(normalizeNotificationTarget("review", "ignored"), { type: "review", id: null });
   assert.deepEqual(normalizeNotificationTarget("today", null), { type: "today", id: null });
-  assert.equal(normalizeNotificationTarget("goal", "g1"), null);
+  assert.equal(normalizeNotificationTarget("goal", taskId), null);
   assert.equal(normalizeNotificationTarget("task", "   "), null);
   assert.equal(normalizeNotificationTarget("task", null), null);
+  // Non-UUID ids would fail the uuid column with 22P02, so they degrade safely.
+  assert.equal(normalizeNotificationTarget("task", "task-123"), null);
+  assert.equal(normalizeNotificationTarget("task", "123"), null);
   assert.equal(normalizeNotificationTarget("task", "/tasks/abc"), null);
   assert.equal(normalizeNotificationTarget("task", "../abc"), null);
   assert.equal(normalizeNotificationTarget("timer", "abc?x=1"), null);
@@ -167,4 +173,16 @@ test("event identity is stable and bounded", () => {
   assert.equal(buildNotificationEventKey("not_a_type", "rem-1"), null);
   assert.equal(buildNotificationEventKey("task_reminder", "bad id"), null);
   assert.equal(buildNotificationEventKey("task_reminder", ""), null);
+});
+
+test("provided event keys must match the canonical type prefix and canonicalize padding", () => {
+  assert.equal(normalizeNotificationEventKey("task_reminder", "  task_reminder:rem-1  "), "task_reminder:rem-1");
+  assert.equal(normalizeNotificationEventKey("task_reminder", "task_reminder:rem-1"), "task_reminder:rem-1");
+  // A mismatched prefix cannot replay one event id under another taxonomy value.
+  assert.equal(normalizeNotificationEventKey("money_threshold", "task_reminder:rem-1"), null);
+  assert.equal(normalizeNotificationEventKey("task_reminder", "money_threshold:rem-1"), null);
+  // Internal padding is malformed, not silently rewritten.
+  assert.equal(normalizeNotificationEventKey("task_reminder", "task_reminder:rem 1"), null);
+  assert.equal(normalizeNotificationEventKey("task_reminder", " task_reminder :rem-1 "), null);
+  assert.equal(normalizeNotificationEventKey("not_a_type", "not_a_type:1"), null);
 });

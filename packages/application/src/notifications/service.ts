@@ -29,8 +29,8 @@ import {
   buildNotificationEventKey,
   isNotificationTypeCritical,
   isValidClockTime,
-  isValidNotificationEventKey,
   isWithinQuietHours,
+  normalizeNotificationEventKey,
   normalizeNotificationTarget,
   sanitizeNotificationCopy,
 } from "./policy";
@@ -56,7 +56,8 @@ export async function createNotification(
   if (!isNotificationType(input.type)) {
     return applicationFailure("Unsupported notification type.");
   }
-  if (!isValidNotificationEventKey(input.idempotencyKey)) {
+  const eventKey = normalizeNotificationEventKey(input.type, input.idempotencyKey);
+  if (!eventKey) {
     return applicationFailure("A valid notification event key is required.");
   }
 
@@ -72,6 +73,7 @@ export async function createNotification(
     title: copy.title,
     body: copy.body,
     target,
+    idempotencyKey: eventKey,
   });
   if (!result.ok) return applicationFailure("Unable to create notification right now.");
   return applicationSuccess(result.value);
@@ -253,13 +255,13 @@ export async function updateNotificationSettings(
     typeof input.quietHoursEnd === "string" ? input.quietHoursEnd.trim() : base.quietHoursEnd;
 
   if (!isValidClockTime(quietHoursStart)) {
-    return applicationFailure("quietHoursStart must use 24-hour HH:MM.");
+    return applicationFailure("quietHoursStart must use 24-hour HH:MM.", "validation");
   }
   if (!isValidClockTime(quietHoursEnd)) {
-    return applicationFailure("quietHoursEnd must use 24-hour HH:MM.");
+    return applicationFailure("quietHoursEnd must use 24-hour HH:MM.", "validation");
   }
   if (quietHoursStart === quietHoursEnd) {
-    return applicationFailure("quietHoursStart and quietHoursEnd must differ.");
+    return applicationFailure("quietHoursStart and quietHoursEnd must differ.", "validation");
   }
 
   const result = await repository.upsertSettings(actor, {
@@ -301,35 +303,46 @@ export async function unregisterNotificationDevice(
   return applicationSuccess({ ok: true });
 }
 
+export type QuietHoursResolution =
+  | Readonly<{ status: "not_quiet" }>
+  | Readonly<{ status: "quiet" }>
+  /** An infrastructure read failed; callers must not guess quiet/awake. */
+  | Readonly<{ status: "unavailable" }>;
+
 async function resolveQuietHoursSuppression(args: {
   actor: AuthenticatedActor;
   notificationType: NotificationType;
   settingsRepository: NotificationSettingsRepository;
   timeContextRepository: TimeContextRepository;
   now: Date;
-}): Promise<boolean> {
-  if (!isNotificationType(args.notificationType)) return false;
+}): Promise<QuietHoursResolution> {
+  if (!isNotificationType(args.notificationType)) return { status: "not_quiet" };
   // Critical events bypass quiet hours by policy.
-  if (isNotificationTypeCritical(args.notificationType)) return false;
+  if (isNotificationTypeCritical(args.notificationType)) return { status: "not_quiet" };
 
   const settingsResult = await args.settingsRepository.getSettings(args.actor);
-  if (!settingsResult.ok || !settingsResult.value) return false;
+  if (!settingsResult.ok) return { status: "unavailable" };
   const settings = settingsResult.value;
-  if (!settings.quietHoursEnabled) return false;
+  // No stored settings row = documented defaults (quiet hours disabled).
+  if (!settings) return { status: "not_quiet" };
+  if (!settings.quietHoursEnabled) return { status: "not_quiet" };
 
   // The owner timezone is the existing Time Context authority. A missing or
-  // invalid timezone must NOT suppress (never guess from server local time).
+  // invalid timezone is a configuration state, not a read failure: safe
+  // default is to not suppress and never guess from server local time.
   const timezoneResult = await args.timeContextRepository.getTimezone(args.actor);
-  if (!timezoneResult.ok) return false;
+  if (!timezoneResult.ok) return { status: "unavailable" };
   const timezone = timezoneResult.value?.trim() ?? "";
-  if (!timezone || !isValidIANATimeZone(timezone)) return false;
+  if (!timezone || !isValidIANATimeZone(timezone)) return { status: "not_quiet" };
 
   return isWithinQuietHours({
     now: args.now,
     timezone,
     start: settings.quietHoursStart,
     end: settings.quietHoursEnd,
-  });
+  })
+    ? { status: "quiet" }
+    : { status: "not_quiet" };
 }
 
 // Orchestration: due reminders → notification → deliveries
@@ -385,15 +398,35 @@ export async function processDueTaskReminders(
 
     const ownerActor: AuthenticatedActor = { userId: claimed.value.ownerUserId };
 
+    // Fail closed on preference reads: a failed read is not "no preference".
     const prefsResult = await options.preferenceRepository.listPreferences(ownerActor);
-    const pref = prefsResult.ok
-      ? prefsResult.value.find((p) => p.notificationType === "task_reminder") ?? null
-      : null;
+    if (!prefsResult.ok) {
+      // Do not create deliveries or mark processed; the intent remains
+      // retryable through the existing lease/claim path.
+      counts.skipped += 1;
+      continue;
+    }
+    const pref = prefsResult.value.find((p) => p.notificationType === "task_reminder") ?? null;
 
     const channels = resolveDeliveryChannels({
       deliveryMode: claimed.value.deliveryMode,
       preferences: pref ? { pushEnabled: pref.pushEnabled, emailEnabled: pref.emailEnabled } : null,
     });
+
+    // Fail closed on quiet-hours reads too: if the settings/timezone read
+    // fails we do not know whether it is quiet, so do not dispatch or mark
+    // processed. Invalid/missing timezone remains the documented safe default.
+    const quiet = await resolveQuietHoursSuppression({
+      actor: ownerActor,
+      notificationType: "task_reminder",
+      settingsRepository: options.settingsRepository,
+      timeContextRepository: options.timeContextRepository,
+      now,
+    });
+    if (quiet.status === "unavailable") {
+      counts.skipped += 1;
+      continue;
+    }
 
     const title = "Task reminder";
     const body = claimed.value.taskTitle?.trim() || "You have a task reminder";
@@ -403,7 +436,9 @@ export async function processDueTaskReminders(
       continue;
     }
 
-    const notifResult = await options.notificationRepository.createNotification(ownerActor, {
+    // Every producer goes through the canonical use case so copy and target
+    // policy are enforced at one boundary even for the live cron producer.
+    const notifResult = await createNotification(ownerActor, options.notificationRepository, {
       type: "task_reminder",
       title,
       body,
@@ -417,15 +452,7 @@ export async function processDueTaskReminders(
       continue;
     }
 
-    if (notifResult.value.created) counts.notificationsCreated += 1;
-
-    const suppressForQuietHours = await resolveQuietHoursSuppression({
-      actor: ownerActor,
-      notificationType: "task_reminder",
-      settingsRepository: options.settingsRepository,
-      timeContextRepository: options.timeContextRepository,
-      now,
-    });
+    if (notifResult.data.created) counts.notificationsCreated += 1;
 
     const deliveriesToCreate: Array<{
       channel: "push" | "email";
@@ -436,7 +463,7 @@ export async function processDueTaskReminders(
       lastErrorReason?: string | null;
     }> = [];
 
-    const suppressedFields = suppressForQuietHours
+    const suppressedFields = quiet.status === "quiet"
       ? {
           status: "suppressed" as const,
           lastErrorCode: "quiet_hours",
@@ -470,7 +497,7 @@ export async function processDueTaskReminders(
 
     if (deliveriesToCreate.length > 0) {
       const deliveryResult = await options.deliveryRepository.createDeliveries(ownerActor, {
-        notificationId: notifResult.value.notification.id,
+        notificationId: notifResult.data.notification.id,
         deliveries: deliveriesToCreate,
       });
 
@@ -480,12 +507,14 @@ export async function processDueTaskReminders(
         continue;
       }
 
-      counts.deliveriesQueued += deliveryResult.value.created.length;
-      if (suppressForQuietHours) {
-        counts.suppressed += deliveryResult.value.created.filter(
-          (delivery) => delivery.status === "suppressed",
-        ).length;
-      }
+      // `deliveriesQueued` means dispatchable (non-suppressed) rows; suppressed
+      // rows are recorded separately as terminal results.
+      counts.deliveriesQueued += deliveryResult.value.created.filter(
+        (delivery) => delivery.status !== "suppressed",
+      ).length;
+      counts.suppressed += deliveryResult.value.created.filter(
+        (delivery) => delivery.status === "suppressed",
+      ).length;
     }
 
     // Mark reminder processed only after the event and deliveries are durable.
@@ -532,6 +561,43 @@ async function markSuppressed(
     nextAttemptAt: null,
     updatedAt: nowIso,
   });
+}
+
+/**
+ * An infrastructure read (preferences/settings/timezone) failed. Do not call
+ * the provider and do not guess opt-in/awake: defer explicitly, then fail with
+ * an actionable code once the bounded retry budget is exhausted.
+ */
+async function deferDeliveryForInfrastructure(args: {
+  repository: NotificationDeliveryRepository;
+  delivery: { id: string; attemptCount: number };
+  code: "preferences_unavailable" | "quiet_hours_unavailable";
+  reason: string;
+  now: Date;
+  nowIso: string;
+}): Promise<"retried" | "failed"> {
+  const nextAttempt = nextRetryAt(args.delivery.attemptCount + 1, args.now);
+  if (!nextAttempt) {
+    await args.repository.updateDelivery(args.delivery.id, {
+      status: "failed",
+      lastErrorCode: args.code,
+      lastErrorReason: args.reason,
+      attemptCount: args.delivery.attemptCount + 1,
+      failedAt: args.nowIso,
+      updatedAt: args.nowIso,
+      nextAttemptAt: null,
+    });
+    return "failed";
+  }
+  await args.repository.updateDelivery(args.delivery.id, {
+    status: "retry_scheduled",
+    lastErrorCode: args.code,
+    lastErrorReason: args.reason,
+    attemptCount: args.delivery.attemptCount + 1,
+    nextAttemptAt: nextAttempt,
+    updatedAt: args.nowIso,
+  });
+  return "retried";
 }
 
 export async function processPendingNotificationDeliveries(
@@ -582,15 +648,30 @@ export async function processPendingNotificationDeliveries(
       continue;
     }
 
-    // Re-check current per-type opt-out immediately before dispatch.
+    // Re-check current per-type opt-out immediately before dispatch. A failed
+    // read must not be treated as "enabled"; defer without calling a provider.
     const prefsResult = await options.preferenceRepository.listPreferences(ownerActor);
-    const pref = prefsResult.ok
-      ? prefsResult.value.find((p) => p.notificationType === notification.type) ?? null
-      : null;
-    const channelEnabled =
-      delivery.channel === "push"
-        ? (pref?.pushEnabled ?? true)
-        : (pref?.emailEnabled ?? true);
+    if (!prefsResult.ok) {
+      const outcome = await deferDeliveryForInfrastructure({
+        repository: options.deliveryRepository,
+        delivery,
+        code: "preferences_unavailable",
+        reason: "Unable to read notification preferences before dispatch.",
+        now,
+        nowIso,
+      });
+      if (outcome === "retried") counts.retried += 1;
+      else counts.failed += 1;
+      continue;
+    }
+    const pref = prefsResult.value.find((p) => p.notificationType === notification.type) ?? null;
+    // No stored row keeps the legacy enabled default; an explicit row controls
+    // the channel.
+    const channelEnabled = pref
+      ? delivery.channel === "push"
+        ? pref.pushEnabled
+        : pref.emailEnabled
+      : true;
     if (!channelEnabled) {
       await markSuppressed(
         options.deliveryRepository,
@@ -603,7 +684,8 @@ export async function processPendingNotificationDeliveries(
       continue;
     }
 
-    // Re-check current quiet hours; terminal recorded result, not a queue.
+    // Re-check current quiet hours; terminal recorded result, not a queue. A
+    // read failure means we cannot know whether it is quiet, so defer.
     const quiet = await resolveQuietHoursSuppression({
       actor: ownerActor,
       notificationType: notification.type,
@@ -611,7 +693,20 @@ export async function processPendingNotificationDeliveries(
       timeContextRepository: options.timeContextRepository,
       now,
     });
-    if (quiet) {
+    if (quiet.status === "unavailable") {
+      const outcome = await deferDeliveryForInfrastructure({
+        repository: options.deliveryRepository,
+        delivery,
+        code: "quiet_hours_unavailable",
+        reason: "Unable to read quiet-hours settings before dispatch.",
+        now,
+        nowIso,
+      });
+      if (outcome === "retried") counts.retried += 1;
+      else counts.failed += 1;
+      continue;
+    }
+    if (quiet.status === "quiet") {
       await markSuppressed(
         options.deliveryRepository,
         delivery.id,

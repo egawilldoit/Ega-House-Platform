@@ -267,7 +267,11 @@ export function createNotificationsRoutes(): Hono<{ Variables: ServerVariables }
       quietHoursEnd,
     });
     if (!result.ok) {
-      return c.json({ error: { code: "VALIDATION", message: result.errorMessage } }, 400);
+      const isValidation = result.code === "validation";
+      return c.json(
+        { error: { code: isValidation ? "VALIDATION" : "INTERNAL", message: result.errorMessage } },
+        isValidation ? 400 : 500,
+      );
     }
     return c.json({ ok: true as const, settings: result.data });
   });
