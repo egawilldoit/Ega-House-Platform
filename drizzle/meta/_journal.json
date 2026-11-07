@@ -547,6 +547,13 @@
       "when": 1787880000027,
       "tag": "0077_areas",
       "breakpoints": true
+    },
+    {
+      "idx": 78,
+      "version": "7",
+      "when": 1787880000028,
+      "tag": "0078_personal_operations",
+      "breakpoints": true
     }
   ]
 }

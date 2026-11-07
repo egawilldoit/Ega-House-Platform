@@ -28,6 +28,7 @@ test("the supported values match the shipped CSS and views", () => {
 
 test("defaults preserve the pre-preferences workspace behaviour", () => {
   assert.deepEqual(DEFAULT_USER_PREFERENCES, {
+    personalOperations: DEFAULT_USER_PREFERENCES.personalOperations,
     theme: "system",
     accent: "neutral",
     density: "comfortable",
@@ -143,4 +144,25 @@ test("launch paths and the default SSR theme attribute are canonical", () => {
   assert.equal(getUserThemeAttribute("light"), "light");
   // System resolves before paint; the server renders the light baseline.
   assert.equal(getUserThemeAttribute("system"), "light");
+});
+
+
+test("personal schedule defaults and validation", () => {
+  const schedule = DEFAULT_USER_PREFERENCES.personalOperations;
+  const targets = Object.values(schedule.targets);
+  assert.equal(targets.reduce((n, day) => n + day.work, 0), 2880);
+  assert.equal(targets.reduce((n, day) => n + day.jobSearch, 0), 450);
+  assert.equal(parseUserPreferencesPatch({ personalOperations: schedule }).ok, true);
+  assert.equal(parseUserPreferencesPatch({ personalOperations: { ...schedule, targets: { ...schedule.targets, monday: { work: -1, jobSearch: 90 } } } }).ok, false);
+  assert.equal(parseUserPreferencesPatch({ personalOperations: { ...schedule, guidance: [...schedule.guidance, schedule.guidance[0]] } }).ok, false);
+  assert.deepEqual(normalizeUserPreferences({}).personalOperations, schedule);
+});
+
+
+test("rejects malformed personal operations without partial acceptance", () => {
+  const schedule = DEFAULT_USER_PREFERENCES.personalOperations;
+  for (const candidate of [null, [], {}, { ...schedule, extra: true }, { ...schedule, guidance: [{ ...schedule.guidance[0], start: "25:00" }] }, { ...schedule, targets: { ...schedule.targets, monday: { work: 1441, jobSearch: 0 } } }]) {
+    assert.equal(parseUserPreferencesPatch({ theme: "dark", personalOperations: candidate }).ok, false);
+  }
+  assert.equal(parseUserPreferencesPatch(null).ok, false);
 });

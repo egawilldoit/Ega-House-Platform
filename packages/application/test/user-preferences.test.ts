@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { DEFAULT_USER_PREFERENCES, type UserPreferences } from "@ega/domain/preferences";
+import { DEFAULT_USER_PREFERENCES, type UserPreferences, type UserPreferencesPatch } from "@ega/domain/preferences";
 
 import { createAuthenticatedActor } from "../src/auth/actor";
 import {
@@ -34,11 +34,12 @@ class FakeUserPreferencesRepository implements UserPreferencesRepository {
     return ok(this.stored);
   }
 
-  async save(
+  async patch(
     actor: { userId: string },
-    preferences: UserPreferences,
+    patch: UserPreferencesPatch,
   ): Promise<RepositoryResult<UserPreferences>> {
     if (this.failWrite) return { ok: false, error: { code: "unknown" } };
+    const preferences = { ...(this.stored ?? DEFAULT_USER_PREFERENCES), ...patch };
     this.stored = preferences;
     this.writes.push({ userId: actor.userId, preferences });
     return ok(preferences);
@@ -140,4 +141,16 @@ test("an empty patch leaves the stored row unchanged", async () => {
   assert.equal(result.ok, true);
   assert.equal(repository.writes.length, 1);
   assert.deepEqual(repository.writes[0]?.preferences, DEFAULT_USER_PREFERENCES);
+});
+
+
+test("concurrent independent patches preserve both updates", async () => {
+  const repository = new FakeUserPreferencesRepository();
+  const schedule = { ...DEFAULT_USER_PREFERENCES.personalOperations, paused: true };
+  await Promise.all([
+    updateUserPreferences(ACTOR, repository, { theme: "dark" }),
+    updateUserPreferences(ACTOR, repository, { personalOperations: schedule }),
+  ]);
+  assert.equal(repository.stored?.theme, "dark");
+  assert.equal(repository.stored?.personalOperations.paused, true);
 });
