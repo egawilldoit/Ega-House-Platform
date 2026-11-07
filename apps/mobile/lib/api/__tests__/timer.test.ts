@@ -38,7 +38,12 @@ const START_RESPONSE: TimerStartResponse = {
   activeSession: WORKSPACE.activeSession!,
 };
 
-const STOP_RESPONSE: TimerStopResponse = { ok: true, sessionId: 'session-1', taskId: 'task-1' };
+const STOP_RESPONSE: TimerStopResponse = {
+  ok: true,
+  sessionId: 'session-1',
+  taskId: 'task-1',
+  outcome: 'stopped',
+};
 
 function makeFakeClient(overrides: Partial<EgaApiClient['timer']> = {}): EgaApiClient {
   return {
@@ -113,15 +118,12 @@ describe('mobile timer api wrappers', () => {
     expect(client.timer.start).toHaveBeenCalledWith('task-9');
   });
 
-  it('stopTimerSession stops the requested session and allows the implicit newest form', async () => {
+  it('stopTimerSession sends the exact requested session id', async () => {
     const client = makeFakeClient();
     setMobileEgaApiClientForTesting(client);
 
     await expect(stopTimerSession('session-1')).resolves.toBe(STOP_RESPONSE);
     expect(client.timer.stop).toHaveBeenCalledWith('session-1');
-
-    await stopTimerSession();
-    expect(client.timer.stop).toHaveBeenLastCalledWith(undefined);
   });
 
   it('surfaces server error envelopes as thrown messages without local fallbacks', async () => {

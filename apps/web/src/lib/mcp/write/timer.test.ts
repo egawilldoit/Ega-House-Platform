@@ -221,7 +221,11 @@ describe("MCP timer write module handlers", () => {
       const handlers = createMcpTimerModuleHandlers(dependencies, true);
       mocks.stopTaskSession.mockResolvedValue({
         ok: true,
-        data: { sessionId: OPEN_SESSION.id, taskId: OPEN_SESSION.taskId },
+        data: {
+          status: "stopped",
+          sessionId: OPEN_SESSION.id,
+          taskId: OPEN_SESSION.taskId,
+        },
       });
 
       const result = await handlers.stopTimer(
@@ -238,6 +242,31 @@ describe("MCP timer write module handlers", () => {
       expect(result.isError).toBeUndefined();
       expect(structured(result)).toEqual({
         ok: true,
+        outcome: "stopped",
+        session: { id: OPEN_SESSION.id, taskId: OPEN_SESSION.taskId },
+      });
+    });
+
+    it("acknowledges an already-stopped session without a second write", async () => {
+      const handlers = createMcpTimerModuleHandlers(dependencies, true);
+      mocks.stopTaskSession.mockResolvedValue({
+        ok: true,
+        data: {
+          status: "already_stopped",
+          sessionId: OPEN_SESSION.id,
+          taskId: OPEN_SESSION.taskId,
+        },
+      });
+
+      const result = await handlers.stopTimer(
+        createMcpAuthInfo("test-bearer", PRINCIPAL),
+        { sessionId: OPEN_SESSION.id },
+      );
+
+      expect(result.isError).toBeUndefined();
+      expect(structured(result)).toEqual({
+        ok: true,
+        outcome: "already_stopped",
         session: { id: OPEN_SESSION.id, taskId: OPEN_SESSION.taskId },
       });
     });
