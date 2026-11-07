@@ -30,6 +30,10 @@ export interface TimerSessionRepository {
     actor: AuthenticatedActor,
     input: Readonly<{ mcpOperationId: string; mcpClientId: string }>,
   ): Promise<RepositoryResult<TimerSessionRecord | null>>;
+  findSessionById(
+    actor: AuthenticatedActor,
+    input: Readonly<{ sessionId: string }>,
+  ): Promise<RepositoryResult<TimerSessionRecord | null>>;
   insertOpenSession(
     actor: AuthenticatedActor,
     input: Readonly<{

@@ -305,6 +305,7 @@ type MockTimerSession = {
   ended_at: string | null;
   duration_seconds: number | null;
   updated_at?: string | null;
+  owner_user_id?: string | null;
   tasks?: {
     title?: string | null;
     status?: string | null;
@@ -319,6 +320,7 @@ function createTimerServiceSupabaseMock(sessions: MockTimerSession[]) {
     const filters = {
       endedAtIsNull: false,
       id: null as string | null,
+      ownerNotNull: false,
     };
 
     const execute = async () => {
@@ -330,6 +332,10 @@ function createTimerServiceSupabaseMock(sessions: MockTimerSession[]) {
 
       if (filters.endedAtIsNull) {
         data = data.filter((session) => session.ended_at === null);
+      }
+
+      if (filters.ownerNotNull) {
+        data = data.filter((session) => session.owner_user_id !== null);
       }
 
       data.sort(
@@ -363,6 +369,13 @@ function createTimerServiceSupabaseMock(sessions: MockTimerSession[]) {
       eq(column: string, value: string) {
         assert.equal(column, "id");
         filters.id = value;
+        return this;
+      },
+      not(column: string, operator: string, value: null) {
+        assert.equal(column, "owner_user_id");
+        assert.equal(operator, "is");
+        assert.equal(value, null);
+        filters.ownerNotNull = true;
         return this;
       },
       order(column: string) {
@@ -460,11 +473,12 @@ test("stopTimerSession sets ended_at and finalizes duration_seconds", async () =
 
   assert.equal(result.errorMessage, null);
   assert.equal(result.stoppedTaskId, "task-1");
+  assert.equal(result.outcome, "stopped");
   assert.equal(mock.sessions[0]?.ended_at, "2026-04-21T10:00:00.000Z");
   assert.equal(mock.sessions[0]?.duration_seconds, 1800);
 });
 
-test("stopTimerSession does not return a follow-up task id when stop fails", async () => {
+test("stopTimerSession rejects a missing or blank session id without reading or writing", async () => {
   const mock = createTimerServiceSupabaseMock([
     {
       id: "session-a",
@@ -473,25 +487,124 @@ test("stopTimerSession does not return a follow-up task id when stop fails", asy
       ended_at: null,
       duration_seconds: null,
     },
+  ]);
+
+  const missing = await stopTimerSession({
+    supabase: mock.supabase,
+    nowIso: "2026-04-21T10:00:00.000Z",
+  });
+  const blank = await stopTimerSession({
+    sessionId: "   ",
+    supabase: mock.supabase,
+    nowIso: "2026-04-21T10:00:00.000Z",
+  });
+
+  assert.equal(missing.errorMessage, "A timer session id is required to stop the timer.");
+  assert.equal(blank.errorMessage, "A timer session id is required to stop the timer.");
+  assert.equal(missing.stoppedTaskId, null);
+  assert.equal(mock.sessions[0]?.ended_at, null);
+});
+
+test("stopTimerSession acknowledges an already-stopped session without changing its timing", async () => {
+  const mock = createTimerServiceSupabaseMock([
     {
-      id: "session-b",
+      id: "session-ended",
+      task_id: "task-1",
+      started_at: "2026-04-21T09:30:00.000Z",
+      ended_at: "2026-04-21T10:00:00.000Z",
+      duration_seconds: 1800,
+    },
+  ]);
+
+  const result = await stopTimerSession({
+    sessionId: "session-ended",
+    supabase: mock.supabase,
+    nowIso: "2026-04-21T10:30:00.000Z",
+  });
+
+  assert.equal(result.errorMessage, null);
+  assert.equal(result.stoppedTaskId, "task-1");
+  assert.equal(result.outcome, "already_stopped");
+  assert.equal(mock.sessions[0]?.ended_at, "2026-04-21T10:00:00.000Z");
+  assert.equal(mock.sessions[0]?.duration_seconds, 1800);
+});
+
+test("stopTimerSession with an id never ends a different newer open session", async () => {
+  const mock = createTimerServiceSupabaseMock([
+    {
+      id: "session-old",
+      task_id: "task-1",
+      started_at: "2026-04-21T08:00:00.000Z",
+      ended_at: null,
+      duration_seconds: null,
+    },
+    {
+      id: "session-new",
       task_id: "task-2",
-      started_at: "2026-04-21T09:35:00.000Z",
+      started_at: "2026-04-21T09:30:00.000Z",
       ended_at: null,
       duration_seconds: null,
     },
   ]);
 
   const result = await stopTimerSession({
+    sessionId: "session-old",
     supabase: mock.supabase,
     nowIso: "2026-04-21T10:00:00.000Z",
   });
 
-  assert.equal(
-    result.errorMessage,
-    "Multiple open sessions detected. Resolve the conflict before stopping timers.",
-  );
+  assert.equal(result.errorMessage, null);
+  assert.equal(result.outcome, "stopped");
+  assert.equal(result.stoppedTaskId, "task-1");
+  assert.equal(mock.sessions.find((session) => session.id === "session-old")?.ended_at, "2026-04-21T10:00:00.000Z");
+  assert.equal(mock.sessions.find((session) => session.id === "session-new")?.ended_at, null);
+});
+
+test("stopTimerSession rejects an owner-null row as not found", async () => {
+  const mock = createTimerServiceSupabaseMock([
+    {
+      id: "session-unowned",
+      task_id: "task-1",
+      started_at: "2026-04-21T09:30:00.000Z",
+      ended_at: null,
+      duration_seconds: null,
+      owner_user_id: null,
+    },
+  ]);
+
+  const result = await stopTimerSession({
+    sessionId: "session-unowned",
+    supabase: mock.supabase,
+    nowIso: "2026-04-21T10:00:00.000Z",
+  });
+
+  assert.equal(result.errorMessage, "No running timer session matches this request.");
   assert.equal(result.stoppedTaskId, null);
+  assert.equal(result.outcome, null);
+  assert.equal(mock.sessions[0]?.ended_at, null);
+});
+
+test("stopTimerSession computes wall-clock duration across local midnight", async () => {
+  const mock = createTimerServiceSupabaseMock([
+    {
+      id: "session-midnight",
+      task_id: "task-1",
+      started_at: "2026-08-10T23:30:00.000Z",
+      ended_at: null,
+      duration_seconds: null,
+    },
+  ]);
+
+  const result = await stopTimerSession({
+    sessionId: "session-midnight",
+    supabase: mock.supabase,
+    nowIso: "2026-08-11T00:30:00.000Z",
+  });
+
+  assert.equal(result.errorMessage, null);
+  assert.equal(result.outcome, "stopped");
+  assert.equal(mock.sessions[0]?.duration_seconds, 3600);
+  assert.equal(mock.sessions[0]?.ended_at, "2026-08-11T00:30:00.000Z");
 });
 
 test("stopped sessions remain fixed across later aggregate requests", async () => {
@@ -589,7 +702,10 @@ test("later stop-style requests cannot extend an already stopped session", async
   });
 
   assert.equal(firstStop.errorMessage, null);
-  assert.equal(secondStop.errorMessage, "No active timer session is available to stop.");
+  assert.equal(firstStop.outcome, "stopped");
+  assert.equal(secondStop.errorMessage, null);
+  assert.equal(secondStop.outcome, "already_stopped");
+  assert.equal(secondStop.stoppedTaskId, "task-1");
   assert.equal(mock.sessions[0]?.ended_at, "2026-04-21T10:00:00.000Z");
   assert.equal(mock.sessions[0]?.duration_seconds, 1800);
 });

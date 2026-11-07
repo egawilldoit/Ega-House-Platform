@@ -261,8 +261,40 @@ test("POST /api/timer/start rejects a second concurrent session", async () => {
 
 test("POST /api/timer/stop finalizes the open session with computed duration", async () => {
   const fake = new FakeSupabase();
-  fake.push("task_sessions", { data: [sessionRow()], error: null });
+  fake.push("task_sessions", { data: sessionRow(), error: null });
   fake.push("task_sessions", { data: [{ id: "session-1" }], error: null });
+
+  const response = await makeApp(fake).request("/api/timer/stop", {
+    method: "POST",
+    headers: JSON_HEADERS,
+    body: JSON.stringify({ sessionId: "session-1" }),
+  });
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), {
+    ok: true,
+    sessionId: "session-1",
+    taskId: "task-1",
+    outcome: "stopped",
+  });
+
+  const sessionCalls = fake.calls.filter((call) => call.table === "task_sessions");
+  assert.ok(
+    sessionCalls[0]?.steps.some(
+      (step) => step.method === "eq" && step.args[0] === "id" && step.args[1] === "session-1",
+    ),
+  );
+  const finalizeCall = sessionCalls[1];
+  const update = finalizeCall?.steps.find((step) => step.method === "update");
+  assert.ok(update);
+  assert.equal((update.args[0] as Record<string, unknown>).duration_seconds, 3600);
+  assert.ok(finalizeCall?.steps.some(
+    (step) => step.method === "is" && step.args[0] === "ended_at" && step.args[1] === null,
+  ));
+});
+
+test("POST /api/timer/stop rejects a missing session id before any write", async () => {
+  const fake = new FakeSupabase();
 
   const response = await makeApp(fake).request("/api/timer/stop", {
     method: "POST",
@@ -270,16 +302,38 @@ test("POST /api/timer/stop finalizes the open session with computed duration", a
     body: JSON.stringify({}),
   });
 
-  assert.equal(response.status, 200);
-  assert.deepEqual(await response.json(), { ok: true, sessionId: "session-1", taskId: "task-1" });
+  assert.equal(response.status, 400);
+  const body = await response.json();
+  assert.equal(body.error.code, "VALIDATION");
+  assert.match(body.error.message, /session id/i);
+  assert.equal(fake.calls.length, 0);
+});
 
-  const finalizeCall = fake.calls.filter((call) => call.table === "task_sessions")[1];
-  const update = finalizeCall?.steps.find((step) => step.method === "update");
-  assert.ok(update);
-  assert.equal((update.args[0] as Record<string, unknown>).duration_seconds, 3600);
-  assert.ok(finalizeCall?.steps.some(
-    (step) => step.method === "is" && step.args[0] === "ended_at" && step.args[1] === null,
-  ));
+test("POST /api/timer/stop acknowledges an already-stopped session as a success outcome", async () => {
+  const fake = new FakeSupabase();
+  fake.push("task_sessions", {
+    data: sessionRow({
+      ended_at: "2026-08-10T11:30:00.000Z",
+      duration_seconds: 1800,
+    }),
+    error: null,
+  });
+
+  const response = await makeApp(fake).request("/api/timer/stop", {
+    method: "POST",
+    headers: JSON_HEADERS,
+    body: JSON.stringify({ sessionId: "session-1" }),
+  });
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), {
+    ok: true,
+    sessionId: "session-1",
+    taskId: "task-1",
+    outcome: "already_stopped",
+  });
+  assert.equal(fake.calls.length, 1);
+  assert.ok(!fake.calls[0]?.steps.some((step) => step.method === "update"));
 });
 
 test("GET /ready reports dependency health through injected probe", async () => {

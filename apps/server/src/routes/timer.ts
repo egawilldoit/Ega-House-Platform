@@ -4,6 +4,7 @@ import {
   getTimerWorkspace,
   startTaskSession,
   stopTaskSession,
+  TIMER_SESSION_ID_REQUIRED_MESSAGE,
 } from "@ega/application";
 import {
   SupabaseTimeContextRepository,
@@ -49,15 +50,27 @@ export function createTimerRoutes(
   routes.post("/stop", async (c) => {
     const { actor, client } = c.var;
     const body = await readJsonBody(c);
+    const sessionId = typeof body?.sessionId === "string" ? body.sessionId.trim() : "";
+    if (!body || !sessionId) {
+      return c.json(
+        { error: { code: "VALIDATION", message: TIMER_SESSION_ID_REQUIRED_MESSAGE } },
+        400,
+      );
+    }
 
     const result = await stopTaskSession(
       actor,
       new SupabaseTimerSessionRepository(client),
-      { sessionId: body?.sessionId },
+      { sessionId },
       { now: dependencies.now?.() },
     );
     if (!result.ok) return c.json({ error: { code: "VALIDATION", message: result.errorMessage } }, 400);
-    return c.json({ ok: true, sessionId: result.data.sessionId, taskId: result.data.taskId });
+    return c.json({
+      ok: true,
+      sessionId: result.data.sessionId,
+      taskId: result.data.taskId,
+      outcome: result.data.status,
+    });
   });
 
   return routes;

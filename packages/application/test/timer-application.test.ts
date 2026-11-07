@@ -37,8 +37,11 @@ class FakeTimerRepository implements TimerSessionRepository {
   startableOverride: StartableTask | null = null;
   insertFailure: { code: "conflict" | "unknown" } | null = null;
   operationSessions = new Map<string, TimerSessionRecord>();
+  private owners = new Map<string, string>();
+  /** Simulates two devices whose pre-check reads raced ahead of the INSERT. */
+  suppressOpenVisibility = false;
 
-  seed(session: Partial<TimerSessionRecord> & { id: string }) {
+  seed(session: Partial<TimerSessionRecord> & { id: string }, ownerId = "user-timer") {
     this.sessions.push({
       taskId: "task-1",
       startedAt: "2026-08-10T08:00:00.000Z",
@@ -47,11 +50,20 @@ class FakeTimerRepository implements TimerSessionRepository {
       taskTitle: "Seeded task",
       ...session,
     });
+    this.owners.set(session.id, ownerId);
+  }
+
+  private owns(actor: AuthenticatedActor, sessionId: string) {
+    return this.owners.get(sessionId) === actor.userId;
   }
 
   async listOpenSessions(actor: AuthenticatedActor) {
-    void actor;
-    return ok(this.sessions.filter((session) => session.endedAt === null));
+    if (this.suppressOpenVisibility) return ok([]);
+    return ok(
+      this.sessions.filter(
+        (session) => session.endedAt === null && this.owns(actor, session.id),
+      ),
+    );
   }
 
   async listRecentSessions(actor: AuthenticatedActor, input: { limit: number }) {
@@ -74,6 +86,13 @@ class FakeTimerRepository implements TimerSessionRepository {
     return ok(this.operationSessions.get(`${input.mcpClientId}:${input.mcpOperationId}`) ?? null);
   }
 
+  async findSessionById(actor: AuthenticatedActor, input: { sessionId: string }) {
+    const session = this.sessions.find(
+      (candidate) => candidate.id === input.sessionId && this.owns(actor, candidate.id),
+    );
+    return ok(session ?? null);
+  }
+
   async insertOpenSession(
     actor: AuthenticatedActor,
     input: {
@@ -83,7 +102,6 @@ class FakeTimerRepository implements TimerSessionRepository {
       mcpClientId?: string;
     },
   ) {
-    void actor;
     if (this.insertFailure) return { ok: false as const, error: this.insertFailure };
     const operationKey = input.mcpOperationId && input.mcpClientId
       ? `${input.mcpClientId}:${input.mcpOperationId}`
@@ -91,6 +109,14 @@ class FakeTimerRepository implements TimerSessionRepository {
     if (operationKey) {
       const existing = this.operationSessions.get(operationKey);
       if (existing) return ok(existing);
+    }
+    // Enforce the partial unique index task_sessions_owner_open_unique.
+    if (
+      this.sessions.some(
+        (session) => session.endedAt === null && this.owns(actor, session.id),
+      )
+    ) {
+      return { ok: false as const, error: { code: "conflict" as const } };
     }
     const session: TimerSessionRecord = {
       id: `session-${this.nextId++}`,
@@ -101,6 +127,7 @@ class FakeTimerRepository implements TimerSessionRepository {
       taskTitle: "Seeded task",
     };
     this.sessions.push(session);
+    this.owners.set(session.id, actor.userId);
     if (operationKey) this.operationSessions.set(operationKey, session);
     return ok(session);
   }
@@ -109,9 +136,11 @@ class FakeTimerRepository implements TimerSessionRepository {
     actor: AuthenticatedActor,
     input: { sessionId: string; endedAtIso: string; durationSeconds: number },
   ) {
-    void actor;
     const session = this.sessions.find(
-      (candidate) => candidate.id === input.sessionId && candidate.endedAt === null,
+      (candidate) =>
+        candidate.id === input.sessionId &&
+        candidate.endedAt === null &&
+        this.owns(actor, candidate.id),
     );
     if (!session) return ok(false);
     this.sessions = this.sessions.map((candidate) =>
@@ -206,23 +235,177 @@ test("start rejects ineligible tasks and unknown tasks", async () => {
   assert.equal(blank.ok, false);
 });
 
-test("stop finalizes only the target open session with computed duration", async () => {
+test("stop requires an explicit session id and never falls back to the newest open session", async () => {
   const repository = new FakeTimerRepository();
   const actor = createAuthenticatedActor("user-timer");
   repository.seed({ id: "older", startedAt: "2026-08-10T07:00:00.000Z" });
   repository.seed({ id: "newer", startedAt: "2026-08-10T09:00:00.000Z" });
 
-  const stopped = await stopTaskSession(actor, repository, {}, { now: NOW });
-  assert.equal(stopped.ok, true);
-  if (stopped.ok) assert.deepEqual(stopped.data, { sessionId: "newer", taskId: "task-1" });
-  assert.equal(repository.finalized[0].durationSeconds, 3 * 3600);
+  const missing = await stopTaskSession(actor, repository, {}, { now: NOW });
+  assert.equal(missing.ok, false);
+  if (!missing.ok) assert.match(missing.errorMessage, /session id/i);
+
+  const blank = await stopTaskSession(actor, repository, { sessionId: "   " }, { now: NOW });
+  assert.equal(blank.ok, false);
+  assert.equal(repository.finalized.length, 0);
+  assert.equal(repository.sessions.find((session) => session.id === "newer")?.endedAt, null);
+});
+
+test("stop finalizes only the exact target session with computed duration", async () => {
+  const repository = new FakeTimerRepository();
+  const actor = createAuthenticatedActor("user-timer");
+  repository.seed({ id: "older", startedAt: "2026-08-10T07:00:00.000Z" });
+  repository.seed({ id: "newer", startedAt: "2026-08-10T09:00:00.000Z" });
 
   const explicit = await stopTaskSession(actor, repository, { sessionId: "older" }, { now: NOW });
   assert.equal(explicit.ok, true);
-  if (explicit.ok) assert.equal(explicit.data.sessionId, "older");
+  if (explicit.ok) {
+    assert.deepEqual(explicit.data, {
+      status: "stopped",
+      sessionId: "older",
+      taskId: "task-1",
+    });
+  }
+  assert.equal(repository.finalized[0].durationSeconds, 5 * 3600);
+  assert.equal(repository.sessions.find((session) => session.id === "newer")?.endedAt, null);
+});
 
-  const gone = await stopTaskSession(actor, repository, { sessionId: "newer" }, { now: NOW });
-  assert.equal(gone.ok, false);
+test("duplicate stop acknowledges already_stopped without a second write or duration change", async () => {
+  const repository = new FakeTimerRepository();
+  const actor = createAuthenticatedActor("user-timer");
+  repository.seed({ id: "session-open" });
+
+  const first = await stopTaskSession(
+    actor,
+    repository,
+    { sessionId: "session-open" },
+    { now: NOW },
+  );
+  const second = await stopTaskSession(
+    actor,
+    repository,
+    { sessionId: "session-open" },
+    { now: new Date("2026-08-10T13:00:00Z") },
+  );
+
+  assert.equal(first.ok, true);
+  if (first.ok) assert.equal(first.data.status, "stopped");
+  assert.equal(second.ok, true);
+  if (second.ok) {
+    assert.deepEqual(second.data, {
+      status: "already_stopped",
+      sessionId: "session-open",
+      taskId: "task-1",
+    });
+  }
+  assert.equal(repository.finalized.length, 1);
+  const stopped = repository.sessions.find((session) => session.id === "session-open");
+  assert.equal(stopped?.endedAt, NOW.toISOString());
+  assert.equal(stopped?.durationSeconds, 4 * 3600);
+});
+
+test("a delayed stop of a prior session cannot end a newer open session", async () => {
+  const repository = new FakeTimerRepository();
+  const actor = createAuthenticatedActor("user-timer");
+  repository.seed({ id: "prior", startedAt: "2026-08-10T08:00:00.000Z" });
+  repository.seed({ id: "newer", startedAt: "2026-08-10T11:00:00.000Z" });
+
+  const stale = await stopTaskSession(
+    actor,
+    repository,
+    { sessionId: "prior" },
+    { now: NOW },
+  );
+  const retried = await stopTaskSession(
+    actor,
+    repository,
+    { sessionId: "prior" },
+    { now: new Date("2026-08-10T12:30:00Z") },
+  );
+
+  assert.equal(stale.ok, true);
+  if (stale.ok) assert.equal(stale.data.status, "stopped");
+  assert.equal(retried.ok, true);
+  if (retried.ok) assert.equal(retried.data.status, "already_stopped");
+  assert.equal(repository.finalized.length, 1);
+  assert.equal(repository.sessions.find((session) => session.id === "newer")?.endedAt, null);
+});
+
+test("owner mismatch surfaces not-found and performs no write", async () => {
+  const repository = new FakeTimerRepository();
+  const owner = createAuthenticatedActor("user-timer");
+  const otherOwner = createAuthenticatedActor("user-other");
+  repository.seed({ id: "owned-session" }, owner.userId);
+
+  const result = await stopTaskSession(
+    otherOwner,
+    repository,
+    { sessionId: "owned-session" },
+    { now: NOW },
+  );
+
+  assert.equal(result.ok, false);
+  if (!result.ok) {
+    assert.equal(result.errorMessage, "No running timer session matches this request.");
+  }
+  assert.equal(repository.finalized.length, 0);
+  assert.equal(
+    repository.sessions.find((session) => session.id === "owned-session")?.endedAt,
+    null,
+  );
+});
+
+test("concurrent double start lets exactly one owner open session win", async () => {
+  const repository = new FakeTimerRepository();
+  const actor = createAuthenticatedActor("user-timer");
+  repository.suppressOpenVisibility = true;
+
+  const [first, second] = await Promise.all([
+    startTaskSession(actor, repository, { taskId: "task-1" }, { now: NOW }),
+    startTaskSession(actor, repository, { taskId: "task-1" }, { now: NOW }),
+  ]);
+
+  const successes = [first, second].filter((result) => result.ok);
+  const failures = [first, second].filter((result) => !result.ok);
+  assert.equal(successes.length, 1);
+  assert.equal(failures.length, 1);
+  if (!failures[0].ok) assert.match(failures[0].errorMessage, /already running/);
+  assert.equal(
+    repository.sessions.filter((session) => session.endedAt === null).length,
+    1,
+  );
+});
+
+test("cross-midnight stop duration is wall-clock across local midnight and is not extended", async () => {
+  const repository = new FakeTimerRepository();
+  const actor = createAuthenticatedActor("user-timer");
+  repository.seed({
+    id: "midnight",
+    startedAt: "2026-08-10T23:30:00.000Z",
+  });
+
+  const stopped = await stopTaskSession(
+    actor,
+    repository,
+    { sessionId: "midnight" },
+    { now: new Date("2026-08-11T00:30:00.000Z") },
+  );
+  const retry = await stopTaskSession(
+    actor,
+    repository,
+    { sessionId: "midnight" },
+    { now: new Date("2026-08-11T02:00:00.000Z") },
+  );
+
+  assert.equal(stopped.ok, true);
+  assert.equal(repository.finalized[0].durationSeconds, 3600);
+  assert.equal(retry.ok, true);
+  if (retry.ok) assert.equal(retry.data.status, "already_stopped");
+  assert.equal(repository.finalized.length, 1);
+  assert.equal(
+    repository.sessions.find((session) => session.id === "midnight")?.durationSeconds,
+    3600,
+  );
 });
 
 test("workspace exposes the newest open session and summary aggregates", async () => {

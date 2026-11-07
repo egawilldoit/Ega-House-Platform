@@ -391,7 +391,7 @@ describe('TimerScreen (canonical server projection)', () => {
     mock(fetchTimerWorkspace)
       .mockResolvedValueOnce(runningWorkspace(new Date().toISOString()))
       .mockResolvedValue(makeWorkspace());
-    mock(stopTimerSession).mockResolvedValue({ ok: true, sessionId: 'session-1', taskId: 'task-9' });
+    mock(stopTimerSession).mockResolvedValue({ ok: true, sessionId: 'session-1', taskId: 'task-9', outcome: 'stopped' });
 
     const { tree } = renderScreen();
     await flushAll();
