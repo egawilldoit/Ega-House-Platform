@@ -9,6 +9,7 @@ import {
   type Day,
   type PersonalOperations,
 } from "@ega/domain/preferences";
+import { getLocalDateInTimezone, getLocalDayWindow } from "@ega/domain/time-context";
 
 import { updatePersonalOperationsAction } from "./actions";
 
@@ -52,17 +53,41 @@ export function PersonalOperationsForm({
   action?: PersonalOperationsAction;
 }) {
   const [schedule, setSchedule] = useState(initial);
+  const [localDate, setLocalDate] = useState(timeContext?.localDate ?? null);
   const [state, formAction, pending] = useActionState(action, { message: "", ok: false });
   const errorRef = useRef<HTMLParagraphElement>(null);
   useEffect(() => {
     if (state.message && !state.ok) errorRef.current?.focus();
   }, [state]);
 
+  const timezone = timeContext?.timezone;
+  useEffect(() => {
+    if (!timezone) return;
+    const zone = timezone;
+    let timer: ReturnType<typeof setTimeout>;
+    function refreshDate() {
+      clearTimeout(timer);
+      const now = new Date();
+      const date = getLocalDateInTimezone(now, zone);
+      setLocalDate(date);
+      const end = getLocalDayWindow(zone, date).endUtcIso;
+      timer = setTimeout(refreshDate, Math.max(1000, Date.parse(end) - now.getTime()));
+    }
+    refreshDate();
+    document.addEventListener("visibilitychange", refreshDate);
+    window.addEventListener("focus", refreshDate);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener("visibilitychange", refreshDate);
+      window.removeEventListener("focus", refreshDate);
+    };
+  }, [timezone]);
+
   // Both views derive from the edited draft, so typing immediately updates
   // today's plan and the weekly totals.
   const totals = getPersonalOperationsWeekTotals(schedule);
-  const today = timeContext
-    ? getPersonalOperationsDayPlan(schedule, timeContext.localDate)
+  const today = timeContext && localDate
+    ? getPersonalOperationsDayPlan(schedule, localDate)
     : null;
 
   function target(day: Day, field: "work" | "jobSearch", value: string) {
