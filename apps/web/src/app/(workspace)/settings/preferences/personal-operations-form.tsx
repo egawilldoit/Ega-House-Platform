@@ -270,7 +270,7 @@ export function PersonalOperationsForm({
       const target = event.target;
       if (!(target instanceof Element)) return;
       const anchor = target.closest("a[href]");
-      if (!anchor || anchor.hasAttribute("download") || anchor.getAttribute("target") === "_blank") {
+      if (!(anchor instanceof HTMLAnchorElement) || anchor.hasAttribute("download") || anchor.getAttribute("target") === "_blank") {
         return;
       }
       const href = anchor.getAttribute("href");
