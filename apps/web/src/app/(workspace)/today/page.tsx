@@ -25,6 +25,7 @@ import { TodayTaskCard } from "@/components/today/today-task-card";
 import { TodayHeaderActions } from "@/components/today/today-header-actions";
 import { TimerActionFeedback } from "@/components/timer/timer-action-feedback";
 import { TimerStopOutcomePrompt } from "@/components/timer/timer-stop-outcome-prompt";
+import { TimerSyncStatus } from "@/components/timer/timer-sync-status";
 import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
 import { Card, CardContent } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -307,7 +308,10 @@ export default async function TodayPage({
         ownerUserId={user?.id ?? null}
         channelPrefix="today"
         tables={["tasks", "task_sessions"]}
+        reconcileOnVisibility={false}
       />
+      {/* Reconnect/visibility reconciliation for the rail's Active Timer panel. */}
+      <TimerSyncStatus surface="today" ownerUserId={user?.id ?? null} />
 
       {showStoppedTaskPrompt ? (
         <TimerStopOutcomePrompt

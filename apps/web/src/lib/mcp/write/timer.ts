@@ -24,7 +24,7 @@ export type McpTimerListInput = Readonly<{ limit?: number; includeClosed?: boole
 
 export type McpTimerStartInput = Readonly<{ taskId: string; operationId?: string }>;
 
-export type McpTimerStopInput = Readonly<{ sessionId?: string; operationId?: string }>;
+export type McpTimerStopInput = Readonly<{ sessionId: string; operationId?: string }>;
 
 export type McpTimerModuleHandlers = {
   listTimerSessions(
@@ -195,6 +195,7 @@ export function createMcpTimerModuleHandlers(
 
         return resultFromPayload({
           ok: true,
+          outcome: result.data.status,
           session: { id: result.data.sessionId, taskId: result.data.taskId },
         });
       } catch (error) {
