@@ -556,14 +556,17 @@ async function markSuppressed(
   reasonCode: "opt_out" | "quiet_hours",
   reason: string,
   nowIso: string,
-): Promise<void> {
-  await repository.updateDelivery(deliveryId, {
+): Promise<"suppressed" | "persistence_failed"> {
+  const update = await repository.updateDelivery(deliveryId, {
     status: "suppressed",
     lastErrorCode: reasonCode,
     lastErrorReason: reason,
     nextAttemptAt: null,
     updatedAt: nowIso,
   });
+  // A failed write leaves the row `sending`; stale-lease reclaim is the
+  // backstop. Never report it as a recorded suppression.
+  return update.ok && update.value ? "suppressed" : "persistence_failed";
 }
 
 /**
@@ -703,14 +706,15 @@ export async function processPendingNotificationDeliveries(
         : pref.emailEnabled
       : true;
     if (!channelEnabled) {
-      await markSuppressed(
+      const suppression = await markSuppressed(
         options.deliveryRepository,
         delivery.id,
         "opt_out",
         "Channel disabled by owner preference.",
         nowIso,
       );
-      counts.suppressed += 1;
+      if (suppression === "suppressed") counts.suppressed += 1;
+      else counts.persistenceErrors += 1;
       continue;
     }
 
@@ -736,14 +740,15 @@ export async function processPendingNotificationDeliveries(
       continue;
     }
     if (quiet.status === "quiet") {
-      await markSuppressed(
+      const suppression = await markSuppressed(
         options.deliveryRepository,
         delivery.id,
         "quiet_hours",
         "Suppressed during owner quiet hours.",
         nowIso,
       );
-      counts.suppressed += 1;
+      if (suppression === "suppressed") counts.suppressed += 1;
+      else counts.persistenceErrors += 1;
       continue;
     }
 

@@ -353,8 +353,10 @@ port.
     dependency drift in a reused `node_modules` can surface untouched-file
     `jest-expo`/`react-native` export-map failures.
   - Full `web:test`/`server:test` retain unrelated Windows failures (timezone
-    and CRLF assertions, relative-URL fetch, `spawn EINVAL`) reproduced on base
-    `b3f367cc`. Hosted CI conclusions are reported in the PR, not claimed here.
+    and CRLF assertions, relative-URL fetch, `spawn EINVAL`). They were observed
+    on base `b3f367cc` in an earlier pass for this branch; they were not re-run
+    on base in the final pass. Hosted CI conclusions are reported in the PR,
+    not claimed here.
 
 **Not verified / gaps:**
 - Real FCM/Android device delivery and real Resend email delivery.

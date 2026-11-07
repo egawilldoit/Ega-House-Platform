@@ -1127,3 +1127,29 @@ test("deferral persistence failure is reported honestly and left to stale-lease 
   assert.equal(row.status, "sending");
   assert.equal(calls, 0);
 });
+
+test("failed suppression write reports persistenceErrors and leaves the row reclaimable", async () => {
+  const state = createState({ deliveryUpdateUnavailable: true });
+  const d = device(state);
+  const n = notification(state);
+  const row = delivery(state, { notificationId: n.id, deviceId: d.id });
+  // Push is opted out; the suppression write itself fails.
+  preference(state, false, true);
+
+  let calls = 0;
+  const provider: PushProvider = {
+    async send() {
+      calls += 1;
+      return { ok: true, providerMessageId: "should-not-happen" };
+    },
+  };
+
+  const result = await processPendingNotificationDeliveries(
+    deliveryOptions(state, provider, { async send() { calls += 1; return { ok: true }; } }),
+  );
+  assert.equal(result.ok, true);
+  assert.equal(result.ok ? result.data.suppressed : -1, 0);
+  assert.equal(result.ok ? result.data.persistenceErrors : -1, 1);
+  assert.equal(row.status, "sending");
+  assert.equal(calls, 0);
+});

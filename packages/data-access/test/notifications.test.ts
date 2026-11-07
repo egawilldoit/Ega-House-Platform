@@ -91,6 +91,43 @@ test("notification settings missing table degrades to disabled quiet hours", asy
   assert.deepEqual(result, { ok: true, value: null });
 });
 
+test("notification settings 42P01 and exact table-message also degrade", async () => {
+  const pg = new SupabaseNotificationSettingsRepository(
+    fakeSettingsClient({
+      code: "42P01",
+      message: 'relation "public.notification_settings" does not exist',
+    }),
+  );
+  assert.deepEqual(await pg.getSettings({ userId: "user-1" }), { ok: true, value: null });
+
+  const messageOnly = new SupabaseNotificationSettingsRepository(
+    fakeSettingsClient({
+      code: "unknown",
+      message: "Could not find the table 'public.notification_settings' in the schema cache",
+    }),
+  );
+  assert.deepEqual(await messageOnly.getSettings({ userId: "user-1" }), { ok: true, value: null });
+});
+
+test("notification settings column/schema drift stays a failure", async () => {
+  const undefinedColumn = new SupabaseNotificationSettingsRepository(
+    fakeSettingsClient({
+      code: "42703",
+      message: 'column "quiet_hours_start" of relation "notification_settings" does not exist',
+    }),
+  );
+  assert.equal((await undefinedColumn.getSettings({ userId: "user-1" })).ok, false);
+
+  const postgrestColumn = new SupabaseNotificationSettingsRepository(
+    fakeSettingsClient({
+      code: "PGRST204",
+      message:
+        "Could not find the 'quiet_hours_start' column of 'notification_settings' in the schema cache",
+    }),
+  );
+  assert.equal((await postgrestColumn.getSettings({ userId: "user-1" })).ok, false);
+});
+
 test("notification settings genuine read failures stay failures", async () => {
   const repository = new SupabaseNotificationSettingsRepository(
     fakeSettingsClient({ code: "500", message: "connection reset" }),
