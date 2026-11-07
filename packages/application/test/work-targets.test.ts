@@ -369,6 +369,41 @@ test("cumulative-remainder rounding preserves a 59.5m/59.5m cross-midnight split
   assert.equal(progress.week.actualJobSearchMinutes, 119);
 });
 
+test("daily search minutes never exceed daily work minutes after rounding", () => {
+  const progress = input({
+    sessions: [
+      // Monday: 119s search + 61s non-search = 180s work.
+      session({
+        task_id: TASK_ID,
+        started_at: "2026-03-02T09:00:00.000Z",
+        ended_at: "2026-03-02T09:01:59.000Z",
+      }),
+      session({
+        task_id: OTHER_ID,
+        started_at: "2026-03-02T10:00:00.000Z",
+        ended_at: "2026-03-02T10:01:01.000Z",
+      }),
+      // Tuesday: 1s search.
+      session({
+        task_id: TASK_ID,
+        started_at: "2026-03-03T09:00:00.000Z",
+        ended_at: "2026-03-03T09:00:01.000Z",
+      }),
+    ],
+    reference: { kind: "task", id: TASK_ID },
+    nowIso: "2026-03-03T12:00:00.000Z",
+  });
+
+  for (const day of progress.days) {
+    assert.ok(
+      day.actualJobSearchMinutes <= day.actualWorkMinutes,
+      `${day.date}: search ${day.actualJobSearchMinutes} > work ${day.actualWorkMinutes}`,
+    );
+  }
+  assert.equal(progress.week.actualWorkMinutes, 3);
+  assert.equal(progress.week.actualJobSearchMinutes, 2);
+});
+
 test("custom targets and reference propagate unchanged", () => {
   const personalOperations: PersonalOperations = {
     ...DEFAULT_PERSONAL_OPERATIONS,

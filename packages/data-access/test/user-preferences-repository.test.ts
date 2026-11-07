@@ -130,6 +130,30 @@ test("get maps the top-level job-search reference", async () => {
   );
 });
 
+test("get retries without the reference column before 0089 is applied", async () => {
+  const fake = new FakePreferencesSupabase([
+    {
+      data: null,
+      error: {
+        code: "42703",
+        message: 'column "job_search_reference" does not exist',
+      },
+    },
+    { data: STORED_ROW, error: null },
+  ]);
+  const result = await repo(fake).get(ACTOR);
+
+  assert.equal(result.ok, true);
+  if (!result.ok || !result.value) return;
+  assert.equal(result.value.jobSearchReference, null);
+  assert.equal(result.value.theme, "dark");
+  assert.equal(fake.calls.length, 2);
+  const firstSelect = fake.calls[0]?.steps.find((step) => step.startsWith("select:")) ?? "";
+  const secondSelect = fake.calls[1]?.steps.find((step) => step.startsWith("select:")) ?? "";
+  assert.ok(firstSelect.includes("job_search_reference"));
+  assert.ok(!secondSelect.includes("job_search_reference"));
+});
+
 test("get returns null when the owner has no row", async () => {
   const fake = new FakePreferencesSupabase([{ data: null, error: null }]);
   const result = await repo(fake).get(ACTOR);

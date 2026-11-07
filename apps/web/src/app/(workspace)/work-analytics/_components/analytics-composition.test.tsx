@@ -275,6 +275,20 @@ test("included open time renders the provisional running-timer indicator", () =>
   assert.match(markup, /Includes running timer/);
 });
 
+test("the running-timer label requires provisional quality, not just the opt-in", () => {
+  const optedInButSufficient = {
+    ...model,
+    workTargets: {
+      ...workTargets,
+      includeOpenSessions: true,
+      quality: "sufficient" as const,
+    },
+  } as unknown as WorkAnalyticsPageModel;
+  const markup = renderToStaticMarkup(<WorkAnalyticsPageView model={optedInButSufficient} />);
+
+  assert.doesNotMatch(markup, /Includes running timer/);
+});
+
 test("estimate variance leads with the absolute delta, then the ratio, then the percentage", () => {
   const markup = renderToStaticMarkup(<WorkAnalyticsPageView model={model} />);
   const start = markup.indexOf('data-testid="analytics-kpi-estimate-variance"');

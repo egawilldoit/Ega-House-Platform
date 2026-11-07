@@ -42,6 +42,8 @@ export async function getJobSearchReferenceOptions(options: {
     }
 
     const supabase = options.supabase ?? (await createClient());
+    // Deliberately capped at 200 most-recently-updated tasks. Pagination and
+    // free-text task search are out of this slice's scope.
     const tasksResult = await supabase
       .from("tasks")
       .select("id, title, archived_at")
