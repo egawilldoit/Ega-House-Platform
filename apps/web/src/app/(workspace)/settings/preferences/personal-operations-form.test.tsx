@@ -55,7 +55,7 @@ async function click(input: HTMLInputElement) {
 }
 
 async function renderForm({
-  action,
+  action = serverAction,
   timeContext = CASABLANCA_MONDAY,
   disabled = false,
 }: {
