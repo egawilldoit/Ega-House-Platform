@@ -12,6 +12,13 @@
  *   RLS READ   - an owner sees only their own row.
  *   RLS WRITE  - an owner cannot insert under another owner's id, update or
  *                delete another owner's row.
+ *   ANON       - anon cannot call the RPC or read/update the table.
+ *   AUTH       - authenticated without a JWT subject has no auth.uid().
+ *   CROSS OWNER- owner B's RPC patch never changes owner A's row.
+ *   GUIDANCE   - overlapping enabled blocks fail; the same overlap disabled is
+ *                accepted.
+ *   PAUSE      - pausing keeps the configured target minutes on read-back.
+ *   RPC RETURN - the RPC returns the patched row.
  *   IDEMPOTENCE- re-applying the migration succeeds (up-only).
  *
  * Usage:
@@ -21,6 +28,7 @@
  * public/auth CASCADE). Only point it at a throwaway container.
  */
 import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { argv, exit } from "node:process";
 
 import postgres from "postgres";
@@ -155,7 +163,33 @@ function session(sql, userId) {
   };
 }
 
-async function expectFailure(label, fn, expectedCodes) {
+/** Authenticated database role with no JWT subject, so auth.uid() is NULL. */
+function unauthenticatedJwtSession(sql) {
+  return {
+    run(fn) {
+      return sql.begin(async (tx) => {
+        await tx.unsafe(`SET LOCAL ROLE authenticated`);
+        await tx.unsafe(`SELECT set_config('request.jwt.claim.sub', '', true)`);
+        await tx.unsafe(`SELECT set_config('request.jwt.claims', '{}', true)`);
+        return fn(tx);
+      });
+    },
+  };
+}
+
+/** Anonymous client role: no table privileges and no RPC EXECUTE grant. */
+function anonymousSession(sql) {
+  return {
+    run(fn) {
+      return sql.begin(async (tx) => {
+        await tx.unsafe(`SET LOCAL ROLE anon`);
+        return fn(tx);
+      });
+    },
+  };
+}
+
+async function expectFailure(label, fn, expectedCodes, messagePattern) {
   try {
     await fn();
   } catch (error) {
@@ -163,6 +197,12 @@ async function expectFailure(label, fn, expectedCodes) {
       expectedCodes.includes(error.code),
       `${label}: expected one of ${expectedCodes.join(", ")}, got ${error.code} ${error.message}`,
     );
+    if (messagePattern) {
+      assert(
+        messagePattern.test(error.message),
+        `${label}: expected message matching ${messagePattern}, got "${error.message}"`,
+      );
+    }
     log("DENIED", `${label} (${error.code})`);
     return;
   }
@@ -175,7 +215,12 @@ async function main() {
   const tags = await readJournal();
   assert(tags.includes(MIGRATION_TAG), `journal must include ${MIGRATION_TAG}`);
 
-  const sql = postgres(url, { max: 4, onnotice: () => {}, ...(socket ? { path: socket } : {}) });
+  // --socket may name the socket directory (as the disposable-cluster
+  // instructions do) or the socket file itself.
+  const socketPath = socket && !socket.includes(".s.PGSQL.")
+    ? join(socket, `.s.PGSQL.${new URL(url).port || "5432"}`)
+    : socket;
+  const sql = postgres(url, { max: 4, onnotice: () => {}, ...(socketPath ? { path: socketPath } : {}) });
   try {
     await reset(sql);
     await applySupabaseShim(sql);
@@ -296,6 +341,114 @@ async function main() {
     );
     assert(afterAttacks[0].theme === "system", "owner A's row must be unchanged");
     log("RLS", "owner isolation on insert/update/delete proven");
+
+    // ANONYMOUS DENIAL ---------------------------------------------------------
+    const anonymous = anonymousSession(sql);
+    await expectFailure(
+      "anon RPC patch",
+      () => anonymous.run((tx) => tx.unsafe(`SELECT public.patch_user_preferences($1::jsonb)`, [{ theme: "dark" }])),
+      ["42501"],
+    );
+    await expectFailure(
+      "anon SELECT user_preferences",
+      () => anonymous.run((tx) => tx.unsafe(`SELECT count(*) FROM public.user_preferences`)),
+      ["42501"],
+    );
+    await expectFailure(
+      "anon UPDATE user_preferences",
+      () => anonymous.run((tx) => tx.unsafe(`UPDATE public.user_preferences SET theme = 'dark'`)),
+      ["42501"],
+    );
+    log("ANON", "anonymous role cannot call the RPC or touch the table");
+
+    // AUTHENTICATED WITHOUT A SUBJECT -----------------------------------------
+    const noSubject = unauthenticatedJwtSession(sql);
+    await expectFailure(
+      "authenticated without JWT subject",
+      () => noSubject.run((tx) => tx.unsafe(`SELECT public.patch_user_preferences($1::jsonb)`, [{ theme: "dark" }])),
+      ["P0001"],
+      /authentication required/i,
+    );
+    log("AUTH", "missing JWT subject is rejected by auth.uid() NULL guard");
+
+    // CROSS-OWNER RPC ----------------------------------------------------------
+    const ownerABefore = await ownerA.run((tx) =>
+      tx.unsafe(`SELECT theme FROM public.user_preferences WHERE user_id = auth.uid()`),
+    );
+    await ownerB.run((tx) => tx.unsafe(`SELECT public.patch_user_preferences($1::jsonb)`, [{ theme: "light" }]));
+    const crossOwner = await Promise.all([
+      ownerA.run((tx) => tx.unsafe(`SELECT theme FROM public.user_preferences WHERE user_id = auth.uid()`)),
+      ownerB.run((tx) => tx.unsafe(`SELECT theme FROM public.user_preferences WHERE user_id = auth.uid()`)),
+    ]);
+    assert(
+      crossOwner[0][0].theme === ownerABefore[0].theme,
+      "owner B's RPC patch must not change owner A's row",
+    );
+    assert(crossOwner[1][0].theme === "light", "owner B's RPC patch must change owner B's row");
+    log("CROSS OWNER", "owner B patch changed only owner B's row");
+
+    // GUIDANCE OVERLAP + PAUSE + RPC RETURN ------------------------------------
+    const baseTargets = Object.fromEntries(
+      ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"].map((day) => [
+        day,
+        { work: day === "saturday" || day === "sunday" ? 240 : 480, jobSearch: day === "saturday" || day === "sunday" ? 0 : 90 },
+      ]),
+    );
+    const overlappingGuidance = [
+      { name: "Block A", days: ["monday"], start: "06:00", end: "07:00", enabled: true },
+      { name: "Block B", days: ["monday"], start: "06:30", end: "07:30", enabled: true },
+    ];
+    await expectFailure(
+      "overlapping enabled guidance",
+      () =>
+        ownerA.run((tx) =>
+          tx.unsafe(`SELECT public.patch_user_preferences($1::jsonb)`, [
+            { personalOperations: { paused: false, targets: baseTargets, guidance: overlappingGuidance } },
+          ]),
+        ),
+      ["23514"],
+    );
+
+    const disabledOverlap = overlappingGuidance.map((block, index) =>
+      index === 1 ? { ...block, enabled: false } : block,
+    );
+    const accepted = await ownerA.run((tx) =>
+      tx.unsafe(
+        `WITH patched AS (SELECT public.patch_user_preferences($1::jsonb) AS row)
+         SELECT (row).personal_operations AS personal_operations FROM patched`,
+        [{ personalOperations: { paused: false, targets: baseTargets, guidance: disabledOverlap } }],
+      ),
+    );
+    assert(accepted[0].personal_operations.guidance.length === 2, "disabled overlap must be accepted");
+    log("GUIDANCE", "enabled overlap rejected (23514); disabled overlap accepted");
+
+    const pausedSchedule = {
+      paused: true,
+      targets: baseTargets,
+      guidance: disabledOverlap,
+    };
+    const pausedPatch = await ownerA.run((tx) =>
+      tx.unsafe(`SELECT (public.patch_user_preferences($1::jsonb)).theme AS theme`, [
+        { personalOperations: pausedSchedule, theme: "dark" },
+      ]),
+    );
+    assert(pausedPatch[0].theme === "dark", "the RPC must return the patched row");
+    const pausedRead = await ownerA.run((tx) =>
+      tx.unsafe(`SELECT personal_operations FROM public.user_preferences WHERE user_id = auth.uid()`),
+    );
+    assert(pausedRead[0].personal_operations.paused === true, "pause must persist");
+    assert(
+      pausedRead[0].personal_operations.targets.monday.work === 480
+        && pausedRead[0].personal_operations.targets.monday.jobSearch === 90,
+      "pausing must retain the configured target minutes",
+    );
+    assert(
+      pausedRead[0].personal_operations.targets.sunday.work === 240
+        && pausedRead[0].personal_operations.targets.sunday.jobSearch === 0,
+      "weekend targets must survive the pause patch",
+    );
+    log("PAUSE", "pause retained weekday and weekend targets on read-back");
+    log("RPC RETURN", "RPC returned the patched row (theme dark)");
 
     // OWNER WRITE + IDEMPOTENCE ------------------------------------------------
     const updated = await ownerA.run((tx) =>
