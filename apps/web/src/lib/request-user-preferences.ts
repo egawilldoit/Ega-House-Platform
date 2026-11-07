@@ -5,7 +5,7 @@ import type {
   RepositoryResult,
   UserPreferencesRepository,
 } from "@ega/application";
-import type { UserPreferences } from "@ega/domain/preferences";
+import type { UserPreferences, UserPreferencesPatch } from "@ega/domain/preferences";
 import { SupabaseUserPreferencesRepository } from "@ega/data-access";
 
 import { createClient } from "@/lib/supabase/server";
@@ -33,11 +33,11 @@ class RequestMemoUserPreferencesRepository implements UserPreferencesRepository 
     return request;
   }
 
-  async save(
+  async patch(
     actor: AuthenticatedActor,
-    preferences: UserPreferences,
+    preferences: UserPreferencesPatch,
   ): Promise<RepositoryResult<UserPreferences>> {
-    const result = await this.inner.save(actor, preferences);
+    const result = await this.inner.patch(actor, preferences);
     if (result.ok) this.pending.delete(actor.userId);
     return result;
   }

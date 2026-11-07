@@ -5,7 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { UserPreferences } from "@ega/domain/preferences";
+import { DEFAULT_USER_PREFERENCES, type UserPreferences } from "@ega/domain/preferences";
 
 import { ThemeControl } from "./theme-control";
 import { WorkspacePreferencesProvider } from "./workspace-preferences-provider";
@@ -62,6 +62,7 @@ function installMatchMedia(initialDark: boolean): MatchMediaFixture {
 }
 
 const BASE_PREFERENCES: UserPreferences = {
+  personalOperations: DEFAULT_USER_PREFERENCES.personalOperations,
   theme: "system",
   accent: "neutral",
   density: "comfortable",
