@@ -139,7 +139,10 @@ export function TimerSyncStatus({ surface, ownerUserId }: TimerSyncStatusProps) 
       if (inFlightRef.current) return;
 
       inFlightRef.current = true;
-      if (!options?.force) lastAutomaticAttemptAtRef.current = now;
+      // Every accepted attempt, including an explicit forced Retry, moves the
+      // watermark so an automatic focus/online burst right afterwards stays
+      // deduped instead of issuing a redundant reconcile.
+      lastAutomaticAttemptAtRef.current = now;
 
       const requestSequence = requestSequenceRef.current + 1;
       requestSequenceRef.current = requestSequence;

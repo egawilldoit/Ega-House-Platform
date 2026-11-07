@@ -7,6 +7,7 @@ import {
   TIMER_ALREADY_RUNNING_MESSAGE,
   TIMER_NO_OPEN_SESSION_MATCH_MESSAGE,
   TIMER_SESSION_ID_REQUIRED_MESSAGE,
+  TIMER_SESSION_NO_LONGER_RUNNING_MESSAGE,
 } from "@ega/application";
 import {
   SupabaseTimeContextRepository,
@@ -87,12 +88,24 @@ export function createTimerRoutes(
       { now: dependencies.now?.() },
     );
     if (!result.ok) {
-      // An id that is not an open session for this owner is not-found, matching
-      // the MCP timer module and inbox transport precedent.
-      const notFound = result.errorMessage === TIMER_NO_OPEN_SESSION_MATCH_MESSAGE;
+      // An id that is not an open session for this owner is not-found, and a
+      // fenced finalize that leaves the same session open is a state conflict,
+      // mirroring the MCP timer mapping.
+      if (result.errorMessage === TIMER_NO_OPEN_SESSION_MATCH_MESSAGE) {
+        return c.json(
+          { error: { code: "NOT_FOUND", message: result.errorMessage } },
+          404,
+        );
+      }
+      if (result.errorMessage === TIMER_SESSION_NO_LONGER_RUNNING_MESSAGE) {
+        return c.json(
+          { error: { code: "CONFLICT", message: result.errorMessage } },
+          409,
+        );
+      }
       return c.json(
-        { error: { code: notFound ? "NOT_FOUND" : "VALIDATION", message: result.errorMessage } },
-        notFound ? 404 : 400,
+        { error: { code: "VALIDATION", message: result.errorMessage } },
+        400,
       );
     }
     return c.json({
