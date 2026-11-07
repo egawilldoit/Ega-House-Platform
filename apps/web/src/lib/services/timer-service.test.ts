@@ -317,13 +317,26 @@ type MockTimerSession = {
 
 function createTimerServiceSupabaseMock(
   sessions: MockTimerSession[],
-  hooks: { beforeFinalize?: (session: MockTimerSession) => void } = {},
+  hooks: {
+    beforeFinalize?: (session: MockTimerSession) => void;
+    authUser?: { id: string } | null;
+    authError?: { message: string } | null;
+  } = {},
 ) {
+  const authUser = hooks.authUser === undefined ? { id: "owner-a" } : hooks.authUser;
+  const fromCalls: string[] = [];
+  // Fixtures written before the owner predicate implicitly belong to the mock
+  // auth user; an explicit null still means an unowned row.
+  const sessionOwnerId = (session: MockTimerSession) =>
+    session.owner_user_id === undefined
+      ? (authUser?.id ?? "owner-a")
+      : session.owner_user_id;
+
   function createSelectQuery(columns: string) {
     const filters = {
       endedAtIsNull: false,
       id: null as string | null,
-      ownerNotNull: false,
+      ownerUserId: null as string | null,
     };
 
     const execute = async () => {
@@ -337,8 +350,10 @@ function createTimerServiceSupabaseMock(
         data = data.filter((session) => session.ended_at === null);
       }
 
-      if (filters.ownerNotNull) {
-        data = data.filter((session) => session.owner_user_id !== null);
+      if (filters.ownerUserId) {
+        data = data.filter(
+          (session) => sessionOwnerId(session) === filters.ownerUserId,
+        );
       }
 
       data.sort(
@@ -370,16 +385,18 @@ function createTimerServiceSupabaseMock(
         return this;
       },
       eq(column: string, value: string) {
-        assert.equal(column, "id");
-        filters.id = value;
+        if (column === "id") {
+          filters.id = value;
+          return this;
+        }
+        assert.equal(column, "owner_user_id");
+        filters.ownerUserId = value;
         return this;
       },
-      not(column: string, operator: string, value: null) {
-        assert.equal(column, "owner_user_id");
-        assert.equal(operator, "is");
-        assert.equal(value, null);
-        filters.ownerNotNull = true;
-        return this;
+      not() {
+        throw new Error(
+          "stop lookup must use an explicit owner_user_id predicate, not a null check",
+        );
       },
       order(column: string) {
         assert.equal(column, "started_at");
@@ -403,8 +420,17 @@ function createTimerServiceSupabaseMock(
 
   return {
     supabase: {
+      auth: {
+        getUser: async () => {
+          if (hooks.authError) {
+            return { data: { user: null }, error: hooks.authError };
+          }
+          return { data: { user: authUser }, error: null };
+        },
+      },
       from(table: string) {
         assert.equal(table, "task_sessions");
+        fromCalls.push(table);
 
         return {
           select(columns: string) {
@@ -413,13 +439,18 @@ function createTimerServiceSupabaseMock(
           update(payload: Record<string, unknown>) {
             const state = {
               id: null as string | null,
+              ownerUserId: null as string | null,
               requireOpen: false,
             };
 
             return {
               eq(column: string, value: string) {
-                assert.equal(column, "id");
-                state.id = value;
+                if (column === "id") {
+                  state.id = value;
+                  return this;
+                }
+                assert.equal(column, "owner_user_id");
+                state.ownerUserId = value;
                 return this;
               },
               is(column: string, value: null) {
@@ -434,6 +465,12 @@ function createTimerServiceSupabaseMock(
                   maybeSingle: async () => {
                     const session = sessions.find((item) => item.id === state.id);
                     if (!session) {
+                      return { data: null, error: null };
+                    }
+                    if (
+                      state.ownerUserId &&
+                      sessionOwnerId(session) !== state.ownerUserId
+                    ) {
                       return { data: null, error: null };
                     }
                     hooks.beforeFinalize?.(session);
@@ -455,6 +492,7 @@ function createTimerServiceSupabaseMock(
       },
     } as never,
     sessions,
+    fromCalls,
   };
 }
 
@@ -618,6 +656,107 @@ test("stopTimerSession rejects an owner-null row as not found", async () => {
   assert.equal(result.stoppedTaskId, null);
   assert.equal(result.outcome, null);
   assert.equal(mock.sessions[0]?.ended_at, null);
+});
+
+test("stopTimerSession never leaks a foreign owner's ended or open session", async () => {
+  const mock = createTimerServiceSupabaseMock(
+    [
+      {
+        id: "session-a-open",
+        task_id: "task-a",
+        started_at: "2026-04-21T09:30:00.000Z",
+        ended_at: null,
+        duration_seconds: null,
+        owner_user_id: "owner-a",
+      },
+      {
+        id: "session-b-ended",
+        task_id: "task-b",
+        started_at: "2026-04-21T09:00:00.000Z",
+        ended_at: "2026-04-21T09:30:00.000Z",
+        duration_seconds: 1800,
+        owner_user_id: "owner-b",
+      },
+      {
+        id: "session-b-open",
+        task_id: "task-b",
+        started_at: "2026-04-21T09:45:00.000Z",
+        ended_at: null,
+        duration_seconds: null,
+        owner_user_id: "owner-b",
+      },
+    ],
+    { authUser: { id: "owner-a" } },
+  );
+
+  // A foreign ended row must look exactly like an unknown id: no already_stopped
+  // acknowledgement and no task id leak.
+  const foreignEnded = await stopTimerSession({
+    sessionId: "session-b-ended",
+    supabase: mock.supabase,
+    nowIso: "2026-04-21T10:00:00.000Z",
+  });
+  assert.equal(foreignEnded.errorMessage, "No running timer session matches this request.");
+  assert.equal(foreignEnded.stoppedTaskId, null);
+  assert.equal(foreignEnded.outcome, null);
+
+  // A foreign open row must not be finalized by owner A's stop either.
+  const foreignOpen = await stopTimerSession({
+    sessionId: "session-b-open",
+    supabase: mock.supabase,
+    nowIso: "2026-04-21T10:00:00.000Z",
+  });
+  assert.equal(foreignOpen.errorMessage, "No running timer session matches this request.");
+  assert.equal(foreignOpen.stoppedTaskId, null);
+  assert.equal(foreignOpen.outcome, null);
+
+  assert.equal(
+    mock.sessions.find((session) => session.id === "session-b-ended")?.ended_at,
+    "2026-04-21T09:30:00.000Z",
+  );
+  assert.equal(
+    mock.sessions.find((session) => session.id === "session-b-ended")?.duration_seconds,
+    1800,
+  );
+  assert.equal(
+    mock.sessions.find((session) => session.id === "session-b-open")?.ended_at,
+    null,
+  );
+});
+
+test("stopTimerSession fails closed without querying or writing when identity is unverified", async () => {
+  for (const hooks of [
+    { authError: { message: "JWT expired" } },
+    { authUser: null },
+  ]) {
+    const mock = createTimerServiceSupabaseMock(
+      [
+        {
+          id: "session-open",
+          task_id: "task-1",
+          started_at: "2026-04-21T09:30:00.000Z",
+          ended_at: null,
+          duration_seconds: null,
+        },
+      ],
+      hooks,
+    );
+
+    const result = await stopTimerSession({
+      sessionId: "session-open",
+      supabase: mock.supabase,
+      nowIso: "2026-04-21T10:00:00.000Z",
+    });
+
+    assert.equal(
+      result.errorMessage,
+      "Your session expired. Sign in again to stop the timer.",
+    );
+    assert.equal(result.stoppedTaskId, null);
+    assert.equal(result.outcome, null);
+    assert.equal(mock.fromCalls.length, 0, "no session query may run");
+    assert.equal(mock.sessions[0]?.ended_at, null, "no write may run");
+  }
 });
 
 test("stopTimerSession computes wall-clock duration across local midnight", async () => {

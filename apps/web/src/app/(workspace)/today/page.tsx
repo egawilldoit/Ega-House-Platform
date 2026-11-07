@@ -308,9 +308,10 @@ export default async function TodayPage({
         ownerUserId={user?.id ?? null}
         channelPrefix="today"
         tables={["tasks", "task_sessions"]}
+        reconcileOnVisibility={false}
       />
       {/* Reconnect/visibility reconciliation for the rail's Active Timer panel. */}
-      <TimerSyncStatus />
+      <TimerSyncStatus surface="today" ownerUserId={user?.id ?? null} />
 
       {showStoppedTaskPrompt ? (
         <TimerStopOutcomePrompt

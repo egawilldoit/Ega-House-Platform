@@ -107,7 +107,9 @@ describe('timer query hooks', () => {
     // leaving another device's start/stop invisible.
     expect(queryCall?.staleTime).toBe(0);
     expect(queryCall?.refetchOnWindowFocus).toBe('always');
-    expect(queryCall?.refetchOnReconnect).toBe(true);
+    // No NetInfo/onlineManager is installed, so refetchOnReconnect would never
+    // fire; the documented boundary is AppState resume + pull-to-refresh.
+    expect(queryCall?.refetchOnReconnect).toBeUndefined();
   });
 
   it('start success invalidates timer, today, and tracked-task caches', async () => {

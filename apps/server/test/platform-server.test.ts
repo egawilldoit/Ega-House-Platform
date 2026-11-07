@@ -386,6 +386,33 @@ test("POST /api/timer/stop returns 404 NOT_FOUND for an unknown session id", asy
   assert.ok(!fake.calls[0]?.steps.some((step) => step.method === "update"));
 });
 
+test("POST /api/timer/stop makes a foreign-owner session indistinguishable from unknown and never writes", async () => {
+  const fake = new FakeSupabase();
+  // Owner-scoped RLS/predicate returns no row for another owner's session id.
+  fake.push("task_sessions", { data: null, error: null });
+
+  const foreignResponse = await makeApp(fake).request("/api/timer/stop", {
+    method: "POST",
+    headers: JSON_HEADERS,
+    body: JSON.stringify({ sessionId: UNKNOWN_SESSION_ID }),
+  });
+  const foreignBody = await foreignResponse.json();
+
+  const unknownFake = new FakeSupabase();
+  unknownFake.push("task_sessions", { data: null, error: null });
+  const unknownResponse = await makeApp(unknownFake).request("/api/timer/stop", {
+    method: "POST",
+    headers: JSON_HEADERS,
+    body: JSON.stringify({ sessionId: UNKNOWN_SESSION_ID }),
+  });
+  const unknownBody = await unknownResponse.json();
+
+  assert.equal(foreignResponse.status, 404);
+  assert.deepEqual(foreignBody, unknownBody);
+  assert.equal(fake.calls.length, 1);
+  assert.ok(!fake.calls[0]?.steps.some((step) => step.method === "update"));
+});
+
 test("POST /api/timer/stop rejects a non-UUID session id before any query", async () => {
   const fake = new FakeSupabase();
 
