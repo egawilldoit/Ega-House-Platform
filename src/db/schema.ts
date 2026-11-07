@@ -517,11 +517,11 @@ export const notifications = pgTable(
       .where(sql`${table.readAt} is null`),
     check(
       "notifications_type_check",
-      sql`${table.type} in ('task_reminder', 'task_comment_mention')`,
+      sql`${table.type} in ('task_reminder', 'task_comment_mention', 'timer_state_change', 'routine_reminder', 'money_threshold', 'daily_review', 'weekly_review', 'job_search_reminder')`,
     ),
     check(
       "notifications_target_type_check",
-      sql`${table.targetType} is null or ${table.targetType} in ('task')`,
+      sql`${table.targetType} is null or ${table.targetType} in ('task', 'timer', 'routine', 'money', 'review', 'today')`,
     ),
   ],
 );
@@ -584,6 +584,11 @@ export const notificationDeliveries = pgTable(
       table.channel,
       table.deviceId,
     ),
+    uniqueIndex("notification_deliveries_unique_coalesce").on(
+      table.notificationId,
+      table.channel,
+      sql`coalesce(${table.deviceId}, '00000000-0000-0000-0000-000000000000'::uuid)`,
+    ),
     index("notification_deliveries_status_retry_idx").on(table.status, table.nextAttemptAt),
     index("notification_deliveries_notification_idx").on(table.notificationId),
     index("notification_deliveries_owner_idx").on(table.ownerUserId),
@@ -597,7 +602,7 @@ export const notificationDeliveries = pgTable(
     ),
     check(
       "notification_deliveries_status_check",
-      sql`${table.status} in ('queued', 'sending', 'provider_accepted', 'retry_scheduled', 'invalid_endpoint', 'failed')`,
+      sql`${table.status} in ('queued', 'sending', 'provider_accepted', 'retry_scheduled', 'invalid_endpoint', 'failed', 'suppressed')`,
     ),
     check("notification_deliveries_attempts_check", sql`${table.attemptCount} >= 0`),
   ],
@@ -619,7 +624,29 @@ export const notificationPreferences = pgTable(
     index("notification_preferences_owner_idx").on(table.ownerUserId),
     check(
       "notification_preferences_type_check",
-      sql`${table.notificationType} in ('task_reminder')`,
+      sql`${table.notificationType} in ('task_reminder', 'task_comment_mention', 'timer_state_change', 'routine_reminder', 'money_threshold', 'daily_review', 'weekly_review', 'job_search_reminder')`,
+    ),
+  ],
+);
+
+export const notificationSettings = pgTable(
+  "notification_settings",
+  {
+    ownerUserId: uuid("owner_user_id").default(sql`auth.uid()`).primaryKey(),
+    quietHoursEnabled: boolean("quiet_hours_enabled").notNull().default(false),
+    quietHoursStart: varchar("quiet_hours_start", { length: 5 }).notNull().default("22:00"),
+    quietHoursEnd: varchar("quiet_hours_end", { length: 5 }).notNull().default("07:00"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    check(
+      "notification_settings_quiet_hours_start_check",
+      sql`${table.quietHoursStart} ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'`,
+    ),
+    check(
+      "notification_settings_quiet_hours_end_check",
+      sql`${table.quietHoursEnd} ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'`,
     ),
   ],
 );

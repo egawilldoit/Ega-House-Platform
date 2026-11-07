@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import type { SupabaseClient } from "@supabase/supabase-js";
+
 import { FcmPushProvider } from "../src/notifications/fcm-provider";
+import { SupabaseNotificationSettingsRepository } from "../src/notifications/repository";
 
 function mockFetch(status: number, body: unknown): typeof fetch {
   return (async () => {
@@ -18,40 +21,298 @@ function mockFetch(status: number, body: unknown): typeof fetch {
 
 import { classifyFcmError } from "@ega/application/notifications/delivery";
 
-test("FCM error classification mirrors provider expectations", async () => {
-  // Invalid endpoint
+test("FCM error classification invalidates only proven token evidence", async () => {
+  // Proven token-invalid evidence.
   assert.equal(classifyFcmError({ httpStatus: 404, fcmCode: "UNREGISTERED" }), "invalid_endpoint");
-  assert.equal(classifyFcmError({ httpStatus: 400, fcmCode: "INVALID_ARGUMENT" }), "invalid_endpoint");
+  assert.equal(
+    classifyFcmError({
+      httpStatus: 404,
+      fcmCode: "NOT_FOUND",
+      details: [{ errorCode: "UNREGISTERED" }],
+    }),
+    "invalid_endpoint",
+  );
+  assert.equal(
+    classifyFcmError({
+      httpStatus: 400,
+      fcmCode: "INVALID_ARGUMENT",
+      message: "The registration token is not a valid FCM registration token",
+    }),
+    "invalid_endpoint",
+  );
 
-  // Transient
+  // Ambiguous status/codes never prove a stale token.
+  assert.equal(classifyFcmError({ httpStatus: 404 }), "permanent");
+  assert.equal(classifyFcmError({ httpStatus: 410 }), "permanent");
+  assert.equal(classifyFcmError({ httpStatus: 404, fcmCode: "NOT_FOUND" }), "permanent");
+  assert.equal(classifyFcmError({ httpStatus: 400, fcmCode: "INVALID_ARGUMENT" }), "permanent");
+  assert.equal(classifyFcmError({ httpStatus: 400, fcmCode: "INVALID_PAYLOAD" }), "permanent");
+  assert.equal(classifyFcmError({ httpStatus: 400, fcmCode: "SENDER_ID_MISMATCH" }), "auth");
+
+  // Transient/auth retained.
   assert.equal(classifyFcmError({ httpStatus: 429 }), "transient");
   assert.equal(classifyFcmError({ httpStatus: 503, fcmCode: "UNAVAILABLE" }), "transient");
-
-  // Auth
   assert.equal(classifyFcmError({ httpStatus: 401 }), "auth");
-
-  // Permanent
-  assert.equal(classifyFcmError({ httpStatus: 400, fcmCode: "INVALID_PAYLOAD" }), "permanent");
+  assert.equal(classifyFcmError({ httpStatus: 403 }), "auth");
 });
 
-test("FcmPushProvider returns invalid_endpoint for missing token", async () => {
+test("FcmPushProvider returns permanent for missing service account", async () => {
   const provider = new FcmPushProvider({ serviceAccount: null });
   const result = await provider.send({ token: "tok", title: "hi", body: "body", data: { notificationId: "n1", type: "task_reminder" } });
   assert.equal(result.ok, false);
   if (!result.ok) assert.equal(result.errorCode, "permanent");
 });
 
-test("FcmPushProvider handles invalid token response", async () => {
-  // Create provider with dummy account and mock fetch returning 404 UNREGISTERED
-  const provider = new FcmPushProvider({
-    serviceAccount: { projectId: "proj", clientEmail: "a@b.iam.gserviceaccount.com", privateKey: "key" },
-    fetchImpl: mockFetch(404, { error: { status: "UNREGISTERED", message: "Requested entity was not found." } }),
+function fcmProvider(status: number, body: unknown) {
+  return new FcmPushProvider({
+    serviceAccount: {
+      projectId: "proj",
+      clientEmail: "a@b.iam.gserviceaccount.com",
+      privateKey: "key",
+    },
+    fetchImpl: mockFetch(status, body),
+    accessTokenProvider: async () => "access-token",
   });
+}
 
-  // Mock getAccessToken by temporarily replacing module? We'll need to stub the JWT authorize.
-  // Instead we can test classification directly: provider would call getAccessToken which will fail with real key, so we expect auth error, not invalid_endpoint.
-  // For true unit test of classification, we already covered above. This test ensures provider surfaces auth failure when key invalid.
-  const result = await provider.send({ token: "bad-token", title: "t", body: "b", data: { notificationId: "n1", type: "task_reminder" } });
-  // With invalid private key, auth will fail -> permanent or auth, not invalid_endpoint. That's acceptable.
+const PUSH = { token: "device-token", title: "t", body: "b", data: { notificationId: "n1", type: "task_reminder" as const } };
+
+test("FcmPushProvider maps structured token-invalid responses to invalid_endpoint", async () => {
+  const unregistered = await fcmProvider(404, {
+    error: {
+      status: "NOT_FOUND",
+      message: "Requested entity was not found.",
+      details: [{ errorCode: "UNREGISTERED" }],
+    },
+  }).send(PUSH);
+  assert.equal(unregistered.ok, false);
+  if (!unregistered.ok) assert.equal(unregistered.errorCode, "invalid_endpoint");
+
+  const invalidArgumentToken = await fcmProvider(400, {
+    error: {
+      status: "INVALID_ARGUMENT",
+      message: "The registration token is not a valid FCM registration token",
+    },
+  }).send(PUSH);
+  assert.equal(invalidArgumentToken.ok, false);
+  if (!invalidArgumentToken.ok) assert.equal(invalidArgumentToken.errorCode, "invalid_endpoint");
+});
+
+test("FcmPushProvider never treats bare 404/410 or config errors as stale tokens", async () => {
+  for (const status of [404, 410]) {
+    const result = await fcmProvider(status, { error: { message: "not found" } }).send(PUSH);
+    assert.equal(result.ok, false);
+    if (!result.ok) assert.equal(result.errorCode, "permanent");
+  }
+
+  const projectNotFound = await fcmProvider(404, {
+    error: { status: "NOT_FOUND", message: "Requested entity was not found." },
+  }).send(PUSH);
+  assert.equal(projectNotFound.ok, false);
+  if (!projectNotFound.ok) assert.equal(projectNotFound.errorCode, "permanent");
+
+  const malformed = await fcmProvider(400, {
+    error: { status: "INVALID_ARGUMENT", message: "Invalid payload" },
+  }).send(PUSH);
+  assert.equal(malformed.ok, false);
+  if (!malformed.ok) assert.equal(malformed.errorCode, "permanent");
+
+  const senderMismatch = await fcmProvider(400, {
+    error: { status: "SENDER_ID_MISMATCH", message: "Sender mismatch" },
+  }).send(PUSH);
+  assert.equal(senderMismatch.ok, false);
+  if (!senderMismatch.ok) assert.equal(senderMismatch.errorCode, "auth");
+});
+
+test("FcmPushProvider keeps transient 429/5xx retry semantics", async () => {
+  const throttled = await fcmProvider(429, { error: { status: "RESOURCE_EXHAUSTED" } }).send(PUSH);
+  assert.equal(throttled.ok, false);
+  if (!throttled.ok) assert.equal(throttled.errorCode, "transient");
+
+  const unavailable = await fcmProvider(503, { error: { status: "UNAVAILABLE" } }).send(PUSH);
+  assert.equal(unavailable.ok, false);
+  if (!unavailable.ok) assert.equal(unavailable.errorCode, "transient");
+});
+
+function fakeSettingsClient(error: { code: string; message: string }): SupabaseClient {
+  return {
+    from(_table: string) {
+      return {
+        select() {
+          return this;
+        },
+        eq() {
+          return this;
+        },
+        async maybeSingle() {
+          return { data: null, error };
+        },
+      };
+    },
+  } as unknown as SupabaseClient;
+}
+
+test("notification settings missing table degrades to disabled quiet hours", async () => {
+  const repository = new SupabaseNotificationSettingsRepository(
+    fakeSettingsClient({
+      code: "PGRST205",
+      message: "Could not find the table 'public.notification_settings' in the schema cache",
+    }),
+  );
+  const result = await repository.getSettings({ userId: "user-1" });
+  assert.deepEqual(result, { ok: true, value: null });
+});
+
+test("notification settings 42P01 and exact table-message also degrade", async () => {
+  const pg = new SupabaseNotificationSettingsRepository(
+    fakeSettingsClient({
+      code: "42P01",
+      message: 'relation "public.notification_settings" does not exist',
+    }),
+  );
+  assert.deepEqual(await pg.getSettings({ userId: "user-1" }), { ok: true, value: null });
+
+  const messageOnly = new SupabaseNotificationSettingsRepository(
+    fakeSettingsClient({
+      code: "unknown",
+      message: "Could not find the table 'public.notification_settings' in the schema cache",
+    }),
+  );
+  assert.deepEqual(await messageOnly.getSettings({ userId: "user-1" }), { ok: true, value: null });
+});
+
+test("notification settings column/schema drift stays a failure", async () => {
+  const undefinedColumn = new SupabaseNotificationSettingsRepository(
+    fakeSettingsClient({
+      code: "42703",
+      message: 'column "quiet_hours_start" of relation "notification_settings" does not exist',
+    }),
+  );
+  assert.equal((await undefinedColumn.getSettings({ userId: "user-1" })).ok, false);
+
+  const postgrestColumn = new SupabaseNotificationSettingsRepository(
+    fakeSettingsClient({
+      code: "PGRST204",
+      message:
+        "Could not find the 'quiet_hours_start' column of 'notification_settings' in the schema cache",
+    }),
+  );
+  assert.equal((await postgrestColumn.getSettings({ userId: "user-1" })).ok, false);
+});
+
+test("notification settings genuine read failures stay failures", async () => {
+  const repository = new SupabaseNotificationSettingsRepository(
+    fakeSettingsClient({ code: "500", message: "connection reset" }),
+  );
+  const result = await repository.getSettings({ userId: "user-1" });
+  assert.equal(result.ok, false);
+});
+
+type SettingsWriteResult = { data: unknown; error: { code?: string; message?: string } | null };
+
+function fakeSettingsWriteClient(results: SettingsWriteResult[]) {
+  const calls: Array<{ method: "update" | "insert"; payload: Record<string, unknown> }> = [];
+  let index = 0;
+  const next = () => results[index++] ?? { data: null, error: null };
+  const chain = (method: "update" | "insert", payload: Record<string, unknown>) => {
+    calls.push({ method, payload });
+    const builder = {
+      eq() {
+        return builder;
+      },
+      select() {
+        return builder;
+      },
+      async maybeSingle() {
+        return next();
+      },
+    };
+    return builder;
+  };
+  const client = {
+    from() {
+      return {
+        update(payload: Record<string, unknown>) {
+          return chain("update", payload);
+        },
+        insert(payload: Record<string, unknown>) {
+          return chain("insert", payload);
+        },
+      };
+    },
+  } as unknown as SupabaseClient;
+  return { client, calls };
+}
+
+function settingsRow(overrides: Record<string, unknown> = {}) {
+  return {
+    owner_user_id: "user-1",
+    quiet_hours_enabled: false,
+    quiet_hours_start: "22:00",
+    quiet_hours_end: "07:00",
+    created_at: "2026-01-01T00:00:00.000Z",
+    updated_at: "2026-01-01T00:00:00.000Z",
+    ...overrides,
+  };
+}
+
+test("patchSettings updates only supplied fields on an existing row", async () => {
+  const { client, calls } = fakeSettingsWriteClient([
+    { data: settingsRow({ quiet_hours_start: "23:00" }), error: null },
+  ]);
+  const repository = new SupabaseNotificationSettingsRepository(client);
+  const result = await repository.patchSettings({ userId: "user-1" }, { quietHoursStart: "23:00" });
+  assert.equal(result.ok, true);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0]!.method, "update");
+  assert.equal(calls[0]!.payload.quiet_hours_start, "23:00");
+  assert.equal("quiet_hours_enabled" in calls[0]!.payload, false);
+  assert.equal("quiet_hours_end" in calls[0]!.payload, false);
+});
+
+test("patchSettings inserts supplied fields plus documented defaults when no row exists", async () => {
+  const { client, calls } = fakeSettingsWriteClient([
+    { data: null, error: null },
+    {
+      data: settingsRow({
+        quiet_hours_start: "23:00",
+        quiet_hours_enabled: false,
+        quiet_hours_end: "07:00",
+      }),
+      error: null,
+    },
+  ]);
+  const repository = new SupabaseNotificationSettingsRepository(client);
+  const result = await repository.patchSettings({ userId: "user-1" }, { quietHoursStart: "23:00" });
+  assert.equal(result.ok, true);
+  assert.deepEqual(calls.map((call) => call.method), ["update", "insert"]);
+  assert.equal(calls[1]!.payload.quiet_hours_start, "23:00");
+  assert.equal(calls[1]!.payload.quiet_hours_enabled, false);
+  assert.equal(calls[1]!.payload.quiet_hours_end, "07:00");
+});
+
+test("patchSettings retries the partial update once after a first-row 23505", async () => {
+  const { client, calls } = fakeSettingsWriteClient([
+    { data: null, error: null },
+    { data: null, error: { code: "23505", message: "duplicate key" } },
+    {
+      data: settingsRow({ quiet_hours_enabled: true, quiet_hours_start: "23:00" }),
+      error: null,
+    },
+  ]);
+  const repository = new SupabaseNotificationSettingsRepository(client);
+  const result = await repository.patchSettings({ userId: "user-1" }, { quietHoursStart: "23:00" });
+  assert.equal(result.ok, true);
+  assert.deepEqual(calls.map((call) => call.method), ["update", "insert", "update"]);
+  assert.equal(calls[2]!.payload.quiet_hours_start, "23:00");
+  assert.equal("quiet_hours_enabled" in calls[2]!.payload, false);
+});
+
+test("patchSettings surfaces update errors instead of success-shaped data", async () => {
+  const { client } = fakeSettingsWriteClient([
+    { data: null, error: { code: "42703", message: "column missing" } },
+  ]);
+  const repository = new SupabaseNotificationSettingsRepository(client);
+  const result = await repository.patchSettings({ userId: "user-1" }, { quietHoursEnabled: true });
   assert.equal(result.ok, false);
 });
