@@ -413,9 +413,11 @@ export async function processDueTaskReminders(
       preferences: pref ? { pushEnabled: pref.pushEnabled, emailEnabled: pref.emailEnabled } : null,
     });
 
-    // Fail closed on quiet-hours reads too: if the settings/timezone read
-    // fails we do not know whether it is quiet, so do not dispatch or mark
-    // processed. Invalid/missing timezone remains the documented safe default.
+    // Fail closed at dispatch, but do not stall the producer here: if the
+    // settings/timezone read fails we cannot classify quiet hours, so create
+    // the event + queued (non-suppressed) deliveries and let dispatch make the
+    // authoritative bounded retry/fail decision without provider calls.
+    // Invalid/missing timezone remains the documented safe default.
     const quiet = await resolveQuietHoursSuppression({
       actor: ownerActor,
       notificationType: "task_reminder",
@@ -423,10 +425,6 @@ export async function processDueTaskReminders(
       timeContextRepository: options.timeContextRepository,
       now,
     });
-    if (quiet.status === "unavailable") {
-      counts.skipped += 1;
-      continue;
-    }
 
     const title = "Task reminder";
     const body = claimed.value.taskTitle?.trim() || "You have a task reminder";
@@ -482,15 +480,19 @@ export async function processDueTaskReminders(
 
     if (channels.push) {
       const devicesResult = await options.deviceRepository.listActiveDevices(ownerActor);
-      if (devicesResult.ok) {
-        for (const device of devicesResult.value) {
-          deliveriesToCreate.push({
-            channel: "push",
-            deviceId: device.id,
-            provider: "fcm",
-            ...suppressedFields,
-          });
-        }
+      if (!devicesResult.ok) {
+        // Do not silently drop push. Leave the intent unprocessed so lease
+        // reclaim retries the whole event idempotently.
+        counts.skipped += 1;
+        continue;
+      }
+      for (const device of devicesResult.value) {
+        deliveriesToCreate.push({
+          channel: "push",
+          deviceId: device.id,
+          provider: "fcm",
+          ...suppressedFields,
+        });
       }
       // If push desired but no devices, still keep the canonical notification.
     }
@@ -545,6 +547,7 @@ export type ProcessDeliveriesResult = {
   invalidated: number;
   failed: number;
   suppressed: number;
+  persistenceErrors: number;
 };
 
 async function markSuppressed(
@@ -571,14 +574,14 @@ async function markSuppressed(
 async function deferDeliveryForInfrastructure(args: {
   repository: NotificationDeliveryRepository;
   delivery: { id: string; attemptCount: number };
-  code: "preferences_unavailable" | "quiet_hours_unavailable";
+  code: "preferences_unavailable" | "quiet_hours_unavailable" | "notification_unavailable";
   reason: string;
   now: Date;
   nowIso: string;
-}): Promise<"retried" | "failed"> {
+}): Promise<"retried" | "failed" | "persistence_failed"> {
   const nextAttempt = nextRetryAt(args.delivery.attemptCount + 1, args.now);
   if (!nextAttempt) {
-    await args.repository.updateDelivery(args.delivery.id, {
+    const update = await args.repository.updateDelivery(args.delivery.id, {
       status: "failed",
       lastErrorCode: args.code,
       lastErrorReason: args.reason,
@@ -587,9 +590,11 @@ async function deferDeliveryForInfrastructure(args: {
       updatedAt: args.nowIso,
       nextAttemptAt: null,
     });
+    // The delivery stays `sending`; stale-lease reclaim is the backstop.
+    if (!update.ok || !update.value) return "persistence_failed";
     return "failed";
   }
-  await args.repository.updateDelivery(args.delivery.id, {
+  const update = await args.repository.updateDelivery(args.delivery.id, {
     status: "retry_scheduled",
     lastErrorCode: args.code,
     lastErrorReason: args.reason,
@@ -597,7 +602,17 @@ async function deferDeliveryForInfrastructure(args: {
     nextAttemptAt: nextAttempt,
     updatedAt: args.nowIso,
   });
+  if (!update.ok || !update.value) return "persistence_failed";
   return "retried";
+}
+
+function recordDeferralOutcome(
+  counts: ProcessDeliveriesResult,
+  outcome: "retried" | "failed" | "persistence_failed",
+): void {
+  if (outcome === "retried") counts.retried += 1;
+  else if (outcome === "failed") counts.failed += 1;
+  else counts.persistenceErrors += 1;
 }
 
 export async function processPendingNotificationDeliveries(
@@ -617,6 +632,7 @@ export async function processPendingNotificationDeliveries(
     invalidated: 0,
     failed: 0,
     suppressed: 0,
+    persistenceErrors: 0,
   };
 
   for (const delivery of pendingResult.value) {
@@ -632,8 +648,23 @@ export async function processPendingNotificationDeliveries(
       ownerActor,
       delivery.notificationId,
     );
-    const notification = notifResult.ok ? notifResult.value : null;
 
+    // A read failure is not the same as a missing row: defer without calling a
+    // provider, then fail after the bounded budget. A null row is terminal.
+    if (!notifResult.ok) {
+      const outcome = await deferDeliveryForInfrastructure({
+        repository: options.deliveryRepository,
+        delivery,
+        code: "notification_unavailable",
+        reason: "Unable to read notification before dispatch.",
+        now,
+        nowIso,
+      });
+      recordDeferralOutcome(counts, outcome);
+      continue;
+    }
+
+    const notification = notifResult.value;
     if (!notification) {
       await options.deliveryRepository.updateDelivery(delivery.id, {
         status: "failed",
@@ -660,8 +691,7 @@ export async function processPendingNotificationDeliveries(
         now,
         nowIso,
       });
-      if (outcome === "retried") counts.retried += 1;
-      else counts.failed += 1;
+      recordDeferralOutcome(counts, outcome);
       continue;
     }
     const pref = prefsResult.value.find((p) => p.notificationType === notification.type) ?? null;
@@ -702,8 +732,7 @@ export async function processPendingNotificationDeliveries(
         now,
         nowIso,
       });
-      if (outcome === "retried") counts.retried += 1;
-      else counts.failed += 1;
+      recordDeferralOutcome(counts, outcome);
       continue;
     }
     if (quiet.status === "quiet") {

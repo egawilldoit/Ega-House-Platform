@@ -162,13 +162,23 @@ remains the existing shared Time Context authority
   canonical inbox notification may still exist with zero deliveries.
 - Dispatch re-checks current opt-out and quiet hours before calling a provider;
   an affected delivery becomes `suppressed` (`opt_out` / `quiet_hours`).
-- Preference/settings/time-context **read failures fail closed**: queue-time
-  work is left retryable with no fan-out, and dispatch defers explicitly as
-  `retry_scheduled` (`preferences_unavailable` / `quiet_hours_unavailable`),
-  then `failed` after the bounded retry budget. A missing preference row keeps
-  the legacy enabled default; a missing/invalid owner timezone or invalid
-  `HH:MM` keeps the documented no-suppress default (these are configuration
-  states, not read failures).
+- Read failures fail closed at the authoritative dispatch boundary:
+  - queue time: a **preference** read failure leaves the intent retryable with
+    no event/delivery fan-out; a **device** read failure also leaves it
+    retryable so push is never silently dropped; a **quiet-hours/
+    time-context** read failure still creates the canonical event and queued
+    (non-suppressed) deliveries, bounded by dispatch.
+  - dispatch: any preference/settings/time-context/notification read failure
+    calls no provider and records explicit `retry_scheduled`
+    (`preferences_unavailable`, `quiet_hours_unavailable`,
+    `notification_unavailable`), then `failed` after the bounded retry budget.
+    A failed deferral write is reported as a persistence error and remains
+    reclaimable by the stale-`sending` lease.
+  - A missing preference row keeps the legacy enabled default; a missing/invalid
+    owner timezone or invalid `HH:MM` keeps the documented no-suppress default
+    (configuration states, not read failures). A missing
+    `notification_settings` table (0079 not applied) degrades to legacy
+    quiet-hours-disabled behavior.
 - Event keys must use the canonical `${type}:` prefix; outer whitespace is
   trimmed before persistence and a mismatched type prefix is rejected.
 - Entity target ids must be UUIDs (the `target_id` column is `uuid`); invalid
@@ -274,6 +284,8 @@ All UI reuses `mobileTheme.colors.background/surface/accent` glass primitives; n
 - Created `drizzle/0045_notification_subsystem.sql` + `drizzle/meta/_journal.json` entry `0045_notification_subsystem` (when `1787600000000`).
 - Added `drizzle/0079_notification_events_policy.sql` + journal idx `79` (`0079_notification_events_policy`): widens notification/preference type checks and target allowlist, adds `suppressed`, creates owner-scoped `notification_settings` (RLS + FORCE + HH:MM checks).
 - **Migration sequencing note:** Track C (#346) owns the initial new expense migration if it lands; this branch-local `0079` must be re-sequenced/reconciled with Track C before any future merge. It is not applied to any shared/production/DEV database. Only a disposable local DB was used for constraint/RLS proof.
+- **Rollout rule:** apply `0079` before/with enabling the fail-closed reminder cron. If that order is violated, `SupabaseNotificationSettingsRepository.getSettings` recognizes a missing `notification_settings` table (`42P01`, `PGRST205`, "does not exist"/"schema cache"/"could not find") and returns "no settings row", so quiet hours degrade to legacy disabled behavior instead of stalling every reminder. Other settings read errors remain failures and are retried/failed at dispatch.
+- **Event-key rollout:** the legacy V1 key was `task-reminder:<reminderId>`; the canonical key is `task_reminder:<reminderId>`. There is no second key format or legacy-key lookup. If old code/`0045` are already live and a reminder is replayed across the upgrade (crash between event creation and intent `processed`), a one-time duplicate event/delivery fan-out is possible. Recommended order: apply `0079`, deploy this code, then replay/recover any crash-window reminders; normal processed reminders are unaffected.
 - **NOT applied** to production. Controlled `drizzle-kit migrate` (or `supabase db push`) required after review, with pre-flight duplicate checks if any.
 
 ## 15. Verification Checklist (later explicit phase)
@@ -325,10 +337,10 @@ port.
 
 ## 19. PWA-18 / #347 — current evidence and unverified gaps
 
-**Observed (repository evidence):**
-- Contracts/application/data-access/api-client/server notification checks pass in
-  this worktree; application orchestration covers fail-closed preference and
-  quiet-hours reads, canonical event keys, and canonical target/copy policy.
+**Observed (repository evidence in this worktree):**
+- Contracts/application/data-access/api-client/server notification checks pass;
+  application orchestration covers fail-closed dispatch reads, queue-time
+  availability, canonical event keys, and canonical target/copy policy.
 - Disposable local PostgreSQL 18 proof applied `0045` + `0079` and verified:
   owner A/B select/update isolation on notifications; duplicate
   `(owner, idempotency_key)` rejection; duplicate channel/device delivery
@@ -336,14 +348,13 @@ port.
   invalid status rejected; taxonomy target/preference constraint rejection;
   `notification_settings` owner isolation (insert/select/update) and invalid
   `HH:MM` rejection. The disposable DB was dropped afterward.
-- Environment-dependent suites are not treated as repository-wide proof:
-  - In this Windows worktree `mobile:typecheck`/`mobile:test` passed; the
-    independent reviewer environment reported pre-existing `jest-expo`/
-    `react-native` export-map failures in untouched files.
-  - Full `web:test`/`server:test` have pre-existing Windows failures (timezone
+- Suffix environment notes (not repository-wide proof):
+  - `mobile:typecheck`/`mobile:test` pass only after a clean lockfile `npm ci`;
+    dependency drift in a reused `node_modules` can surface untouched-file
+    `jest-expo`/`react-native` export-map failures.
+  - Full `web:test`/`server:test` retain unrelated Windows failures (timezone
     and CRLF assertions, relative-URL fetch, `spawn EINVAL`) reproduced on base
-    `b3f367cc`; the PR CI run (`db-invariants`, `server`, `web`, `mobile`,
-    packages) passed on the hosted runner.
+    `b3f367cc`. Hosted CI conclusions are reported in the PR, not claimed here.
 
 **Not verified / gaps:**
 - Real FCM/Android device delivery and real Resend email delivery.
