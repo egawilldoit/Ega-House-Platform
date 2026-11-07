@@ -1283,3 +1283,70 @@ export const operatorProposals = pgTable(
     }).onDelete("set null"),
   ],
 );
+
+/**
+ * Owner-scoped personal expense ledger (PO-06 Slice A, issue #346). Amounts
+ * are positive integer centimes of MAD; soft delete and optimistic version
+ * concurrency keep the ledger bounded and idempotent.
+ */
+export const personalExpenses = pgTable(
+  "personal_expenses",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    ownerUserId: uuid("owner_user_id").default(sql`auth.uid()`).notNull(),
+    occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull(),
+    amountMinor: integer("amount_minor").notNull(),
+    currency: varchar("currency", { length: 3 }).default("MAD").notNull(),
+    category: varchar("category", { length: 32 }).notNull(),
+    note: varchar("note", { length: 500 }),
+    merchant: varchar("merchant", { length: 120 }),
+    needVsWant: varchar("need_vs_want", { length: 8 }).notNull(),
+    paymentMethod: varchar("payment_method", { length: 32 }),
+    idempotencyKey: varchar("idempotency_key", { length: 128 }).notNull(),
+    version: integer("version").default(1).notNull(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("personal_expenses_owner_idempotency_key_unique").on(
+      table.ownerUserId,
+      table.idempotencyKey,
+    ),
+    index("personal_expenses_owner_occurred_at_idx").on(
+      table.ownerUserId,
+      table.occurredAt.desc(),
+      table.id.desc(),
+    ),
+    check(
+      "personal_expenses_amount_minor_check",
+      sql`${table.amountMinor} >= 1 and ${table.amountMinor} <= 2147483647`,
+    ),
+    check("personal_expenses_currency_check", sql`${table.currency} = 'MAD'`),
+    check(
+      "personal_expenses_category_check",
+      sql`${table.category} in ('coffee','groceries','eating_out','transport','bills','subscriptions','household','health','other')`,
+    ),
+    check(
+      "personal_expenses_need_vs_want_check",
+      sql`${table.needVsWant} in ('need','want')`,
+    ),
+    check(
+      "personal_expenses_payment_method_check",
+      sql`${table.paymentMethod} is null or ${table.paymentMethod} in ('cash','card','bank_transfer','mobile_wallet','other')`,
+    ),
+    check("personal_expenses_version_check", sql`${table.version} > 0`),
+    check(
+      "personal_expenses_idempotency_key_check",
+      sql`length(btrim(${table.idempotencyKey})) > 0`,
+    ),
+    check(
+      "personal_expenses_note_check",
+      sql`${table.note} is null or length(btrim(${table.note})) > 0`,
+    ),
+    check(
+      "personal_expenses_merchant_check",
+      sql`${table.merchant} is null or length(btrim(${table.merchant})) > 0`,
+    ),
+  ],
+);

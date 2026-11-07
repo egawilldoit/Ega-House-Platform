@@ -8,4 +8,5 @@ export * from "./inbox/index";
 export * from "./inbox-ai/index";
 export * from "./time-context";
 export * from "./preferences";
+export * from "./expenses";
 export * from "./attachments";
