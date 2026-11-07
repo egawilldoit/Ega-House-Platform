@@ -1,9 +1,12 @@
+import type { PersonalOperationsDayPlanResult } from "@ega/domain/preferences";
+
 import styles from "./preferences.module.css";
 import {
   DAYS,
   DAY_LABELS,
   type GuidanceConflicts,
   type NextGuidance,
+  type PersonalOperationsTimeContext,
   type Schedule,
   formatDuration,
   getNextGuidance,
@@ -28,35 +31,56 @@ function nextDetail(next: NextGuidance): string {
   return `${when} at ${next.start}, in ${formatDuration(next.startsInMinutes)}`;
 }
 
+function capitalize(value: string): string {
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
 export function ScheduleCheck({
   schedule,
   conflicts,
-  timezone,
+  timeContext,
+  today,
   now,
 }: {
   schedule: Schedule;
   conflicts: GuidanceConflicts;
-  timezone: string | null;
+  timeContext: PersonalOperationsTimeContext | null;
+  today: PersonalOperationsDayPlanResult | null;
   now: Date | null;
 }) {
   const hasConflicts = conflicts.messages.length > 0;
   const planned = getPlannedGuidanceMinutes(schedule.guidance);
   const maxPlanned = Math.max(1, ...DAYS.map((day) => planned[day]));
-  const timezoneInvalid = timezone !== null && !isValidTimeZone(timezone);
-  const hasUsableTimezone = timezone !== null && !timezoneInvalid;
+
+  const effectiveTimezone = timeContext?.timezone ?? null;
+  const storedTimezone = timeContext?.persistedTimezone ?? null;
+  const invalidTimezone =
+    timeContext !== null &&
+    (timeContext.fallback === "invalid_timezone" ||
+      (storedTimezone !== null && !isValidTimeZone(storedTimezone)) ||
+      (effectiveTimezone !== null && !isValidTimeZone(effectiveTimezone)));
+  const fallbackMissing = timeContext?.fallback === "missing_timezone";
+  const hasUsableTimezone =
+    effectiveTimezone !== null && !invalidTimezone && isValidTimeZone(effectiveTimezone);
   const next =
-    hasUsableTimezone && now ? getNextGuidance(schedule, timezone, now) : null;
+    effectiveTimezone !== null && hasUsableTimezone && now
+      ? getNextGuidance(schedule, effectiveTimezone, now)
+      : null;
+  const timezoneLabel = invalidTimezone
+    ? (storedTimezone ?? effectiveTimezone)
+    : effectiveTimezone;
 
   let nextTitle = "Next guidance";
-  let nextText = "Checking your schedule…";
+  let nextText: string;
   if (schedule.paused) {
     nextTitle = "Schedule paused";
     nextText = "Upcoming guidance is hidden while the schedule is paused.";
-  } else if (!timezone) {
-    nextText = "The account time zone is unavailable, so upcoming guidance cannot be shown.";
-  } else if (timezoneInvalid) {
+  } else if (!timeContext) {
+    nextText =
+      "The account time zone is unavailable, so upcoming guidance cannot be shown.";
+  } else if (invalidTimezone) {
     nextTitle = "Time zone unavailable";
-    nextText = `"${timezone}" is not a valid IANA time zone, so upcoming guidance cannot be shown.`;
+    nextText = `"${timezoneLabel}" is not a valid IANA time zone, so upcoming guidance cannot be shown.`;
   } else if (!now) {
     nextText = "Checking your schedule in your account time zone…";
   } else if (next) {
@@ -109,12 +133,70 @@ export function ScheduleCheck({
           <div>
             <span className={styles.checkTitle}>{nextTitle}</span>
             <span className={styles.checkDetail}>{nextText}</span>
-            {timezone ? (
+            {timeContext ? (
               <span className={styles.checkDetail}>
-                Account time zone: {timezone}
-                {timezoneInvalid ? " (invalid)" : ""}
+                Account time zone: {timezoneLabel}
+                {invalidTimezone ? " (invalid)" : ""}
               </span>
             ) : null}
+            {fallbackMissing ? (
+              <span className={styles.checkDetail} role="status">
+                No time zone is stored for this account, so UTC is used for day
+                boundaries. Set a time zone in Account settings.
+              </span>
+            ) : null}
+            {!timeContext ? (
+              <span className={styles.checkDetail} role="status">
+                The account time zone could not be loaded right now. You can still
+                edit and save the schedule; today&apos;s plan is unavailable.
+              </span>
+            ) : null}
+          </div>
+        </div>
+
+        <div className={styles.checkItem}>
+          <span className={styles.checkIcon} aria-hidden="true">
+            ◎
+          </span>
+          <div style={{ minWidth: 0 }}>
+            <span className={styles.checkTitle}>Today&apos;s plan</span>
+            {timeContext === null ? (
+              <span className={styles.checkDetail}>
+                Today&apos;s plan is unavailable because the account time zone
+                could not be loaded.
+              </span>
+            ) : today === null ? (
+              <span className={styles.checkDetail}>
+                Resolving today in your account time zone…
+              </span>
+            ) : !today.ok ? (
+              <span role="alert" className={styles.inlineError}>
+                {today.message}
+              </span>
+            ) : (
+              <>
+                <span className={styles.checkDetail}>
+                  Today in {timeContext.timezone}:{" "}
+                  <strong>{capitalize(today.value.day)}</strong> —{" "}
+                  {today.value.target.work} min work,{" "}
+                  {today.value.target.jobSearch} min job search
+                  {today.value.paused ? " (paused)" : ""}
+                </span>
+                {today.value.guidance.length > 0 ? (
+                  <ul aria-label="Today's guidance" className={styles.todayGuidance}>
+                    {today.value.guidance.map((guidance, index) => (
+                      <li key={`${guidance.name}-${guidance.start}-${index}`}>
+                        {guidance.name}: {guidance.start}–{guidance.end}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <span className={styles.checkDetail}>
+                    No guidance blocks are enabled for today.
+                  </span>
+                )}
+              </>
+            )}
           </div>
         </div>
 

@@ -18,6 +18,12 @@ import {
 } from "./schedule-draft-storage";
 import { WorkspaceDefaultsForm } from "./workspace-defaults-form";
 
+const UTC_CONTEXT = {
+  timezone: "UTC",
+  fallback: "none" as const,
+  localDate: "2026-02-16",
+};
+
 let container: HTMLDivElement;
 let root: Root;
 
@@ -107,7 +113,7 @@ describe("PersonalOperationsForm", () => {
         <PersonalOperationsForm
           initial={initial}
           disabled={false}
-          timezone="UTC"
+          timeContext={UTC_CONTEXT}
           action={action}
         />,
       );
@@ -135,7 +141,7 @@ describe("PersonalOperationsForm", () => {
         <PersonalOperationsForm
           initial={initial}
           disabled={false}
-          timezone="UTC"
+          timeContext={UTC_CONTEXT}
           action={vi.fn()}
         />,
       );
@@ -173,7 +179,7 @@ describe("PersonalOperationsForm", () => {
         <PersonalOperationsForm
           initial={initial}
           disabled={false}
-          timezone="UTC"
+          timeContext={UTC_CONTEXT}
           action={action}
         />,
       );
@@ -213,7 +219,7 @@ describe("PersonalOperationsForm", () => {
         <PersonalOperationsForm
           initial={initial}
           disabled={false}
-          timezone="UTC"
+          timeContext={UTC_CONTEXT}
           action={action}
         />,
       );
@@ -236,7 +242,7 @@ describe("PersonalOperationsForm", () => {
         <PersonalOperationsForm
           initial={initial}
           disabled={false}
-          timezone="UTC"
+          timeContext={UTC_CONTEXT}
           action={vi.fn()}
         />,
       );
@@ -265,6 +271,53 @@ describe("PersonalOperationsForm", () => {
     link.remove();
   });
 
+  it("keeps the draft when a same-path anchor does not leave the page", async () => {
+    const initial = schedule();
+    const key = createScheduleDraftKey("/settings/preferences", initial);
+
+    await act(async () => {
+      root.render(
+        <PersonalOperationsForm
+          initial={initial}
+          disabled={false}
+          timeContext={UTC_CONTEXT}
+          action={vi.fn()}
+        />,
+      );
+    });
+
+    const mondayWork = field<HTMLInputElement>(
+      'input[aria-label="Monday work minutes"]',
+    );
+    await act(async () => {
+      setInputValue(mondayWork, "450");
+    });
+    expect(window.sessionStorage.getItem(key)).not.toBeNull();
+
+    const link = document.createElement("a");
+    link.href = window.location.href;
+    link.textContent = "Preferences";
+    link.addEventListener("click", (event) => event.preventDefault());
+    document.body.append(link);
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+
+    await act(async () => {
+      link.click();
+    });
+
+    expect(confirm).not.toHaveBeenCalled();
+    expect(window.sessionStorage.getItem(key)).not.toBeNull();
+    expect(mondayWork.value).toBe("450");
+
+    link.href = `https://external.example${window.location.pathname}`;
+    await act(async () => {
+      link.click();
+    });
+    expect(confirm).toHaveBeenCalledOnce();
+    expect(window.sessionStorage.getItem(key)).toBeNull();
+    link.remove();
+  });
+
   it("restores a draft under StrictMode double-invoked effects", async () => {
     const initial = schedule();
     const draft = structuredClone(initial);
@@ -278,7 +331,7 @@ describe("PersonalOperationsForm", () => {
           <PersonalOperationsForm
             initial={initial}
             disabled={false}
-            timezone="UTC"
+            timeContext={UTC_CONTEXT}
             action={vi.fn()}
           />
         </StrictMode>,
@@ -308,7 +361,7 @@ describe("PersonalOperationsForm", () => {
         <PersonalOperationsForm
           initial={initial}
           disabled={false}
-          timezone="UTC"
+          timeContext={UTC_CONTEXT}
           accountScope="account-a"
           action={vi.fn()}
         />,
@@ -337,7 +390,7 @@ describe("PersonalOperationsForm", () => {
         <PersonalOperationsForm
           initial={initial}
           disabled={false}
-          timezone="UTC"
+          timeContext={UTC_CONTEXT}
           action={vi.fn()}
         />,
       );
@@ -361,7 +414,7 @@ describe("PersonalOperationsForm", () => {
         <PersonalOperationsForm
           initial={initial}
           disabled={false}
-          timezone="UTC"
+          timeContext={UTC_CONTEXT}
           action={vi.fn()}
         />,
       );
@@ -389,7 +442,7 @@ describe("PersonalOperationsForm", () => {
         <PersonalOperationsForm
           initial={initial}
           disabled={false}
-          timezone="UTC"
+          timeContext={UTC_CONTEXT}
           action={vi.fn()}
         />,
       );
@@ -408,7 +461,7 @@ describe("PersonalOperationsForm", () => {
         <PersonalOperationsForm
           initial={schedule()}
           disabled={false}
-          timezone="UTC"
+          timeContext={UTC_CONTEXT}
           action={vi.fn()}
         />,
       );
@@ -449,7 +502,7 @@ describe("PersonalOperationsForm", () => {
         <PersonalOperationsForm
           initial={schedule()}
           disabled={false}
-          timezone="UTC"
+          timeContext={UTC_CONTEXT}
           action={action}
         />,
       );
@@ -486,7 +539,7 @@ describe("PersonalOperationsForm", () => {
         <PersonalOperationsForm
           initial={schedule()}
           disabled={false}
-          timezone="UTC"
+          timeContext={UTC_CONTEXT}
           action={action}
         />,
       );
@@ -528,7 +581,7 @@ describe("PersonalOperationsForm", () => {
         <PersonalOperationsForm
           initial={initial}
           disabled={false}
-          timezone="UTC"
+          timeContext={UTC_CONTEXT}
           action={vi.fn()}
         />,
       );
@@ -560,7 +613,7 @@ describe("PersonalOperationsForm", () => {
         <PersonalOperationsForm
           initial={schedule()}
           disabled={false}
-          timezone="UTC"
+          timeContext={UTC_CONTEXT}
           action={action}
         />,
       );
@@ -604,7 +657,7 @@ describe("PersonalOperationsForm", () => {
         <PersonalOperationsForm
           initial={schedule()}
           disabled={false}
-          timezone="UTC"
+          timeContext={UTC_CONTEXT}
           action={action}
         />,
       );
@@ -635,7 +688,7 @@ describe("PersonalOperationsForm", () => {
         <PersonalOperationsForm
           initial={schedule()}
           disabled={false}
-          timezone="UTC"
+          timeContext={UTC_CONTEXT}
           action={action}
         />,
       );
@@ -667,7 +720,7 @@ describe("PersonalOperationsForm", () => {
         <PersonalOperationsForm
           initial={schedule()}
           disabled={false}
-          timezone="UTC"
+          timeContext={UTC_CONTEXT}
           action={action}
         />,
       );
@@ -703,7 +756,7 @@ describe("PersonalOperationsForm", () => {
         <PersonalOperationsForm
           initial={schedule()}
           disabled={false}
-          timezone="UTC"
+          timeContext={UTC_CONTEXT}
           action={action}
         />,
       );
@@ -733,7 +786,7 @@ describe("PersonalOperationsForm", () => {
         <PersonalOperationsForm
           initial={schedule()}
           disabled={false}
-          timezone="Mars/Olympus"
+          timeContext={{ timezone: "Mars/Olympus", fallback: "none", localDate: "2026-02-16" }}
           action={vi.fn()}
         />,
       );
@@ -752,7 +805,7 @@ describe("PersonalOperationsForm", () => {
         <PersonalOperationsForm
           initial={schedule()}
           disabled={false}
-          timezone="UTC"
+          timeContext={UTC_CONTEXT}
           action={vi.fn()}
         />,
       );
@@ -780,7 +833,7 @@ describe("PersonalOperationsForm", () => {
         <PersonalOperationsForm
           initial={schedule()}
           disabled={false}
-          timezone="UTC"
+          timeContext={UTC_CONTEXT}
           action={vi.fn()}
         />,
       );

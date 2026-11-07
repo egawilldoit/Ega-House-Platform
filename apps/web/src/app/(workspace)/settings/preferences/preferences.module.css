@@ -882,6 +882,27 @@
   outline-offset: 4px;
 }
 
+.disabledNote {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--ega-border);
+  border-radius: var(--radius-sm);
+  background: var(--ega-surface-subtle);
+  font-size: var(--text-meta);
+  color: var(--ega-text-secondary);
+}
+
+.todayGuidance {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 6px 0 0;
+  padding-left: 18px;
+  font-size: var(--text-meta);
+  line-height: var(--leading-snug);
+  color: var(--ega-text-secondary);
+}
+
 .feedback {
   margin: 0;
   font-size: var(--text-meta);

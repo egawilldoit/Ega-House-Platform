@@ -16,6 +16,10 @@ export default defineConfig({
   },
   projects: [
     {
+      name: "chromium-phone-320",
+      use: { viewport: { width: 320, height: 800 } },
+    },
+    {
       name: "chromium-phone-390",
       use: { viewport: { width: 390, height: 844 } },
     },
