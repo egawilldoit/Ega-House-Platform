@@ -290,7 +290,7 @@ describe("MCP timer write module handlers", () => {
       });
     });
 
-    it("maps an already-closed session to a canonical CONFLICT failure", async () => {
+    it("maps a fenced write that loses to a still-open reread to a CONFLICT failure", async () => {
       const handlers = createMcpTimerModuleHandlers(dependencies, true);
       mocks.stopTaskSession.mockResolvedValue({
         ok: false,

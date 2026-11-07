@@ -40,6 +40,8 @@ class FakeTimerRepository implements TimerSessionRepository {
   private owners = new Map<string, string>();
   /** Simulates two devices whose pre-check reads raced ahead of the INSERT. */
   suppressOpenVisibility = false;
+  /** Simulates a concurrent device winning the finalize between read and UPDATE. */
+  loseFinalizeRace = false;
 
   seed(session: Partial<TimerSessionRecord> & { id: string }, ownerId = "user-timer") {
     this.sessions.push({
@@ -143,6 +145,20 @@ class FakeTimerRepository implements TimerSessionRepository {
         this.owns(actor, candidate.id),
     );
     if (!session) return ok(false);
+    if (this.loseFinalizeRace) {
+      // A concurrent device commits the same stop before our fenced UPDATE
+      // lands. Our update affects zero rows; the winner's timing stands.
+      this.sessions = this.sessions.map((candidate) =>
+        candidate.id === input.sessionId && candidate.endedAt === null
+          ? {
+              ...candidate,
+              endedAt: "2026-08-10T12:00:00.000Z",
+              durationSeconds: 1,
+            }
+          : candidate,
+      );
+      return ok(false);
+    }
     this.sessions = this.sessions.map((candidate) =>
       candidate.id === input.sessionId && candidate.endedAt === null
         ? { ...candidate, endedAt: input.endedAtIso, durationSeconds: input.durationSeconds }
@@ -302,6 +318,34 @@ test("duplicate stop acknowledges already_stopped without a second write or dura
   const stopped = repository.sessions.find((session) => session.id === "session-open");
   assert.equal(stopped?.endedAt, NOW.toISOString());
   assert.equal(stopped?.durationSeconds, 4 * 3600);
+});
+
+test("concurrent finalize that wins the race is acknowledged as already_stopped", async () => {
+  const repository = new FakeTimerRepository();
+  const actor = createAuthenticatedActor("user-timer");
+  repository.seed({ id: "session-open", startedAt: "2026-08-10T11:00:00.000Z" });
+  repository.loseFinalizeRace = true;
+
+  const result = await stopTaskSession(
+    actor,
+    repository,
+    { sessionId: "session-open" },
+    { now: NOW },
+  );
+
+  assert.equal(result.ok, true);
+  if (result.ok) {
+    assert.deepEqual(result.data, {
+      status: "already_stopped",
+      sessionId: "session-open",
+      taskId: "task-1",
+    });
+  }
+  // Our fenced write lost; only the concurrent device's timing remains.
+  assert.equal(repository.finalized.length, 0);
+  const stopped = repository.sessions.find((session) => session.id === "session-open");
+  assert.equal(stopped?.endedAt, "2026-08-10T12:00:00.000Z");
+  assert.equal(stopped?.durationSeconds, 1);
 });
 
 test("a delayed stop of a prior session cannot end a newer open session", async () => {

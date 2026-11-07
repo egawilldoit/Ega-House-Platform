@@ -60,8 +60,6 @@ export type TimerStopOutcome = Readonly<{
   taskId: string;
 }>;
 
-export type TimerStopResult = TimerStopOutcome;
-
 export function summarizeTimerSessions(
   sessions: readonly TimerSessionRecord[],
   nowIso: string,
