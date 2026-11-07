@@ -17,6 +17,7 @@ export type { WeeklyReviewApi } from "./weekly-review";
 export type { HealthApi } from "./health";
 export type { FrictionApi } from "./friction";
 export type { TimeContextApi, TimeContextQuery } from "./time-context";
+export type { ExpensesApi } from "./expenses";
 export type { AuthApi } from "./auth";
 
 export type { ApiResult, ApiErrorPayload, ApiErrorCode, OkResponse } from "./errors";
