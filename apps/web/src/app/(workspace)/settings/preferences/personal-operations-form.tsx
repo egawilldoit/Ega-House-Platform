@@ -10,6 +10,7 @@ const days = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday"
 export function PersonalOperationsForm({ initial, disabled }: { initial: Schedule; disabled: boolean }) {
   const [schedule, setSchedule] = useState(initial);
   const [state, action, pending] = useActionState(updatePersonalOperationsAction, { message: "", ok: false });
+  const [editedResult, setEditedResult] = useState<typeof state | null>(null);
   const errorRef = useRef<HTMLParagraphElement>(null);
   useEffect(() => { if (state.message && !state.ok) errorRef.current?.focus(); }, [state]);
   const totals = days.reduce((sum, day) => ({ work: sum.work + schedule.targets[day].work, search: sum.search + schedule.targets[day].jobSearch }), { work: 0, search: 0 });
@@ -19,7 +20,7 @@ export function PersonalOperationsForm({ initial, disabled }: { initial: Schedul
   function block(index: number, change: Partial<Schedule["guidance"][number]>) {
     setSchedule(current => ({ ...current, guidance: current.guidance.map((item, i) => i === index ? { ...item, ...change } : item) }));
   }
-  return <form action={action} className="flex flex-col gap-5">
+  return <form action={action} onChange={() => setEditedResult(state)} className="flex flex-col gap-5">
     <fieldset disabled={disabled || pending} className="flex flex-col gap-5">
     <input type="hidden" name="schedule" value={JSON.stringify(schedule)} />
     <label><input type="checkbox" checked={schedule.paused} onChange={e => setSchedule({ ...schedule, paused: e.target.checked })} /> Pause schedule</label>
@@ -35,7 +36,7 @@ export function PersonalOperationsForm({ initial, disabled }: { initial: Schedul
       <label>End <input type="time" required value={item.end} onChange={e => block(index, { end: e.target.value })} /></label>
       <div>{days.map(day => <label key={day} className="mr-2"><input type="checkbox" checked={item.days.includes(day)} onChange={e => block(index, { days: e.target.checked ? [...item.days, day] : item.days.filter(d => d !== day) })} /> {day.slice(0, 3)}</label>)}</div>
     </fieldset>)}
-    {state.message && <p ref={errorRef} tabIndex={-1} role={state.ok ? "status" : "alert"}>{state.message}</p>}
+    {state.message && !(state.ok && editedResult === state) && <p ref={errorRef} tabIndex={-1} role={state.ok ? "status" : "alert"}>{state.message}</p>}
     <button type="submit">{pending ? "Saving..." : "Save personal schedule"}</button>
     </fieldset>
   </form>;
