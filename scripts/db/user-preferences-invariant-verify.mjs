@@ -33,6 +33,7 @@ function parseArgs() {
   const rest = argv.slice(2);
   for (let i = 0; i < rest.length; i += 1) {
     if (rest[i] === "--url") args.url = rest[++i];
+    if (rest[i] === "--socket") args.socket = rest[++i];
   }
   if (!args.url) {
     console.error("Missing required --url <postgres-url>");
@@ -170,22 +171,27 @@ async function expectFailure(label, fn, expectedCodes) {
 }
 
 async function main() {
-  const { url } = parseArgs();
+  const { url, socket } = parseArgs();
   const tags = await readJournal();
   assert(tags.includes(MIGRATION_TAG), `journal must include ${MIGRATION_TAG}`);
 
-  const sql = postgres(url, { max: 4, onnotice: () => {} });
+  const sql = postgres(url, { max: 4, onnotice: () => {}, ...(socket ? { path: socket } : {}) });
   try {
     await reset(sql);
     await applySupabaseShim(sql);
 
     let applied = 0;
     for (const tag of tags) {
+      if (tag === "0078_personal_operations") {
+        await sql.unsafe(`INSERT INTO public.user_preferences (user_id, theme) VALUES ('44444444-4444-4444-8444-444444444444', 'light')`);
+      }
       const count = await applyFile(sql, tag);
       applied += 1;
       log("MIGRATE", `${tag}: ${count} statement(s)`);
     }
     log("MIGRATE", `${applied} journal migrations applied`);
+    const legacy = await sql.unsafe(`SELECT theme, personal_operations FROM public.user_preferences WHERE user_id = '44444444-4444-4444-8444-444444444444'`);
+    assert(legacy[0].theme === "light" && legacy[0].personal_operations === null, "legacy preference row survives upgrade");
 
     await sql.unsafe(`GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.user_preferences TO authenticated`);
     await sql.unsafe(`
@@ -214,6 +220,19 @@ async function main() {
     assert(inserted.task_layout === "list", "default task_layout must be list");
     assert(inserted.task_open_mode === "panel", "default task_open_mode must be panel");
     log("DEFAULTS", "insert-with-user_id produced every documented default");
+
+    // Atomic patches preserve independent fields and use the authenticated actor.
+    const schedule = { paused: false, targets: Object.fromEntries(["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"].map(day => [day, { work: 480, jobSearch: 90 }])), guidance: [] };
+    await Promise.all([
+      ownerA.run(tx => tx.unsafe(`SELECT public.patch_user_preferences($1::jsonb)`, [{ theme: "dark" }])),
+      ownerA.run(tx => tx.unsafe(`SELECT public.patch_user_preferences($1::jsonb)`, [{ personalOperations: schedule }])),
+    ]);
+    const concurrent = await ownerA.run(tx => tx.unsafe(`SELECT theme, personal_operations FROM public.user_preferences WHERE user_id = auth.uid()`));
+    assert(concurrent[0].theme === "dark" && concurrent[0].personal_operations?.targets?.monday?.work === 480, "concurrent patches must preserve both fields");
+    await expectFailure("RPC rejects malformed schedule", () => ownerA.run(tx => tx.unsafe(`SELECT public.patch_user_preferences($1::jsonb)`, [{ personalOperations: { paused: false } }])), ["23514"]);
+    await expectFailure("RPC rejects caller identity", () => ownerB.run(tx => tx.unsafe(`SELECT public.patch_user_preferences($1::jsonb)`, [{ userId: OWNER_A, theme: "light" }])), ["P0001"]);
+    await ownerA.run(tx => tx.unsafe(`UPDATE public.user_preferences SET theme = 'system' WHERE user_id = auth.uid()`));
+    log("PATCH", "concurrent fields and actor binding verified");
 
     // CONSTRAINTS --------------------------------------------------------------
     for (const [column, value] of [

@@ -1,3 +1,5 @@
+import { DEFAULT_PERSONAL_OPERATIONS, isPersonalOperations, type PersonalOperations } from "./personal-operations";
+
 /**
  * Durable workspace preferences (EGA-798).
  *
@@ -31,6 +33,7 @@ export const USER_TASK_OPEN_MODE_VALUES = ["panel", "full"] as const;
 export type UserTaskOpenMode = (typeof USER_TASK_OPEN_MODE_VALUES)[number];
 
 export type UserPreferences = Readonly<{
+  personalOperations: PersonalOperations;
   theme: UserTheme;
   accent: UserAccent;
   density: UserDensity;
@@ -47,6 +50,7 @@ export type UserPreferences = Readonly<{
  * reduction, Home launch, List layout and the side-panel task detail.
  */
 export const DEFAULT_USER_PREFERENCES: UserPreferences = Object.freeze({
+  personalOperations: DEFAULT_PERSONAL_OPERATIONS,
   theme: "system",
   accent: "neutral",
   density: "comfortable",
@@ -108,6 +112,7 @@ export function getUserThemeAttribute(theme: UserTheme): "light" | "dark" {
 export function normalizeUserPreferences(input: unknown): UserPreferences {
   const value = input && typeof input === "object" ? (input as Record<string, unknown>) : {};
   return {
+    personalOperations: isPersonalOperations(value.personalOperations) ? value.personalOperations : DEFAULT_PERSONAL_OPERATIONS,
     theme: isUserTheme(value.theme) ? value.theme : DEFAULT_USER_PREFERENCES.theme,
     accent: isUserAccent(value.accent) ? value.accent : DEFAULT_USER_PREFERENCES.accent,
     density: isUserDensity(value.density) ? value.density : DEFAULT_USER_PREFERENCES.density,
@@ -136,6 +141,7 @@ export type UserPreferencesPatchParseResult =
   | Readonly<{ ok: false; field: string; message: string }>;
 
 const PATCH_FIELDS = [
+  "personalOperations",
   "theme",
   "accent",
   "density",
@@ -153,14 +159,21 @@ const PATCH_FIELDS = [
  * save. Absent keys are left untouched (patch semantics).
  */
 export function parseUserPreferencesPatch(input: unknown): UserPreferencesPatchParseResult {
-  const value = input && typeof input === "object" ? (input as Record<string, unknown>) : {};
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    return { ok: false, field: "preferences", message: "Preferences must be an object." };
+  }
+  const value = input as Record<string, unknown>;
   const patch: UserPreferencesPatch = {};
 
   for (const field of PATCH_FIELDS) {
-    if (!(field in value) || value[field] === undefined || value[field] === null) continue;
+    if (!(field in value) || value[field] === undefined || (value[field] === null && field !== "personalOperations")) continue;
     const raw = value[field];
 
     switch (field) {
+      case "personalOperations":
+        if (!isPersonalOperations(raw)) return { ok: false, field, message: "Check schedule targets and guidance; enabled blocks cannot overlap." };
+        patch.personalOperations = raw;
+        break;
       case "reducedMotion":
         if (typeof raw !== "boolean") {
           return { ok: false, field, message: "Reduced motion must be on or off." };

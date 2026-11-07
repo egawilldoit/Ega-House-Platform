@@ -1199,10 +1199,12 @@ export const userPreferences = pgTable(
     launchPage: varchar("launch_page", { length: 16 }).default("home").notNull(),
     taskLayout: varchar("task_layout", { length: 16 }).default("list").notNull(),
     taskOpenMode: varchar("task_open_mode", { length: 16 }).default("panel").notNull(),
+    personalOperations: jsonb("personal_operations"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [
+    check("user_preferences_personal_operations_check", sql`public.valid_personal_operations(${table.personalOperations})`),
     check(
       "user_preferences_theme_check",
       sql`${table.theme} in ('system', 'light', 'dark')`,

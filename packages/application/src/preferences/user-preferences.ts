@@ -3,6 +3,7 @@ import {
   normalizeUserPreferences,
   parseUserPreferencesPatch,
   type UserPreferences,
+  type UserPreferencesPatch,
 } from "@ega/domain/preferences";
 
 import type { AuthenticatedActor } from "../auth/actor";
@@ -24,9 +25,9 @@ import {
 
 export type UserPreferencesRepository = {
   get(actor: AuthenticatedActor): Promise<RepositoryResult<UserPreferences | null>>;
-  save(
+  patch(
     actor: AuthenticatedActor,
-    preferences: UserPreferences,
+    preferences: UserPreferencesPatch,
   ): Promise<RepositoryResult<UserPreferences>>;
 };
 
@@ -63,13 +64,7 @@ export async function updateUserPreferences(
     return applicationFailure(patch.message, "validation");
   }
 
-  const current = await getUserPreferences(actor, repository);
-  if (!current.ok) {
-    return current;
-  }
-
-  const next = normalizeUserPreferences({ ...current.data, ...patch.value });
-  const saved = await repository.save(actor, next);
+  const saved = await repository.patch(actor, patch.value);
   if (!saved.ok) {
     return applicationFailure(SAVE_FAILURE, saved.error.code);
   }
