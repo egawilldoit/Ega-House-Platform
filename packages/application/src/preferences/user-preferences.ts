@@ -64,6 +64,12 @@ export async function updateUserPreferences(
     return applicationFailure(patch.message, "validation");
   }
 
+  // An empty patch leaves the stored row untouched: do not issue a write just
+  // to echo the current values back.
+  if (Object.keys(patch.value).length === 0) {
+    return getUserPreferences(actor, repository);
+  }
+
   const saved = await repository.patch(actor, patch.value);
   if (!saved.ok) {
     return applicationFailure(SAVE_FAILURE, saved.error.code);

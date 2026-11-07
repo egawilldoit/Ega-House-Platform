@@ -82,9 +82,15 @@ export class SupabaseUserPreferencesRepository implements UserPreferencesReposit
     _actor: AuthenticatedActor,
     preferences: UserPreferencesPatch,
   ): Promise<RepositoryResult<UserPreferences>> {
-    const { data, error } = await this.supabase.rpc("patch_user_preferences", { patch: preferences }).single();
+    // The RPC is authenticated by the request-scoped session (auth.uid()), so
+    // the payload carries only the validated patch. PostgREST may hand back a
+    // composite object or a one-element array; normalise both shapes instead of
+    // depending on `.single()` to throw or coerce.
+    const { data, error } = await this.supabase.rpc("patch_user_preferences", { patch: preferences });
     if (error) return { ok: false, error: sanitizeSupabaseError(error) };
-    if (!data) return { ok: false, error: { code: "unknown" } };
-    return { ok: true, value: toPreferences(data as UserPreferencesRow) };
+
+    const row = Array.isArray(data) ? data[0] : data;
+    if (!row) return { ok: false, error: { code: "unknown" } };
+    return { ok: true, value: toPreferences(row as UserPreferencesRow) };
   }
 }
