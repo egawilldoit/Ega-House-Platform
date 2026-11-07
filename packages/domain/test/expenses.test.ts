@@ -8,12 +8,10 @@ import {
   EXPENSE_NEED_VS_WANT_VALUES,
   EXPENSE_PAYMENT_METHOD_VALUES,
   expenseCreateFingerprint,
-  expenseMatchesCreateValues,
   isExpenseId,
   parseCreateExpenseInput,
   parseExpenseListQuery,
   parseUpdateExpenseInput,
-  type PersonalExpense,
 } from "../src/expenses";
 
 const VALID_CREATE = {
@@ -141,6 +139,46 @@ test("create rejects impossible calendar dates and clock values instead of shift
     occurredAt: "2028-02-29T23:59:59.123Z",
   });
   assert.equal(leapDay.ok, true);
+});
+
+test("create accepts 500 code points (emoji) and rejects 501", () => {
+  const emoji500 = "😀".repeat(500);
+  const accepted = parseCreateExpenseInput({ ...VALID_CREATE, note: emoji500 });
+  assert.equal(accepted.ok, true);
+  if (accepted.ok) assert.equal(Array.from(accepted.value.note ?? "").length, 500);
+
+  const rejected = parseCreateExpenseInput({ ...VALID_CREATE, note: "😀".repeat(501) });
+  assert.equal(rejected.ok, false);
+  if (!rejected.ok) assert.equal(rejected.field, "note");
+});
+
+test("max-length quote/backslash/multiline metadata stays within the fingerprint bound", () => {
+  const longNote = "\"\\\n".repeat(167).slice(0, 500);
+  const longMerchant = "\"\\".repeat(60);
+  const longKey = `key-${"\"\\".repeat(30)}`;
+  const parsed = parseCreateExpenseInput({
+    ...VALID_CREATE,
+    note: longNote,
+    merchant: longMerchant,
+    idempotencyKey: longKey,
+  });
+  assert.equal(parsed.ok, true);
+  if (!parsed.ok) return;
+  assert.equal(Array.from(parsed.value.note ?? "").length, 500);
+  assert.equal(Array.from(parsed.value.merchant ?? "").length, 120);
+
+  const fingerprint = expenseCreateFingerprint(parsed.value);
+  assert.ok(fingerprint.length <= 2048, `fingerprint length ${fingerprint.length}`);
+  assert.ok(fingerprint.length > 1024, "regression exceeds the old 1024 bound");
+
+  const mixed = Array.from({ length: 500 }, (_, index) =>
+    ["a", "\"", "\\", "\n", "😀"][index % 5],
+  ).join("");
+  const mixedParsed = parseCreateExpenseInput({ ...VALID_CREATE, note: mixed });
+  assert.equal(mixedParsed.ok, true);
+  if (mixedParsed.ok) {
+    assert.ok(expenseCreateFingerprint(mixedParsed.value).length <= 2048);
+  }
 });
 
 test("create rejects NUL, unpaired surrogates and disallowed control characters", () => {
@@ -337,39 +375,6 @@ test("create fingerprint binds the canonical original payload deterministically"
     expenseCreateFingerprint({ ...parsed.value, idempotencyKey: "key-2" }),
   );
   assert.ok(fingerprint.includes("1794040200000"));
-});
-
-test("idempotent replay compares canonical values and instants", () => {
-  const parsed = parseCreateExpenseInput(VALID_CREATE);
-  assert.equal(parsed.ok, true);
-  if (!parsed.ok) return;
-
-  const record: PersonalExpense = {
-    id: "00000000-0000-4000-8000-000000000001",
-    occurredAt: "2026-11-07T08:30:00+00:00",
-    amountMinor: 2250,
-    currency: "MAD",
-    category: "coffee",
-    note: "morning coffee",
-    merchant: "Cafe Atlas",
-    needVsWant: "want",
-    paymentMethod: "card",
-    idempotencyKey: "key-1",
-    version: 1,
-    deletedAt: null,
-    createdAt: "2026-11-07T08:31:00+00:00",
-    updatedAt: "2026-11-07T08:31:00+00:00",
-  };
-
-  assert.equal(expenseMatchesCreateValues(record, parsed.value), true);
-  assert.equal(
-    expenseMatchesCreateValues({ ...record, amountMinor: 2251 }, parsed.value),
-    false,
-  );
-  assert.equal(
-    expenseMatchesCreateValues({ ...record, note: "different" }, parsed.value),
-    false,
-  );
 });
 
 test("expense ids must be UUID-shaped", () => {

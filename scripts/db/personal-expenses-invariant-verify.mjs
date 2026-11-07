@@ -331,7 +331,7 @@ async function main() {
       ["need_vs_want", "character varying", 8, "NO", null],
       ["payment_method", "character varying", 32, "YES", null],
       ["idempotency_key", "character varying", 128, "NO", null],
-      ["create_fingerprint", "character varying", 1024, "NO", null],
+      ["create_fingerprint", "character varying", 2048, "NO", null],
       ["version", "integer", null, "NO", /^1$/],
       ["deleted_at", "timestamp with time zone", null, "YES", null],
       ["created_at", "timestamp with time zone", null, "NO", /now\(\)/],
@@ -390,6 +390,14 @@ async function main() {
     assert(
       indexNames.includes("personal_expenses_owner_occurred_at_idx"),
       "owner/time index must exist",
+    );
+    const triggers = await sql.unsafe(
+      `SELECT tgname FROM pg_trigger
+       WHERE tgrelid = 'public.personal_expenses'::regclass AND NOT tgisinternal`,
+    );
+    assert(
+      triggers.some((entry) => entry.tgname === "personal_expenses_update_guard"),
+      "personal_expenses must expose the mutation guard trigger",
     );
 
     const [privileges] = await sql.unsafe(
@@ -772,6 +780,30 @@ async function main() {
     const softId = softA[0].id;
     const beforeTotal = await ownerA.run((tx) => activeTotal(tx));
 
+    await expectCode(
+      "version skip is rejected",
+      () =>
+        ownerA.run((tx) =>
+          tx.unsafe(
+            `UPDATE public.personal_expenses
+             SET amount_minor = amount_minor, version = version + 2
+             WHERE id = $1::uuid AND owner_user_id = auth.uid()`,
+            [softId],
+          ),
+        ),
+      "23514",
+    );
+    await expectCode(
+      "trigger rejects immutable field changes",
+      () =>
+        sql.unsafe(
+          `UPDATE public.personal_expenses SET idempotency_key = 'mutated'
+           WHERE id = $1::uuid`,
+          [softId],
+        ),
+      "23514",
+    );
+
     const [softDeleted] = await ownerA.run((tx) =>
       tx.unsafe(
         `UPDATE public.personal_expenses
@@ -799,6 +831,20 @@ async function main() {
     assert(
       !activeList.some((entry) => entry.id === softId),
       "active list excludes the soft-deleted row",
+    );
+
+    await expectCode(
+      "undelete is rejected",
+      () =>
+        ownerA.run((tx) =>
+          tx.unsafe(
+            `UPDATE public.personal_expenses
+             SET deleted_at = NULL, version = 1
+             WHERE id = $1::uuid AND owner_user_id = auth.uid()`,
+            [softId],
+          ),
+        ),
+      "23514",
     );
 
     // A repeated soft delete updates zero active rows and leaves the version

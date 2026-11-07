@@ -25,7 +25,8 @@
 --
 -- Mutation policy: soft delete only. Authenticated has SELECT/INSERT and
 -- column-level UPDATE on mutable columns; DELETE is not granted and no DELETE
--- RLS policy exists.
+-- RLS policy exists. A BEFORE UPDATE trigger refuses immutable-column changes,
+-- any post-delete mutation/undelete and any version change other than +1.
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "public"."personal_expenses" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
@@ -39,7 +40,7 @@ CREATE TABLE IF NOT EXISTS "public"."personal_expenses" (
 	"need_vs_want" varchar(8) NOT NULL,
 	"payment_method" varchar(32),
 	"idempotency_key" varchar(128) NOT NULL,
-	"create_fingerprint" varchar(1024) NOT NULL,
+	"create_fingerprint" varchar(2048) NOT NULL,
 	"version" integer DEFAULT 1 NOT NULL,
 	"deleted_at" timestamp with time zone,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
@@ -59,7 +60,7 @@ CREATE TABLE IF NOT EXISTS "public"."personal_expenses" (
 	CONSTRAINT "personal_expenses_idempotency_key_check"
 		CHECK (btrim("idempotency_key") <> ''),
 	CONSTRAINT "personal_expenses_create_fingerprint_check"
-		CHECK (length("create_fingerprint") between 1 and 1024),
+		CHECK (length("create_fingerprint") between 1 and 2048),
 	CONSTRAINT "personal_expenses_note_check"
 		CHECK ("note" is null OR btrim("note") <> ''),
 	CONSTRAINT "personal_expenses_merchant_check"
@@ -105,6 +106,42 @@ CREATE POLICY "personal_expenses_direct_user_update" ON "public"."personal_expen
   );
 --> statement-breakpoint
 DROP POLICY IF EXISTS "personal_expenses_direct_user_delete" ON "public"."personal_expenses";
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION public.enforce_personal_expense_update()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = ''
+AS $guard$
+BEGIN
+  IF NEW.id IS DISTINCT FROM OLD.id
+     OR NEW.owner_user_id IS DISTINCT FROM OLD.owner_user_id
+     OR NEW.currency IS DISTINCT FROM OLD.currency
+     OR NEW.idempotency_key IS DISTINCT FROM OLD.idempotency_key
+     OR NEW.create_fingerprint IS DISTINCT FROM OLD.create_fingerprint
+     OR NEW.created_at IS DISTINCT FROM OLD.created_at THEN
+    RAISE EXCEPTION 'Immutable expense fields cannot be changed.'
+      USING ERRCODE = '23514';
+  END IF;
+
+  IF OLD.deleted_at IS NOT NULL THEN
+    RAISE EXCEPTION 'A deleted expense cannot be modified or restored.'
+      USING ERRCODE = '23514';
+  END IF;
+
+  IF NEW.version IS DISTINCT FROM OLD.version + 1 THEN
+    RAISE EXCEPTION 'Expense version must increase by exactly one.'
+      USING ERRCODE = '23514';
+  END IF;
+
+  RETURN NEW;
+END
+$guard$;
+--> statement-breakpoint
+DROP TRIGGER IF EXISTS "personal_expenses_update_guard" ON "public"."personal_expenses";
+CREATE TRIGGER "personal_expenses_update_guard"
+  BEFORE UPDATE ON "public"."personal_expenses"
+  FOR EACH ROW
+  EXECUTE FUNCTION public.enforce_personal_expense_update();
 --> statement-breakpoint
 REVOKE ALL ON TABLE "public"."personal_expenses" FROM anon;
 --> statement-breakpoint
