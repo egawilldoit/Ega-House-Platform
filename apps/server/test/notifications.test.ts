@@ -255,18 +255,18 @@ test("GET /api/notifications/settings requires auth and defaults safely", async 
   assert.equal(scoped, true);
 });
 
-test("PATCH /api/notifications/settings validates HH:MM and persists owner-scoped settings", async () => {
+test("PATCH /api/notifications/settings validates HH:MM and sends only supplied fields", async () => {
   const invalid = new FakeSupabase();
-  invalid.push("notification_settings", { data: null, error: null });
   const badRes = await makeApp(invalid).request("/api/notifications/settings", {
     method: "PATCH",
     headers: JSON_HEADERS,
     body: JSON.stringify({ quietHoursStart: "25:99" }),
   });
   assert.equal(badRes.status, 400);
+  assert.equal(invalid.calls.length, 0);
 
   const fake = new FakeSupabase();
-  fake.push("notification_settings", { data: null, error: null });
+  fake.push("user_time_context", { data: { iana_timezone: "UTC" }, error: null });
   fake.push("notification_settings", {
     data: {
       owner_user_id: "user-123",
@@ -287,15 +287,109 @@ test("PATCH /api/notifications/settings validates HH:MM and persists owner-scope
   const body = await res.json() as { settings: { quietHoursEnabled: boolean; quietHoursStart: string } };
   assert.equal(body.settings.quietHoursEnabled, true);
   assert.equal(body.settings.quietHoursStart, "21:30");
-  const upsert = fake.calls.find((c) => c.table === "notification_settings" && c.steps.some((s) => s.method === "upsert"));
-  assert.ok(upsert);
-  const payload = upsert!.steps.find((s) => s.method === "upsert")!.args[0] as Record<string, unknown>;
-  assert.equal(payload.owner_user_id, "user-123");
+  const update = fake.calls.find((c) => c.table === "notification_settings" && c.steps.some((s) => s.method === "update"));
+  assert.ok(update);
+  const payload = update!.steps.find((s) => s.method === "update")!.args[0] as Record<string, unknown>;
+  assert.equal(payload.quiet_hours_enabled, true);
+  assert.equal(payload.quiet_hours_start, "21:30");
+  assert.equal(payload.quiet_hours_end, "06:30");
+  const scoped = update!.steps.some((s) => s.method === "eq" && s.args[0] === "owner_user_id" && s.args[1] === "user-123");
+  assert.equal(scoped, true);
+});
+
+test("PATCH settings one-field patch reads the other time for validation but updates only the supplied field", async () => {
+  const fake = new FakeSupabase();
+  fake.push("notification_settings", {
+    data: {
+      owner_user_id: "user-123",
+      quiet_hours_enabled: true,
+      quiet_hours_start: "22:00",
+      quiet_hours_end: "07:00",
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    },
+    error: null,
+  });
+  fake.push("notification_settings", {
+    data: {
+      owner_user_id: "user-123",
+      quiet_hours_enabled: true,
+      quiet_hours_start: "23:00",
+      quiet_hours_end: "07:00",
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    },
+    error: null,
+  });
+  const res = await makeApp(fake).request("/api/notifications/settings", {
+    method: "PATCH",
+    headers: JSON_HEADERS,
+    body: JSON.stringify({ quietHoursStart: "23:00" }),
+  });
+  assert.equal(res.status, 200);
+  const update = fake.calls.find((c) => c.table === "notification_settings" && c.steps.some((s) => s.method === "update"));
+  assert.ok(update);
+  const payload = update!.steps.find((s) => s.method === "update")!.args[0] as Record<string, unknown>;
+  assert.equal(payload.quiet_hours_start, "23:00");
+  assert.equal("quiet_hours_enabled" in payload, false);
+  assert.equal("quiet_hours_end" in payload, false);
+});
+
+test("PATCH settings enabling requires a valid owner timezone; disabling does not", async () => {
+  const missing = new FakeSupabase();
+  missing.push("user_time_context", { data: null, error: null });
+  const missingRes = await makeApp(missing).request("/api/notifications/settings", {
+    method: "PATCH",
+    headers: JSON_HEADERS,
+    body: JSON.stringify({ quietHoursEnabled: true }),
+  });
+  assert.equal(missingRes.status, 400);
+  assert.equal(missing.calls.some((c) => c.table === "notification_settings"), false);
+
+  const invalid = new FakeSupabase();
+  invalid.push("user_time_context", { data: { iana_timezone: "Not/AZone" }, error: null });
+  const invalidRes = await makeApp(invalid).request("/api/notifications/settings", {
+    method: "PATCH",
+    headers: JSON_HEADERS,
+    body: JSON.stringify({ quietHoursEnabled: true }),
+  });
+  assert.equal(invalidRes.status, 400);
+  assert.equal(invalid.calls.some((c) => c.table === "notification_settings"), false);
+
+  const readFailure = new FakeSupabase();
+  readFailure.push("user_time_context", { data: null, error: { code: "500", message: "time context down" } });
+  const failureRes = await makeApp(readFailure).request("/api/notifications/settings", {
+    method: "PATCH",
+    headers: JSON_HEADERS,
+    body: JSON.stringify({ quietHoursEnabled: true }),
+  });
+  assert.equal(failureRes.status, 500);
+
+  const disable = new FakeSupabase();
+  disable.push("notification_settings", {
+    data: {
+      owner_user_id: "user-123",
+      quiet_hours_enabled: false,
+      quiet_hours_start: "22:00",
+      quiet_hours_end: "07:00",
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    },
+    error: null,
+  });
+  const disableRes = await makeApp(disable).request("/api/notifications/settings", {
+    method: "PATCH",
+    headers: JSON_HEADERS,
+    body: JSON.stringify({ quietHoursEnabled: false }),
+  });
+  assert.equal(disableRes.status, 200);
+  assert.equal(disable.calls.some((c) => c.table === "user_time_context"), false);
 });
 
 test("PATCH /api/notifications/settings maps operational failures to 500, not 400", async () => {
   const fake = new FakeSupabase();
-  fake.push("notification_settings", { data: null, error: { code: "500", message: "settings read failed" } });
+  fake.push("user_time_context", { data: { iana_timezone: "UTC" }, error: null });
+  fake.push("notification_settings", { data: null, error: { code: "500", message: "settings write failed" } });
   const res = await makeApp(fake).request("/api/notifications/settings", {
     method: "PATCH",
     headers: JSON_HEADERS,

@@ -654,32 +654,71 @@ export class SupabaseNotificationSettingsRepository implements NotificationSetti
     return { ok: true, value: mapSettings(asRow(result.data)) };
   }
 
-  async upsertSettings(
+  async patchSettings(
     actor: AuthenticatedActor,
     input: {
-      quietHoursEnabled: boolean;
-      quietHoursStart: string;
-      quietHoursEnd: string;
+      quietHoursEnabled?: boolean;
+      quietHoursStart?: string;
+      quietHoursEnd?: string;
     },
   ): Promise<RepositoryResult<NotificationSettingsRecord>> {
     const nowIso = new Date().toISOString();
-    const result = await this.supabase
+    const dbPatch: Record<string, unknown> = { updated_at: nowIso };
+    if (input.quietHoursEnabled !== undefined) {
+      dbPatch.quiet_hours_enabled = input.quietHoursEnabled;
+    }
+    if (input.quietHoursStart !== undefined) {
+      dbPatch.quiet_hours_start = input.quietHoursStart;
+    }
+    if (input.quietHoursEnd !== undefined) {
+      dbPatch.quiet_hours_end = input.quietHoursEnd;
+    }
+    if (Object.keys(dbPatch).length === 1) {
+      return failure({ message: "No notification settings fields supplied" });
+    }
+
+    // Atomic per-field update for an existing row. Only supplied columns change,
+    // so concurrent stale writers cannot clobber each other's fields.
+    const update = await this.supabase
       .from("notification_settings")
-      .upsert(
-        {
-          owner_user_id: actor.userId,
-          quiet_hours_enabled: input.quietHoursEnabled,
-          quiet_hours_start: input.quietHoursStart,
-          quiet_hours_end: input.quietHoursEnd,
-          updated_at: nowIso,
-        } as never,
-        { onConflict: "owner_user_id" },
-      )
+      .update(dbPatch as never)
+      .eq("owner_user_id", actor.userId)
       .select("*")
       .maybeSingle();
-    if (result.error) return failure(result.error);
-    if (!result.data) return failure({ message: "Settings upsert returned no data" });
-    return { ok: true, value: mapSettings(asRow(result.data)) };
+    if (update.error) return failure(update.error);
+    if (update.data) return { ok: true, value: mapSettings(asRow(update.data)) };
+
+    // No row: create it with supplied fields plus documented defaults. A
+    // simultaneous first-row creation loses with 23505; retry the partial
+    // update once so both writers' fields land.
+    const insertRow = {
+      owner_user_id: actor.userId,
+      quiet_hours_enabled: input.quietHoursEnabled ?? false,
+      quiet_hours_start: input.quietHoursStart ?? "22:00",
+      quiet_hours_end: input.quietHoursEnd ?? "07:00",
+      updated_at: nowIso,
+    };
+    const insert = await this.supabase
+      .from("notification_settings")
+      .insert(insertRow as never)
+      .select("*")
+      .maybeSingle();
+    if (!insert.error && insert.data) {
+      return { ok: true, value: mapSettings(asRow(insert.data)) };
+    }
+    if (insert.error && insert.error.code === "23505") {
+      const retry = await this.supabase
+        .from("notification_settings")
+        .update(dbPatch as never)
+        .eq("owner_user_id", actor.userId)
+        .select("*")
+        .maybeSingle();
+      if (retry.error) return failure(retry.error);
+      if (!retry.data) return failure({ message: "Settings patch retry returned no row" });
+      return { ok: true, value: mapSettings(asRow(retry.data)) };
+    }
+    if (insert.error) return failure(insert.error);
+    return failure({ message: "Settings insert returned no data" });
   }
 }
 

@@ -28,6 +28,7 @@ import type {
   NotificationDeviceRecord,
 } from "../src/notifications/ports";
 import type { RepositoryResult } from "../src/shared/result";
+import type { TimeContextRepository } from "../src/shared/time-context";
 
 const ACTOR = createAuthenticatedActor("user-123");
 
@@ -55,19 +56,41 @@ test("nextRetryAt exponential backoff and max attempts", () => {
   assert.equal(nextRetryAt(MAX_DELIVERY_ATTEMPTS + 1, now), null);
 });
 
-test("classifyFcmError distinguishes invalid endpoint, transient, auth, permanent", () => {
+test("classifyFcmError only invalidates endpoints on proven token evidence", () => {
+  // Proven token-invalid evidence.
   assert.equal(classifyFcmError({ httpStatus: 404, fcmCode: "UNREGISTERED" }), "invalid_endpoint");
-  assert.equal(classifyFcmError({ httpStatus: 404 }), "invalid_endpoint");
-  assert.equal(classifyFcmError({ httpStatus: 410 }), "invalid_endpoint");
-  assert.equal(classifyFcmError({ httpStatus: 400, fcmCode: "INVALID_ARGUMENT" }), "invalid_endpoint");
-  assert.equal(classifyFcmError({ httpStatus: 400, fcmCode: "INVALID_TOKEN" }), "invalid_endpoint");
+  assert.equal(
+    classifyFcmError({
+      httpStatus: 404,
+      fcmCode: "NOT_FOUND",
+      details: [{ errorCode: "UNREGISTERED" }],
+    }),
+    "invalid_endpoint",
+  );
+  assert.equal(
+    classifyFcmError({
+      httpStatus: 400,
+      fcmCode: "INVALID_ARGUMENT",
+      message: "The registration token is not a valid FCM registration token",
+    }),
+    "invalid_endpoint",
+  );
+
+  // Ambiguous HTTP status / generic codes never prove a stale token.
+  assert.equal(classifyFcmError({ httpStatus: 404 }), "permanent");
+  assert.equal(classifyFcmError({ httpStatus: 410 }), "permanent");
+  assert.equal(classifyFcmError({ httpStatus: 404, fcmCode: "NOT_FOUND" }), "permanent");
+  assert.equal(classifyFcmError({ httpStatus: 400, fcmCode: "INVALID_ARGUMENT" }), "permanent");
+  assert.equal(classifyFcmError({ httpStatus: 400, fcmCode: "INVALID_PAYLOAD" }), "permanent");
+  assert.equal(classifyFcmError({ httpStatus: 400, fcmCode: "SENDER_ID_MISMATCH" }), "auth");
+  assert.equal(classifyFcmError({ httpStatus: 400, fcmCode: "INVALID_TOKEN" }), "permanent");
+
+  // Transient and auth semantics retained.
   assert.equal(classifyFcmError({ httpStatus: 429, fcmCode: "RESOURCE_EXHAUSTED" }), "transient");
   assert.equal(classifyFcmError({ httpStatus: 500 }), "transient");
   assert.equal(classifyFcmError({ httpStatus: 503, fcmCode: "UNAVAILABLE" }), "transient");
   assert.equal(classifyFcmError({ httpStatus: 401, fcmCode: "UNAUTHENTICATED" }), "auth");
   assert.equal(classifyFcmError({ httpStatus: 403 }), "auth");
-  assert.equal(classifyFcmError({ httpStatus: 400, fcmCode: "SOME_OTHER" }), "permanent");
-  assert.equal(classifyFcmError({ httpStatus: 400 }), "permanent");
 });
 
 test("createNotification validates input and delegates idempotently", async () => {
@@ -250,7 +273,7 @@ test("registerNotificationDevice validates platform and token", async () => {
 test("notification settings default to disabled 22:00-07:00", async () => {
   const fakeSettings: NotificationSettingsRepository = {
     getSettings: async () => ok(null),
-    upsertSettings: async () => fail(),
+    patchSettings: async () => fail(),
   };
   const result = await getNotificationSettings(ACTOR, fakeSettings);
   assert.equal(result.ok, true);
@@ -261,56 +284,181 @@ test("notification settings default to disabled 22:00-07:00", async () => {
   }
 });
 
-test("notification settings validate HH:MM and persist under the verified owner", async () => {
-  let capturedOwner: string | null = null;
-  let captured: { quietHoursEnabled: boolean; quietHoursStart: string; quietHoursEnd: string } | null = null;
+test("settings patches send only supplied fields and preserve concurrent fields", async () => {
+  let store = {
+    ownerUserId: ACTOR.userId,
+    quietHoursEnabled: false,
+    quietHoursStart: "22:00",
+    quietHoursEnd: "07:00",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+  const patches: Array<Record<string, unknown>> = [];
   const fakeSettings: NotificationSettingsRepository = {
-    getSettings: async () => ok({
-      ownerUserId: ACTOR.userId,
-      quietHoursEnabled: false,
-      quietHoursStart: "22:00",
-      quietHoursEnd: "07:00",
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    }),
-    upsertSettings: async (actor, input) => {
-      capturedOwner = actor.userId;
-      captured = input;
+    getSettings: async () => ok(store),
+    patchSettings: async (actor, patch) => {
+      patches.push(patch as Record<string, unknown>);
+      // Fake per-field application; the real atomicity is proved in PostgreSQL.
+      store = {
+        ...store,
+        ...(patch.quietHoursEnabled !== undefined
+          ? { quietHoursEnabled: patch.quietHoursEnabled }
+          : {}),
+        ...(patch.quietHoursStart !== undefined ? { quietHoursStart: patch.quietHoursStart } : {}),
+        ...(patch.quietHoursEnd !== undefined ? { quietHoursEnd: patch.quietHoursEnd } : {}),
+      };
+      return ok({ ...store, ownerUserId: actor.userId });
+    },
+  };
+  const timeContext: TimeContextRepository = {
+    getTimezone: async () => ok("UTC"),
+    setTimezone: async () => ok("UTC"),
+  };
+
+  const enable = await updateNotificationSettings(ACTOR, fakeSettings, timeContext, {
+    quietHoursEnabled: true,
+  });
+  assert.equal(enable.ok, true);
+  assert.deepEqual(patches.at(-1), { quietHoursEnabled: true });
+
+  const startOnly = await updateNotificationSettings(ACTOR, fakeSettings, timeContext, {
+    quietHoursStart: "23:00",
+  });
+  assert.equal(startOnly.ok, true);
+  assert.deepEqual(patches.at(-1), { quietHoursStart: "23:00" });
+  // Both prior fields remain durable after the one-field patch.
+  assert.equal(store.quietHoursEnabled, true);
+  assert.equal(store.quietHoursStart, "23:00");
+  assert.equal(store.quietHoursEnd, "07:00");
+
+  const endOnly = await updateNotificationSettings(ACTOR, fakeSettings, timeContext, {
+    quietHoursEnd: "06:00",
+  });
+  assert.equal(endOnly.ok, true);
+  assert.deepEqual(patches.at(-1), { quietHoursEnd: "06:00" });
+  assert.equal(store.quietHoursStart, "23:00");
+  assert.equal(store.quietHoursEnd, "06:00");
+});
+
+test("settings validation rejects malformed, equal, and empty patches without persisting", async () => {
+  const patches: Array<Record<string, unknown>> = [];
+  const fakeSettings: NotificationSettingsRepository = {
+    getSettings: async () =>
+      ok({
+        ownerUserId: ACTOR.userId,
+        quietHoursEnabled: false,
+        quietHoursStart: "22:00",
+        quietHoursEnd: "07:00",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      }),
+    patchSettings: async (_actor, patch) => {
+      patches.push(patch as Record<string, unknown>);
+      return ok({
+        ownerUserId: ACTOR.userId,
+        quietHoursEnabled: patch.quietHoursEnabled ?? false,
+        quietHoursStart: patch.quietHoursStart ?? "22:00",
+        quietHoursEnd: patch.quietHoursEnd ?? "07:00",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+    },
+  };
+  const timeContext: TimeContextRepository = {
+    getTimezone: async () => ok("UTC"),
+    setTimezone: async () => ok("UTC"),
+  };
+
+  const badStart = await updateNotificationSettings(ACTOR, fakeSettings, timeContext, {
+    quietHoursStart: "25:99",
+  });
+  assert.equal(badStart.ok, false);
+  if (!badStart.ok) assert.equal(badStart.code, "validation");
+
+  const badEnd = await updateNotificationSettings(ACTOR, fakeSettings, timeContext, {
+    quietHoursEnd: "7:00",
+  });
+  assert.equal(badEnd.ok, false);
+  if (!badEnd.ok) assert.equal(badEnd.code, "validation");
+
+  const equal = await updateNotificationSettings(ACTOR, fakeSettings, timeContext, {
+    quietHoursStart: "08:00",
+    quietHoursEnd: "08:00",
+  });
+  assert.equal(equal.ok, false);
+  if (!equal.ok) assert.equal(equal.code, "validation");
+
+  const equalViaExisting = await updateNotificationSettings(ACTOR, fakeSettings, timeContext, {
+    quietHoursStart: "07:00",
+  });
+  assert.equal(equalViaExisting.ok, false);
+  if (!equalViaExisting.ok) assert.equal(equalViaExisting.code, "validation");
+
+  const empty = await updateNotificationSettings(ACTOR, fakeSettings, timeContext, {});
+  assert.equal(empty.ok, false);
+  if (!empty.ok) assert.equal(empty.code, "validation");
+
+  assert.equal(patches.length, 0);
+});
+
+test("enabling quiet hours requires a valid owner timezone; disabling does not", async () => {
+  const patches: Array<Record<string, unknown>> = [];
+  const fakeSettings: NotificationSettingsRepository = {
+    getSettings: async () => ok(null),
+    patchSettings: async (actor, patch) => {
+      patches.push(patch as Record<string, unknown>);
       return ok({
         ownerUserId: actor.userId,
-        quietHoursEnabled: input.quietHoursEnabled,
-        quietHoursStart: input.quietHoursStart,
-        quietHoursEnd: input.quietHoursEnd,
+        quietHoursEnabled: patch.quietHoursEnabled ?? false,
+        quietHoursStart: patch.quietHoursStart ?? "22:00",
+        quietHoursEnd: patch.quietHoursEnd ?? "07:00",
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       });
     },
   };
 
-  const badStart = await updateNotificationSettings(ACTOR, fakeSettings, { quietHoursStart: "25:99" });
-  assert.equal(badStart.ok, false);
-  if (!badStart.ok) assert.equal(badStart.code, "validation");
-  const missingEnd = await updateNotificationSettings(ACTOR, fakeSettings, { quietHoursEnd: "7:00" });
-  assert.equal(missingEnd.ok, false);
-  if (!missingEnd.ok) assert.equal(missingEnd.code, "validation");
-  const equal = await updateNotificationSettings(ACTOR, fakeSettings, { quietHoursStart: "08:00", quietHoursEnd: "08:00" });
-  assert.equal(equal.ok, false);
-  if (!equal.ok) assert.equal(equal.code, "validation");
+  const missingTimezone: TimeContextRepository = {
+    getTimezone: async () => ok(null),
+    setTimezone: async () => ok("UTC"),
+  };
+  const invalidTimezone: TimeContextRepository = {
+    getTimezone: async () => ok("Not/AZone"),
+    setTimezone: async () => ok("UTC"),
+  };
+  const failedTimezoneRead: TimeContextRepository = {
+    getTimezone: async () => fail(),
+    setTimezone: async () => ok("UTC"),
+  };
+  const validTimezone: TimeContextRepository = {
+    getTimezone: async () => ok("Africa/Casablanca"),
+    setTimezone: async () => ok("Africa/Casablanca"),
+  };
 
-  const okUpdate = await updateNotificationSettings(ACTOR, fakeSettings, {
-    quietHoursEnabled: true,
-    quietHoursStart: "21:30",
-    quietHoursEnd: "06:30",
-  });
-  assert.equal(okUpdate.ok, true);
-  assert.equal(capturedOwner, ACTOR.userId);
-  assert.deepEqual(captured, {
-    quietHoursEnabled: true,
-    quietHoursStart: "21:30",
-    quietHoursEnd: "06:30",
-  });
-  if (okUpdate.ok) {
-    assert.equal(okUpdate.data.quietHoursEnabled, true);
-    assert.equal(okUpdate.data.quietHoursStart, "21:30");
+  for (const repository of [missingTimezone, invalidTimezone]) {
+    const result = await updateNotificationSettings(ACTOR, fakeSettings, repository, {
+      quietHoursEnabled: true,
+    });
+    assert.equal(result.ok, false);
+    if (!result.ok) assert.equal(result.code, "validation");
   }
+
+  const infra = await updateNotificationSettings(ACTOR, fakeSettings, failedTimezoneRead, {
+    quietHoursEnabled: true,
+  });
+  assert.equal(infra.ok, false);
+  if (!infra.ok) assert.equal(infra.code, "unknown");
+  assert.equal(patches.length, 0);
+
+  const enabled = await updateNotificationSettings(ACTOR, fakeSettings, validTimezone, {
+    quietHoursEnabled: true,
+  });
+  assert.equal(enabled.ok, true);
+  assert.deepEqual(patches.at(-1), { quietHoursEnabled: true });
+
+  const disabled = await updateNotificationSettings(ACTOR, fakeSettings, missingTimezone, {
+    quietHoursEnabled: false,
+  });
+  assert.equal(disabled.ok, true);
+  assert.deepEqual(patches.at(-1), { quietHoursEnabled: false });
 });

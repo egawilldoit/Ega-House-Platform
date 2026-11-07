@@ -35,39 +35,65 @@ export function nextRetryAt(attempt: number, now: Date): string | null {
 
 export type FcmErrorClassification = "invalid_endpoint" | "transient" | "permanent" | "auth";
 
+function lowerText(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  try {
+    return JSON.stringify(value).toLowerCase();
+  } catch {
+    return "";
+  }
+}
+
 export function classifyFcmError(input: {
   httpStatus?: number | null;
   fcmCode?: string | null;
   message?: string | null;
+  /** Structured FCM `error.details`, searched for explicit token-invalid codes. */
+  details?: unknown;
 }): FcmErrorClassification {
   const code = (input.fcmCode ?? "").toUpperCase();
   const status = input.httpStatus ?? 0;
+  const message = (input.message ?? "").toLowerCase();
+  const details = lowerText(input.details);
 
-  // Terminal endpoint failures: the token/registration no longer exists.
-  // 404/410 without a code still means the endpoint is gone.
+  // Endpoint invalidation requires specific verified token-invalid evidence.
+  // HTTP 404/410, generic NOT_FOUND, or SENDER_ID_MISMATCH alone are not proof.
+  const detailTokenInvalid =
+    details.includes("unregistered")
+    || details.includes("registration_token_not_registered")
+    || details.includes("registration-token-not-registered")
+    || details.includes("invalid_registration")
+    || details.includes("invalid-registration");
+  const messageTokenInvalid =
+    /registration token[^.]*(not (a )?valid|invalid|not registered|no longer valid|unregistered)/i.test(
+      message,
+    );
+  const tokenText = `${message} ${details}`;
+  const invalidArgumentTokenProof =
+    code === "INVALID_ARGUMENT"
+    && /registration token/i.test(tokenText)
+    && /(not (a )?valid|invalid|not registered|no longer valid|unregistered)/i.test(tokenText);
+
   if (
-    status === 404 ||
-    status === 410 ||
-    code === "UNREGISTERED" ||
-    code === "INVALID_ARGUMENT" ||
-    code === "SENDER_ID_MISMATCH" ||
-    code === "REGISTRATION_TOKEN_NOT_REGISTERED" ||
-    code === "INVALID_TOKEN" ||
-    code === "NOT_FOUND" ||
-    code.includes("UNREGISTERED") ||
-    code.includes("INVALID_REGISTRATION") ||
-    code.includes("INVALID_TOKEN")
+    code === "UNREGISTERED"
+    || code === "REGISTRATION_TOKEN_NOT_REGISTERED"
+    || code === "INVALID_REGISTRATION"
+    || code.includes("UNREGISTERED")
+    || detailTokenInvalid
+    || messageTokenInvalid
+    || invalidArgumentTokenProof
   ) {
     return "invalid_endpoint";
   }
 
-  // Auth/config failures are permanent for this attempt (retrying will not fix
-  // a missing/rotated service credential without operator action).
+  // Auth/config failures: retrying will not fix a missing/rotated credential.
+  // SENDER_ID_MISMATCH means the token belongs to another project; do not purge.
   if (
     status === 401 ||
     status === 403 ||
     code === "UNAUTHENTICATED" ||
     code === "PERMISSION_DENIED" ||
+    code === "SENDER_ID_MISMATCH" ||
     code.includes("AUTH")
   ) {
     return "auth";
@@ -88,12 +114,13 @@ export function classifyFcmError(input: {
     return "transient";
   }
 
-  // Other 4xx client errors are permanent for this endpoint/payload.
+  // Other 4xx client errors (bare 404/410, NOT_FOUND, malformed INVALID_ARGUMENT)
+  // are permanent/config for this attempt but do not prove the token is stale.
   if (status >= 400 && status < 500) {
     return "permanent";
   }
 
-  // Unknown codes are not safe to retry indefinitely; treat them permanently.
+  // Unknown codes are not safe to retry indefinitely; never deactivate.
   if (code) return "permanent";
 
   // Network/unknown status: prefer a bounded retry.

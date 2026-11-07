@@ -206,17 +206,23 @@ export type NotificationSettingsRecord = Readonly<{
   updatedAt: string | null;
 }>;
 
+export type NotificationSettingsPatch = Readonly<{
+  quietHoursEnabled?: boolean;
+  quietHoursStart?: string;
+  quietHoursEnd?: string;
+}>;
+
 export interface NotificationSettingsRepository {
   getSettings(
     actor: AuthenticatedActor,
   ): Promise<RepositoryResult<NotificationSettingsRecord | null>>;
-  upsertSettings(
+  /**
+   * Atomically applies only the supplied fields. Omitted fields keep their
+   * stored value (or the documented default on first insert).
+   */
+  patchSettings(
     actor: AuthenticatedActor,
-    input: Readonly<{
-      quietHoursEnabled: boolean;
-      quietHoursStart: string;
-      quietHoursEnd: string;
-    }>,
+    patch: NotificationSettingsPatch,
   ): Promise<RepositoryResult<NotificationSettingsRecord>>;
 }
 

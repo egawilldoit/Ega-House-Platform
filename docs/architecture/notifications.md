@@ -123,8 +123,10 @@ per event type:
 Policy helpers:
 - `isWithinQuietHours({ now, timezone, start, end })` — same-day and overnight
   windows, owner IANA timezone wall-clock via `Intl` (DST-safe). Invalid /
-  missing timezone or malformed `HH:MM` returns `false` (do **not** suppress);
-  server local time is never guessed.
+  missing timezone or malformed `HH:MM` returns `false` (do **not** suppress)
+  for direct callers; the application service treats enabled quiet hours plus a
+  missing/invalid/unreadable timezone as `unavailable` and defers dispatch.
+  Server local time is never guessed.
 - `sanitizeNotificationCopy(type, title, body)` — `private_finance` events
   discard caller copy and use fixed generic title/body so lock screens cannot
   leak amounts, merchants, accounts, or free text. Standard copy is trimmed and
@@ -168,15 +170,19 @@ remains the existing shared Time Context authority
     retryable so push is never silently dropped; a **quiet-hours/
     time-context** read failure still creates the canonical event and queued
     (non-suppressed) deliveries, bounded by dispatch.
-  - dispatch: any preference/settings/time-context/notification read failure
-    calls no provider and records explicit `retry_scheduled`
+  - dispatch: any preference/settings/time-context/notification/device-lookup
+    read failure calls no provider and records explicit `retry_scheduled`
     (`preferences_unavailable`, `quiet_hours_unavailable`,
-    `notification_unavailable`), then `failed` after the bounded retry budget.
-    A failed deferral write is reported as a persistence error and remains
-    reclaimable by the stale-`sending` lease.
-  - A missing preference row keeps the legacy enabled default; a missing/invalid
-    owner timezone or invalid `HH:MM` keeps the documented no-suppress default
-    (configuration states, not read failures). A missing
+    `notification_unavailable`, `device_lookup_unavailable`), then `failed`
+    after the bounded retry budget. A failed deferral write is reported as a
+    persistence error and remains reclaimable by the stale-`sending` lease.
+  - A missing preference row keeps the legacy enabled default. With quiet hours
+    **disabled**, a missing/invalid owner timezone or invalid `HH:MM` keeps the
+    no-suppress default. With quiet hours **enabled**, a missing/invalid owner
+    timezone or time-context read failure is `unavailable`: queue time creates
+    the event + queued deliveries, and dispatch defers
+    (`quiet_hours_unavailable`) without provider calls. Enabling quiet hours via
+    PATCH requires a valid owner timezone; disabling always works. A missing
     `notification_settings` table (0079 not applied) degrades to legacy
     quiet-hours-disabled behavior.
 - Event keys must use the canonical `${type}:` prefix; outer whitespace is
@@ -194,7 +200,11 @@ remains the existing shared Time Context authority
   `createDeliveries` persists queued/suppressed rows and returns
   `{ created, existing }`; `listPending` filters `queued`/`retry_scheduled`
   where due plus stale `sending` leases and never returns `suppressed`.
-- `fcm-provider.ts` — `FcmPushProvider` using `google-auth-library` JWT (no hand-rolled crypto), FCM HTTP v1 `https://fcm.googleapis.com/v1/projects/{projectId}/messages:send`, payload `token, notification.title/body, data {notificationId, type, targetType, targetId}, android.priority=HIGH`. Never logs token or private key. Returns `providerMessageId` on 200; classifies `UNREGISTERED`/`INVALID_ARGUMENT` → `invalid_endpoint` (deactivates device), 429/5xx/`UNAVAILABLE` → `retry_scheduled`, 401/403 → `failed` with `auth` code. Uses `resolveFcmServiceAccountFromEnv` reading `FCM_SERVICE_ACCOUNT_JSON` or `FCM_PROJECT_ID`/`FCM_CLIENT_EMAIL`/`FCM_PRIVATE_KEY` (with `\\n` → `\n` normalization).
+  `patchSettings` applies only supplied fields via an owner-scoped `UPDATE ...
+  RETURNING *`; when no row exists it inserts supplied fields plus documented
+  defaults, retries the partial `UPDATE` once on `23505`, and returns the actual
+  post-write row.
+- `fcm-provider.ts` — `FcmPushProvider` using `google-auth-library` JWT (no hand-rolled crypto), FCM HTTP v1 `https://fcm.googleapis.com/v1/projects/{projectId}/messages:send`, payload `token, notification.title/body, data {notificationId, type, targetType, targetId}, android.priority=HIGH`. Never logs token or private key. Returns `providerMessageId` on 200. Endpoint invalidation requires verified token evidence (`UNREGISTERED`/registration-token-not-registered or explicit token-invalid details/message); bare 404/410, generic `NOT_FOUND`, malformed `INVALID_ARGUMENT`, and `SENDER_ID_MISMATCH` do **not** deactivate. 429/5xx/`UNAVAILABLE` → `retry_scheduled`; 401/403 → `failed` with `auth`. Uses `resolveFcmServiceAccountFromEnv` reading `FCM_SERVICE_ACCOUNT_JSON` or `FCM_PROJECT_ID`/`FCM_CLIENT_EMAIL`/`FCM_PRIVATE_KEY` (with `\\n` → `\n` normalization).
 - `email-provider.ts` — `ResendEmailProvider` and `SupabaseEmailResolver` (best-effort lookup via `profiles` or `auth.getUser`).
 
 ## 6. Server API (Hono)
@@ -206,7 +216,7 @@ remains the existing shared Time Context authority
 - `POST /devices` — body `RegisterNotificationDeviceInput` (validates `android`/`fcm`), returns `device {id, installationId, platform, provider, isActive}` without echoing token.
 - `DELETE /devices/:installationId`
 - `GET /preferences`, `PATCH /preferences` (single object `{notificationType, pushEnabled?, emailEnabled?}`; bounded known type).
-- `GET /settings`, `PATCH /settings` — owner quiet hours (`quietHoursEnabled`, `quietHoursStart` `HH:MM`, `quietHoursEnd` `HH:MM`). Owner is derived from the verified bearer token; request-scoped Supabase only.
+- `GET /settings`, `PATCH /settings` — owner quiet hours (`quietHoursEnabled`, `quietHoursStart` `HH:MM`, `quietHoursEnd` `HH:MM`). PATCH accepts partial fields and persists only those fields. Enabling requires a valid owner timezone (Time Context); a missing/invalid timezone is 400, a timezone read failure is 5xx, and disabling is always allowed. Owner is derived from the verified bearer token; request-scoped Supabase only.
 
 All routes derive `actor` from verified bearer token, use request-scoped Supabase client, return `@ega/contracts` DTOs, and remain thin. Notification list/read/opened responses map the bounded target allowlist; unknown target types are dropped, and singleton targets (`review`/`today`) carry `id: null`. No caller-supplied `ownerUserId` is accepted.
 
@@ -263,7 +273,7 @@ All UI reuses `mobileTheme.colors.background/surface/accent` glass primitives; n
 ## 12. Retry / Failure Behavior
 
 - `transient` (408, 429, 5xx, `UNAVAILABLE`, `INTERNAL`, `DEADLINE_EXCEEDED`, `RESOURCE_EXHAUSTED`, `ABORTED`) → `retry_scheduled` with `nextRetryAt` (1m,2m,4m,8m,16m) until `attemptCount > 5` → `failed`.
-- `invalid_endpoint` (HTTP 404/410, `UNREGISTERED`, `INVALID_ARGUMENT`, `INVALID_TOKEN`, `REGISTRATION_TOKEN_NOT_REGISTERED`, `SENDER_ID_MISMATCH`, `NOT_FOUND`) → `invalid_endpoint`, device deactivated, no retry.
+- `invalid_endpoint` requires verified token-invalid evidence (`UNREGISTERED`, registration-token-not-registered, or explicit token-invalid details/message) → device deactivated, no retry. Bare HTTP 404/410, generic `NOT_FOUND`, malformed `INVALID_ARGUMENT`, and `SENDER_ID_MISMATCH` do **not** deactivate; they classify as permanent/config or `auth`.
 - `auth` (401/403/`UNAUTHENTICATED`/`PERMISSION_DENIED`) and other permanent 4xx → `failed` with `failedAt`, surfaced in cron result.
 - `suppressed` is a terminal recorded result for opt-out/quiet hours; it is never picked by `listPending` and is not a deferred queue.
 - `provider_accepted` never called `delivered`; `read_at`/`opened_at` remain separate. At-least-once semantics remain: provider acceptance is not exactly-once delivery or user-read proof.
@@ -283,7 +293,7 @@ All UI reuses `mobileTheme.colors.background/surface/accent` glass primitives; n
 
 - Created `drizzle/0045_notification_subsystem.sql` + `drizzle/meta/_journal.json` entry `0045_notification_subsystem` (when `1787600000000`).
 - Added `drizzle/0079_notification_events_policy.sql` + journal idx `79` (`0079_notification_events_policy`): widens notification/preference type checks and target allowlist, adds `suppressed`, creates owner-scoped `notification_settings` (RLS + FORCE + HH:MM checks).
-- **Migration sequencing note:** Track C (#346) owns the initial new expense migration if it lands; this branch-local `0079` must be re-sequenced/reconciled with Track C before any future merge. It is not applied to any shared/production/DEV database. Only a disposable local DB was used for constraint/RLS proof.
+- **Migration sequencing note:** Track C (#346) owns the initial new expense migration if it lands; this branch-local `0079` must be re-sequenced/reconciled with Track C before any future merge. Neighboring PR #366 adds `drizzle/0088_personal_expenses.sql` and edits `src/db/schema.ts` + `drizzle/meta/_journal.json`; this repair adds **no** migration or table, so `0079` remains idx 79 and the merge order must reconcile the journal/schema edits from both branches. It is not applied to any shared/production/DEV database. Only a disposable local DB was used for constraint/RLS/concurrency proof.
 - **Rollout rule:** apply `0079` before/with enabling the fail-closed reminder cron. If that order is violated, `SupabaseNotificationSettingsRepository.getSettings` recognizes a missing `notification_settings` table (`42P01`, `PGRST205`, "does not exist"/"schema cache"/"could not find") and returns "no settings row", so quiet hours degrade to legacy disabled behavior instead of stalling every reminder. Other settings read errors remain failures and are retried/failed at dispatch.
 - **Event-key rollout:** the legacy V1 key was `task-reminder:<reminderId>`; the canonical key is `task_reminder:<reminderId>`. There is no second key format or legacy-key lookup. If old code/`0045` are already live and a reminder is replayed across the upgrade (crash between event creation and intent `processed`), a one-time duplicate event/delivery fan-out is possible. Recommended order: apply `0079`, deploy this code, then replay/recover any crash-window reminders; normal processed reminders are unaffected.
 - **NOT applied** to production. Controlled `drizzle-kit migrate` (or `supabase db push`) required after review, with pre-flight duplicate checks if any.
@@ -348,6 +358,16 @@ port.
   invalid status rejected; taxonomy target/preference constraint rejection;
   `notification_settings` owner isolation (insert/select/update) and invalid
   `HH:MM` rejection. The disposable DB was dropped afterward.
+- Disposable PostgreSQL 18 concurrency proof for partial settings patches:
+  two overlapping sessions (`enabled=true` vs `start=23:00`) both remained
+  durable; concurrent first-row creation resolved via `23505` + partial update
+  with both fields durable; independent `start`/`end` updates both remained
+  durable; the second session blocked on the first row lock (≈1.6 s) proving
+  real overlap; owner B could not update owner A's row under RLS; first insert
+  defaults and invalid `HH:MM` rejection verified. DB dropped afterward.
+- FCM classification/provider tests cover verified token-invalid vs bare
+  404/410, generic `NOT_FOUND`, malformed `INVALID_ARGUMENT`,
+  `SENDER_ID_MISMATCH`, and 429/5xx; no live FCM delivery is claimed.
 - Suffix environment notes (not repository-wide proof):
   - `mobile:typecheck`/`mobile:test` pass only after a clean lockfile `npm ci`;
     dependency drift in a reused `node_modules` can surface untouched-file
