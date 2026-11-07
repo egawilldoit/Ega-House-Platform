@@ -100,6 +100,11 @@ export function WorkAnalyticsPageView({ model }: { model: WorkAnalyticsPageModel
     weekDelta.percentChange === null
       ? "No prior 7-day data"
       : `${signedPercent(weekDelta.percentChange)} · ${signedDuration(weekDelta.deltaMinutes)}`;
+  const workTargets = model.workTargets ?? null;
+  const jobSearchNeedsReference =
+    workTargets !== null &&
+    !workTargets.jobSearchConfigured &&
+    workTargets.week.targetJobSearchMinutes > 0;
 
   return (
     <div className="flex flex-col gap-6" data-testid="work-analytics-workspace">
@@ -168,6 +173,80 @@ export function WorkAnalyticsPageView({ model }: { model: WorkAnalyticsPageModel
             }
           />
         </div>
+      </DashboardSection>
+
+      <DashboardSection
+        title="Work targets"
+        description="Owner-local week targets from your personal schedule. Job-search time is a subset of work, not an extra total."
+      >
+        {model.workTargetsError ? (
+          <p
+            role="status"
+            className="text-[length:var(--text-meta)] leading-[var(--leading-snug)] text-ega-text-secondary"
+          >
+            Work targets could not be loaded right now. The rest of analytics is unaffected.
+          </p>
+        ) : workTargets ? (
+          <div className="grid gap-4 sm:grid-cols-3" data-testid="analytics-work-targets">
+            <div className="min-w-0" data-testid="analytics-work-targets-today">
+              <p className="metric-label">Today</p>
+              <p className="metric-value tabular-nums">
+                {formatMinutes(workTargets.today.actualWorkMinutes)}{" "}
+                <span className="text-ega-text-secondary">
+                  / {formatMinutes(workTargets.today.targetWorkMinutes)}
+                </span>
+              </p>
+              <p className="text-[length:var(--text-meta)] text-ega-text-tertiary">
+                Work · {workTargets.today.date}
+              </p>
+            </div>
+            <div className="min-w-0" data-testid="analytics-work-targets-week">
+              <p className="metric-label">Week to date</p>
+              <p className="metric-value tabular-nums">
+                {formatMinutes(workTargets.week.actualWorkMinutes)}{" "}
+                <span className="text-ega-text-secondary">
+                  / {formatMinutes(workTargets.week.weekToDateTargetWorkMinutes)}
+                </span>
+              </p>
+              <p className="text-[length:var(--text-meta)] text-ega-text-tertiary">
+                Full week {formatMinutes(workTargets.week.targetWorkMinutes)}
+                {workTargets.paused ? " · Paused" : ""}
+              </p>
+            </div>
+            <div className="min-w-0" data-testid="analytics-work-targets-job-search">
+              <p className="metric-label">Job search</p>
+              {jobSearchNeedsReference ? (
+                <>
+                  <p
+                    className="metric-value text-ega-text-secondary"
+                    data-testid="analytics-work-targets-not-configured"
+                  >
+                    Not configured
+                  </p>
+                  <p className="text-[length:var(--text-meta)] text-ega-text-tertiary">
+                    Choose a job-search task or project in{" "}
+                    <Link href="/settings/preferences" className="underline">
+                      Preferences
+                    </Link>
+                    .
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="metric-value tabular-nums">
+                    {formatMinutes(workTargets.week.actualJobSearchMinutes)}{" "}
+                    <span className="text-ega-text-secondary">
+                      / {formatMinutes(workTargets.week.weekToDateTargetJobSearchMinutes)}
+                    </span>
+                  </p>
+                  <p className="text-[length:var(--text-meta)] text-ega-text-tertiary">
+                    Included in work, not extra.
+                  </p>
+                </>
+              )}
+            </div>
+          </div>
+        ) : null}
       </DashboardSection>
 
       <InteractiveAnalytics

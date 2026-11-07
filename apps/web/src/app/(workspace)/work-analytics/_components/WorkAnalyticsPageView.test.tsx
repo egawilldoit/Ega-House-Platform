@@ -16,6 +16,14 @@ describe("WorkAnalytics — restored capabilities", () => {
     expect(view).toContain("report.monthComparison.currentMonthAvgPerActiveDayMinutes");
   });
 
+  it("exposes the work-targets and job-search subset section", () => {
+    expect(view).toContain("Work targets");
+    expect(view).toContain("analytics-work-targets");
+    expect(view).toContain("Included in work, not extra.");
+    expect(view).toContain("Not configured");
+    expect(view).toContain('href="/settings/preferences"');
+  });
+
   it("exposes Estimate Accuracy (estimateAccuracy)", () => {
     expect(view).toContain("Estimate variance");
     expect(view).toContain("report.estimateAccuracy.totalEstimatedMinutes");

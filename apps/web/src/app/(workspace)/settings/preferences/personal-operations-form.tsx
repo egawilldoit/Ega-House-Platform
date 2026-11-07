@@ -5,9 +5,13 @@ import { updatePersonalOperationsAction } from "./actions";
 import type { UserPreferences } from "@ega/domain/preferences";
 
 type Schedule = UserPreferences["personalOperations"];
+type ReferenceOptions = {
+  projects: Array<{ id: string; name: string }>;
+  tasks: Array<{ id: string; title: string; archivedAt: string | null }>;
+};
 const days = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"] as const;
 
-export function PersonalOperationsForm({ initial, disabled }: { initial: Schedule; disabled: boolean }) {
+export function PersonalOperationsForm({ initial, disabled, referenceOptions }: { initial: Schedule; disabled: boolean; referenceOptions: ReferenceOptions }) {
   const [schedule, setSchedule] = useState(initial);
   const [state, action, pending] = useActionState(updatePersonalOperationsAction, { message: "", ok: false });
   const errorRef = useRef<HTMLParagraphElement>(null);
@@ -19,6 +23,23 @@ export function PersonalOperationsForm({ initial, disabled }: { initial: Schedul
   function block(index: number, change: Partial<Schedule["guidance"][number]>) {
     setSchedule(current => ({ ...current, guidance: current.guidance.map((item, i) => i === index ? { ...item, ...change } : item) }));
   }
+  const reference = schedule.jobSearchReference ?? null;
+  const referenceValue = reference ? `${reference.kind}:${reference.id}` : "";
+  const referenceInOptions = reference === null
+    || (reference.kind === "task"
+      ? referenceOptions.tasks.some(task => task.id === reference.id)
+      : referenceOptions.projects.some(project => project.id === reference.id));
+  function setReference(value: string) {
+    if (!value) {
+      setSchedule(current => ({ ...current, jobSearchReference: null }));
+      return;
+    }
+    const separator = value.indexOf(":");
+    const kind = value.slice(0, separator);
+    const id = value.slice(separator + 1);
+    if ((kind !== "task" && kind !== "project") || !id) return;
+    setSchedule(current => ({ ...current, jobSearchReference: { kind, id } }));
+  }
   return <form action={action} className="flex flex-col gap-5">
     <fieldset disabled={disabled || pending} className="flex flex-col gap-5">
     <input type="hidden" name="schedule" value={JSON.stringify(schedule)} />
@@ -28,6 +49,28 @@ export function PersonalOperationsForm({ initial, disabled }: { initial: Schedul
       <label>Work minutes <input className="w-24" type="number" min="0" max="1440" required value={schedule.targets[day].work < 0 ? "" : schedule.targets[day].work} onChange={e => target(day, "work", e.target.value)} /></label>
       <label>Job-search minutes <input className="w-24" type="number" min="0" max="1440" required value={schedule.targets[day].jobSearch < 0 ? "" : schedule.targets[day].jobSearch} onChange={e => target(day, "jobSearch", e.target.value)} /></label>
     </fieldset>)}</div>
+    <label className="flex flex-col gap-1">
+      <span>Job-search work reference</span>
+      <select value={referenceValue} onChange={e => setReference(e.target.value)}>
+        <option value="">No job-search reference</option>
+        {referenceOptions.tasks.length > 0 ? (
+          <optgroup label="Tasks">
+            {referenceOptions.tasks.map(task => <option key={task.id} value={`task:${task.id}`}>{task.title}{task.archivedAt ? " (archived)" : ""}</option>)}
+          </optgroup>
+        ) : null}
+        {referenceOptions.projects.length > 0 ? (
+          <optgroup label="Projects">
+            {referenceOptions.projects.map(project => <option key={project.id} value={`project:${project.id}`}>{project.name}</option>)}
+          </optgroup>
+        ) : null}
+        {!referenceInOptions && reference ? (
+          <optgroup label="Current selection">
+            <option value={`${reference.kind}:${reference.id}`}>{reference.kind === "task" ? "Task" : "Project"} {reference.id} (not in the current list)</option>
+          </optgroup>
+        ) : null}
+      </select>
+    </label>
+    <p>Job-search time is classified by this exact task or project id, never by title, and stays inside your work total.</p>
     <p>Guidance is optional and does not create timers or notifications. Enabled blocks cannot overlap on the same day.</p>
     {schedule.guidance.map((item, index) => <fieldset key={index} className="flex flex-wrap gap-3"><legend>{item.name}</legend>
       <label><input type="checkbox" checked={item.enabled} onChange={e => block(index, { enabled: e.target.checked })} /> Enabled</label>

@@ -7,6 +7,7 @@ import { updateWorkspacePreferencesAction } from "@/app/(workspace)/settings/pre
 import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
+import { getJobSearchReferenceOptions } from "@/lib/services/job-search-reference-options";
 import { getWebUserPreferencesState } from "@/lib/services/user-preferences-service";
 
 export const metadata: Metadata = {
@@ -37,9 +38,10 @@ type WorkspacePreferencesPageProps = {
 export default async function WorkspacePreferencesPage({
   searchParams,
 }: WorkspacePreferencesPageProps) {
-  const [{ success, error }, state] = await Promise.all([
+  const [{ success, error }, state, referenceOptions] = await Promise.all([
     searchParams,
     getWebUserPreferencesState(),
+    getJobSearchReferenceOptions(),
   ]);
   const preferences = state.preferences;
   const loadError = error ?? state.errorMessage;
@@ -65,9 +67,15 @@ export default async function WorkspacePreferencesPage({
           </div>
         ) : null}
 
+        {referenceOptions.errorMessage ? (
+          <div role="status" className="feedback-block">
+            {referenceOptions.errorMessage} Your saved job-search reference is kept.
+          </div>
+        ) : null}
+
         <Card>
           <CardHeader><CardTitle>Personal schedule</CardTitle><CardDescription>Targets and optional guidance in your account time zone.</CardDescription></CardHeader>
-          <CardContent><PersonalOperationsForm initial={preferences.personalOperations} disabled={Boolean(state.errorMessage)} /></CardContent>
+          <CardContent><PersonalOperationsForm initial={preferences.personalOperations} disabled={Boolean(state.errorMessage)} referenceOptions={referenceOptions.data} /></CardContent>
         </Card>
 
         <Card>
