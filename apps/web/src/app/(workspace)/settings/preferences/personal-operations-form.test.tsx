@@ -86,6 +86,8 @@ async function renderForm({
 }
 
 beforeEach(() => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2026-02-16T12:00:00Z"));
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   serverAction.mockClear();
   container = document.createElement("div");
@@ -94,10 +96,22 @@ beforeEach(() => {
 
 afterEach(async () => {
   await act(async () => root?.unmount());
+  vi.useRealTimers();
   container.remove();
 });
 
 describe("PersonalOperationsForm", () => {
+  it("updates today at Casablanca midnight and after a suspended tab resumes", async () => {
+    vi.setSystemTime(new Date("2026-03-21T23:59:59Z"));
+    await renderForm({ timeContext: { ...CASABLANCA_MONDAY, localDate: "2026-03-21" } });
+    expect(container.textContent).toContain("Today in Africa/Casablanca: Saturday");
+    await act(async () => { vi.advanceTimersByTime(1000); });
+    expect(container.textContent).toContain("Today in Africa/Casablanca: Sunday");
+
+    vi.setSystemTime(new Date("2026-03-23T12:00:00Z"));
+    await act(async () => { document.dispatchEvent(new Event("visibilitychange")); });
+    expect(container.textContent).toContain("Today in Africa/Casablanca: Monday");
+  });
   it("renders defaults, the account time zone, today's plan and week totals", async () => {
     await renderForm();
 
