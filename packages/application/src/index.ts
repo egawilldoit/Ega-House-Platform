@@ -43,6 +43,8 @@ export * from "./shared/duration";
 export * from "./shared/time-context";
 export * from "./shared/execution-evidence";
 export * from "./preferences/user-preferences";
+export * from "./expenses/ports";
+export * from "./expenses/service";
 export * from "./weekly-review/ports";
 export * from "./weekly-review/read-model";
 export * from "./weekly-review/draft";
