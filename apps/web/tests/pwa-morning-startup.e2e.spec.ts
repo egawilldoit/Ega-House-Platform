@@ -22,9 +22,11 @@ test("owner starts the day with 1-2 outcomes and runs a timer", async ({ page })
 
   const selectionCount = Math.min(2, checkboxCount);
   const selectedTitles: string[] = [];
+  const selectedIds: string[] = [];
 
   for (let index = 0; index < selectionCount; index += 1) {
     const checkbox = checkboxes.nth(index);
+    selectedIds.push(await checkbox.inputValue());
     const inputId = await checkbox.getAttribute("id");
     expect(inputId).toBeTruthy();
     const label = group.locator(`label[for="${inputId}"]`);
@@ -57,7 +59,9 @@ test("owner starts the day with 1-2 outcomes and runs a timer", async ({ page })
     await page.getByRole("button", { name: "Save outcome" }).click();
   }
 
-  const startTimer = page.getByRole("button", { name: /^Start timer$/ }).first();
+  const startTimer = page.locator("form")
+    .filter({ has: page.locator('input[name="taskId"]').and(page.locator(`input[value="${selectedIds[0]}"]`)) })
+    .getByRole("button", { name: /^Start timer$/ }).first();
   await expect(startTimer).toBeVisible();
   await startTimer.click();
 
