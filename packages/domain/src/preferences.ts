@@ -1,4 +1,9 @@
-import { DEFAULT_PERSONAL_OPERATIONS, isPersonalOperations, type PersonalOperations } from "./personal-operations";
+import {
+  DEFAULT_PERSONAL_OPERATIONS,
+  isPersonalOperations,
+  normalizePersonalOperations,
+  type PersonalOperations,
+} from "./personal-operations";
 
 /**
  * Durable workspace preferences (EGA-798).
@@ -112,7 +117,7 @@ export function getUserThemeAttribute(theme: UserTheme): "light" | "dark" {
 export function normalizeUserPreferences(input: unknown): UserPreferences {
   const value = input && typeof input === "object" ? (input as Record<string, unknown>) : {};
   return {
-    personalOperations: isPersonalOperations(value.personalOperations) ? value.personalOperations : DEFAULT_PERSONAL_OPERATIONS,
+    personalOperations: normalizePersonalOperations(value.personalOperations),
     theme: isUserTheme(value.theme) ? value.theme : DEFAULT_USER_PREFERENCES.theme,
     accent: isUserAccent(value.accent) ? value.accent : DEFAULT_USER_PREFERENCES.accent,
     density: isUserDensity(value.density) ? value.density : DEFAULT_USER_PREFERENCES.density,
@@ -172,7 +177,9 @@ export function parseUserPreferencesPatch(input: unknown): UserPreferencesPatchP
     switch (field) {
       case "personalOperations":
         if (!isPersonalOperations(raw)) return { ok: false, field, message: "Check schedule targets and guidance; enabled blocks cannot overlap." };
-        patch.personalOperations = raw;
+        // Persist the complete 4-key schedule so a legacy 3-key row and a new
+        // save converge on the same shape without changing any targets.
+        patch.personalOperations = normalizePersonalOperations(raw);
         break;
       case "reducedMotion":
         if (typeof raw !== "boolean") {

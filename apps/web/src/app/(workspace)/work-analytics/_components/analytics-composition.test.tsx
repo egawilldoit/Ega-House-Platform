@@ -10,6 +10,7 @@ import { createRoot } from "react-dom/client";
 import { WorkAnalyticsPageView } from "./WorkAnalyticsPageView";
 import type { WorkAnalyticsPageModel } from "../_lib/work-analytics-page-model";
 import type { DrilldownSessionDTO } from "@/lib/services/work-analytics-service";
+import type { WorkTargetProgress } from "@ega/application";
 import type { WorkAnalyticsReport } from "@/lib/services/work-analytics-report-builder";
 
 const session: DrilldownSessionDTO = {
@@ -134,11 +135,46 @@ const report: WorkAnalyticsReport = {
   },
 };
 
+const workTargets: WorkTargetProgress = {
+  weekStart: "2026-03-02",
+  weekEnd: "2026-03-08",
+  weekStartUtcIso: "2026-03-02T00:00:00.000Z",
+  weekEndExclusiveUtcIso: "2026-03-09T00:00:00.000Z",
+  timezone: "UTC",
+  todayDate: "2026-03-04",
+  days: [],
+  today: {
+    date: "2026-03-04",
+    dayOfWeek: "wednesday",
+    actualWorkMinutes: 120,
+    targetWorkMinutes: 480,
+    actualJobSearchMinutes: 45,
+    targetJobSearchMinutes: 90,
+    jobSearchConfigured: true,
+    isFuture: false,
+  },
+  week: {
+    actualWorkMinutes: 600,
+    actualJobSearchMinutes: 90,
+    targetWorkMinutes: 2880,
+    targetJobSearchMinutes: 450,
+    weekToDateTargetWorkMinutes: 1440,
+    weekToDateTargetJobSearchMinutes: 270,
+  },
+  reference: { kind: "task", id: "11111111-1111-4111-8111-111111111111" },
+  paused: false,
+  includeOpenSessions: false,
+  quality: "sufficient",
+  jobSearchConfigured: true,
+};
+
 const model = {
   user: { id: "user-1" },
   error: null,
   report,
   filters: { range: "30d", groupBy: "day", breakdownBy: "project", includeOpen: false },
+  workTargets,
+  workTargetsError: null,
 } as unknown as WorkAnalyticsPageModel;
 
 test("WorkAnalyticsPageView renders the reference composition", () => {
@@ -159,6 +195,52 @@ test("WorkAnalyticsPageView renders the reference composition", () => {
   assert.match(markup, /Change vs previous month/);
   assert.match(markup, /role="img"/);
   assert.match(markup, /<table class="sr-only">/);
+  assert.match(markup, /Work targets/);
+  assert.match(markup, /analytics-work-targets/);
+});
+
+test("work targets show actual vs target and the job-search subset note", () => {
+  const markup = renderToStaticMarkup(<WorkAnalyticsPageView model={model} />);
+  const start = markup.indexOf('data-testid="analytics-work-targets"');
+  assert.ok(start > -1, "expected the work targets section");
+  const section = markup.slice(start, start + 4000);
+
+  assert.match(section, /2h/);
+  assert.match(section, /8h/);
+  assert.match(section, /Included in work, not extra\./);
+  assert.match(section, /Job search/);
+});
+
+test("a work-target read failure degrades with a small message", () => {
+  const degraded = {
+    ...model,
+    workTargets: null,
+    workTargetsError: "Failed to load work targets.",
+  } as unknown as WorkAnalyticsPageModel;
+  const markup = renderToStaticMarkup(<WorkAnalyticsPageView model={degraded} />);
+
+  assert.match(markup, /Work targets could not be loaded right now\./);
+  assert.match(markup, /Focused time/);
+});
+
+test("an unconfigured job search renders Not configured, not fictitious hours", () => {
+  const unconfigured = {
+    ...model,
+    workTargets: {
+      ...workTargets,
+      reference: null,
+      jobSearchConfigured: false,
+      week: { ...workTargets.week, actualJobSearchMinutes: 0 },
+    },
+  } as unknown as WorkAnalyticsPageModel;
+  const markup = renderToStaticMarkup(<WorkAnalyticsPageView model={unconfigured} />);
+  const start = markup.indexOf('data-testid="analytics-work-targets-job-search"');
+  assert.ok(start > -1, "expected the job-search target cell");
+  const cell = markup.slice(start, start + 1500);
+
+  assert.match(cell, /Not configured/);
+  assert.match(cell, /\/settings\/preferences/);
+  assert.doesNotMatch(cell, /Included in work, not extra\./);
 });
 
 test("estimate variance leads with the absolute delta, then the ratio, then the percentage", () => {
