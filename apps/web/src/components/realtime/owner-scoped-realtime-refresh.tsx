@@ -55,6 +55,10 @@ export function OwnerScopedRealtimeRefresh({
     // Reset mounted state on (re)subscription so a dependency change or remount
     // does not leave isMountedRef stuck at false from the previous cleanup.
     isMountedRef.current = true;
+    // The watermark belongs to one owner subscription. After an in-place owner
+    // change, keeping the old value would suppress the new owner's earlier
+    // updated_at events.
+    lastPayloadUpdatedAtRef.current = null;
 
     if (!ownerUserId || tables.length === 0) {
       return undefined;

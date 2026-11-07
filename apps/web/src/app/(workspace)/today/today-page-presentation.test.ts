@@ -35,6 +35,16 @@ test("Today keeps the completed-today empty state compact", () => {
   assert.doesNotMatch(page, /No completed items yet/);
 });
 
+test("Today mounts the timer sync status so reconnect refreshes the active timer", () => {
+  const page = read("app", "(workspace)", "today", "page.tsx");
+
+  // The rail's Active Timer panel is server-rendered; a PWA left open on Today
+  // must re-fetch when another device starts or stops the timer.
+  assert.match(page, /import \{ TimerSyncStatus \} from "@\/components\/timer\/timer-sync-status";/);
+  assert.match(page, /<TimerSyncStatus \/>/);
+  assert.match(page, /<ActiveTimerPanel/);
+});
+
 test("Today copy avoids developer vocabulary", () => {
   const page = read("app", "(workspace)", "today", "page.tsx");
   const intelligence = read("components", "today", "today-intelligence-panel.tsx");

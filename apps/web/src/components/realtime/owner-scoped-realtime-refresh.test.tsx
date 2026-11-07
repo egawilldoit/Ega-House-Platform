@@ -688,6 +688,33 @@ describe("OwnerScopedRealtimeRefresh", () => {
     unmount();
   });
 
+  test("owner switch resets the watermark so the new owner's earlier events refresh", () => {
+    mount({ ownerUserId: "owner-a", channelPrefix: "today", tables: ["task_sessions"], refreshDebounceMs: 100 });
+    assert.ok(activeOnPayload);
+    act(() => {
+      activeOnPayload!(createPayload("UPDATE", { owner_user_id: "owner-a", updated_at: "2026-04-18T00:05:00.000Z" }));
+      vi.advanceTimersByTime(101);
+    });
+    assert.equal(routerRefreshCalls.length, 1);
+
+    // In-place owner change: the effect cleans up and resubscribes on the same root.
+    mount({ ownerUserId: "owner-b", channelPrefix: "today", tables: ["task_sessions"], refreshDebounceMs: 100 });
+    assert.equal(subscribeCalls.length, 2);
+    const ownerBOnPayload = subscribeCalls[1]!.onPayload;
+    assert.ok(ownerBOnPayload);
+
+    act(() => {
+      ownerBOnPayload(createPayload("UPDATE", { owner_user_id: "owner-b", updated_at: "2026-04-18T00:03:00.000Z" }));
+      vi.advanceTimersByTime(101);
+    });
+    assert.equal(
+      routerRefreshCalls.length,
+      2,
+      "owner B's earlier updated_at must not be suppressed by owner A's watermark",
+    );
+    unmount();
+  });
+
   test("queued debounce defers refresh when hidden before execution", () => {
     mount({ ownerUserId: "user-1", channelPrefix: "dashboard", tables: ["task_sessions"], refreshDebounceMs: 100 });
     assert.ok(activeOnPayload);

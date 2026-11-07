@@ -121,6 +121,33 @@ describe("TimerSyncStatus", () => {
     expect(routerRefresh).toHaveBeenCalledTimes(2);
   });
 
+  it("refreshes the Today surface on reconnect and on the next visibility transition", () => {
+    setOnline(false);
+    act(() => root.render(<TimerSyncStatus />));
+
+    // Reconnect after being offline.
+    setOnline(true);
+    act(() => {
+      window.dispatchEvent(new Event("online"));
+    });
+    expect(routerRefresh).toHaveBeenCalledTimes(1);
+
+    // A later tab re-entry outside the dedupe window must refresh again so the
+    // server-rendered Active Timer panel picks up another device's change.
+    setHidden(true);
+    act(() => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    expect(routerRefresh).toHaveBeenCalledTimes(1);
+
+    now = 11_001;
+    setHidden(false);
+    act(() => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    expect(routerRefresh).toHaveBeenCalledTimes(2);
+  });
+
   it("does not refresh focus/visibility events while offline", () => {
     setOnline(false);
     act(() => root.render(<TimerSyncStatus />));
