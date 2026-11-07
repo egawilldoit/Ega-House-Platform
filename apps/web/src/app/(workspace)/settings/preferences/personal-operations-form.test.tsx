@@ -32,19 +32,10 @@ const CASABLANCA_MONDAY: PersonalOperationsTimeContext = {
 let container: HTMLDivElement;
 let root: Root;
 
-function dayGroup(day: string): HTMLFieldSetElement {
-  const group = Array.from(container.querySelectorAll("fieldset")).find(
-    (element) => element.querySelector("legend")?.textContent?.trim() === day,
+function labelledInput(label: string): HTMLInputElement {
+  const input = container.querySelector<HTMLInputElement>(
+    `input[aria-label="${label}"]`,
   );
-  if (!group) throw new Error(`Missing ${day} fieldset`);
-  return group as HTMLFieldSetElement;
-}
-
-function labelledInput(scope: ParentNode, label: string): HTMLInputElement {
-  const match = Array.from(scope.querySelectorAll("label")).find((element) =>
-    element.textContent?.includes(label),
-  );
-  const input = match?.querySelector("input");
   if (!input) throw new Error(`Missing ${label} input`);
   return input;
 }
@@ -64,7 +55,7 @@ async function click(input: HTMLInputElement) {
 }
 
 async function renderForm({
-  action,
+  action = serverAction,
   timeContext = CASABLANCA_MONDAY,
   disabled = false,
 }: {
@@ -89,6 +80,7 @@ beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(new Date("2026-02-16T12:00:00Z"));
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  window.sessionStorage.clear();
   serverAction.mockClear();
   container = document.createElement("div");
   document.body.append(container);
@@ -98,6 +90,7 @@ afterEach(async () => {
   await act(async () => root?.unmount());
   vi.useRealTimers();
   container.remove();
+  window.sessionStorage.clear();
 });
 
 describe("PersonalOperationsForm", () => {
@@ -105,16 +98,22 @@ describe("PersonalOperationsForm", () => {
     vi.setSystemTime(new Date("2026-03-21T23:59:59Z"));
     await renderForm({ timeContext: { ...CASABLANCA_MONDAY, localDate: "2026-03-21" } });
     expect(container.textContent).toContain("Today in Africa/Casablanca: Saturday");
-    await act(async () => { vi.advanceTimersByTime(1000); });
+    await act(async () => {
+      vi.advanceTimersByTime(1000);
+    });
     expect(container.textContent).toContain("Today in Africa/Casablanca: Sunday");
 
     vi.setSystemTime(new Date("2026-03-23T12:00:00Z"));
-    await act(async () => { document.dispatchEvent(new Event("visibilitychange")); });
+    await act(async () => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
     expect(container.textContent).toContain("Today in Africa/Casablanca: Monday");
   });
+
   it("renders defaults, the account time zone, today's plan and week totals", async () => {
     await renderForm();
 
+    expect(container.textContent).toContain("Account time zone: Africa/Casablanca");
     expect(container.textContent).toContain("Today in Africa/Casablanca: Monday");
     expect(container.textContent).toContain("480 min work, 90 min job search");
     // Enabled Monday guidance only, in start order.
@@ -128,22 +127,24 @@ describe("PersonalOperationsForm", () => {
       "Leisure: 19:00–20:30",
     ]);
 
-    expect(container.textContent).toContain("48 h work / 7 h 30 min job search");
-    expect(container.textContent).toContain("2880 work, 450 job search");
+    expect(container.textContent).toContain("48h");
+    expect(container.textContent).toContain("2,880 minutes per week");
+    expect(container.textContent).toContain("7.5h");
+    expect(container.textContent).toContain("450 minutes per week");
 
-    expect(dayGroup("monday")).toBeTruthy();
-    expect(labelledInput(dayGroup("monday"), "Work minutes").value).toBe("480");
-    expect(labelledInput(dayGroup("monday"), "Job-search minutes").value).toBe("90");
+    expect(labelledInput("Monday work minutes").value).toBe("480");
+    expect(labelledInput("Monday job-search minutes").value).toBe("90");
   });
 
   it("updates the today plan and weekly totals from the edited draft", async () => {
     await renderForm();
 
-    await setInputValue(labelledInput(dayGroup("monday"), "Work minutes"), "240");
+    await setInputValue(labelledInput("Monday work minutes"), "240");
 
     expect(container.textContent).toContain("240 min work, 90 min job search");
-    expect(container.textContent).toContain("44 h work / 7 h 30 min job search");
-    expect(container.textContent).toContain("2640 work, 450 job search");
+    expect(container.textContent).toContain("44h");
+    expect(container.textContent).toContain("2,640 minutes per week");
+    expect(container.textContent).toContain("450 minutes per week");
   });
 
   it("keeps typed values and shows an alert when the action rejects the save", async () => {
@@ -153,7 +154,7 @@ describe("PersonalOperationsForm", () => {
     })) as unknown as PersonalOperationsAction;
     await renderForm({ action: rejectAction });
 
-    const mondayWork = labelledInput(dayGroup("monday"), "Work minutes");
+    const mondayWork = labelledInput("Monday work minutes");
     await setInputValue(mondayWork, "600");
 
     const form = container.querySelector("form");
@@ -166,7 +167,7 @@ describe("PersonalOperationsForm", () => {
     });
 
     expect(rejectAction).toHaveBeenCalledTimes(1);
-    expect(labelledInput(dayGroup("monday"), "Work minutes").value).toBe("600");
+    expect(labelledInput("Monday work minutes").value).toBe("600");
     const alert = container.querySelector("[role=alert]");
     expect(alert?.textContent).toContain("enabled blocks cannot overlap");
     expect(document.activeElement).toBe(alert);
@@ -175,17 +176,41 @@ describe("PersonalOperationsForm", () => {
   it("pausing retains every target and still reports them", async () => {
     await renderForm();
 
-    const pause = Array.from(container.querySelectorAll("label")).find((label) =>
-      label.textContent?.includes("Pause schedule"),
-    )?.querySelector("input");
-    if (!pause) throw new Error("Missing pause checkbox");
+    const pause = container.querySelector<HTMLInputElement>(
+      'input[aria-label="Schedule active"]',
+    );
+    if (!pause) throw new Error("Missing schedule active switch");
     await click(pause);
 
-    expect(pause.checked).toBe(true);
-    expect(container.textContent).toContain("Paused. Your targets are retained.");
-    expect(labelledInput(dayGroup("monday"), "Work minutes").value).toBe("480");
+    expect(pause.checked).toBe(false);
+    expect(container.textContent).toContain("Paused");
+    expect(labelledInput("Monday work minutes").value).toBe("480");
     expect(container.textContent).toContain("480 min work, 90 min job search (paused)");
-    expect(container.textContent).toContain("48 h work / 7 h 30 min job search");
+    expect(container.textContent).toContain("48h");
+  });
+
+  it("shows a fallback notice when the account has no stored time zone", async () => {
+    await renderForm({
+      timeContext: {
+        timezone: "UTC",
+        persistedTimezone: null,
+        fallback: "missing_timezone",
+        localDate: "2026-02-16",
+      },
+    });
+
+    expect(container.textContent).toContain("No time zone is stored for this account");
+    expect(container.textContent).toContain("Today in UTC: Monday");
+  });
+
+  it("keeps the schedule editable when the time context is unavailable", async () => {
+    await renderForm({ timeContext: null });
+
+    expect(container.textContent).toContain(
+      "The account time zone could not be loaded right now",
+    );
+    expect(container.textContent).toContain("Today's plan is unavailable");
+    expect(labelledInput("Monday work minutes").value).toBe("480");
   });
 
   it("does not render an editable-looking form when preferences failed to load", async () => {

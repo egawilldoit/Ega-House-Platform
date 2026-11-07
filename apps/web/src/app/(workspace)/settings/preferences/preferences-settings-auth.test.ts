@@ -133,6 +133,10 @@ describe("WorkspacePreferencesPage authentication", () => {
     expect(result).toBeTruthy();
     expect(mocks.getWebUserPreferencesState).toHaveBeenCalledTimes(1);
     expect(mocks.getWebTimeContext).toHaveBeenCalledTimes(1);
+    const children = result.props.children[1].props.children;
+    const schedule = children.find((child: { props?: { accountScope?: string } } | null) => child?.props?.accountScope);
+    expect(schedule.props.accountScope).toBe("user-1");
+    expect(schedule.props.timeContext).toEqual(timeContext);
     expect(mocks.redirect).not.toHaveBeenCalled();
   });
 
