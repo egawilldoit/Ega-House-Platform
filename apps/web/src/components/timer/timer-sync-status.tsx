@@ -1,7 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 
 import { reconcileTimerSurface } from "@/lib/timer/reconcile-action";
 import type { TimerReconcileSurface } from "@/lib/timer/reconcile-contract";
@@ -15,12 +21,41 @@ const TIMEOUT_MESSAGE = "Timer sync timed out. Showing the last synced state.";
 const UNAVAILABLE_FALLBACK_MESSAGE =
   "Could not confirm the timer state with the server. Showing the last synced state.";
 
-type SyncPhase = "synced" | "checking" | "stale" | "offline" | "unauthenticated";
+type SyncPhase = "synced" | "checking" | "stale" | "unauthenticated";
+
+type SyncState = {
+  /** Owner this state belongs to; a mismatch means a fresh server render. */
+  ownerUserId: string | null;
+  phase: SyncPhase;
+  message: string | null;
+  syncedAt: string | null;
+};
 
 type TimerSyncStatusProps = {
   surface: TimerReconcileSurface;
   ownerUserId: string | null;
 };
+
+function initialSyncState(ownerUserId: string | null): SyncState {
+  return { ownerUserId, phase: "synced", message: null, syncedAt: null };
+}
+
+function subscribeToConnection(onChange: () => void) {
+  window.addEventListener("online", onChange);
+  window.addEventListener("offline", onChange);
+  return () => {
+    window.removeEventListener("online", onChange);
+    window.removeEventListener("offline", onChange);
+  };
+}
+
+function getOnlineSnapshot() {
+  return typeof navigator === "undefined" ? true : navigator.onLine;
+}
+
+function getServerOnlineSnapshot() {
+  return true;
+}
 
 function formatConfirmedSync(value: string) {
   const date = new Date(value);
@@ -41,9 +76,20 @@ function formatConfirmedSync(value: string) {
  * is discarded. There is no polling; the single 10s timeout is the only timer.
  */
 export function TimerSyncStatus({ surface, ownerUserId }: TimerSyncStatusProps) {
-  const [phase, setPhase] = useState<SyncPhase>("synced");
-  const [message, setMessage] = useState<string | null>(null);
-  const [syncedAt, setSyncedAt] = useState<string | null>(null);
+  const [syncState, setSyncState] = useState<SyncState>(() =>
+    initialSyncState(ownerUserId),
+  );
+  // An in-place owner change arrives with a fresh server render, so derive the
+  // reset instead of writing state from an effect.
+  const currentState =
+    syncState.ownerUserId === ownerUserId
+      ? syncState
+      : initialSyncState(ownerUserId);
+  const online = useSyncExternalStore(
+    subscribeToConnection,
+    getOnlineSnapshot,
+    getServerOnlineSnapshot,
+  );
 
   const mountedRef = useRef(true);
   const inFlightRef = useRef(false);
@@ -58,12 +104,24 @@ export function TimerSyncStatus({ surface, ownerUserId }: TimerSyncStatusProps) 
     }
   }, []);
 
+  const patchState = useCallback(
+    (patch: Partial<Omit<SyncState, "ownerUserId">>) => {
+      setSyncState((previous) => {
+        const base =
+          previous.ownerUserId === ownerUserId
+            ? previous
+            : initialSyncState(ownerUserId);
+        return { ...base, ...patch, ownerUserId };
+      });
+    },
+    [ownerUserId],
+  );
+
   const reconcile = useCallback(
     async (options?: { force?: boolean }) => {
       if (!mountedRef.current) return;
 
       if (typeof navigator !== "undefined" && !navigator.onLine) {
-        setPhase("offline");
         return;
       }
 
@@ -87,8 +145,7 @@ export function TimerSyncStatus({ surface, ownerUserId }: TimerSyncStatusProps) 
       requestSequenceRef.current = requestSequence;
 
       clearPendingTimeout();
-      setPhase("checking");
-      setMessage(null);
+      patchState({ phase: "checking", message: null });
 
       timeoutRef.current = setTimeout(() => {
         if (!mountedRef.current || requestSequenceRef.current !== requestSequence) {
@@ -96,8 +153,7 @@ export function TimerSyncStatus({ surface, ownerUserId }: TimerSyncStatusProps) 
         }
         inFlightRef.current = false;
         timeoutRef.current = null;
-        setPhase("stale");
-        setMessage(TIMEOUT_MESSAGE);
+        patchState({ phase: "stale", message: TIMEOUT_MESSAGE });
       }, RECONCILE_TIMEOUT_MS);
 
       try {
@@ -114,20 +170,26 @@ export function TimerSyncStatus({ surface, ownerUserId }: TimerSyncStatusProps) 
         inFlightRef.current = false;
 
         if (result.ok) {
-          setSyncedAt(result.syncedAt);
-          setMessage(null);
-          setPhase("synced");
+          patchState({
+            phase: "synced",
+            message: null,
+            syncedAt: result.syncedAt,
+          });
           return;
         }
 
         if (result.reason === "unauthenticated") {
-          setMessage(result.message);
-          setPhase("unauthenticated");
+          patchState({
+            phase: "unauthenticated",
+            message: result.message,
+          });
           return;
         }
 
-        setMessage(result.message || UNAVAILABLE_FALLBACK_MESSAGE);
-        setPhase("stale");
+        patchState({
+          phase: "stale",
+          message: result.message || UNAVAILABLE_FALLBACK_MESSAGE,
+        });
       } catch {
         if (
           !mountedRef.current ||
@@ -138,11 +200,13 @@ export function TimerSyncStatus({ surface, ownerUserId }: TimerSyncStatusProps) 
 
         clearPendingTimeout();
         inFlightRef.current = false;
-        setMessage(UNAVAILABLE_FALLBACK_MESSAGE);
-        setPhase("stale");
+        patchState({
+          phase: "stale",
+          message: UNAVAILABLE_FALLBACK_MESSAGE,
+        });
       }
     },
-    [clearPendingTimeout, surface],
+    [clearPendingTimeout, patchState, surface],
   );
 
   // Mount lifecycle: track liveness and refuse state writes after unmount.
@@ -157,26 +221,18 @@ export function TimerSyncStatus({ surface, ownerUserId }: TimerSyncStatusProps) 
   }, [clearPendingTimeout]);
 
   // Owner changes (account switch) mean a new server render entirely. Drop any
-  // in-flight response, watermark, and message from the previous identity.
+  // in-flight response, watermark, and timer from the previous identity; the
+  // rendered state above derives the reset without an effect-time write.
   useEffect(() => {
     requestSequenceRef.current += 1;
     inFlightRef.current = false;
     lastAutomaticAttemptAtRef.current = null;
     clearPendingTimeout();
-    setSyncedAt(null);
-    setMessage(null);
-    setPhase(
-      typeof navigator !== "undefined" && !navigator.onLine ? "offline" : "synced",
-    );
   }, [clearPendingTimeout, ownerUserId]);
 
   useEffect(() => {
     const handleOnline = () => {
       void reconcile();
-    };
-    const handleOffline = () => {
-      if (!mountedRef.current) return;
-      setPhase("offline");
     };
     const handleFocus = () => {
       void reconcile();
@@ -187,27 +243,17 @@ export function TimerSyncStatus({ surface, ownerUserId }: TimerSyncStatusProps) 
     };
 
     window.addEventListener("online", handleOnline);
-    window.addEventListener("offline", handleOffline);
     window.addEventListener("focus", handleFocus);
     document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
       window.removeEventListener("online", handleOnline);
-      window.removeEventListener("offline", handleOffline);
       window.removeEventListener("focus", handleFocus);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, [reconcile]);
 
-  if (phase === "checking") {
-    return (
-      <div role="status" aria-live="polite" className="feedback-block feedback-block-warn">
-        Checking the timer with the server…
-      </div>
-    );
-  }
-
-  if (phase === "offline") {
+  if (!online) {
     return (
       <div role="status" aria-live="polite" className="feedback-block feedback-block-warn">
         {OFFLINE_MESSAGE}
@@ -215,13 +261,24 @@ export function TimerSyncStatus({ surface, ownerUserId }: TimerSyncStatusProps) 
     );
   }
 
-  if (phase === "unauthenticated") {
+  if (currentState.phase === "checking") {
+    return (
+      <div role="status" aria-live="polite" className="feedback-block feedback-block-warn">
+        Checking the timer with the server…
+      </div>
+    );
+  }
+
+  if (currentState.phase === "unauthenticated") {
     return (
       <div
         role="alert"
         className="feedback-block feedback-block-warn justify-between"
       >
-        <p>{message ?? "Your session expired. Sign in again to sync the timer."}</p>
+        <p>
+          {currentState.message ??
+            "Your session expired. Sign in again to sync the timer."}
+        </p>
         <Link
           href={`/login?next=/${surface}`}
           className="btn-instrument btn-instrument-muted flex h-8 items-center px-3 text-sm"
@@ -232,17 +289,17 @@ export function TimerSyncStatus({ surface, ownerUserId }: TimerSyncStatusProps) 
     );
   }
 
-  if (phase === "stale") {
+  if (currentState.phase === "stale") {
     return (
       <div
         role="alert"
         className="feedback-block feedback-block-warn justify-between"
       >
         <div className="flex flex-col gap-1">
-          <p>{message ?? UNAVAILABLE_FALLBACK_MESSAGE}</p>
-          {syncedAt ? (
+          <p>{currentState.message ?? UNAVAILABLE_FALLBACK_MESSAGE}</p>
+          {currentState.syncedAt ? (
             <p className="text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
-              Last confirmed sync: {formatConfirmedSync(syncedAt)}
+              Last confirmed sync: {formatConfirmedSync(currentState.syncedAt)}
             </p>
           ) : null}
         </div>
