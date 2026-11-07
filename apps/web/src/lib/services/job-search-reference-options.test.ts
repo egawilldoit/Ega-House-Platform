@@ -11,7 +11,6 @@ type QueryCall = {
 };
 
 function createSupabaseMock(options: {
-  projects?: unknown[] | null;
   tasks?: unknown[] | null;
   error?: { message: string } | null;
 }) {
@@ -39,7 +38,7 @@ function createSupabaseMock(options: {
       },
       then(resolve: (value: { data: unknown[] | null; error: { message: string } | null }) => void) {
         resolve({
-          data: options.error ? null : table === "projects" ? options.projects ?? [] : options.tasks ?? [],
+          data: options.error ? null : options.tasks ?? [],
           error: options.error ?? null,
         });
       },
@@ -56,9 +55,8 @@ function createSupabaseMock(options: {
 }
 
 describe("getJobSearchReferenceOptions", () => {
-  it("reads projects and tasks with an explicit owner filter", async () => {
+  it("reads owner-scoped tasks including archived rows", async () => {
     const supabase = createSupabaseMock({
-      projects: [{ id: "p1", name: "Career" }],
       tasks: [
         { id: "t1", title: "Apply to roles", archived_at: null },
         { id: "t2", title: "Old applications", archived_at: "2026-01-01T00:00:00.000Z" },
@@ -71,21 +69,17 @@ describe("getJobSearchReferenceOptions", () => {
     });
 
     expect(result.errorMessage).toBeNull();
-    expect(result.data.projects).toEqual([{ id: "p1", name: "Career" }]);
     expect(result.data.tasks).toEqual([
       { id: "t1", title: "Apply to roles", archivedAt: null },
       { id: "t2", title: "Old applications", archivedAt: "2026-01-01T00:00:00.000Z" },
     ]);
 
-    const projectsCall = supabase.calls.find((call) => call.table === "projects");
-    const tasksCall = supabase.calls.find((call) => call.table === "tasks");
-    expect(projectsCall?.select).toBe("id, name");
-    expect(tasksCall?.select).toBe("id, title, archived_at");
-    for (const call of supabase.calls) {
-      expect(call.eq).toContainEqual(["owner_user_id", "owner-1"]);
-      expect(call.limit).toBe(200);
-    }
-    expect(tasksCall?.order).toContainEqual(["updated_at", { ascending: false }]);
+    const call = supabase.calls[0];
+    expect(call?.table).toBe("tasks");
+    expect(call?.select).toBe("id, title, archived_at");
+    expect(call?.eq).toContainEqual(["owner_user_id", "owner-1"]);
+    expect(call?.order).toContainEqual(["updated_at", { ascending: false }]);
+    expect(call?.limit).toBe(200);
   });
 
   it("returns empty options plus an actionable error when the read fails", async () => {
@@ -96,8 +90,8 @@ describe("getJobSearchReferenceOptions", () => {
       getCurrentUser: async () => ({ id: "owner-1" }),
     });
 
-    expect(result.data).toEqual({ projects: [], tasks: [] });
-    expect(result.errorMessage).toMatch(/could not load job-search references/i);
+    expect(result.data).toEqual({ tasks: [] });
+    expect(result.errorMessage).toMatch(/could not load job-search tasks/i);
   });
 
   it("returns empty options for an unauthenticated caller", async () => {
@@ -108,7 +102,7 @@ describe("getJobSearchReferenceOptions", () => {
       getCurrentUser: async () => null,
     });
 
-    expect(result.data).toEqual({ projects: [], tasks: [] });
+    expect(result.data).toEqual({ tasks: [] });
     expect(result.errorMessage).toMatch(/sign in/i);
   });
 });

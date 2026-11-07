@@ -75,7 +75,7 @@ export default async function WorkspacePreferencesPage({
 
         <Card>
           <CardHeader><CardTitle>Personal schedule</CardTitle><CardDescription>Targets and optional guidance in your account time zone.</CardDescription></CardHeader>
-          <CardContent><PersonalOperationsForm initial={preferences.personalOperations} disabled={Boolean(state.errorMessage)} referenceOptions={referenceOptions.data} /></CardContent>
+          <CardContent><PersonalOperationsForm initial={preferences.personalOperations} initialReference={preferences.jobSearchReference} disabled={Boolean(state.errorMessage)} referenceOptions={referenceOptions.data} /></CardContent>
         </Card>
 
         <Card>

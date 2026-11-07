@@ -91,6 +91,7 @@ test("get reads the owner row scoped by verified user_id", async () => {
   if (result.ok) {
     assert.deepEqual(result.value, {
       personalOperations: DEFAULT_USER_PREFERENCES.personalOperations,
+      jobSearchReference: null,
       theme: "dark",
       accent: "violet",
       density: "compact",
@@ -103,6 +104,30 @@ test("get reads the owner row scoped by verified user_id", async () => {
   assert.ok(fake.calls[0]?.steps.some((step) => step.includes("eq:user_id=owner-preferences")));
   assert.ok(fake.calls[0]?.steps.some((step) => step.startsWith("select:")));
   assert.ok(fake.calls[0]?.steps.includes("maybeSingle"));
+});
+
+test("get maps the top-level job-search reference", async () => {
+  const fake = new FakePreferencesSupabase([{
+    data: {
+      ...STORED_ROW,
+      job_search_reference: {
+        kind: "task",
+        id: "11111111-1111-4111-8111-111111111111",
+      },
+    },
+    error: null,
+  }]);
+  const result = await repo(fake).get(ACTOR);
+
+  assert.equal(result.ok, true);
+  if (!result.ok || !result.value) return;
+  assert.deepEqual(result.value.jobSearchReference, {
+    kind: "task",
+    id: "11111111-1111-4111-8111-111111111111",
+  });
+  assert.ok(
+    fake.calls[0]?.steps.some((step) => step.includes("job_search_reference")),
+  );
 });
 
 test("get returns null when the owner has no row", async () => {
@@ -159,6 +184,17 @@ test("patch sends only requested fields to the owner-scoped RPC", async () => {
   const step = fake.calls[0]?.steps.find(entry => entry.startsWith("upsert:"));
   assert.ok(step?.includes('"theme":"light"'));
   assert.ok(!step?.includes('"accent"'));
+});
+
+test("patch can send the top-level reference independently", async () => {
+  const fake = new FakePreferencesSupabase([{ data: STORED_ROW, error: null }]);
+  const result = await repo(fake).patch(ACTOR, {
+    jobSearchReference: { kind: "task", id: "11111111-1111-4111-8111-111111111111" },
+  });
+  assert.equal(result.ok, true);
+  const step = fake.calls[0]?.steps.find(entry => entry.startsWith("upsert:"));
+  assert.ok(step?.includes('"jobSearchReference":{"kind":"task"'));
+  assert.ok(!step?.includes('"personalOperations"'));
 });
 
 test("patch returns failure when persistence fails", async () => {

@@ -190,8 +190,8 @@ async function main() {
       log("MIGRATE", `${tag}: ${count} statement(s)`);
     }
     log("MIGRATE", `${applied} journal migrations applied`);
-    const legacy = await sql.unsafe(`SELECT theme, personal_operations FROM public.user_preferences WHERE user_id = '44444444-4444-4444-8444-444444444444'`);
-    assert(legacy[0].theme === "light" && legacy[0].personal_operations === null, "legacy preference row survives upgrade");
+    const legacy = await sql.unsafe(`SELECT theme, personal_operations, job_search_reference FROM public.user_preferences WHERE user_id = '44444444-4444-4444-8444-444444444444'`);
+    assert(legacy[0].theme === "light" && legacy[0].personal_operations === null && legacy[0].job_search_reference === null, "legacy preference row survives upgrade");
 
     await sql.unsafe(`GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.user_preferences TO authenticated`);
     await sql.unsafe(`
@@ -208,7 +208,7 @@ async function main() {
     const inserted = await ownerA.run(async (tx) => {
       const rows = await tx.unsafe(
         `INSERT INTO public.user_preferences (user_id) VALUES (auth.uid())
-         RETURNING theme, accent, density, reduced_motion, launch_page, task_layout, task_open_mode`,
+         RETURNING theme, accent, density, reduced_motion, launch_page, task_layout, task_open_mode, job_search_reference`,
       );
       return rows[0];
     });
@@ -219,6 +219,7 @@ async function main() {
     assert(inserted.launch_page === "home", "default launch_page must be home");
     assert(inserted.task_layout === "list", "default task_layout must be list");
     assert(inserted.task_open_mode === "panel", "default task_open_mode must be panel");
+    assert(inserted.job_search_reference === null, "default job_search_reference must be null");
     log("DEFAULTS", "insert-with-user_id produced every documented default");
 
     // Atomic patches preserve independent fields and use the authenticated actor.
@@ -233,6 +234,46 @@ async function main() {
     await expectFailure("RPC rejects caller identity", () => ownerB.run(tx => tx.unsafe(`SELECT public.patch_user_preferences($1::jsonb)`, [{ userId: OWNER_A, theme: "light" }])), ["P0001"]);
     await ownerA.run(tx => tx.unsafe(`UPDATE public.user_preferences SET theme = 'system' WHERE user_id = auth.uid()`));
     log("PATCH", "concurrent fields and actor binding verified");
+
+    // JOB-SEARCH REFERENCE ------------------------------------------------------
+    const TASK_REF = "11111111-1111-4111-8111-111111111111";
+    const OTHER_TASK_REF = "22222222-2222-4222-8222-222222222222";
+    const defaultRef = await ownerA.run(tx => tx.unsafe(`SELECT job_search_reference FROM public.user_preferences WHERE user_id = auth.uid()`));
+    assert(defaultRef[0].job_search_reference === null, "job_search_reference must default to null");
+
+    await ownerA.run(tx => tx.unsafe(`SELECT public.patch_user_preferences($1::jsonb)`, [
+      { jobSearchReference: { kind: "task", id: TASK_REF } },
+    ]));
+    const savedRef = await ownerA.run(tx => tx.unsafe(`SELECT job_search_reference FROM public.user_preferences WHERE user_id = auth.uid()`));
+    assert(savedRef[0].job_search_reference?.kind === "task" && savedRef[0].job_search_reference?.id === TASK_REF, "valid task reference must persist");
+
+    await expectFailure("RPC rejects a project reference", () => ownerA.run(tx => tx.unsafe(`SELECT public.patch_user_preferences($1::jsonb)`, [
+      { jobSearchReference: { kind: "project", id: TASK_REF } },
+    ])), ["23514"]);
+    await expectFailure("RPC rejects an invalid reference UUID", () => ownerA.run(tx => tx.unsafe(`SELECT public.patch_user_preferences($1::jsonb)`, [
+      { jobSearchReference: { kind: "task", id: "not-a-uuid" } },
+    ])), ["23514"]);
+    await expectFailure("RPC rejects a 4-key personal schedule", () => ownerA.run(tx => tx.unsafe(`SELECT public.patch_user_preferences($1::jsonb)`, [
+      { personalOperations: { ...schedule, jobSearchReference: { kind: "task", id: TASK_REF } } },
+    ])), ["23514"]);
+    await expectFailure("RPC rejects caller identity plus reference", () => ownerB.run(tx => tx.unsafe(`SELECT public.patch_user_preferences($1::jsonb)`, [
+      { userId: OWNER_A, jobSearchReference: { kind: "task", id: TASK_REF } },
+    ])), ["P0001"]);
+
+    await Promise.all([
+      ownerA.run(tx => tx.unsafe(`SELECT public.patch_user_preferences($1::jsonb)`, [{ theme: "light" }])),
+      ownerA.run(tx => tx.unsafe(`SELECT public.patch_user_preferences($1::jsonb)`, [
+        { jobSearchReference: { kind: "task", id: OTHER_TASK_REF } },
+      ])),
+    ]);
+    const concurrentRef = await ownerA.run(tx => tx.unsafe(`SELECT theme, job_search_reference FROM public.user_preferences WHERE user_id = auth.uid()`));
+    assert(
+      concurrentRef[0].theme === "light"
+        && concurrentRef[0].job_search_reference?.id === OTHER_TASK_REF,
+      "concurrent theme + jobSearchReference patches must preserve both",
+    );
+    await ownerA.run(tx => tx.unsafe(`UPDATE public.user_preferences SET theme = 'system' WHERE user_id = auth.uid()`));
+    log("REFERENCE", "task reference, rejection, ownership and independent merge verified");
 
     // CONSTRAINTS --------------------------------------------------------------
     for (const [column, value] of [

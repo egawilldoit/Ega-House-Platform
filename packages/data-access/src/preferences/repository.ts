@@ -10,6 +10,7 @@ import { sanitizeSupabaseError } from "../supabase/errors";
 
 type UserPreferencesRow = {
   personal_operations: unknown;
+  job_search_reference: unknown;
   theme: string | null;
   accent: string | null;
   density: string | null;
@@ -35,6 +36,7 @@ function isMissingPreferencesTable(error: unknown): boolean {
 function toPreferences(row: UserPreferencesRow): UserPreferences {
   return normalizeUserPreferences({
     personalOperations: row.personal_operations,
+    jobSearchReference: row.job_search_reference,
     theme: row.theme ?? undefined,
     accent: row.accent ?? undefined,
     density: row.density ?? undefined,
@@ -59,7 +61,7 @@ export class SupabaseUserPreferencesRepository implements UserPreferencesReposit
     const { data, error } = await this.supabase
       .from("user_preferences")
       .select(
-        "theme, accent, density, reduced_motion, launch_page, task_layout, task_open_mode, personal_operations",
+        "theme, accent, density, reduced_motion, launch_page, task_layout, task_open_mode, personal_operations, job_search_reference",
       )
       .eq("user_id", actor.userId)
       .maybeSingle();

@@ -15,16 +15,26 @@
  * execution-evidence policy used by the rest of analytics.
  *
  * ## Job search is a subset
- * Job-search seconds are accumulated only for sessions whose stable reference
- * id matches exactly (`kind: "task"` or `kind: "project"`). Titles are never
- * compared. Those seconds are already part of the work total; they are never
- * added to it a second time.
+ * Job-search seconds are accumulated only for sessions whose stable task id
+ * matches the task-only reference exactly. Titles are never compared. Those
+ * seconds are already part of the work total; they are never added to it a
+ * second time.
+ *
+ * The reference is intentionally task-only. Project references and per-session
+ * project/reference snapshots are deferred because `task_sessions` has no
+ * immutable project snapshot (Track B owns session mutations). Changing the
+ * reference therefore intentionally reclassifies historical totals.
  *
  * ## No reference
  * A configured job-search target without a reference is reported as
  * `jobSearchConfigured: false` with zero actual search minutes. Callers must
- * render "Not configured" instead of a fictitious 0/target completion.
+ * render "Job search not configured" instead of a fictitious completion.
  * Weekend targets of 0 need no reference.
+ *
+ * ## Rounding
+ * Whole-minute values use cumulative-remainder allocation across the seven
+ * local days, so the daily values always sum to `floor(totalSeconds / 60)` and
+ * no minute is lost to per-day flooring.
  */
 
 import { DAYS, isJobSearchReference, type Day, type JobSearchReference, type PersonalOperations } from "@ega/domain";
@@ -44,6 +54,8 @@ import {
 export type WorkTargetProgressInput = Readonly<{
   sessions: ExecutionEvidenceSessionRow[];
   personalOperations: PersonalOperations;
+  /** Task-only stable reference; null when the owner has not configured one. */
+  jobSearchReference: JobSearchReference | null;
   timezone: string;
   nowIso: string;
   /** Default false; open sessions are excluded unless the caller opts in. */
@@ -100,13 +112,23 @@ function matchesReference(
   session: ExecutionEvidenceSessionRow,
   reference: JobSearchReference,
 ): boolean {
-  if (reference.kind === "task") {
-    return session.task_id === reference.id || session.tasks?.id === reference.id;
-  }
-  return (
-    session.tasks?.projects?.id === reference.id ||
-    session.tasks?.project_id === reference.id
-  );
+  return session.task_id === reference.id || session.tasks?.id === reference.id;
+}
+
+/**
+ * Cumulative-remainder minute allocation. Each day receives the change in the
+ * running floor, so the seven values sum to `floor(totalSeconds / 60)`.
+ */
+function allocateWholeMinutes(
+  secondsByDay: Map<string, number>,
+  dates: string[],
+): number[] {
+  let cumulative = 0;
+  return dates.map((date) => {
+    const before = cumulative;
+    cumulative += Math.max(0, secondsByDay.get(date) ?? 0);
+    return Math.floor(cumulative / 60) - Math.floor(before / 60);
+  });
 }
 
 export function calculateWorkTargetProgress(
@@ -126,9 +148,8 @@ export function calculateWorkTargetProgress(
   const includeOpenSessions = input.includeOpenSessions === true;
 
   const reference =
-    input.personalOperations.jobSearchReference &&
-    isJobSearchReference(input.personalOperations.jobSearchReference)
-      ? input.personalOperations.jobSearchReference
+    input.jobSearchReference && isJobSearchReference(input.jobSearchReference)
+      ? input.jobSearchReference
       : null;
 
   // Work totals come from the canonical execution-evidence aggregation, which
@@ -169,9 +190,12 @@ export function calculateWorkTargetProgress(
   }
 
   const workSecondsByDay = evidence?.trackedSecondsByDay ?? new Map<string, number>();
+  const dates = Array.from({ length: 7 }, (_, index) => addDaysToIsoDate(week.weekStart, index));
+  const workMinutesByDay = allocateWholeMinutes(workSecondsByDay, dates);
+  const searchMinutesByDay = allocateWholeMinutes(searchSecondsByDay, dates);
   const days: WorkTargetDay[] = [];
   for (let index = 0; index < 7; index += 1) {
-    const date = addDaysToIsoDate(week.weekStart, index);
+    const date = dates[index] as string;
     const dayOfWeek = DAYS[index] as Day;
     const target = input.personalOperations.targets[dayOfWeek];
     const targetJobSearchMinutes = target.jobSearch;
@@ -179,9 +203,9 @@ export function calculateWorkTargetProgress(
     days.push({
       date,
       dayOfWeek,
-      actualWorkMinutes: Math.floor((workSecondsByDay.get(date) ?? 0) / 60),
+      actualWorkMinutes: workMinutesByDay[index] as number,
       targetWorkMinutes: target.work,
-      actualJobSearchMinutes: Math.floor((searchSecondsByDay.get(date) ?? 0) / 60),
+      actualJobSearchMinutes: searchMinutesByDay[index] as number,
       targetJobSearchMinutes,
       // A zero search target needs no reference (weekends by default).
       jobSearchConfigured: reference !== null || targetJobSearchMinutes === 0,

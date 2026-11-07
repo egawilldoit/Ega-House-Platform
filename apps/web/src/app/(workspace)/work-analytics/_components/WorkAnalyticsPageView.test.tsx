@@ -20,7 +20,8 @@ describe("WorkAnalytics — restored capabilities", () => {
     expect(view).toContain("Work targets");
     expect(view).toContain("analytics-work-targets");
     expect(view).toContain("Included in work, not extra.");
-    expect(view).toContain("Not configured");
+    expect(view).toContain("Job search not configured");
+    expect(view).toContain("Includes running timer");
     expect(view).toContain('href="/settings/preferences"');
   });
 

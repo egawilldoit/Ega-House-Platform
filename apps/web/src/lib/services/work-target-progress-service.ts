@@ -8,7 +8,7 @@ import type {
   ExecutionEvidenceWindow,
 } from "@/lib/services/execution-evidence-service";
 import { getWebTimeContext } from "@/lib/services/time-context-service";
-import { getWebUserPreferences } from "@/lib/services/user-preferences-service";
+import { getWebUserPreferencesState } from "@/lib/services/user-preferences-service";
 import { getWorkAnalyticsSessionsForWindow } from "@/lib/services/work-analytics-data-adapter";
 
 /**
@@ -31,10 +31,15 @@ export type SessionLoader = (args: {
   errorMessage: string | null;
 }>;
 
+export type PreferencesState = Readonly<{
+  preferences: UserPreferences;
+  errorMessage: string | null;
+}>;
+
 export type WorkTargetProgressDependencies = Readonly<{
   getCurrentUser?: () => Promise<{ id: string } | null>;
   getTimezone?: () => Promise<string>;
-  getPreferences?: () => Promise<UserPreferences>;
+  getPreferencesState?: () => Promise<PreferencesState>;
   loadSessions?: SessionLoader;
 }>;
 
@@ -76,12 +81,18 @@ export async function getWorkTargetProgress(
       timezone = "UTC";
     }
 
-    let preferences: UserPreferences;
+    // A read failure must not look like the documented defaults. Only an
+    // absent row (errorMessage null) may legitimately fall back to defaults.
+    let preferencesState: PreferencesState;
     try {
-      preferences = await (dependencies.getPreferences ?? getWebUserPreferences)();
+      preferencesState = await (dependencies.getPreferencesState ?? getWebUserPreferencesState)();
     } catch {
       return { data: null, errorMessage: PREFERENCES_FAILURE };
     }
+    if (preferencesState.errorMessage) {
+      return { data: null, errorMessage: PREFERENCES_FAILURE };
+    }
+    const preferences = preferencesState.preferences;
 
     const now = options.now ?? new Date();
     const week = getCurrentWeekWindow(timezone, now);
@@ -109,6 +120,7 @@ export async function getWorkTargetProgress(
       const data = calculateWorkTargetProgress({
         sessions: sessionsResult.data,
         personalOperations: preferences.personalOperations,
+        jobSearchReference: preferences.jobSearchReference,
         timezone,
         nowIso: now.toISOString(),
         includeOpenSessions: options.includeOpenSessions === true,
