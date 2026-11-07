@@ -11,11 +11,24 @@ import type { ExecutionEvidenceSessionRow } from "../src/shared/execution-eviden
 import { calculateWorkTargetProgress } from "../src/work-targets/progress";
 
 const TASK_ID = "11111111-1111-4111-8111-111111111111";
-const PROJECT_ID = "22222222-2222-4222-8222-222222222222";
 const OTHER_ID = "33333333-3333-4333-8333-333333333333";
 
-function schedule(reference: JobSearchReference | null = null): PersonalOperations {
-  return { ...DEFAULT_PERSONAL_OPERATIONS, jobSearchReference: reference };
+function input(options: {
+  sessions?: ExecutionEvidenceSessionRow[];
+  reference?: JobSearchReference | null;
+  personalOperations?: PersonalOperations;
+  timezone?: string;
+  nowIso: string;
+  includeOpenSessions?: boolean;
+}) {
+  return calculateWorkTargetProgress({
+    sessions: options.sessions ?? [],
+    personalOperations: options.personalOperations ?? DEFAULT_PERSONAL_OPERATIONS,
+    jobSearchReference: options.reference ?? null,
+    timezone: options.timezone ?? "UTC",
+    nowIso: options.nowIso,
+    includeOpenSessions: options.includeOpenSessions,
+  });
 }
 
 function session(
@@ -30,12 +43,7 @@ function session(
 }
 
 test("default weekly targets are 48h work and 450m job search", () => {
-  const progress = calculateWorkTargetProgress({
-    sessions: [],
-    personalOperations: schedule(),
-    timezone: "UTC",
-    nowIso: "2026-03-04T12:00:00.000Z",
-  });
+  const progress = input({ nowIso: "2026-03-04T12:00:00.000Z" });
 
   assert.equal(progress.days.length, 7);
   assert.equal(progress.week.targetWorkMinutes, 2880);
@@ -43,19 +51,13 @@ test("default weekly targets are 48h work and 450m job search", () => {
   assert.deepEqual(
     progress.days.map((day) => [day.targetWorkMinutes, day.targetJobSearchMinutes]),
     [
-      [480, 90],
-      [480, 90],
-      [480, 90],
-      [480, 90],
-      [480, 90],
-      [240, 0],
-      [240, 0],
+      [480, 90], [480, 90], [480, 90], [480, 90], [480, 90], [240, 0], [240, 0],
     ],
   );
 });
 
 test("a 90-minute job-search session is 90 work and 90 search, never 180", () => {
-  const progress = calculateWorkTargetProgress({
+  const progress = input({
     sessions: [
       session({
         task_id: TASK_ID,
@@ -63,8 +65,7 @@ test("a 90-minute job-search session is 90 work and 90 search, never 180", () =>
         ended_at: "2026-03-02T10:30:00.000Z",
       }),
     ],
-    personalOperations: schedule({ kind: "task", id: TASK_ID }),
-    timezone: "UTC",
+    reference: { kind: "task", id: TASK_ID },
     nowIso: "2026-03-02T12:00:00.000Z",
   });
 
@@ -76,12 +77,7 @@ test("a 90-minute job-search session is 90 work and 90 search, never 180", () =>
 });
 
 test("job search without a reference is reported as not configured", () => {
-  const progress = calculateWorkTargetProgress({
-    sessions: [],
-    personalOperations: schedule(null),
-    timezone: "UTC",
-    nowIso: "2026-03-02T12:00:00.000Z",
-  });
+  const progress = input({ nowIso: "2026-03-02T12:00:00.000Z" });
 
   assert.equal(progress.reference, null);
   assert.equal(progress.jobSearchConfigured, false);
@@ -90,14 +86,7 @@ test("job search without a reference is reported as not configured", () => {
 });
 
 test("weekend zero targets need no configured reference", () => {
-  // Saturday 2026-03-07. The Saturday row has 0 search target, so it is
-  // configured even with no reference; the week still needs one for weekdays.
-  const progress = calculateWorkTargetProgress({
-    sessions: [],
-    personalOperations: schedule(null),
-    timezone: "UTC",
-    nowIso: "2026-03-07T12:00:00.000Z",
-  });
+  const progress = input({ nowIso: "2026-03-07T12:00:00.000Z" });
 
   assert.equal(progress.today.dayOfWeek, "saturday");
   assert.equal(progress.today.targetWorkMinutes, 240);
@@ -107,8 +96,7 @@ test("weekend zero targets need no configured reference", () => {
 });
 
 test("cross-midnight sessions split by local day without double counting", () => {
-  // Tuesday 22:00 EST -> Wednesday 02:00 EST (4 hours, 2 hours each side).
-  const progress = calculateWorkTargetProgress({
+  const progress = input({
     sessions: [
       session({
         task_id: TASK_ID,
@@ -116,7 +104,7 @@ test("cross-midnight sessions split by local day without double counting", () =>
         ended_at: "2026-03-04T07:00:00.000Z",
       }),
     ],
-    personalOperations: schedule({ kind: "task", id: TASK_ID }),
+    reference: { kind: "task", id: TASK_ID },
     timezone: "America/New_York",
     nowIso: "2026-03-04T12:00:00.000Z",
   });
@@ -132,9 +120,7 @@ test("cross-midnight sessions split by local day without double counting", () =>
 });
 
 test("DST spring-forward keeps local-day totals and week boundaries", () => {
-  // Saturday 23:00 EST -> Sunday 04:00 EDT. Local midnight is 05:00Z and the
-  // 04:00Z->08:00Z interval is 4 real hours, so Sunday carries 3 hours.
-  const progress = calculateWorkTargetProgress({
+  const progress = input({
     sessions: [
       session({
         task_id: TASK_ID,
@@ -142,7 +128,7 @@ test("DST spring-forward keeps local-day totals and week boundaries", () => {
         ended_at: "2026-03-08T08:00:00.000Z",
       }),
     ],
-    personalOperations: schedule({ kind: "task", id: TASK_ID }),
+    reference: { kind: "task", id: TASK_ID },
     timezone: "America/New_York",
     nowIso: "2026-03-08T12:00:00.000Z",
   });
@@ -164,7 +150,7 @@ test("DST spring-forward keeps local-day totals and week boundaries", () => {
 });
 
 test("manual closed entries use their timestamps, not duration_seconds", () => {
-  const progress = calculateWorkTargetProgress({
+  const progress = input({
     sessions: [
       session({
         task_id: TASK_ID,
@@ -173,8 +159,7 @@ test("manual closed entries use their timestamps, not duration_seconds", () => {
         duration_seconds: 9999,
       }),
     ],
-    personalOperations: schedule({ kind: "task", id: TASK_ID }),
-    timezone: "UTC",
+    reference: { kind: "task", id: TASK_ID },
     nowIso: "2026-03-02T12:00:00.000Z",
   });
 
@@ -183,10 +168,8 @@ test("manual closed entries use their timestamps, not duration_seconds", () => {
 });
 
 test("empty history reports explicit insufficient quality and zero actuals", () => {
-  const progress = calculateWorkTargetProgress({
-    sessions: [],
-    personalOperations: schedule({ kind: "task", id: TASK_ID }),
-    timezone: "UTC",
+  const progress = input({
+    reference: { kind: "task", id: TASK_ID },
     nowIso: "2026-03-04T12:00:00.000Z",
   });
 
@@ -196,10 +179,8 @@ test("empty history reports explicit insufficient quality and zero actuals", () 
 });
 
 test("partial week marks future days and sums only elapsed targets", () => {
-  const progress = calculateWorkTargetProgress({
-    sessions: [],
-    personalOperations: schedule({ kind: "task", id: TASK_ID }),
-    timezone: "UTC",
+  const progress = input({
+    reference: { kind: "task", id: TASK_ID },
     nowIso: "2026-03-03T12:00:00.000Z",
   });
 
@@ -222,10 +203,9 @@ test("open sessions are excluded by default and provisional when included", () =
   ];
   const nowIso = "2026-03-02T10:00:00.000Z";
 
-  const excluded = calculateWorkTargetProgress({
+  const excluded = input({
     sessions,
-    personalOperations: schedule({ kind: "task", id: TASK_ID }),
-    timezone: "UTC",
+    reference: { kind: "task", id: TASK_ID },
     nowIso,
   });
   assert.equal(excluded.today.actualWorkMinutes, 0);
@@ -233,10 +213,9 @@ test("open sessions are excluded by default and provisional when included", () =
   assert.equal(excluded.quality, "insufficient");
   assert.equal(excluded.includeOpenSessions, false);
 
-  const included = calculateWorkTargetProgress({
+  const included = input({
     sessions,
-    personalOperations: schedule({ kind: "task", id: TASK_ID }),
-    timezone: "UTC",
+    reference: { kind: "task", id: TASK_ID },
     nowIso,
     includeOpenSessions: true,
   });
@@ -247,7 +226,7 @@ test("open sessions are excluded by default and provisional when included", () =
 });
 
 test("rename and reprojection keep task-id classification stable", () => {
-  const progress = calculateWorkTargetProgress({
+  const progress = input({
     sessions: [
       session({
         task_id: TASK_ID,
@@ -256,14 +235,12 @@ test("rename and reprojection keep task-id classification stable", () => {
         tasks: {
           id: TASK_ID,
           title: "A completely different title",
-          // The task moved to another project after the session was recorded.
           project_id: OTHER_ID,
           projects: { id: OTHER_ID, name: "Another project" },
         },
       }),
     ],
-    personalOperations: schedule({ kind: "task", id: TASK_ID }),
-    timezone: "UTC",
+    reference: { kind: "task", id: TASK_ID },
     nowIso: "2026-03-02T12:00:00.000Z",
   });
 
@@ -284,10 +261,9 @@ test("an archived task keeps its id-based job-search classification", () => {
     },
   } as unknown as ExecutionEvidenceSessionRow;
 
-  const progress = calculateWorkTargetProgress({
+  const progress = input({
     sessions: [archivedRow],
-    personalOperations: schedule({ kind: "task", id: TASK_ID }),
-    timezone: "UTC",
+    reference: { kind: "task", id: TASK_ID },
     nowIso: "2026-03-02T12:00:00.000Z",
   });
 
@@ -295,32 +271,8 @@ test("an archived task keeps its id-based job-search classification", () => {
   assert.equal(progress.today.actualJobSearchMinutes, 60);
 });
 
-test("project references classify through either project id field", () => {
-  for (const tasks of [
-    { id: OTHER_ID, project_id: PROJECT_ID },
-    { id: OTHER_ID, projects: { id: PROJECT_ID, name: "Renamed project" } },
-    { id: OTHER_ID, project_id: OTHER_ID, projects: { id: PROJECT_ID, name: "Renamed" } },
-  ]) {
-    const progress = calculateWorkTargetProgress({
-      sessions: [
-        session({
-          task_id: OTHER_ID,
-          started_at: "2026-03-02T09:00:00.000Z",
-          ended_at: "2026-03-02T10:00:00.000Z",
-          tasks,
-        }),
-      ],
-      personalOperations: schedule({ kind: "project", id: PROJECT_ID }),
-      timezone: "UTC",
-      nowIso: "2026-03-02T12:00:00.000Z",
-    });
-
-    assert.equal(progress.today.actualJobSearchMinutes, 60, JSON.stringify(tasks));
-  }
-});
-
 test("title similarity never classifies as job search", () => {
-  const progress = calculateWorkTargetProgress({
+  const progress = input({
     sessions: [
       session({
         task_id: OTHER_ID,
@@ -332,8 +284,7 @@ test("title similarity never classifies as job search", () => {
         },
       }),
     ],
-    personalOperations: schedule({ kind: "task", id: TASK_ID }),
-    timezone: "UTC",
+    reference: { kind: "task", id: TASK_ID },
     nowIso: "2026-03-02T12:00:00.000Z",
   });
 
@@ -342,7 +293,7 @@ test("title similarity never classifies as job search", () => {
 });
 
 test("sessions outside the current week are excluded", () => {
-  const progress = calculateWorkTargetProgress({
+  const progress = input({
     sessions: [
       session({
         task_id: TASK_ID,
@@ -350,8 +301,7 @@ test("sessions outside the current week are excluded", () => {
         ended_at: "2026-03-01T11:00:00.000Z",
       }),
     ],
-    personalOperations: schedule({ kind: "task", id: TASK_ID }),
-    timezone: "UTC",
+    reference: { kind: "task", id: TASK_ID },
     nowIso: "2026-03-04T12:00:00.000Z",
   });
 
@@ -360,7 +310,7 @@ test("sessions outside the current week are excluded", () => {
 });
 
 test("malformed sessions are suspect and contribute nothing", () => {
-  const progress = calculateWorkTargetProgress({
+  const progress = input({
     sessions: [
       session({
         task_id: TASK_ID,
@@ -368,11 +318,72 @@ test("malformed sessions are suspect and contribute nothing", () => {
         ended_at: "2026-03-02T11:00:00.000Z",
       }),
     ],
-    personalOperations: schedule({ kind: "task", id: TASK_ID }),
-    timezone: "UTC",
+    reference: { kind: "task", id: TASK_ID },
     nowIso: "2026-03-02T15:00:00.000Z",
   });
 
   assert.equal(progress.quality, "suspect");
   assert.equal(progress.week.actualWorkMinutes, 0);
+});
+
+test("cumulative-remainder rounding preserves 7 x 59 seconds", () => {
+  const sessions = Array.from({ length: 7 }, (_, index) => {
+    const date = ["2026-03-02", "2026-03-03", "2026-03-04", "2026-03-05", "2026-03-06", "2026-03-07", "2026-03-08"][index];
+    return session({
+      task_id: TASK_ID,
+      started_at: `${date}T12:00:00.000Z`,
+      ended_at: `${date}T12:00:59.000Z`,
+    });
+  });
+
+  const progress = input({
+    sessions,
+    reference: { kind: "task", id: TASK_ID },
+    nowIso: "2026-03-08T23:59:00.000Z",
+  });
+
+  const totalMinutes = progress.week.actualWorkMinutes;
+  assert.equal(totalMinutes, Math.floor((7 * 59) / 60));
+  assert.equal(progress.days.reduce((sum, day) => sum + day.actualWorkMinutes, 0), totalMinutes);
+  assert.equal(progress.week.actualJobSearchMinutes, totalMinutes);
+});
+
+test("cumulative-remainder rounding preserves a 59.5m/59.5m cross-midnight split", () => {
+  const progress = input({
+    sessions: [
+      session({
+        task_id: TASK_ID,
+        started_at: "2026-03-03T23:00:30.000Z",
+        ended_at: "2026-03-04T00:59:30.000Z",
+      }),
+    ],
+    reference: { kind: "task", id: TASK_ID },
+    nowIso: "2026-03-04T12:00:00.000Z",
+  });
+
+  const tuesday = progress.days.find((day) => day.date === "2026-03-03");
+  const wednesday = progress.days.find((day) => day.date === "2026-03-04");
+  assert.equal(tuesday?.actualWorkMinutes, 59);
+  assert.equal(wednesday?.actualWorkMinutes, 60);
+  assert.equal(progress.week.actualWorkMinutes, 119);
+  assert.equal(progress.week.actualJobSearchMinutes, 119);
+});
+
+test("custom targets and reference propagate unchanged", () => {
+  const personalOperations: PersonalOperations = {
+    ...DEFAULT_PERSONAL_OPERATIONS,
+    targets: {
+      ...DEFAULT_PERSONAL_OPERATIONS.targets,
+      monday: { work: 600, jobSearch: 30 },
+    },
+  };
+  const progress = input({
+    personalOperations,
+    reference: { kind: "task", id: TASK_ID },
+    nowIso: "2026-03-02T12:00:00.000Z",
+  });
+
+  assert.deepEqual(progress.today.targetWorkMinutes, 600);
+  assert.deepEqual(progress.today.targetJobSearchMinutes, 30);
+  assert.deepEqual(progress.reference, { kind: "task", id: TASK_ID });
 });

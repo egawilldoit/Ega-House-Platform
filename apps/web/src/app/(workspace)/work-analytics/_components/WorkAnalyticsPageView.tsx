@@ -105,6 +105,9 @@ export function WorkAnalyticsPageView({ model }: { model: WorkAnalyticsPageModel
     workTargets !== null &&
     !workTargets.jobSearchConfigured &&
     workTargets.week.targetJobSearchMinutes > 0;
+  const targetsProvisional =
+    workTargets !== null &&
+    (workTargets.includeOpenSessions || workTargets.quality === "provisional");
 
   return (
     <div className="flex flex-col gap-6" data-testid="work-analytics-workspace">
@@ -187,7 +190,16 @@ export function WorkAnalyticsPageView({ model }: { model: WorkAnalyticsPageModel
             Work targets could not be loaded right now. The rest of analytics is unaffected.
           </p>
         ) : workTargets ? (
-          <div className="grid gap-4 sm:grid-cols-3" data-testid="analytics-work-targets">
+          <div className="flex flex-col gap-3">
+            {targetsProvisional ? (
+              <p
+                className="text-[length:var(--text-meta)] font-medium text-ega-text-secondary"
+                data-testid="analytics-work-targets-provisional"
+              >
+                Includes running timer
+              </p>
+            ) : null}
+            <div className="grid gap-4 sm:grid-cols-3" data-testid="analytics-work-targets">
             <div className="min-w-0" data-testid="analytics-work-targets-today">
               <p className="metric-label">Today</p>
               <p className="metric-value tabular-nums">
@@ -210,7 +222,7 @@ export function WorkAnalyticsPageView({ model }: { model: WorkAnalyticsPageModel
               </p>
               <p className="text-[length:var(--text-meta)] text-ega-text-tertiary">
                 Full week {formatMinutes(workTargets.week.targetWorkMinutes)}
-                {workTargets.paused ? " · Paused" : ""}
+                {workTargets.paused ? " · Paused (targets retained)" : ""}
               </p>
             </div>
             <div className="min-w-0" data-testid="analytics-work-targets-job-search">
@@ -221,10 +233,10 @@ export function WorkAnalyticsPageView({ model }: { model: WorkAnalyticsPageModel
                     className="metric-value text-ega-text-secondary"
                     data-testid="analytics-work-targets-not-configured"
                   >
-                    Not configured
+                    Job search not configured
                   </p>
                   <p className="text-[length:var(--text-meta)] text-ega-text-tertiary">
-                    Choose a job-search task or project in{" "}
+                    Choose a job-search task in{" "}
                     <Link href="/settings/preferences" className="underline">
                       Preferences
                     </Link>
@@ -244,6 +256,7 @@ export function WorkAnalyticsPageView({ model }: { model: WorkAnalyticsPageModel
                   </p>
                 </>
               )}
+            </div>
             </div>
           </div>
         ) : null}

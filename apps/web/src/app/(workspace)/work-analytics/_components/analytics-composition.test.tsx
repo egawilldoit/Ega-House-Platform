@@ -238,9 +238,41 @@ test("an unconfigured job search renders Not configured, not fictitious hours", 
   assert.ok(start > -1, "expected the job-search target cell");
   const cell = markup.slice(start, start + 1500);
 
-  assert.match(cell, /Not configured/);
+  assert.match(cell, /Job search not configured/);
   assert.match(cell, /\/settings\/preferences/);
   assert.doesNotMatch(cell, /Included in work, not extra\./);
+  // No fabricated numeric completion in the unconfigured cell.
+  assert.doesNotMatch(cell, /0m/);
+  assert.doesNotMatch(cell, /7h 30m/);
+});
+
+test("a paused schedule keeps actual-vs-target and labels targets retained", () => {
+  const paused = {
+    ...model,
+    workTargets: { ...workTargets, paused: true },
+  } as unknown as WorkAnalyticsPageModel;
+  const markup = renderToStaticMarkup(<WorkAnalyticsPageView model={paused} />);
+  const start = markup.indexOf('data-testid="analytics-work-targets"');
+  assert.ok(start > -1);
+  const section = markup.slice(start, start + 4000);
+
+  assert.match(section, /Paused \(targets retained\)/);
+  assert.match(section, /2h/);
+  assert.match(section, /8h/);
+});
+
+test("included open time renders the provisional running-timer indicator", () => {
+  const provisional = {
+    ...model,
+    workTargets: {
+      ...workTargets,
+      includeOpenSessions: true,
+      quality: "provisional" as const,
+    },
+  } as unknown as WorkAnalyticsPageModel;
+  const markup = renderToStaticMarkup(<WorkAnalyticsPageView model={provisional} />);
+
+  assert.match(markup, /Includes running timer/);
 });
 
 test("estimate variance leads with the absolute delta, then the ratio, then the percentage", () => {

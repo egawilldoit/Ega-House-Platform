@@ -144,6 +144,24 @@ test("an empty patch leaves the stored row unchanged", async () => {
 });
 
 
+test("the job-search reference patches independently of the schedule", async () => {
+  const repository = new FakeUserPreferencesRepository();
+  const result = await updateUserPreferences(ACTOR, repository, {
+    jobSearchReference: {
+      kind: "task",
+      id: "11111111-1111-4111-8111-111111111111",
+    },
+  });
+
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.deepEqual(result.data.jobSearchReference, {
+    kind: "task",
+    id: "11111111-1111-4111-8111-111111111111",
+  });
+  assert.deepEqual(result.data.personalOperations, DEFAULT_USER_PREFERENCES.personalOperations);
+});
+
 test("concurrent independent patches preserve both updates", async () => {
   const repository = new FakeUserPreferencesRepository();
   const schedule = { ...DEFAULT_USER_PREFERENCES.personalOperations, paused: true };
