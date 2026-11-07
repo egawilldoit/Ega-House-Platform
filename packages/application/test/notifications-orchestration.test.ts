@@ -343,17 +343,24 @@ function createRepositories(state: State) {
       if (state.settingsUnavailable) return { ok: false as const, error: { code: "unknown" as const } };
       return ok(state.settings);
     },
-    async upsertSettings(_actor: { userId: string }, input: {
-      quietHoursEnabled: boolean;
-      quietHoursStart: string;
-      quietHoursEnd: string;
+    async patchSettings(_actor: { userId: string }, input: {
+      quietHoursEnabled?: boolean;
+      quietHoursStart?: string;
+      quietHoursEnd?: string;
     }) {
-      state.settings = {
+      const base = state.settings ?? {
         ownerUserId: OWNER,
-        quietHoursEnabled: input.quietHoursEnabled,
-        quietHoursStart: input.quietHoursStart,
-        quietHoursEnd: input.quietHoursEnd,
+        quietHoursEnabled: false,
+        quietHoursStart: "22:00",
+        quietHoursEnd: "07:00",
         createdAt: NOW_ISO,
+        updatedAt: NOW_ISO,
+      };
+      state.settings = {
+        ...base,
+        quietHoursEnabled: input.quietHoursEnabled ?? base.quietHoursEnabled,
+        quietHoursStart: input.quietHoursStart ?? base.quietHoursStart,
+        quietHoursEnd: input.quietHoursEnd ?? base.quietHoursEnd,
         updatedAt: NOW_ISO,
       };
       return ok(state.settings);
@@ -1152,4 +1159,176 @@ test("failed suppression write reports persistenceErrors and leaves the row recl
   assert.equal(result.ok ? result.data.persistenceErrors : -1, 1);
   assert.equal(row.status, "sending");
   assert.equal(calls, 0);
+});
+
+test("device lookup failure defers without sends or deactivation and exhausts to failed", async () => {
+  const state = createState({ devicesUnavailable: true });
+  const d = device(state);
+  const n = notification(state);
+  const row = delivery(state, { notificationId: n.id, deviceId: d.id });
+  preference(state, true, true);
+
+  let calls = 0;
+  const provider: PushProvider = {
+    async send() {
+      calls += 1;
+      return { ok: true, providerMessageId: "should-not-happen" };
+    },
+  };
+
+  const result = await processPendingNotificationDeliveries(
+    deliveryOptions(state, provider, { async send() { calls += 1; return { ok: true }; } }),
+  );
+  assert.equal(result.ok, true);
+  assert.equal(result.ok ? result.data.retried : -1, 1);
+  assert.equal(row.status, "retry_scheduled");
+  assert.equal(row.lastErrorCode, "device_lookup_unavailable");
+  assert.ok(row.nextAttemptAt);
+  assert.equal(calls, 0);
+  assert.deepEqual(state.deactivatedTokens, []);
+
+  const mutableRow = row as unknown as {
+    status: string;
+    nextAttemptAt: string | null;
+    attemptCount: number;
+  };
+  mutableRow.status = "retry_scheduled";
+  mutableRow.nextAttemptAt = "2020-01-01T00:00:00.000Z";
+  mutableRow.attemptCount = 5;
+
+  const exhausted = await processPendingNotificationDeliveries(
+    deliveryOptions(state, provider, { async send() { calls += 1; return { ok: true }; } }),
+  );
+  assert.equal(exhausted.ok, true);
+  assert.equal(exhausted.ok ? exhausted.data.failed : -1, 1);
+  assert.equal(row.status, "failed");
+  assert.equal(row.lastErrorCode, "device_lookup_unavailable");
+  assert.equal(row.nextAttemptAt, null);
+  assert.equal(calls, 0);
+  assert.deepEqual(state.deactivatedTokens, []);
+});
+
+test("successful empty device lookup remains a terminal invalid endpoint", async () => {
+  const state = createState();
+  const n = notification(state);
+  const row = delivery(state, { notificationId: n.id, deviceId: "missing-device" });
+  preference(state, true, true);
+
+  let calls = 0;
+  const provider: PushProvider = {
+    async send() {
+      calls += 1;
+      return { ok: true, providerMessageId: "should-not-happen" };
+    },
+  };
+
+  const result = await processPendingNotificationDeliveries(
+    deliveryOptions(state, provider, { async send() { calls += 1; return { ok: true }; } }),
+  );
+  assert.equal(result.ok, true);
+  assert.equal(result.ok ? result.data.invalidated : -1, 1);
+  assert.equal(row.status, "invalid_endpoint");
+  assert.equal(row.lastErrorCode, "missing_token");
+  assert.equal(calls, 0);
+});
+
+test("enabled quiet hours with no/invalid owner timezone defer instead of sending", async () => {
+  for (const timezone of [null, "Not/AZone"] as const) {
+    const state = createState({ timezone });
+    const d = device(state);
+    const n = notification(state);
+    const row = delivery(state, { notificationId: n.id, deviceId: d.id });
+    preference(state, true, true);
+    state.settings = {
+      ownerUserId: OWNER,
+      quietHoursEnabled: true,
+      quietHoursStart: "22:00",
+      quietHoursEnd: "07:00",
+      createdAt: NOW_ISO,
+      updatedAt: NOW_ISO,
+    };
+
+    let calls = 0;
+    const provider: PushProvider = {
+      async send() {
+        calls += 1;
+        return { ok: true, providerMessageId: "should-not-happen" };
+      },
+    };
+
+    const result = await processPendingNotificationDeliveries(
+      deliveryOptions(state, provider, { async send() { calls += 1; return { ok: true }; } }),
+    );
+    assert.equal(result.ok, true);
+    assert.equal(result.ok ? result.data.retried : -1, 1);
+    assert.equal(row.status, "retry_scheduled");
+    assert.equal(row.lastErrorCode, "quiet_hours_unavailable");
+    assert.equal(calls, 0);
+  }
+});
+
+test("disabled quiet hours with missing timezone keep legacy send behavior", async () => {
+  const state = createState({ timezone: null });
+  const d = device(state);
+  const n = notification(state);
+  const row = delivery(state, { notificationId: n.id, deviceId: d.id });
+  preference(state, true, true);
+  state.settings = {
+    ownerUserId: OWNER,
+    quietHoursEnabled: false,
+    quietHoursStart: "22:00",
+    quietHoursEnd: "07:00",
+    createdAt: NOW_ISO,
+    updatedAt: NOW_ISO,
+  };
+
+  const provider: PushProvider = {
+    async send() {
+      return { ok: true, providerMessageId: "accepted-1" };
+    },
+  };
+
+  const result = await processPendingNotificationDeliveries(
+    deliveryOptions(state, provider, { async send() { return { ok: true }; } }),
+  );
+  assert.equal(result.ok, true);
+  assert.equal(result.ok ? result.data.accepted : -1, 1);
+  assert.equal(row.status, "provider_accepted");
+});
+
+test("critical direct mention bypasses enabled quiet hours with missing timezone", async () => {
+  const state = createState({ timezone: null });
+  const d = device(state);
+  const n = notification(state, "task_comment_mention");
+  const row = delivery(state, { notificationId: n.id, deviceId: d.id });
+  state.preferences.push({
+    id: "pref-mention",
+    ownerUserId: OWNER,
+    notificationType: "task_comment_mention",
+    pushEnabled: true,
+    emailEnabled: true,
+    createdAt: NOW_ISO,
+    updatedAt: NOW_ISO,
+  });
+  state.settings = {
+    ownerUserId: OWNER,
+    quietHoursEnabled: true,
+    quietHoursStart: "22:00",
+    quietHoursEnd: "07:00",
+    createdAt: NOW_ISO,
+    updatedAt: NOW_ISO,
+  };
+
+  const provider: PushProvider = {
+    async send() {
+      return { ok: true, providerMessageId: "accepted-1" };
+    },
+  };
+
+  const result = await processPendingNotificationDeliveries(
+    deliveryOptions(state, provider, { async send() { return { ok: true }; } }),
+  );
+  assert.equal(result.ok, true);
+  assert.equal(result.ok ? result.data.accepted : -1, 1);
+  assert.equal(row.status, "provider_accepted");
 });

@@ -234,6 +234,7 @@ export async function getNotificationSettings(
 export async function updateNotificationSettings(
   actor: AuthenticatedActor,
   repository: NotificationSettingsRepository,
+  timeContextRepository: TimeContextRepository,
   input: {
     quietHoursEnabled?: boolean;
     quietHoursStart?: string;
@@ -243,33 +244,78 @@ export async function updateNotificationSettings(
   const err = requireActor(actor);
   if (err) return err;
 
-  const existing = await repository.getSettings(actor);
-  if (!existing.ok) return applicationFailure("Unable to load notification settings right now.");
-  const base = mapSettingsRecord(existing.value);
+  // Only fields the caller actually supplied are sent to persistence. Never
+  // read-merge-upsert the whole row: concurrent stale writers must not clobber
+  // each other.
+  const patch: {
+    quietHoursEnabled?: boolean;
+    quietHoursStart?: string;
+    quietHoursEnd?: string;
+  } = {};
+  if (typeof input.quietHoursEnabled === "boolean") {
+    patch.quietHoursEnabled = input.quietHoursEnabled;
+  }
+  if (typeof input.quietHoursStart === "string") {
+    patch.quietHoursStart = input.quietHoursStart.trim();
+  }
+  if (typeof input.quietHoursEnd === "string") {
+    patch.quietHoursEnd = input.quietHoursEnd.trim();
+  }
 
-  const quietHoursEnabled =
-    typeof input.quietHoursEnabled === "boolean" ? input.quietHoursEnabled : base.quietHoursEnabled;
-  const quietHoursStart =
-    typeof input.quietHoursStart === "string" ? input.quietHoursStart.trim() : base.quietHoursStart;
-  const quietHoursEnd =
-    typeof input.quietHoursEnd === "string" ? input.quietHoursEnd.trim() : base.quietHoursEnd;
+  if (
+    patch.quietHoursEnabled === undefined &&
+    patch.quietHoursStart === undefined &&
+    patch.quietHoursEnd === undefined
+  ) {
+    return applicationFailure("At least one settings field is required.", "validation");
+  }
 
-  if (!isValidClockTime(quietHoursStart)) {
+  if (patch.quietHoursStart !== undefined && !isValidClockTime(patch.quietHoursStart)) {
     return applicationFailure("quietHoursStart must use 24-hour HH:MM.", "validation");
   }
-  if (!isValidClockTime(quietHoursEnd)) {
+  if (patch.quietHoursEnd !== undefined && !isValidClockTime(patch.quietHoursEnd)) {
     return applicationFailure("quietHoursEnd must use 24-hour HH:MM.", "validation");
   }
-  if (quietHoursStart === quietHoursEnd) {
-    return applicationFailure("quietHoursStart and quietHoursEnd must differ.", "validation");
+
+  // Preserve the start !== end invariant. When only one time field is supplied
+  // we read the other for validation only; the write remains the partial patch.
+  if (patch.quietHoursStart !== undefined || patch.quietHoursEnd !== undefined) {
+    let start = patch.quietHoursStart;
+    let end = patch.quietHoursEnd;
+    if (start === undefined || end === undefined) {
+      const existing = await repository.getSettings(actor);
+      if (!existing.ok) {
+        return applicationFailure("Unable to load notification settings right now.", "unknown");
+      }
+      const base = mapSettingsRecord(existing.value);
+      start = start ?? base.quietHoursStart;
+      end = end ?? base.quietHoursEnd;
+    }
+    if (start === end) {
+      return applicationFailure("quietHoursStart and quietHoursEnd must differ.", "validation");
+    }
   }
 
-  const result = await repository.upsertSettings(actor, {
-    quietHoursEnabled,
-    quietHoursStart,
-    quietHoursEnd,
-  });
-  if (!result.ok) return applicationFailure("Unable to save notification settings right now.");
+  // Enabling quiet hours requires a valid owner timezone; disable always works
+  // so a bad configuration can be turned off.
+  if (patch.quietHoursEnabled === true) {
+    const timezoneResult = await timeContextRepository.getTimezone(actor);
+    if (!timezoneResult.ok) {
+      return applicationFailure("Unable to verify owner timezone right now.", "unknown");
+    }
+    const timezone = timezoneResult.value?.trim() ?? "";
+    if (!timezone || !isValidIANATimeZone(timezone)) {
+      return applicationFailure(
+        "A valid owner timezone is required to enable quiet hours.",
+        "validation",
+      );
+    }
+  }
+
+  const result = await repository.patchSettings(actor, patch);
+  if (!result.ok) {
+    return applicationFailure("Unable to save notification settings right now.", "unknown");
+  }
   return applicationSuccess(mapSettingsRecord(result.value));
 }
 
@@ -327,13 +373,13 @@ async function resolveQuietHoursSuppression(args: {
   if (!settings) return { status: "not_quiet" };
   if (!settings.quietHoursEnabled) return { status: "not_quiet" };
 
-  // The owner timezone is the existing Time Context authority. A missing or
-  // invalid timezone is a configuration state, not a read failure: safe
-  // default is to not suppress and never guess from server local time.
+  // The owner timezone is the existing Time Context authority. When quiet hours
+  // are enabled, a missing/invalid timezone or a read failure is unresolved:
+  // dispatch must defer (fail closed), never treat it as "not quiet".
   const timezoneResult = await args.timeContextRepository.getTimezone(args.actor);
   if (!timezoneResult.ok) return { status: "unavailable" };
   const timezone = timezoneResult.value?.trim() ?? "";
-  if (!timezone || !isValidIANATimeZone(timezone)) return { status: "not_quiet" };
+  if (!timezone || !isValidIANATimeZone(timezone)) return { status: "unavailable" };
 
   return isWithinQuietHours({
     now: args.now,
@@ -577,7 +623,11 @@ async function markSuppressed(
 async function deferDeliveryForInfrastructure(args: {
   repository: NotificationDeliveryRepository;
   delivery: { id: string; attemptCount: number };
-  code: "preferences_unavailable" | "quiet_hours_unavailable" | "notification_unavailable";
+  code:
+    | "preferences_unavailable"
+    | "quiet_hours_unavailable"
+    | "notification_unavailable"
+    | "device_lookup_unavailable";
   reason: string;
   now: Date;
   nowIso: string;
@@ -756,13 +806,26 @@ export async function processPendingNotificationDeliveries(
       let token: string | null = null;
       if (delivery.deviceId) {
         const devices = await options.deviceRepository.listActiveDevices(ownerActor);
-        if (devices.ok) {
-          const device = devices.value.find((d) => d.id === delivery.deviceId);
-          token = device?.providerToken ?? null;
+        if (!devices.ok) {
+          // A lookup failure is not proof the endpoint is invalid. Defer with
+          // the bounded budget and never deactivate or call the provider.
+          const outcome = await deferDeliveryForInfrastructure({
+            repository: options.deliveryRepository,
+            delivery,
+            code: "device_lookup_unavailable",
+            reason: "Unable to look up the notification device before dispatch.",
+            now,
+            nowIso,
+          });
+          recordDeferralOutcome(counts, outcome);
+          continue;
         }
+        const device = devices.value.find((d) => d.id === delivery.deviceId);
+        token = device?.providerToken ?? null;
       }
 
       if (!token) {
+        // Successful lookup confirmed the device is absent/inactive.
         await options.deliveryRepository.updateDelivery(delivery.id, {
           status: "invalid_endpoint",
           lastErrorCode: "missing_token",

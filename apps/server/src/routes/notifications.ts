@@ -23,6 +23,7 @@ import {
   SupabaseNotificationRepository,
   SupabaseNotificationSettingsRepository,
 } from "@ega/data-access/notifications";
+import { SupabaseTimeContextRepository } from "@ega/data-access/time-context";
 
 import type { ServerVariables } from "../app";
 import { readJsonBody } from "../app";
@@ -261,7 +262,8 @@ export function createNotificationsRoutes(): Hono<{ Variables: ServerVariables }
     }
 
     const repo = new SupabaseNotificationSettingsRepository(client as never);
-    const result = await updateNotificationSettings(actor, repo, {
+    const timeContextRepo = new SupabaseTimeContextRepository(client as never);
+    const result = await updateNotificationSettings(actor, repo, timeContextRepo, {
       quietHoursEnabled,
       quietHoursStart,
       quietHoursEnd,
