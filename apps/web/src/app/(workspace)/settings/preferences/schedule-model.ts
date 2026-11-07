@@ -288,15 +288,40 @@ function zoneOffsetMs(timezone: string, date: Date): number | null {
   return asUtc - Math.floor(date.getTime() / 1000) * 1000;
 }
 
+function matchesWallTime(
+  timezone: string,
+  instant: Date,
+  year: number,
+  month: number,
+  day: number,
+  hour: number,
+  minute: number,
+): boolean {
+  const parts = getZonedParts(timezone, instant);
+  return Boolean(
+    parts &&
+      parts.year === year &&
+      parts.month === month &&
+      parts.day === day &&
+      parts.hour === hour &&
+      parts.minute === minute,
+  );
+}
+
 /**
- * Converts a wall-clock date/time in a zone to an absolute instant.
+ * Resolves a wall-clock date/time in a zone to an absolute instant.
  *
- * A fixed `dayOffset * 1440` would be wrong across a DST change. Two offset
- * refinements are enough for the minute-resolution values this UI stores; a
- * nonexistent spring-forward wall time resolves to the nearest valid instant
- * the runtime can express.
+ * DST policy for this display-only helper:
+ * - 0 round-trip matches means the wall time does not exist (spring gap); skip
+ *   the occurrence rather than inventing an earlier/later local time.
+ * - 2 matches means the wall time repeats (fall back); choose the earlier
+ *   occurrence only, so the same block never appears twice.
+ * - Ordinary dates resolve to one instant.
+ *
+ * Offsets are probed around the target so the ±12h and ±36h brackets cover
+ * normal DST transitions and date-line shifts without assuming 24h days.
  */
-function zonedWallTimeToInstant(
+export function resolveZonedWallTime(
   timezone: string,
   year: number,
   month: number,
@@ -305,14 +330,28 @@ function zonedWallTimeToInstant(
   minute: number,
 ): Date | null {
   const guess = Date.UTC(year, month - 1, day, hour, minute, 0, 0);
-  const offset = zoneOffsetMs(timezone, new Date(guess));
-  if (offset === null) return null;
-  let instant = new Date(guess - offset);
-  const refined = zoneOffsetMs(timezone, instant);
-  if (refined !== null && refined !== offset) {
-    instant = new Date(guess - refined);
+  const candidates = new Set<number>();
+  const probes = [
+    guess - 36 * 60 * 60_000,
+    guess - 12 * 60 * 60_000,
+    guess,
+    guess + 12 * 60 * 60_000,
+    guess + 36 * 60 * 60_000,
+  ];
+
+  for (const probe of probes) {
+    const offset = zoneOffsetMs(timezone, new Date(probe));
+    if (offset !== null) candidates.add(guess - offset);
   }
-  return instant;
+
+  const matches = [...candidates]
+    .map((instant) => new Date(instant))
+    .filter((instant) =>
+      matchesWallTime(timezone, instant, year, month, day, hour, minute),
+    )
+    .sort((left, right) => left.getTime() - right.getTime());
+
+  return matches[0] ?? null;
 }
 
 function addCalendarDays(
@@ -366,7 +405,7 @@ export function getNextGuidance(
       const start = parseTimeToMinutes(block.start);
       const end = parseTimeToMinutes(block.end);
       if (start === null || end === null || end <= start) continue;
-      const instant = zonedWallTimeToInstant(
+      const instant = resolveZonedWallTime(
         timezone,
         targetDate.year,
         targetDate.month,

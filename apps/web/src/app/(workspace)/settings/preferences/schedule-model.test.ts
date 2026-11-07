@@ -16,6 +16,7 @@ import {
   hasInvalidTargets,
   isValidTimeZone,
   parseTimeToMinutes,
+  resolveZonedWallTime,
   type Schedule,
 } from "./schedule-model";
 
@@ -260,6 +261,81 @@ describe("next guidance", () => {
       dayOffset: 1,
       startsInMinutes: 1380,
     });
+  });
+
+  it("skips a nonexistent spring-forward wall time instead of resolving earlier", () => {
+    expect(
+      resolveZonedWallTime("America/New_York", 2026, 3, 8, 2, 30),
+    ).toBeNull();
+  });
+
+  it("resolves the first valid spring-forward wall time to the exact instant", () => {
+    expect(
+      resolveZonedWallTime("America/New_York", 2026, 3, 8, 3, 30)?.toISOString(),
+    ).toBe("2026-03-08T07:30:00.000Z");
+  });
+
+  it("chooses the earlier occurrence of a repeated fall-back wall time", () => {
+    expect(
+      resolveZonedWallTime("America/New_York", 2026, 11, 1, 1, 30)?.toISOString(),
+    ).toBe("2026-11-01T05:30:00.000Z");
+  });
+
+  it("chooses the next valid guidance when a same-day occurrence is in the DST gap", () => {
+    const schedule = defaultSchedule();
+    schedule.guidance = [
+      {
+        name: "Gap",
+        days: ["sunday"],
+        start: "02:30",
+        end: "03:00",
+        enabled: true,
+      },
+      {
+        name: "Run",
+        days: ["sunday"],
+        start: "09:00",
+        end: "09:30",
+        enabled: true,
+      },
+    ];
+
+    const next = getNextGuidance(
+      schedule,
+      "America/New_York",
+      new Date("2026-03-08T05:00:00.000Z"),
+    );
+
+    expect(next).toMatchObject({
+      name: "Run",
+      start: "09:00",
+      day: "sunday",
+      dayOffset: 0,
+      startsInMinutes: 480,
+    });
+  });
+
+  it("does not create a second event for the repeated fall-back wall time", () => {
+    const schedule = defaultSchedule();
+    schedule.guidance = [
+      {
+        name: "Fall",
+        days: ["sunday"],
+        start: "01:30",
+        end: "02:00",
+        enabled: true,
+      },
+    ];
+
+    // 01:45 EDT, after the earlier 01:30 occurrence but before the repeated one.
+    const next = getNextGuidance(
+      schedule,
+      "America/New_York",
+      new Date("2026-11-01T05:45:00.000Z"),
+    );
+
+    expect(next).toMatchObject({ name: "Fall", dayOffset: 7 });
+    expect(next?.startsInMinutes).not.toBe(45);
   });
 
   it("distinguishes a valid IANA zone from an invalid one", () => {
