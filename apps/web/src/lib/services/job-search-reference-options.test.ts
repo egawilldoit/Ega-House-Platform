@@ -7,7 +7,7 @@ type QueryCall = {
   select: string | null;
   eq: Array<[string, unknown]>;
   order: Array<[string, unknown]>;
-  limit: number | null;
+  range: [number, number] | null;
 };
 
 function createSupabaseMock(options: {
@@ -17,7 +17,7 @@ function createSupabaseMock(options: {
   const calls: QueryCall[] = [];
 
   function query(table: string) {
-    const call: QueryCall = { table, select: null, eq: [], order: [], limit: null };
+    const call: QueryCall = { table, select: null, eq: [], order: [], range: null };
     calls.push(call);
     const chain = {
       select(columns: string) {
@@ -32,13 +32,13 @@ function createSupabaseMock(options: {
         call.order.push([column, opts]);
         return chain;
       },
-      limit(value: number) {
-        call.limit = value;
+      range(start: number, end: number) {
+        call.range = [start, end];
         return chain;
       },
       then(resolve: (value: { data: unknown[] | null; error: { message: string } | null }) => void) {
         resolve({
-          data: options.error ? null : options.tasks ?? [],
+          data: options.error ? null : (options.tasks ?? []).slice(call.range?.[0] ?? 0, (call.range?.[1] ?? 999) + 1),
           error: options.error ?? null,
         });
       },
@@ -79,7 +79,15 @@ describe("getJobSearchReferenceOptions", () => {
     expect(call?.select).toBe("id, title, archived_at");
     expect(call?.eq).toContainEqual(["owner_user_id", "owner-1"]);
     expect(call?.order).toContainEqual(["updated_at", { ascending: false }]);
-    expect(call?.limit).toBe(200);
+    expect(call?.range).toEqual([0, 499]);
+  });
+
+  it("includes tasks beyond the first page", async () => {
+    const tasks = Array.from({ length: 501 }, (_, i) => ({ id: `t${i}`, title: `Task ${i}`, archived_at: null }));
+    const supabase = createSupabaseMock({ tasks });
+    const result = await getJobSearchReferenceOptions({ supabase: supabase as never, getCurrentUser: async () => ({ id: "owner-1" }) });
+    expect(result.data.tasks).toHaveLength(501);
+    expect(supabase.calls[1]?.range).toEqual([500, 999]);
   });
 
   it("returns empty options plus an actionable error when the read fails", async () => {

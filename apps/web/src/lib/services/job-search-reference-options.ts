@@ -42,27 +42,23 @@ export async function getJobSearchReferenceOptions(options: {
     }
 
     const supabase = options.supabase ?? (await createClient());
-    // Deliberately capped at 200 most-recently-updated tasks. Pagination and
-    // free-text task search are out of this slice's scope.
-    const tasksResult = await supabase
-      .from("tasks")
-      .select("id, title, archived_at")
-      .eq("owner_user_id", user.id)
-      .order("updated_at", { ascending: false })
-      .limit(200);
-
-    if (tasksResult.error) {
-      return { data: EMPTY_OPTIONS, errorMessage: LOAD_FAILURE };
-    }
-
     const tasks: JobSearchReferenceTaskOption[] = [];
-    for (const row of tasksResult.data ?? []) {
-      if (typeof row.id !== "string" || typeof row.title !== "string") continue;
-      tasks.push({
-        id: row.id,
-        title: row.title,
-        archivedAt: typeof row.archived_at === "string" ? row.archived_at : null,
-      });
+    const pageSize = 500;
+    for (let offset = 0; ; offset += pageSize) {
+      const result = await supabase
+        .from("tasks")
+        .select("id, title, archived_at")
+        .eq("owner_user_id", user.id)
+        .order("updated_at", { ascending: false })
+        .order("id", { ascending: false })
+        .range(offset, offset + pageSize - 1);
+      if (result.error) return { data: EMPTY_OPTIONS, errorMessage: LOAD_FAILURE };
+      const page = result.data ?? [];
+      for (const row of page) {
+        if (typeof row.id !== "string" || typeof row.title !== "string") continue;
+        tasks.push({ id: row.id, title: row.title, archivedAt: typeof row.archived_at === "string" ? row.archived_at : null });
+      }
+      if (page.length < pageSize) break;
     }
 
     return { data: { tasks }, errorMessage: null };
