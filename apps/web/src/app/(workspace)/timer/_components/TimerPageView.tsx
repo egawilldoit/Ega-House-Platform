@@ -5,6 +5,7 @@ import { OwnerScopedRealtimeRefresh } from "@/components/realtime/owner-scoped-r
 import { ActiveTimerDisplay } from "@/components/timer/active-timer-display";
 import { SessionTimingEditor } from "@/components/timer/session-timing-editor";
 import { TimerStopOutcomePrompt } from "@/components/timer/timer-stop-outcome-prompt";
+import { TimerSyncStatus } from "@/components/timer/timer-sync-status";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { DashboardSection } from "@/components/ui/dashboard-section";
@@ -92,7 +93,9 @@ export function TimerPageView({ model }: { model: TimerPageModel }) {
         ownerUserId={ownerUserId}
         channelPrefix="timer"
         tables={["task_sessions", "tasks"]}
+        reconcileOnVisibility={false}
       />
+      <TimerSyncStatus surface="timer" ownerUserId={ownerUserId} />
 
       {hasSessionConflict ? (
         <div className="feedback-block feedback-block-warn justify-between">

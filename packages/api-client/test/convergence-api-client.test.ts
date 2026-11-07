@@ -103,17 +103,17 @@ test("timer resource targets the canonical workspace/start/stop endpoints", asyn
   const { client, calls } = makeHarness((call) => {
     if (call.url.endsWith("/api/timer/workspace")) return { body: workspace };
     if (call.url.endsWith("/api/timer/start")) return { status: 201, body: { ok: true, activeSession: { sessionId: "s1", taskId: "t1", startedAt: "x", elapsedLabel: "0s", taskTitle: "Task A" } } };
-    return { body: { ok: true, sessionId: "s1", taskId: "t1" } };
+    return { body: { ok: true, sessionId: "s1", taskId: "t1", outcome: "stopped" } };
   });
 
   const ws = await client.timer.workspace();
   const start = await client.timer.start("t1");
-  const stop = await client.timer.stop();
+  const stop = await client.timer.stop("s1");
 
   assert.ok(ws.ok && start.ok && stop.ok);
   assert.equal(calls[0].url, "https://api.ega.example/api/timer/workspace");
   assert.deepEqual(calls[1].body, { taskId: "t1" });
-  assert.deepEqual(calls[2].body, {});
+  assert.deepEqual(calls[2].body, { sessionId: "s1" });
   assert.equal(calls[2].headers.Authorization, "Bearer token-today");
 });
 
