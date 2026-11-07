@@ -13,13 +13,16 @@ import {
   listNotifications,
   markNotificationRead,
   getNotificationPreferences,
+  getNotificationSettings,
   updateNotificationPreferences,
+  updateNotificationSettings,
   registerNotificationDevice,
 } from "../src/notifications/service";
 import type {
   NotificationRepository,
   NotificationDeviceRepository,
   NotificationPreferenceRepository,
+  NotificationSettingsRepository,
   NotificationRecord,
   NotificationPreferenceRecord,
   NotificationDeviceRecord,
@@ -54,17 +57,28 @@ test("nextRetryAt exponential backoff and max attempts", () => {
 
 test("classifyFcmError distinguishes invalid endpoint, transient, auth, permanent", () => {
   assert.equal(classifyFcmError({ httpStatus: 404, fcmCode: "UNREGISTERED" }), "invalid_endpoint");
+  assert.equal(classifyFcmError({ httpStatus: 404 }), "invalid_endpoint");
+  assert.equal(classifyFcmError({ httpStatus: 410 }), "invalid_endpoint");
   assert.equal(classifyFcmError({ httpStatus: 400, fcmCode: "INVALID_ARGUMENT" }), "invalid_endpoint");
+  assert.equal(classifyFcmError({ httpStatus: 400, fcmCode: "INVALID_TOKEN" }), "invalid_endpoint");
   assert.equal(classifyFcmError({ httpStatus: 429, fcmCode: "RESOURCE_EXHAUSTED" }), "transient");
   assert.equal(classifyFcmError({ httpStatus: 500 }), "transient");
   assert.equal(classifyFcmError({ httpStatus: 503, fcmCode: "UNAVAILABLE" }), "transient");
   assert.equal(classifyFcmError({ httpStatus: 401, fcmCode: "UNAUTHENTICATED" }), "auth");
+  assert.equal(classifyFcmError({ httpStatus: 403 }), "auth");
   assert.equal(classifyFcmError({ httpStatus: 400, fcmCode: "SOME_OTHER" }), "permanent");
+  assert.equal(classifyFcmError({ httpStatus: 400 }), "permanent");
 });
 
 test("createNotification validates input and delegates idempotently", async () => {
   const fakeRepo: NotificationRepository = {
-    createNotification: async (_actor, input) => ok({ id: "n1", ownerUserId: ACTOR.userId, type: input.type, title: input.title, body: input.body ?? null, targetType: input.target?.type ?? null, targetId: input.target?.id ?? null, idempotencyKey: input.idempotencyKey, readAt: null, openedAt: null, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() } as NotificationRecord),
+    createNotification: async (_actor, input) => ({
+      ok: true,
+      value: {
+        notification: { id: "n1", ownerUserId: ACTOR.userId, type: input.type, title: input.title, body: input.body ?? null, targetType: input.target?.type ?? null, targetId: input.target?.id ?? null, idempotencyKey: input.idempotencyKey, readAt: null, openedAt: null, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() } as NotificationRecord,
+        created: true,
+      },
+    }),
     getNotification: async () => ok(null),
     listNotifications: async () => ok({ notifications: [], nextCursor: null }),
     countUnread: async () => ok(0),
@@ -73,14 +87,29 @@ test("createNotification validates input and delegates idempotently", async () =
     markAllRead: async () => ok(0),
   };
 
-  const okResult = await createNotification(ACTOR, fakeRepo, { type: "task_reminder", title: "Task reminder", idempotencyKey: "task-reminder:123" });
+  const okResult = await createNotification(ACTOR, fakeRepo, { type: "task_reminder", title: "Task reminder", idempotencyKey: "task_reminder:123" });
   assert.equal(okResult.ok, true);
+  if (okResult.ok) {
+    assert.equal(okResult.data.created, true);
+    assert.equal(okResult.data.notification.id, "n1");
+  }
 
-  const missingTitle = await createNotification(ACTOR, fakeRepo, { type: "task_reminder", title: " ", idempotencyKey: "k" });
+  const missingTitle = await createNotification(ACTOR, fakeRepo, { type: "task_reminder", title: " ", idempotencyKey: "task_reminder:123" });
   assert.equal(missingTitle.ok, false);
 
   const missingKey = await createNotification(ACTOR, fakeRepo, { type: "task_reminder", title: "t", idempotencyKey: " " });
   assert.equal(missingKey.ok, false);
+
+  const badType = await createNotification(ACTOR, fakeRepo, { type: "invented" as never, title: "t", idempotencyKey: "task_reminder:1" });
+  assert.equal(badType.ok, false);
+
+  const badTarget = await createNotification(ACTOR, fakeRepo, { type: "task_reminder", title: "t", idempotencyKey: "task_reminder:2", target: { type: "task", id: "/evil?path" } });
+  assert.equal(badTarget.ok, true);
+  if (badTarget.ok) {
+    // Invalid/raw targets safely degrade to no target rather than a path.
+    assert.equal(badTarget.data.notification.targetType, null);
+    assert.equal(badTarget.data.notification.targetId, null);
+  }
 });
 
 test("listNotifications enforces actor and limit", async () => {
@@ -156,4 +185,69 @@ test("registerNotificationDevice validates platform and token", async () => {
 
   const okReg = await registerNotificationDevice(ACTOR, fakeDevices, { installationId: "inst1", platform: "android", provider: "fcm", providerToken: "tok123" });
   assert.equal(okReg.ok, true);
+});
+
+test("notification settings default to disabled 22:00-07:00", async () => {
+  const fakeSettings: NotificationSettingsRepository = {
+    getSettings: async () => ok(null),
+    upsertSettings: async () => fail(),
+  };
+  const result = await getNotificationSettings(ACTOR, fakeSettings);
+  assert.equal(result.ok, true);
+  if (result.ok) {
+    assert.equal(result.data.quietHoursEnabled, false);
+    assert.equal(result.data.quietHoursStart, "22:00");
+    assert.equal(result.data.quietHoursEnd, "07:00");
+  }
+});
+
+test("notification settings validate HH:MM and persist under the verified owner", async () => {
+  let capturedOwner: string | null = null;
+  let captured: { quietHoursEnabled: boolean; quietHoursStart: string; quietHoursEnd: string } | null = null;
+  const fakeSettings: NotificationSettingsRepository = {
+    getSettings: async () => ok({
+      ownerUserId: ACTOR.userId,
+      quietHoursEnabled: false,
+      quietHoursStart: "22:00",
+      quietHoursEnd: "07:00",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    }),
+    upsertSettings: async (actor, input) => {
+      capturedOwner = actor.userId;
+      captured = input;
+      return ok({
+        ownerUserId: actor.userId,
+        quietHoursEnabled: input.quietHoursEnabled,
+        quietHoursStart: input.quietHoursStart,
+        quietHoursEnd: input.quietHoursEnd,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+    },
+  };
+
+  const badStart = await updateNotificationSettings(ACTOR, fakeSettings, { quietHoursStart: "25:99" });
+  assert.equal(badStart.ok, false);
+  const missingEnd = await updateNotificationSettings(ACTOR, fakeSettings, { quietHoursEnd: "7:00" });
+  assert.equal(missingEnd.ok, false);
+  const equal = await updateNotificationSettings(ACTOR, fakeSettings, { quietHoursStart: "08:00", quietHoursEnd: "08:00" });
+  assert.equal(equal.ok, false);
+
+  const okUpdate = await updateNotificationSettings(ACTOR, fakeSettings, {
+    quietHoursEnabled: true,
+    quietHoursStart: "21:30",
+    quietHoursEnd: "06:30",
+  });
+  assert.equal(okUpdate.ok, true);
+  assert.equal(capturedOwner, ACTOR.userId);
+  assert.deepEqual(captured, {
+    quietHoursEnabled: true,
+    quietHoursStart: "21:30",
+    quietHoursEnd: "06:30",
+  });
+  if (okUpdate.ok) {
+    assert.equal(okUpdate.data.quietHoursEnabled, true);
+    assert.equal(okUpdate.data.quietHoursStart, "21:30");
+  }
 });

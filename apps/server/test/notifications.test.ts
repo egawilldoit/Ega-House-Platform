@@ -62,6 +62,7 @@ class FakeBuilder {
   not(...args: unknown[]) { this.steps.push({ method: "not", args }); return this; }
   limit(...args: unknown[]) { this.steps.push({ method: "limit", args }); return this; }
   insert(...args: unknown[]) { this.steps.push({ method: "insert", args }); return this; }
+  upsert(...args: unknown[]) { this.steps.push({ method: "upsert", args }); return this; }
   update(...args: unknown[]) { this.steps.push({ method: "update", args }); return this; }
   maybeSingle(...args: unknown[]) { this.steps.push({ method: "maybeSingle", args }); return this; }
   single(...args: unknown[]) { this.steps.push({ method: "single", args }); return this; }
@@ -209,4 +210,85 @@ test("GET /api/notifications/preferences and PATCH are auth-scoped", async () =>
     body: JSON.stringify({ notificationType: "task_reminder", pushEnabled: true }),
   });
   assert.equal(res2.status, 200);
+});
+
+test("PATCH /api/notifications/preferences rejects unknown notification types", async () => {
+  const fake = new FakeSupabase();
+  const res = await makeApp(fake).request("/api/notifications/preferences", {
+    method: "PATCH",
+    headers: JSON_HEADERS,
+    body: JSON.stringify({ notificationType: "invented_type", pushEnabled: true }),
+  });
+  assert.equal(res.status, 400);
+  assert.equal(fake.calls.length, 0);
+});
+
+test("notification list maps singleton targets and drops unknown target types", async () => {
+  const fake = new FakeSupabase();
+  fake.push("notifications", {
+    data: [
+      notificationRow({ id: "review-1", type: "weekly_review", target_type: "review", target_id: null }),
+      notificationRow({ id: "unknown-1", target_type: "raw_route", target_id: "x" }),
+    ],
+    error: null,
+  });
+  const res = await makeApp(fake).request("/api/notifications", { headers: AUTH });
+  assert.equal(res.status, 200);
+  const body = await res.json() as { notifications: Array<{ id: string; target: unknown }> };
+  assert.deepEqual(body.notifications[0]!.target, { type: "review", id: null });
+  assert.equal(body.notifications[1]!.target, null);
+});
+
+test("GET /api/notifications/settings requires auth and defaults safely", async () => {
+  const unauthorized = await makeApp(new FakeSupabase()).request("/api/notifications/settings");
+  assert.equal(unauthorized.status, 401);
+
+  const fake = new FakeSupabase();
+  fake.push("notification_settings", { data: null, error: null });
+  const res = await makeApp(fake).request("/api/notifications/settings", { headers: AUTH });
+  assert.equal(res.status, 200);
+  const body = await res.json() as { settings: { quietHoursEnabled: boolean; quietHoursStart: string; quietHoursEnd: string } };
+  assert.equal(body.settings.quietHoursEnabled, false);
+  assert.equal(body.settings.quietHoursStart, "22:00");
+  assert.equal(body.settings.quietHoursEnd, "07:00");
+  const scoped = fake.calls.some((c) => c.table === "notification_settings" && c.steps.some((s) => s.method === "eq" && s.args[0] === "owner_user_id" && s.args[1] === "user-123"));
+  assert.equal(scoped, true);
+});
+
+test("PATCH /api/notifications/settings validates HH:MM and persists owner-scoped settings", async () => {
+  const invalid = new FakeSupabase();
+  invalid.push("notification_settings", { data: null, error: null });
+  const badRes = await makeApp(invalid).request("/api/notifications/settings", {
+    method: "PATCH",
+    headers: JSON_HEADERS,
+    body: JSON.stringify({ quietHoursStart: "25:99" }),
+  });
+  assert.equal(badRes.status, 400);
+
+  const fake = new FakeSupabase();
+  fake.push("notification_settings", { data: null, error: null });
+  fake.push("notification_settings", {
+    data: {
+      owner_user_id: "user-123",
+      quiet_hours_enabled: true,
+      quiet_hours_start: "21:30",
+      quiet_hours_end: "06:30",
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    },
+    error: null,
+  });
+  const res = await makeApp(fake).request("/api/notifications/settings", {
+    method: "PATCH",
+    headers: JSON_HEADERS,
+    body: JSON.stringify({ quietHoursEnabled: true, quietHoursStart: "21:30", quietHoursEnd: "06:30" }),
+  });
+  assert.equal(res.status, 200);
+  const body = await res.json() as { settings: { quietHoursEnabled: boolean; quietHoursStart: string } };
+  assert.equal(body.settings.quietHoursEnabled, true);
+  assert.equal(body.settings.quietHoursStart, "21:30");
+  const upsert = fake.calls.find((c) => c.table === "notification_settings" && c.steps.some((s) => s.method === "upsert"));
+  assert.ok(upsert);
+  const payload = upsert!.steps.find((s) => s.method === "upsert")!.args[0] as Record<string, unknown>;
+  assert.equal(payload.owner_user_id, "user-123");
 });
