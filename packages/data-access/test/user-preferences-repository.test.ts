@@ -88,6 +88,23 @@ const STORED_ROW = {
   task_open_mode: "full",
 };
 
+/** Non-default persisted schedule: every value differs from the defaults. */
+const PERSISTED_SCHEDULE = {
+  paused: true,
+  targets: {
+    monday: { work: 450, jobSearch: 60 },
+    tuesday: { work: 480, jobSearch: 90 },
+    wednesday: { work: 480, jobSearch: 90 },
+    thursday: { work: 480, jobSearch: 90 },
+    friday: { work: 480, jobSearch: 90 },
+    saturday: { work: 240, jobSearch: 0 },
+    sunday: { work: 240, jobSearch: 0 },
+  },
+  guidance: [
+    { name: "Deep work", days: ["monday"], start: "09:00", end: "10:30", enabled: true },
+  ],
+};
+
 test("get reads the owner row scoped by verified user_id", async () => {
   const fake = new FakePreferencesSupabase([{ data: STORED_ROW, error: null }]);
   const result = await repo(fake).get(ACTOR);
@@ -108,6 +125,18 @@ test("get reads the owner row scoped by verified user_id", async () => {
   assert.ok(fake.calls[0]?.steps.some((step) => step.includes("eq:user_id=owner-preferences")));
   assert.ok(fake.calls[0]?.steps.some((step) => step.startsWith("select:")));
   assert.ok(fake.calls[0]?.steps.includes("maybeSingle"));
+});
+
+test("get maps a persisted non-null personal_operations column", async () => {
+  const fake = new FakePreferencesSupabase([
+    { data: { ...STORED_ROW, personal_operations: PERSISTED_SCHEDULE }, error: null },
+  ]);
+  const result = await repo(fake).get(ACTOR);
+
+  assert.equal(result.ok, true);
+  if (!result.ok || !result.value) return;
+  assert.equal(result.value.theme, "dark");
+  assert.deepEqual(result.value.personalOperations, PERSISTED_SCHEDULE);
 });
 
 test("get returns null when the owner has no row", async () => {
@@ -180,24 +209,35 @@ test("patch never sends a user or actor id in the payload", async () => {
 });
 
 test("patch reads the returned composite object", async () => {
-  const fake = new FakePreferencesSupabase([{ data: { ...STORED_ROW, theme: "light" }, error: null }]);
+  const fake = new FakePreferencesSupabase([
+    {
+      data: { ...STORED_ROW, theme: "light", personal_operations: PERSISTED_SCHEDULE },
+      error: null,
+    },
+  ]);
   const result = await repo(fake).patch(ACTOR, { theme: "light" });
 
   assert.equal(result.ok, true);
   if (!result.ok) return;
   assert.equal(result.value.theme, "light");
   assert.equal(result.value.accent, "violet");
-  assert.equal(result.value.personalOperations.targets.monday.work, 480);
+  assert.deepEqual(result.value.personalOperations, PERSISTED_SCHEDULE);
 });
 
 test("patch reads a one-element array response", async () => {
-  const fake = new FakePreferencesSupabase([{ data: [{ ...STORED_ROW, theme: "light" }], error: null }]);
+  const fake = new FakePreferencesSupabase([
+    {
+      data: [{ ...STORED_ROW, theme: "light", personal_operations: PERSISTED_SCHEDULE }],
+      error: null,
+    },
+  ]);
   const result = await repo(fake).patch(ACTOR, { theme: "light" });
 
   assert.equal(result.ok, true);
   if (!result.ok) return;
   assert.equal(result.value.theme, "light");
   assert.equal(result.value.density, "compact");
+  assert.deepEqual(result.value.personalOperations, PERSISTED_SCHEDULE);
 });
 
 test("patch treats a null response as failure", async () => {

@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { getPwaOwners, hasPwaAuthCredentials, signInPwaOwner } from "./pwa-fixtures";
 
 function skipUnlessDisposableEnvironment() {
@@ -9,11 +9,35 @@ function skipUnlessDisposableEnvironment() {
 }
 
 /** Monday work value currently persisted, read from the rendered form. */
-async function mondayWorkValue(page: import("@playwright/test").Page): Promise<string> {
+async function mondayWorkValue(page: Page): Promise<string> {
   return page
     .getByRole("group", { name: "monday" })
     .getByLabel("Work minutes")
     .inputValue();
+}
+
+const SAVE_LABEL = "Save personal schedule";
+
+/**
+ * Submit the schedule and wait for the server action response, then for the
+ * button to leave its pending state. A status message is not used as proof:
+ * the previous save's message can still be on screen.
+ */
+async function saveSchedule(
+  page: Page,
+  submit: () => Promise<void> = async () => {
+    await page.getByRole("button", { name: SAVE_LABEL }).click();
+  },
+) {
+  const save = page.getByRole("button", { name: SAVE_LABEL });
+  const completed = page.waitForResponse(
+    (response) =>
+      response.request().method() === "POST" &&
+      new URL(response.url()).pathname === "/settings/preferences",
+  );
+  await submit();
+  await completed;
+  await expect(save).toBeEnabled();
 }
 
 test("owner edits, reloads and pauses a personal schedule", async ({ page }) => {
@@ -35,15 +59,20 @@ test("owner edits, reloads and pauses a personal schedule", async ({ page }) => 
   await monday.getByLabel("Work minutes").fill("450");
   await saturday.getByLabel("Work minutes").fill("210");
   await page.getByRole("group", { name: "Startup" }).getByLabel("Start").fill("05:45");
-  await page.getByRole("button", { name: "Save personal schedule" }).click();
-  await expect(page.getByRole("status").filter({ hasText: "Personal schedule saved" })).toBeVisible();
+  await saveSchedule(page);
   await page.reload();
   await expect(monday.getByLabel("Work minutes")).toHaveValue("450");
   await expect(saturday.getByLabel("Work minutes")).toHaveValue("210");
   await expect(page.getByRole("group", { name: "Startup" }).getByLabel("Start")).toHaveValue("05:45");
   await page.goto("/settings/appearance");
   await page.getByRole("radio", { name: /Dark/ }).check();
+  const appearanceSaved = page.waitForResponse(
+    (response) =>
+      response.request().method() === "POST" &&
+      new URL(response.url()).pathname === "/settings/appearance",
+  );
   await page.getByRole("button", { name: "Save appearance" }).click();
+  await appearanceSaved;
   await page.goto("/settings/preferences");
   await expect(monday.getByLabel("Work minutes")).toHaveValue("450");
   await monday.getByLabel("Work minutes").fill("1500");
@@ -55,19 +84,24 @@ test("owner edits, reloads and pauses a personal schedule", async ({ page }) => 
   await signInPwaOwner(page, ownerA, "/settings/preferences");
   await expect(monday.getByLabel("Work minutes")).toHaveValue("450");
   await page.getByLabel("Pause schedule").check();
-  await page.getByRole("button", { name: "Save personal schedule" }).click();
-  await expect(page.getByRole("status").filter({ hasText: "Personal schedule saved" })).toBeVisible();
+  await saveSchedule(page);
   await page.reload();
   await expect(page.getByLabel("Pause schedule")).toBeChecked();
   await expect(monday.getByLabel("Work minutes")).toHaveValue("450");
   await page.getByLabel("Pause schedule").uncheck();
-  await page.getByRole("button", { name: "Save personal schedule" }).click();
-  await expect(page.getByRole("status").filter({ hasText: "Personal schedule saved" })).toBeVisible();
+  await saveSchedule(page);
+  await page.reload();
+  await expect(page.getByLabel("Pause schedule")).not.toBeChecked();
+  await expect(monday.getByLabel("Work minutes")).toHaveValue("450");
   await monday.getByLabel("Work minutes").fill("480");
   await saturday.getByLabel("Work minutes").fill("240");
   await page.getByRole("group", { name: "Startup" }).getByLabel("Start").fill("06:00");
-  await page.getByRole("button", { name: "Save personal schedule" }).click();
-  await expect(page.getByRole("status").filter({ hasText: "Personal schedule saved" })).toBeVisible();
+  await saveSchedule(page);
+  await page.reload();
+  await expect(page.getByLabel("Pause schedule")).not.toBeChecked();
+  await expect(monday.getByLabel("Work minutes")).toHaveValue("480");
+  await expect(saturday.getByLabel("Work minutes")).toHaveValue("240");
+  await expect(page.getByRole("group", { name: "Startup" }).getByLabel("Start")).toHaveValue("06:00");
 });
 
 test("server validation rejects an enabled overlap without saving the draft", async ({ page }) => {
@@ -78,7 +112,9 @@ test("server validation rejects an enabled overlap without saving the draft", as
   const monday = page.getByRole("group", { name: "monday" });
   const chess = page.getByRole("group", { name: "Chess" });
   const originalMonday = await mondayWorkValue(page);
-  const editedMonday = String(Math.min(1440, Number(originalMonday) + 30));
+  // Always different, and always inside the 0-1440 input range.
+  const editedMonday =
+    originalMonday === "1440" ? "1410" : String(Number(originalMonday) + 30);
 
   // Chess is a disabled block by default; enabling it on Monday at 06:15
   // overlaps the enabled Startup block (06:00-06:30).
@@ -105,28 +141,33 @@ test("server validation rejects an enabled overlap without saving the draft", as
 test("reduced motion and keyboard-only editing still saves", async ({ page }) => {
   skipUnlessDisposableEnvironment();
   await page.emulateMedia({ reducedMotion: "reduce" });
+  expect(
+    await page.evaluate(() => matchMedia("(prefers-reduced-motion: reduce)").matches),
+  ).toBe(true);
   const { ownerA } = getPwaOwners();
   await signInPwaOwner(page, ownerA, "/settings/preferences");
 
   const monday = page.getByRole("group", { name: "monday" });
   const originalMonday = await mondayWorkValue(page);
   const editedMonday = String(Number(originalMonday) === 480 ? 510 : 480);
+  const save = page.getByRole("button", { name: SAVE_LABEL });
 
   const pause = page.getByLabel("Pause schedule");
   await pause.focus();
   await page.keyboard.press("Space");
   await expect(pause).toBeChecked();
 
+  // Real keyboard traversal: the pause toggle hands focus to Monday's target.
+  await page.keyboard.press("Tab");
   const work = monday.getByLabel("Work minutes");
-  await work.focus();
+  await expect(work).toBeFocused();
   await page.keyboard.press("ControlOrMeta+a");
   await page.keyboard.type(editedMonday);
 
-  const save = page.getByRole("button", { name: "Save personal schedule" });
-  await save.focus();
-  await page.keyboard.press("Enter");
-  await expect(page.getByRole("status").filter({ hasText: "Personal schedule saved" })).toBeVisible();
-
+  await saveSchedule(page, async () => {
+    await save.focus();
+    await page.keyboard.press("Enter");
+  });
   await page.reload();
   await expect(page.getByLabel("Pause schedule")).toBeChecked();
   await expect(monday.getByLabel("Work minutes")).toHaveValue(editedMonday);
@@ -137,9 +178,10 @@ test("reduced motion and keyboard-only editing still saves", async ({ page }) =>
   await monday.getByLabel("Work minutes").focus();
   await page.keyboard.press("ControlOrMeta+a");
   await page.keyboard.type(originalMonday);
-  await save.focus();
-  await page.keyboard.press("Enter");
-  await expect(page.getByRole("status").filter({ hasText: "Personal schedule saved" })).toBeVisible();
+  await saveSchedule(page, async () => {
+    await save.focus();
+    await page.keyboard.press("Enter");
+  });
   await page.reload();
   await expect(page.getByLabel("Pause schedule")).not.toBeChecked();
   await expect(monday.getByLabel("Work minutes")).toHaveValue(originalMonday);
