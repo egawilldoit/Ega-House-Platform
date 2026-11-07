@@ -2,6 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  DEFAULT_PERSONAL_OPERATIONS,
+  getPersonalOperationsDayPlan,
+} from "../src/preferences";
+import {
   getCurrentLocalDayWindow,
   getCurrentWeekWindow,
   getLocalDateInTimezone,
@@ -474,4 +478,55 @@ test("splitIntervalByLocalDay validates input", () => {
   assert.throws(() => splitIntervalByLocalDay("UTC", 0, Number.POSITIVE_INFINITY), /Invalid interval/);
   assert.deepEqual(splitIntervalByLocalDay("UTC", 10, 5), []);
   assert.deepEqual(splitIntervalByLocalDay("UTC", 5, 5), []);
+});
+
+// ---------------------------------------------------------------------------
+// Africa/Casablanca proof: schedule day boundaries come from the account Time
+// Context, not from a UTC calendar or a second stored timezone.
+// ---------------------------------------------------------------------------
+
+test("Africa/Casablanca Ramadan fall-back produces a 25-hour local day", () => {
+  const window = getLocalDayWindow("Africa/Casablanca", "2026-02-15");
+  assert.equal(window.timezone, "Africa/Casablanca");
+  assert.equal(window.fallback, "none");
+  assert.equal(window.durationHours, 25);
+  assert.equal(window.startUtcIso, "2026-02-14T23:00:00.000Z");
+  assert.equal(window.endUtcIso, "2026-02-16T00:00:00.000Z");
+});
+
+test("Africa/Casablanca Ramadan spring-forward produces a 23-hour local day", () => {
+  const window = getLocalDayWindow("Africa/Casablanca", "2026-03-22");
+  assert.equal(window.durationHours, 23);
+  assert.equal(window.startUtcIso, "2026-03-22T00:00:00.000Z");
+  assert.equal(window.endUtcIso, "2026-03-22T23:00:00.000Z");
+});
+
+test("Africa/Casablanca week window follows local midnight across the DST change", () => {
+  const week = getWeekWindow("Africa/Casablanca", "2026-02-15");
+  assert.equal(week.weekStart, "2026-02-09");
+  assert.equal(week.weekEnd, "2026-02-15");
+  assert.equal(week.weekStartUtcIso, "2026-02-08T23:00:00.000Z");
+  assert.equal(week.weekEndExclusiveUtcIso, "2026-02-16T00:00:00.000Z");
+});
+
+test("Africa/Casablanca local date stays on the local calendar across DST", () => {
+  // UTC+1 in February: local midnight is 23:00Z on the previous day.
+  assert.equal(getLocalDateInTimezone(new Date("2026-02-15T01:59:59Z"), "Africa/Casablanca"), "2026-02-15");
+  assert.equal(getLocalDateInTimezone(new Date("2026-02-15T02:00:00Z"), "Africa/Casablanca"), "2026-02-15");
+
+  // UTC+0 during Ramadan: the boundary is 00:00Z.
+  assert.equal(getLocalDateInTimezone(new Date("2026-03-22T01:59:59Z"), "Africa/Casablanca"), "2026-03-22");
+  assert.equal(getLocalDateInTimezone(new Date("2026-03-22T02:00:00Z"), "Africa/Casablanca"), "2026-03-22");
+});
+
+test("the Casablanca local date resolves the schedule day without new timezone math", () => {
+  const localDate = getLocalDateInTimezone(
+    new Date("2026-02-15T02:00:00Z"),
+    "Africa/Casablanca",
+  );
+  const plan = getPersonalOperationsDayPlan(DEFAULT_PERSONAL_OPERATIONS, localDate);
+  assert.equal(plan.ok, true);
+  if (!plan.ok) return;
+  assert.equal(plan.value.day, "sunday");
+  assert.deepEqual(plan.value.target, { work: 240, jobSearch: 0 });
 });
