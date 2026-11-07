@@ -87,6 +87,13 @@ function normalizeArchivedAt(value: unknown): string | null {
   return typeof record.archived_at === "string" ? record.archived_at : null;
 }
 
+function isRelationPresent(value: unknown): boolean {
+  if (Array.isArray(value)) {
+    return value.length > 0;
+  }
+  return Boolean(value && typeof value === "object");
+}
+
 /**
  * Read the bounded Morning Startup inputs for the canonical Today snapshot.
  *
@@ -118,22 +125,14 @@ export async function getMorningStartupData(
     const yesterdayIso = shiftIsoDateByDays(snapshot.date, -1);
     const window = getLocalDayWindow(snapshot.timezone, yesterdayIso);
 
-    const [rowsResult, countResult] = await Promise.all([
-      supabase
-        .from("tasks")
-        .select(YESTERDAY_ROW_COLUMNS)
-        .in("status", [...YESTERDAY_STATUSES])
-        .gte("completed_at", window.startUtcIso)
-        .lt("completed_at", window.endUtcIso)
-        .order("completed_at", { ascending: false })
-        .limit(20),
-      supabase
-        .from("tasks")
-        .select("id", { count: "exact", head: true })
-        .in("status", [...YESTERDAY_STATUSES])
-        .gte("completed_at", window.startUtcIso)
-        .lt("completed_at", window.endUtcIso),
-    ]);
+    const rowsResult = await supabase
+      .from("tasks")
+      .select(YESTERDAY_ROW_COLUMNS, { count: "exact" })
+      .in("status", [...YESTERDAY_STATUSES])
+      .gte("completed_at", window.startUtcIso)
+      .lt("completed_at", window.endUtcIso)
+      .order("completed_at", { ascending: false })
+      .limit(20);
 
     if (rowsResult.error) {
       yesterdayErrorMessage = MORNING_STARTUP_YESTERDAY_ERROR_MESSAGE;
@@ -148,8 +147,9 @@ export async function getMorningStartupData(
           completedAt: row.completed_at ?? null,
         };
       });
-      // A failed count query falls back to the bounded row count.
-      yesterdayCompletedCount = countResult.error ? null : countResult.count ?? null;
+      // The exact count travels with the same capped row query. Fall back to
+      // the row length only when the count is unavailable.
+      yesterdayCompletedCount = rowsResult.count ?? null;
     }
   } catch {
     yesterdayErrorMessage = MORNING_STARTUP_YESTERDAY_ERROR_MESSAGE;
@@ -190,7 +190,7 @@ export async function startMorningOutcomes(
   const { data, error } = await supabase
     .from("tasks")
     .select(
-      "id, status, archived_at, project_id, projects(name, slug, archived_at), goals(archived_at)",
+      "id, status, archived_at, project_id, goal_id, projects(name, slug, archived_at), goals(archived_at)",
     )
     .in("id", normalized.taskIds);
 
@@ -202,7 +202,9 @@ export async function startMorningOutcomes(
   }
 
   const rows: MorningStartupOwnedTaskRow[] = (data ?? []).map((row) => {
-    const project = normalizeProject((row as { projects?: unknown }).projects);
+    const rawProjects = (row as { projects?: unknown }).projects;
+    const rawGoals = (row as { goals?: unknown }).goals;
+    const project = normalizeProject(rawProjects);
     return {
       id: String(row.id),
       status: String(row.status ?? ""),
@@ -211,7 +213,10 @@ export async function startMorningOutcomes(
       projectName: project?.name ?? null,
       projectSlug: project?.slug ?? null,
       projectArchivedAt: project?.archivedAt ?? null,
-      goalArchivedAt: normalizeArchivedAt((row as { goals?: unknown }).goals),
+      goalId: row.goal_id ? String(row.goal_id) : null,
+      goalArchivedAt: normalizeArchivedAt(rawGoals),
+      projectRelationPresent: isRelationPresent(rawProjects),
+      goalRelationPresent: isRelationPresent(rawGoals),
     };
   });
 
@@ -236,11 +241,19 @@ export async function startMorningOutcomes(
 
   let appliedCount = 0;
   for (const task of orderedTasks) {
-    const result = await planTask(task.id, {
-      supabase,
-      now: options.now,
-      localDate: options.localDate,
-    });
+    let result: { errorMessage: string | null };
+    try {
+      result = await planTask(task.id, {
+        supabase,
+        now: options.now,
+        localDate: options.localDate,
+      });
+    } catch {
+      return {
+        errorMessage: `Morning startup saved ${appliedCount} of ${orderedTasks.length} outcomes, then failed: Unable to update task right now.`,
+        appliedCount,
+      };
+    }
 
     if (result.errorMessage) {
       return {

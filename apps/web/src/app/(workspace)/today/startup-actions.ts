@@ -46,11 +46,13 @@ export async function startMorningOutcomesAction(formData: FormData) {
   );
 
   if (!normalized.ok) {
+    revalidateWorkspaceFor("today", { returnTo: returnPath });
     redirectWithWorkspaceFeedback(retryPath, { errorMessage: normalized.errorMessage });
   }
 
   const user = await getCurrentUser();
   if (!user) {
+    revalidateWorkspaceFor("today", { returnTo: returnPath });
     redirectWithWorkspaceFeedback(retryPath, {
       errorMessage: "Sign in to start your day.",
     });
@@ -64,11 +66,9 @@ export async function startMorningOutcomesAction(formData: FormData) {
   }).catch(() => ({ errorMessage: GENERIC_SAVE_ERROR, appliedCount: 0 }));
 
   if (result.errorMessage) {
-    // A partial failure may already have applied some outcomes; revalidate so
-    // the applied subset is visible when the error redirect lands.
-    if (result.appliedCount > 0) {
-      revalidateWorkspaceFor("today", { returnTo: returnPath });
-    }
+    // Unknown partial state: refresh Today before every error redirect so any
+    // outcomes that were already applied are visible on return.
+    revalidateWorkspaceFor("today", { returnTo: returnPath });
     // Error feedback only. A failed action must never also report success.
     redirectWithWorkspaceFeedback(retryPath, { errorMessage: result.errorMessage });
   }

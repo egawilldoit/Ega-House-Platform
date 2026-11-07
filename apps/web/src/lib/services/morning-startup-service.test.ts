@@ -61,7 +61,6 @@ function createSupabaseMock(options: {
   rows?: unknown[] | null;
   count?: number | null;
   rowError?: unknown;
-  countError?: unknown;
   calls?: QueryCall[];
 }) {
   const calls = options.calls ?? [];
@@ -95,11 +94,10 @@ function createSupabaseMock(options: {
               method: "select",
               args: selectOptions === undefined ? [columns] : [columns, selectOptions],
             });
-            const isCount = Boolean(selectOptions?.head);
             return createBuilder({
-              data: isCount ? null : options.rowError ? null : options.rows ?? [],
-              error: isCount ? options.countError ?? null : options.rowError ?? null,
-              count: isCount ? options.count ?? null : null,
+              data: options.rowError ? null : options.rows ?? [],
+              error: options.rowError ?? null,
+              count: options.count ?? null,
             });
           },
         };
@@ -122,20 +120,21 @@ function ownedRow(
     status?: string;
     projectId?: string;
     projects?: unknown;
+    goalId?: string | null;
     goals?: unknown;
   },
 ) {
-  const project = overrides.projects ?? {
-    name: "Alpha",
-    slug: "alpha",
-    archived_at: null,
-  };
+  const project =
+    "projects" in overrides
+      ? overrides.projects
+      : { name: "Alpha", slug: "alpha", archived_at: null };
   return {
     id: overrides.id,
     status: overrides.status ?? "todo",
     archived_at: null,
     project_id: overrides.projectId ?? "project-a",
     projects: project,
+    goal_id: overrides.goalId ?? null,
     goals: overrides.goals ?? null,
   };
 }
@@ -164,9 +163,9 @@ test("yesterday read uses all completed aliases and the owner timezone's half-op
   const selects = allCalls(calls, "select");
 
   assert.deepEqual(call(calls, "from")?.args, ["tasks"]);
-  assert.deepEqual(selects[0]?.args, [YESTERDAY_ROW_COLUMNS]);
-  assert.deepEqual(selects[1]?.args, ["id", { count: "exact", head: true }]);
-  assert.equal(allCalls(calls, "in").length, 2);
+  assert.deepEqual(selects[0]?.args, [YESTERDAY_ROW_COLUMNS, { count: "exact" }]);
+  assert.equal(selects.length, 1);
+  assert.equal(allCalls(calls, "in").length, 1);
   for (const entry of allCalls(calls, "in")) {
     assert.deepEqual(entry.args, ["status", ["done", "complete", "completed"]]);
   }
@@ -176,6 +175,8 @@ test("yesterday read uses all completed aliases and the owner timezone's half-op
   for (const entry of allCalls(calls, "lt")) {
     assert.deepEqual(entry.args, ["completed_at", expectedWindow.endUtcIso]);
   }
+  assert.equal(allCalls(calls, "gte").length, 1);
+  assert.equal(allCalls(calls, "lt").length, 1);
   assert.deepEqual(call(calls, "order")?.args, ["completed_at", { ascending: false }]);
   assert.deepEqual(call(calls, "limit")?.args, [20]);
   assert.equal(model.yesterday.completedCount, 1);
@@ -227,7 +228,7 @@ test("the exact yesterday count is independent of the capped row list", async ()
   assert.equal(model.yesterday.tasks.length, 5);
 });
 
-test("a failed count query falls back to the bounded row count", async () => {
+test("a null exact count falls back to the bounded row count", async () => {
   const threeRows = Array.from({ length: 3 }, (_, index) => ({
     id: `y${index}`,
     title: `Yesterday ${index}`,
@@ -238,7 +239,7 @@ test("a failed count query falls back to the bounded row count", async () => {
   }));
   const { supabase } = createSupabaseMock({
     rows: threeRows,
-    countError: { message: "count unavailable" },
+    count: null,
   });
 
   const model = await getMorningStartupData(snapshot(), {
@@ -369,6 +370,7 @@ test("archived project and goal ancestry are rejected before any plan write", as
         ownedRow({
           id: "archived-goal",
           projects: { name: "Alpha", slug: "alpha", archived_at: null },
+          goalId: "goal-1",
           goals: { archived_at: "2026-11-01T00:00:00.000Z" },
         }),
       ],
@@ -392,6 +394,91 @@ test("archived project and goal ancestry are rejected before any plan write", as
     assert.equal(result.appliedCount, 0);
     assert.equal(planned, false);
   }
+});
+
+test("missing project or goal ancestry fails closed before any plan write", async () => {
+  for (const scenario of [
+    {
+      rows: [
+        ownedRow({
+          id: "missing-project",
+          projects: null,
+        }),
+      ],
+      expected: MORNING_OUTCOME_UNAVAILABLE_MESSAGE,
+    },
+    {
+      rows: [
+        ownedRow({
+          id: "missing-goal",
+          goalId: "goal-1",
+          goals: null,
+        }),
+      ],
+      expected: MORNING_OUTCOME_UNAVAILABLE_MESSAGE,
+    },
+  ]) {
+    const { supabase } = createSupabaseMock({ rows: scenario.rows });
+    let planned = false;
+    const planTask: MorningStartupPlanTask = async () => {
+      planned = true;
+      return { errorMessage: null };
+    };
+
+    const result = await startMorningOutcomes({
+      taskIds: [String((scenario.rows[0] as { id: string }).id)],
+      supabase,
+      planTask,
+    });
+
+    assert.equal(result.errorMessage, scenario.expected);
+    assert.equal(result.appliedCount, 0);
+    assert.equal(planned, false);
+  }
+});
+
+test("array-shaped ancestry relations are still readable", async () => {
+  const { supabase } = createSupabaseMock({
+    rows: [
+      ownedRow({
+        id: "array-relations",
+        projects: [{ name: "Alpha", slug: "alpha", archived_at: null }],
+        goalId: "goal-1",
+        goals: [{ archived_at: null }],
+      }),
+    ],
+  });
+
+  const planned: string[] = [];
+  const planTask: MorningStartupPlanTask = async (taskId) => {
+    planned.push(taskId);
+    return { errorMessage: null };
+  };
+
+  const result = await startMorningOutcomes({
+    taskIds: ["array-relations"],
+    supabase,
+    planTask,
+  });
+
+  assert.deepEqual(result, { errorMessage: null, appliedCount: 1 });
+  assert.deepEqual(planned, ["array-relations"]);
+});
+
+test("a null goal_id is legitimate and does not require a goal relation", async () => {
+  const { supabase } = createSupabaseMock({
+    rows: [ownedRow({ id: "no-goal", goalId: null, goals: null })],
+  });
+
+  const planTask: MorningStartupPlanTask = async () => ({ errorMessage: null });
+
+  const result = await startMorningOutcomes({
+    taskIds: ["no-goal"],
+    supabase,
+    planTask,
+  });
+
+  assert.deepEqual(result, { errorMessage: null, appliedCount: 1 });
 });
 
 test("a missing owned row is rejected instead of silently planning a subset", async () => {
@@ -426,6 +513,29 @@ test("a mid-loop failure reports the applied count and never a success result", 
 
   const result = await startMorningOutcomes({ taskIds: ["a", "b"], supabase, planTask });
 
+  assert.equal(result.appliedCount, 1);
+  assert.ok(result.errorMessage);
+  assert.match(result.errorMessage ?? "", /saved 1 of 2 outcomes/);
+  assert.match(result.errorMessage ?? "", /Unable to update task right now\./);
+});
+
+test("a thrown planTask after a partial write reports the real applied count and no success", async () => {
+  const { supabase } = createSupabaseMock({
+    rows: [ownedRow({ id: "a" }), ownedRow({ id: "b" })],
+  });
+
+  const applied: string[] = [];
+  const planTask: MorningStartupPlanTask = async (taskId) => {
+    if (taskId === "b") {
+      throw new Error("transport dropped");
+    }
+    applied.push(taskId);
+    return { errorMessage: null };
+  };
+
+  const result = await startMorningOutcomes({ taskIds: ["a", "b"], supabase, planTask });
+
+  assert.deepEqual(applied, ["a"]);
   assert.equal(result.appliedCount, 1);
   assert.ok(result.errorMessage);
   assert.match(result.errorMessage ?? "", /saved 1 of 2 outcomes/);
