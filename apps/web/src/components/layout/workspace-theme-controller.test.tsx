@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import assert from "node:assert/strict";
+import { DEFAULT_USER_PREFERENCES } from "@ega/domain/preferences";
 import { act } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createRoot, type Root } from "react-dom/client";
@@ -151,6 +152,7 @@ describe("WorkspacePreferencesProvider", () => {
       root.render(
         <WorkspacePreferencesProvider
           value={{
+            ...DEFAULT_USER_PREFERENCES,
             theme: "dark",
             accent: "blue",
             density: "compact",
@@ -181,6 +183,7 @@ describe("WorkspacePreferencesProvider", () => {
     const markup = renderToStaticMarkup(
       <WorkspacePreferencesProvider
         value={{
+          ...DEFAULT_USER_PREFERENCES,
           theme: "light",
           accent: "green",
           density: "comfortable",

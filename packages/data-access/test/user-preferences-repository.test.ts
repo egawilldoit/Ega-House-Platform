@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { createAuthenticatedActor } from "@ega/application";
-import { DEFAULT_USER_PREFERENCES, type UserPreferences } from "@ega/domain/preferences";
+import { DEFAULT_USER_PREFERENCES } from "@ega/domain/preferences";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { SupabaseUserPreferencesRepository } from "../src/preferences/repository";
@@ -17,6 +17,13 @@ type QueryResult = {
 class FakePreferencesSupabase {
   calls: Array<{ table: string; steps: string[] }> = [];
   constructor(private readonly queue: QueryResult[]) {}
+
+  rpc(name: string, args: unknown) {
+    assert.equal(name, "patch_user_preferences");
+    const builder = new FakeBuilder("user_preferences", this.queue, this.calls);
+    builder.upsert(args);
+    return builder;
+  }
 
   from(table: string) {
     assert.equal(table, "user_preferences");
@@ -83,6 +90,7 @@ test("get reads the owner row scoped by verified user_id", async () => {
   assert.equal(result.ok, true);
   if (result.ok) {
     assert.deepEqual(result.value, {
+      personalOperations: DEFAULT_USER_PREFERENCES.personalOperations,
       theme: "dark",
       accent: "violet",
       density: "compact",
@@ -144,68 +152,23 @@ test("get sanitizes unexpected errors", async () => {
   if (!result.ok) assert.deepEqual(result.error, { code: "unknown" });
 });
 
-test("save upserts every column for the verified owner with onConflict user_id", async () => {
-  const preferences: UserPreferences = {
-    theme: "light",
-    accent: "blue",
-    density: "comfortable",
-    reducedMotion: false,
-    launchPage: "tasks",
-    taskLayout: "list",
-    taskOpenMode: "panel",
-  };
-  const fake = new FakePreferencesSupabase([
-    {
-      data: {
-        theme: "light",
-        accent: "blue",
-        density: "comfortable",
-        reduced_motion: false,
-        launch_page: "tasks",
-        task_layout: "list",
-        task_open_mode: "panel",
-      },
-      error: null,
-    },
-  ]);
-  const result = await repo(fake).save(ACTOR, preferences);
-
-  assert.equal(result.ok, true);
-  const step = fake.calls[0]?.steps.find((entry) => entry.startsWith("upsert:"));
-  assert.ok(step);
-  assert.ok(step.includes('"user_id":"owner-preferences"'));
-  assert.ok(step.includes('"theme":"light"'));
-  assert.ok(step.includes('"accent":"blue"'));
-  assert.ok(step.includes('"reduced_motion":false'));
-  assert.ok(step.includes('"launch_page":"tasks"'));
-  assert.ok(step.includes('"task_layout":"list"'));
-  assert.ok(step.includes('"task_open_mode":"panel"'));
-  assert.ok(step.includes('"onConflict":"user_id"'));
-});
-
-test("save normalizes invalid input instead of persisting it", async () => {
+test("patch sends only requested fields to the owner-scoped RPC", async () => {
   const fake = new FakePreferencesSupabase([{ data: STORED_ROW, error: null }]);
-  await repo(fake).save(ACTOR, {
-    ...DEFAULT_USER_PREFERENCES,
-    theme: "sepia" as never,
-  });
-
-  const step = fake.calls[0]?.steps.find((entry) => entry.startsWith("upsert:"));
-  assert.ok(step);
-  assert.ok(step.includes('"theme":"system"'));
+  const result = await repo(fake).patch(ACTOR, { theme: "light" });
+  assert.equal(result.ok, true);
+  const step = fake.calls[0]?.steps.find(entry => entry.startsWith("upsert:"));
+  assert.ok(step?.includes('"theme":"light"'));
+  assert.ok(!step?.includes('"accent"'));
 });
 
-test("save reports a failed write as an error, never a success-shaped value", async () => {
+test("patch returns failure when persistence fails", async () => {
   const fake = new FakePreferencesSupabase([{ data: null, error: { code: "23514" } }]);
-  const result = await repo(fake).save(ACTOR, DEFAULT_USER_PREFERENCES);
-
-  assert.equal(result.ok, false);
+  assert.equal((await repo(fake).patch(ACTOR, { theme: "dark" })).ok, false);
 });
 
-test("save returns unknown when the database returns no row", async () => {
+test("patch returns an error when the database returns no row", async () => {
   const fake = new FakePreferencesSupabase([{ data: null, error: null }]);
-  const result = await repo(fake).save(ACTOR, DEFAULT_USER_PREFERENCES);
-
+  const result = await repo(fake).patch(ACTOR, { theme: "dark" });
   assert.equal(result.ok, false);
   if (!result.ok) assert.deepEqual(result.error, { code: "unknown" });
 });

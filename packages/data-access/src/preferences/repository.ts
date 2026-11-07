@@ -3,12 +3,13 @@ import type {
   RepositoryResult,
   UserPreferencesRepository,
 } from "@ega/application";
-import { normalizeUserPreferences, type UserPreferences } from "@ega/domain/preferences";
+import { normalizeUserPreferences, type UserPreferences, type UserPreferencesPatch } from "@ega/domain/preferences";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { sanitizeSupabaseError } from "../supabase/errors";
 
 type UserPreferencesRow = {
+  personal_operations: unknown;
   theme: string | null;
   accent: string | null;
   density: string | null;
@@ -33,6 +34,7 @@ function isMissingPreferencesTable(error: unknown): boolean {
 
 function toPreferences(row: UserPreferencesRow): UserPreferences {
   return normalizeUserPreferences({
+    personalOperations: row.personal_operations,
     theme: row.theme ?? undefined,
     accent: row.accent ?? undefined,
     density: row.density ?? undefined,
@@ -57,7 +59,7 @@ export class SupabaseUserPreferencesRepository implements UserPreferencesReposit
     const { data, error } = await this.supabase
       .from("user_preferences")
       .select(
-        "theme, accent, density, reduced_motion, launch_page, task_layout, task_open_mode",
+        "theme, accent, density, reduced_motion, launch_page, task_layout, task_open_mode, personal_operations",
       )
       .eq("user_id", actor.userId)
       .maybeSingle();
@@ -76,40 +78,13 @@ export class SupabaseUserPreferencesRepository implements UserPreferencesReposit
     return { ok: true, value: toPreferences(data as UserPreferencesRow) };
   }
 
-  async save(
-    actor: AuthenticatedActor,
-    preferences: UserPreferences,
+  async patch(
+    _actor: AuthenticatedActor,
+    preferences: UserPreferencesPatch,
   ): Promise<RepositoryResult<UserPreferences>> {
-    const normalized = normalizeUserPreferences(preferences);
-    const { data, error } = await this.supabase
-      .from("user_preferences")
-      .upsert(
-        {
-          user_id: actor.userId,
-          theme: normalized.theme,
-          accent: normalized.accent,
-          density: normalized.density,
-          reduced_motion: normalized.reducedMotion,
-          launch_page: normalized.launchPage,
-          task_layout: normalized.taskLayout,
-          task_open_mode: normalized.taskOpenMode,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: "user_id" },
-      )
-      .select(
-        "theme, accent, density, reduced_motion, launch_page, task_layout, task_open_mode",
-      )
-      .single();
-
-    if (error) {
-      return { ok: false, error: sanitizeSupabaseError(error) };
-    }
-
-    if (!data) {
-      return { ok: false, error: { code: "unknown" } };
-    }
-
+    const { data, error } = await this.supabase.rpc("patch_user_preferences", { patch: preferences }).single();
+    if (error) return { ok: false, error: sanitizeSupabaseError(error) };
+    if (!data) return { ok: false, error: { code: "unknown" } };
     return { ok: true, value: toPreferences(data as UserPreferencesRow) };
   }
 }

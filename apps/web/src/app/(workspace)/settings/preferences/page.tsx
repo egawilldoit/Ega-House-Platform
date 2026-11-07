@@ -1,3 +1,4 @@
+import { PersonalOperationsForm } from "./personal-operations-form";
 import type { Metadata } from "next";
 
 import { ChoiceGroup } from "@/app/(workspace)/settings/_components/choice-group";
@@ -63,6 +64,11 @@ export default async function WorkspacePreferencesPage({
             {success}
           </div>
         ) : null}
+
+        <Card>
+          <CardHeader><CardTitle>Personal schedule</CardTitle><CardDescription>Targets and optional guidance in your account time zone.</CardDescription></CardHeader>
+          <CardContent><PersonalOperationsForm initial={preferences.personalOperations} disabled={Boolean(state.errorMessage)} /></CardContent>
+        </Card>
 
         <Card>
           <CardHeader>
