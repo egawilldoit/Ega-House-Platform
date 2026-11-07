@@ -28,12 +28,16 @@ export function TimerActionFeedback({
   return (
     <>
       {actionError ? (
-        <div className="feedback-block feedback-block-error mt-4 px-5 py-3">
+        <div role="alert" className="feedback-block feedback-block-error mt-4 px-5 py-3">
           <p className="glass-label text-signal-error">{actionError}</p>
         </div>
       ) : null}
       {actionSuccess ? (
-        <div className="feedback-block feedback-block-success mt-4 px-5 py-3">
+        <div
+          role="status"
+          aria-live="polite"
+          className="feedback-block feedback-block-success mt-4 px-5 py-3"
+        >
           <p className="glass-label text-signal-live">{actionSuccess}</p>
         </div>
       ) : null}

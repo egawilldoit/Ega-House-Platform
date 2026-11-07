@@ -1,6 +1,11 @@
 "use server";
 
-import { normalizeOutcomeTaskIds } from "@/lib/morning-startup";
+import {
+  buildStartupErrorReturnPath,
+  formatMorningStartupSavedMessage,
+  normalizeOutcomeTaskIds,
+  parseStartupRetryIds,
+} from "@/lib/morning-startup";
 import { startMorningOutcomes } from "@/lib/services/morning-startup-service";
 import { getCurrentUser } from "@/lib/services/auth-service";
 import { getWebTimeContext } from "@/lib/services/time-context-service";
@@ -8,6 +13,9 @@ import {
   redirectWithWorkspaceFeedback,
   revalidateWorkspaceFor,
 } from "@/lib/workspace/workspace-navigation";
+
+const GENERIC_SAVE_ERROR =
+  "Morning startup could not be saved right now. Try again from Today.";
 
 /**
  * Only Today and Home are valid post-action destinations. Anything else falls
@@ -27,15 +35,23 @@ function getStartupReturnPath(rawReturnTo: unknown): "/today" | "/home" {
 
 export async function startMorningOutcomesAction(formData: FormData) {
   const returnPath = getStartupReturnPath(formData.get("returnTo"));
-  const normalized = normalizeOutcomeTaskIds(formData.getAll("taskIds"));
+  const submittedTaskIds = formData.getAll("taskIds");
+  const normalized = normalizeOutcomeTaskIds(submittedTaskIds);
+
+  // Preserve the retryable selection on every error path. The parser caps and
+  // sanitises, and the page only pre-checks ids that are actually rendered.
+  const retryPath = buildStartupErrorReturnPath(
+    returnPath,
+    parseStartupRetryIds(submittedTaskIds),
+  );
 
   if (!normalized.ok) {
-    redirectWithWorkspaceFeedback(returnPath, { errorMessage: normalized.errorMessage });
+    redirectWithWorkspaceFeedback(retryPath, { errorMessage: normalized.errorMessage });
   }
 
   const user = await getCurrentUser();
   if (!user) {
-    redirectWithWorkspaceFeedback(returnPath, {
+    redirectWithWorkspaceFeedback(retryPath, {
       errorMessage: "Sign in to start your day.",
     });
   }
@@ -45,15 +61,20 @@ export async function startMorningOutcomesAction(formData: FormData) {
   const result = await startMorningOutcomes({
     taskIds: normalized.taskIds,
     localDate: localDate ?? undefined,
-  });
+  }).catch(() => ({ errorMessage: GENERIC_SAVE_ERROR, appliedCount: 0 }));
 
   if (result.errorMessage) {
+    // A partial failure may already have applied some outcomes; revalidate so
+    // the applied subset is visible when the error redirect lands.
+    if (result.appliedCount > 0) {
+      revalidateWorkspaceFor("today", { returnTo: returnPath });
+    }
     // Error feedback only. A failed action must never also report success.
-    redirectWithWorkspaceFeedback(returnPath, { errorMessage: result.errorMessage });
+    redirectWithWorkspaceFeedback(retryPath, { errorMessage: result.errorMessage });
   }
 
   revalidateWorkspaceFor("today", { returnTo: returnPath });
   redirectWithWorkspaceFeedback(returnPath, {
-    successMessage: `Morning startup saved: ${result.appliedCount} outcomes for today.`,
+    successMessage: formatMorningStartupSavedMessage(result.appliedCount),
   });
 }

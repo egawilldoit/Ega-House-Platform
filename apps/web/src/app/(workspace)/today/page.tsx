@@ -35,6 +35,7 @@ import { isTaskCompletedStatus } from "@/lib/task-domain";
 import { getCurrentUser } from "@/lib/services/auth-service";
 import { getOperatorSnapshotData } from "@/lib/services/operator-service";
 import { getMorningStartupData } from "@/lib/services/morning-startup-service";
+import { parseStartupRetryIds } from "@/lib/morning-startup";
 import { getActiveTimerSession } from "@/lib/services/timer-service";
 import { getTaskDrawerDetail } from "@/lib/services/task-service";
 import { listTaskSubtasks } from "@/lib/services/subtask-service";
@@ -103,6 +104,7 @@ export default async function TodayPage({
     taskUpdateSuccess?: string;
     taskUpdateTaskId?: string;
     startup?: string;
+    startupRetry?: string | string[];
   }>;
 }) {
   const resolvedSearchParams = await searchParams;
@@ -115,6 +117,7 @@ export default async function TodayPage({
   const taskUpdateSuccess = resolvedSearchParams.taskUpdateSuccess?.slice(0, 180) ?? null;
   const taskUpdateTaskId = resolvedSearchParams.taskUpdateTaskId?.slice(0, 80) ?? null;
   const startupSkipped = resolvedSearchParams.startup === "skipped";
+  const startupRetryIds = parseStartupRetryIds(resolvedSearchParams.startupRetry);
 
   const [todayResult, healthResult, frictionResult, user, proposalResult, shellMetrics] =
     await Promise.all([
@@ -158,6 +161,7 @@ export default async function TodayPage({
   // failure-tolerant; a failed read becomes an inline note, never a blank Today.
   const morningStartup = await getMorningStartupData(snapshot, {
     skipped: startupSkipped,
+    retryIds: startupRetryIds,
   });
 
   // Bounded active-session read, only when the snapshot says a session ran. It

@@ -34,9 +34,10 @@ test("owner starts the day with 1-2 outcomes and runs a timer", async ({ page })
   }
 
   await group.getByRole("button", { name: /^Start with / }).click();
+  const outcomeWord = selectionCount === 1 ? "outcome" : "outcomes";
   await expect(
     page.getByText(
-      new RegExp(`Morning startup saved: ${selectionCount} outcomes for today\\.`),
+      new RegExp(`Morning startup saved: ${selectionCount} ${outcomeWord} for today\\.`),
     ),
   ).toBeVisible();
 
