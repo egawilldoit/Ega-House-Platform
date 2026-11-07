@@ -9,7 +9,7 @@ import type {
   ExpenseUpdateRecordInput,
 } from "../src/expenses/ports";
 import {
-  expenseCreateFingerprint,
+  parseCreateExpenseInput,
   type ExpenseCreateValues,
   type PersonalExpense,
 } from "@ega/domain/expenses";
@@ -17,6 +17,7 @@ import {
 import {
   createExpense,
   deleteExpense,
+  expenseReceiptFingerprint,
   getExpense,
   listExpenses,
   updateExpense,
@@ -67,7 +68,7 @@ const ORIGINAL_VALUES: ExpenseCreateValues = {
   idempotencyKey: "key-1",
 };
 
-const ORIGINAL_FINGERPRINT = expenseCreateFingerprint(ORIGINAL_VALUES);
+const ORIGINAL_FINGERPRINT = expenseReceiptFingerprint(ORIGINAL_VALUES);
 
 function receipt(
   value: PersonalExpense,
@@ -188,8 +189,22 @@ test("create rejects edited values even though they match the current row", asyn
   assert.equal(calls.create, 0);
 });
 
+test("max escaped metadata hashes to a fixed 64-character receipt", () => {
+  const parsed = parseCreateExpenseInput({
+    ...CREATE_BODY,
+    note: "\"\\\n".repeat(167).slice(0, 500),
+    merchant: "\"\\".repeat(60),
+  });
+  assert.equal(parsed.ok, true);
+  if (!parsed.ok) return;
+
+  const fingerprint = expenseReceiptFingerprint(parsed.value);
+  assert.match(fingerprint, /^[0-9a-f]{64}$/);
+  assert.equal(fingerprint.length, 64);
+});
+
 test("create rejects the same key with a different original payload", async () => {
-  const otherFingerprint = expenseCreateFingerprint({
+  const otherFingerprint = expenseReceiptFingerprint({
     ...ORIGINAL_VALUES,
     amountMinor: 999,
   });

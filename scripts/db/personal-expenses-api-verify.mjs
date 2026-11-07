@@ -564,7 +564,7 @@ async function main() {
       "long note round-trips unchanged",
     );
     const [longFingerprintRow] = await sql.unsafe(
-      `SELECT length(create_fingerprint)::int AS fingerprint_length, note, merchant
+      `SELECT create_fingerprint, note, merchant
        FROM public.personal_expenses
        WHERE owner_user_id = $1::uuid AND idempotency_key = 'api-long-fingerprint-1'`,
       [OWNER_A],
@@ -573,12 +573,11 @@ async function main() {
     assert(longFingerprintRow.note === longNote, "long note persisted");
     assert(longFingerprintRow.merchant === longMerchant, "long merchant persisted");
     assert(
-      longFingerprintRow.fingerprint_length > 1024 &&
-        longFingerprintRow.fingerprint_length <= 2048,
-      `fingerprint length ${longFingerprintRow.fingerprint_length} fits 2048`,
+      /^[0-9a-f]{64}$/.test(longFingerprintRow.create_fingerprint),
+      `receipt is a 64-character SHA-256 hex hash, got ${longFingerprintRow.create_fingerprint}`,
     );
     await request("DELETE", `/api/expenses/${longFingerprintCreate.body.expense.id}`, TOKEN_A);
-    log("CREATE", "max-length quote/backslash metadata fits the 2048 fingerprint receipt");
+    log("CREATE", "max-length quote/backslash metadata hashes to a fixed 64-character receipt");
 
     const got = await request("GET", `/api/expenses/${expenseId}`, TOKEN_A);
     assert(got.status === 200, "owner get answers 200");

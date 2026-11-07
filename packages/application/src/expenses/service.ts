@@ -1,14 +1,16 @@
 import {
-  expenseCreateFingerprint,
+  canonicalExpenseCreatePayload,
   isExpenseId,
   parseCreateExpenseInput,
   parseExpenseListQuery,
   parseUpdateExpenseInput,
+  type ExpenseCreateValues,
   type ExpenseListValues,
   type PersonalExpense,
 } from "@ega/domain/expenses";
 
 import type { AuthenticatedActor } from "../auth/actor";
+import { sha256Hex } from "../shared/hash";
 import {
   applicationFailure,
   applicationSuccess,
@@ -37,6 +39,16 @@ export type ExpenseListOutcome = Readonly<{
   expenses: PersonalExpense[];
   pagination: Readonly<{ limit: number; offset: number; hasMore: boolean }>;
 }>;
+
+/**
+ * Fixed-size idempotency receipt. The canonical create payload is hashed in
+ * the application layer (where `node:crypto` is allowed) so the database never
+ * stores a second copy of the raw note, merchant or amount. SHA-256 hex is 64
+ * characters and collision resistance is sufficient for this receipt.
+ */
+export function expenseReceiptFingerprint(values: ExpenseCreateValues): string {
+  return sha256Hex(canonicalExpenseCreatePayload(values));
+}
 
 const IDEMPOTENCY_CONFLICT =
   "That idempotency key was already used for a different expense.";
@@ -89,7 +101,7 @@ export async function createExpense(
     return applicationFailure(parsed.message, "validation");
   }
   const values = parsed.value;
-  const createFingerprint = expenseCreateFingerprint(values);
+  const createFingerprint = expenseReceiptFingerprint(values);
 
   const existing = await repository.findByIdempotencyKey(
     actor,

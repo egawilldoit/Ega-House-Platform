@@ -4,9 +4,14 @@
 -- centimes (22.50 MAD = 2250) so no floating point amount can be persisted.
 -- One row per expense, soft-delete only, optimistic concurrency via `version`.
 --
--- Migration sequencing: 0079-0087 are reserved by the known remote
--- feat/mcp-platform-hardening-expansion branch; this migration is 0088 so
--- whichever lands second has clean sequencing. No historical migration is
+-- Migration sequencing: the known remote
+-- feat/mcp-platform-hardening-expansion branch carries 0079-0087 at journal
+-- `when` 1787880000042..50. This migration is 0088 at `when`
+-- 1787880000051, after those entries. Drizzle applies a journal entry only
+-- when its `when` is greater than the last applied migration's `created_at`,
+-- so if THIS migration lands first, that branch must renumber to 0089+ and
+-- raise its journal `when` values above 1787880000051 before merging. If the
+-- MCP branch lands first, 0088 applies normally. No historical migration is
 -- edited by this file.
 --
 -- Owner isolation:
@@ -19,9 +24,10 @@
 --   * `(owner_user_id, idempotency_key)` is unique. A concurrent double submit
 --     can create only one row; the loser classifies the winner as a replay or
 --     a conflicting payload.
---   * `create_fingerprint` is an internal receipt binding the key to the
---     immutable original create payload. It is never exposed on the wire and
---     authenticated callers cannot update it.
+--   * `create_fingerprint` is a SHA-256 hex receipt of the immutable original
+--     create payload (not the raw payload). It is never exposed on the wire,
+--     never duplicates the raw note/merchant, and authenticated callers cannot
+--     update it.
 --
 -- Mutation policy: soft delete only. Authenticated has SELECT/INSERT and
 -- column-level UPDATE on mutable columns; DELETE is not granted and no DELETE
@@ -40,7 +46,7 @@ CREATE TABLE IF NOT EXISTS "public"."personal_expenses" (
 	"need_vs_want" varchar(8) NOT NULL,
 	"payment_method" varchar(32),
 	"idempotency_key" varchar(128) NOT NULL,
-	"create_fingerprint" varchar(2048) NOT NULL,
+	"create_fingerprint" varchar(64) NOT NULL,
 	"version" integer DEFAULT 1 NOT NULL,
 	"deleted_at" timestamp with time zone,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
@@ -60,7 +66,7 @@ CREATE TABLE IF NOT EXISTS "public"."personal_expenses" (
 	CONSTRAINT "personal_expenses_idempotency_key_check"
 		CHECK (btrim("idempotency_key") <> ''),
 	CONSTRAINT "personal_expenses_create_fingerprint_check"
-		CHECK (length("create_fingerprint") between 1 and 2048),
+		CHECK ("create_fingerprint" ~ '^[0-9a-f]{64}$'),
 	CONSTRAINT "personal_expenses_note_check"
 		CHECK ("note" is null OR btrim("note") <> ''),
 	CONSTRAINT "personal_expenses_merchant_check"
