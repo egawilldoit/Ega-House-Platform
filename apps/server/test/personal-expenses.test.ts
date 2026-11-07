@@ -259,6 +259,41 @@ test("POST /api/expenses maps a permission failure to 403 FORBIDDEN", async () =
   assert.equal(body.error.code, "FORBIDDEN");
 });
 
+test("PATCH /api/expenses/:id maps a permission failure to 403 FORBIDDEN", async () => {
+  const fake = new FakeSupabase();
+  fake.push("personal_expenses", {
+    data: null,
+    error: { code: "42501", message: "permission denied for table personal_expenses" },
+  });
+
+  const res = await makeApp(fake).request(`/api/expenses/${EXPENSE_ID}`, {
+    method: "PATCH",
+    headers: { ...AUTH, "content-type": "application/json" },
+    body: JSON.stringify({ version: 1, amountMinor: 1990 }),
+  });
+
+  assert.equal(res.status, 403);
+  const body = await res.json();
+  assert.equal(body.error.code, "FORBIDDEN");
+});
+
+test("DELETE /api/expenses/:id maps a permission failure to 403 FORBIDDEN", async () => {
+  const fake = new FakeSupabase();
+  fake.push("personal_expenses", {
+    data: null,
+    error: { code: "42501", message: "permission denied for table personal_expenses" },
+  });
+
+  const res = await makeApp(fake).request(`/api/expenses/${EXPENSE_ID}`, {
+    method: "DELETE",
+    headers: AUTH,
+  });
+
+  assert.equal(res.status, 403);
+  const body = await res.json();
+  assert.equal(body.error.code, "FORBIDDEN");
+});
+
 test("POST /api/expenses rejects invalid amounts and caller identity before persistence", async () => {
   const app = makeApp(new FakeSupabase());
   for (const body of [

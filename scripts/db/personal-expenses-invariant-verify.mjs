@@ -18,7 +18,9 @@
  *                 create_fingerprint binds the key to the original payload.
  *   RLS         - owners cannot read/write each other's rows; anonymous and
  *                 OAuth client_id tokens are denied; hard DELETE is not
- *                 granted and immutable columns cannot be UPDATEed.
+ *                 granted. Authenticated immutable-column changes are denied by
+ *                 column grants (42501), with the BEFORE UPDATE trigger proven
+ *                 as the owner-role backstop for immutable/undelete/version.
  *   GRANTS      - column-level UPDATE only on mutable columns with forced RLS.
  *   SOFT DELETE - deleted rows remain durable but are excluded from active
  *                 list/total queries; repeating a delete does not change totals.
@@ -793,6 +795,9 @@ async function main() {
         ),
       "23514",
     );
+    // Authenticated immutable-column changes are already denied by column
+    // grants (42501). This owner-role probe bypasses grants to prove the
+    // trigger itself is the defense-in-depth backstop.
     await expectCode(
       "trigger rejects immutable field changes",
       () =>
