@@ -187,14 +187,16 @@ test("list bounds limit and offset", () => {
 });
 
 test("list resolves inclusive local dates to a half-open UTC window", () => {
+  // Asia/Tokyo has no DST, so this exact multi-day window is tzdata-stable;
+  // the separate America/New_York test below covers a DST transition.
   const parsed = parseExpenseListQuery(
-    { from: "2026-11-01", to: "2026-11-07", timezone: "Africa/Casablanca", limit: "10" },
+    { from: "2026-11-01", to: "2026-11-07", timezone: "Asia/Tokyo", limit: "10" },
     {},
   );
   assert.equal(parsed.ok, true);
   if (!parsed.ok) return;
-  assert.equal(parsed.value.startUtcIso, "2026-10-31T23:00:00.000Z");
-  assert.equal(parsed.value.endUtcExclusiveIso, "2026-11-07T23:00:00.000Z");
+  assert.equal(parsed.value.startUtcIso, "2026-10-31T15:00:00.000Z");
+  assert.equal(parsed.value.endUtcExclusiveIso, "2026-11-07T15:00:00.000Z");
   assert.equal(parsed.value.limit, 10);
 });
 

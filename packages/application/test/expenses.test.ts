@@ -236,7 +236,7 @@ test("list limits to the requested page and reports hasMore exactly", async () =
     ACTOR,
     repository,
     { from: "2026-11-01", to: "2026-11-07", limit: "2" },
-    { timezone: "Africa/Casablanca" },
+    { timezone: "Asia/Tokyo" },
   );
 
   assert.equal(result.ok, true);
@@ -245,8 +245,8 @@ test("list limits to the requested page and reports hasMore exactly", async () =
   assert.equal(result.data.pagination.hasMore, true);
   assert.equal(result.data.pagination.limit, 2);
   assert.equal(calls.list[0]?.limit, 3);
-  assert.equal(calls.list[0]?.startUtcIso, "2026-10-31T23:00:00.000Z");
-  assert.equal(calls.list[0]?.endUtcExclusiveIso, "2026-11-07T23:00:00.000Z");
+  assert.equal(calls.list[0]?.startUtcIso, "2026-10-31T15:00:00.000Z");
+  assert.equal(calls.list[0]?.endUtcExclusiveIso, "2026-11-07T15:00:00.000Z");
 });
 
 test("list validates pagination and timezone before persistence", async () => {

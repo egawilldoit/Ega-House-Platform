@@ -251,11 +251,11 @@ test("POST /api/expenses rejects invalid amounts and caller identity before pers
 
 test("GET /api/expenses resolves the owner timezone and returns a bounded page", async () => {
   const fake = new FakeSupabase();
-  fake.push("user_time_context", { data: { iana_timezone: "Africa/Casablanca" }, error: null });
+  fake.push("user_time_context", { data: { iana_timezone: "America/New_York" }, error: null });
   fake.push("personal_expenses", { data: [row()], error: null });
 
   const res = await makeApp(fake).request(
-    "/api/expenses?from=2026-11-01&to=2026-11-07&limit=10",
+    "/api/expenses?from=2026-03-08&to=2026-03-08&limit=10",
     { headers: AUTH },
   );
 
@@ -268,8 +268,8 @@ test("GET /api/expenses resolves the owner timezone and returns a bounded page",
   const listSteps = tableCall(fake, "personal_expenses")?.steps ?? [];
   assert.ok(listSteps.some((step) => step.method === "eq" && step.args[0] === "owner_user_id" && step.args[1] === "user-123"));
   assert.ok(listSteps.some((step) => step.method === "is" && step.args[0] === "deleted_at" && step.args[1] === null));
-  assert.ok(listSteps.some((step) => step.method === "gte" && step.args[0] === "occurred_at" && step.args[1] === "2026-10-31T23:00:00.000Z"));
-  assert.ok(listSteps.some((step) => step.method === "lt" && step.args[0] === "occurred_at" && step.args[1] === "2026-11-07T23:00:00.000Z"));
+  assert.ok(listSteps.some((step) => step.method === "gte" && step.args[0] === "occurred_at" && step.args[1] === "2026-03-08T05:00:00.000Z"));
+  assert.ok(listSteps.some((step) => step.method === "lt" && step.args[0] === "occurred_at" && step.args[1] === "2026-03-09T04:00:00.000Z"));
   assert.ok(listSteps.some((step) => step.method === "range" && step.args[0] === 0 && step.args[1] === 10));
 });
 
