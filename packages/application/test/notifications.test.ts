@@ -112,6 +112,66 @@ test("createNotification validates input and delegates idempotently", async () =
   }
 });
 
+test("event keys are canonicalized before persistence and cannot cross types", async () => {
+  const seenKeys: string[] = [];
+  const records: NotificationRecord[] = [];
+  const repo: NotificationRepository = {
+    createNotification: async (actor, input) => {
+      seenKeys.push(input.idempotencyKey);
+      const existing = records.find((n) => n.idempotencyKey === input.idempotencyKey);
+      if (existing) return ok({ notification: existing, created: false });
+      const record: NotificationRecord = {
+        id: `n${records.length + 1}`,
+        ownerUserId: actor.userId,
+        type: input.type,
+        title: input.title,
+        body: input.body ?? null,
+        targetType: input.target?.type ?? null,
+        targetId: input.target?.id ?? null,
+        idempotencyKey: input.idempotencyKey,
+        readAt: null,
+        openedAt: null,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      records.push(record);
+      return ok({ notification: record, created: true });
+    },
+    getNotification: async () => ok(null),
+    listNotifications: async () => ok({ notifications: [], nextCursor: null }),
+    countUnread: async () => ok(0),
+    markRead: async () => ok(null),
+    markOpened: async () => ok(null),
+    markAllRead: async () => ok(0),
+  };
+
+  const padded = await createNotification(ACTOR, repo, {
+    type: "task_reminder",
+    title: "Task reminder",
+    idempotencyKey: "  task_reminder:evt-1  ",
+  });
+  const canonical = await createNotification(ACTOR, repo, {
+    type: "task_reminder",
+    title: "Task reminder",
+    idempotencyKey: "task_reminder:evt-1",
+  });
+
+  assert.equal(padded.ok, true);
+  assert.equal(canonical.ok, true);
+  assert.equal(records.length, 1);
+  assert.equal(seenKeys[0], "task_reminder:evt-1");
+  assert.equal(padded.ok ? padded.data.created : null, true);
+  assert.equal(canonical.ok ? canonical.data.created : null, false);
+
+  const mismatched = await createNotification(ACTOR, repo, {
+    type: "money_threshold",
+    title: "Spent $10 at Acme",
+    idempotencyKey: "task_reminder:evt-1",
+  });
+  assert.equal(mismatched.ok, false);
+  assert.equal(records.length, 1);
+});
+
 test("listNotifications enforces actor and limit", async () => {
   let capturedLimit = 0;
   const fakeRepo: NotificationRepository = {
@@ -229,10 +289,13 @@ test("notification settings validate HH:MM and persist under the verified owner"
 
   const badStart = await updateNotificationSettings(ACTOR, fakeSettings, { quietHoursStart: "25:99" });
   assert.equal(badStart.ok, false);
+  if (!badStart.ok) assert.equal(badStart.code, "validation");
   const missingEnd = await updateNotificationSettings(ACTOR, fakeSettings, { quietHoursEnd: "7:00" });
   assert.equal(missingEnd.ok, false);
+  if (!missingEnd.ok) assert.equal(missingEnd.code, "validation");
   const equal = await updateNotificationSettings(ACTOR, fakeSettings, { quietHoursStart: "08:00", quietHoursEnd: "08:00" });
   assert.equal(equal.ok, false);
+  if (!equal.ok) assert.equal(equal.code, "validation");
 
   const okUpdate = await updateNotificationSettings(ACTOR, fakeSettings, {
     quietHoursEnabled: true,

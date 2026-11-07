@@ -292,3 +292,16 @@ test("PATCH /api/notifications/settings validates HH:MM and persists owner-scope
   const payload = upsert!.steps.find((s) => s.method === "upsert")!.args[0] as Record<string, unknown>;
   assert.equal(payload.owner_user_id, "user-123");
 });
+
+test("PATCH /api/notifications/settings maps operational failures to 500, not 400", async () => {
+  const fake = new FakeSupabase();
+  fake.push("notification_settings", { data: null, error: { code: "500", message: "settings read failed" } });
+  const res = await makeApp(fake).request("/api/notifications/settings", {
+    method: "PATCH",
+    headers: JSON_HEADERS,
+    body: JSON.stringify({ quietHoursEnabled: true }),
+  });
+  assert.equal(res.status, 500);
+  const body = await res.json() as { error: { code: string } };
+  assert.equal(body.error.code, "INTERNAL");
+});

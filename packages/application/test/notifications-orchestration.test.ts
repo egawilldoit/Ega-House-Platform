@@ -25,6 +25,7 @@ const NOW = new Date("2026-01-15T12:00:00.000Z");
 const NOW_ISO = NOW.toISOString();
 const OWNER = "11111111-1111-1111-1111-111111111111";
 const ACTOR = createAuthenticatedActor(OWNER);
+const TASK_ID = "22222222-2222-2222-2222-222222222222";
 
 function ok<T>(value: T): RepositoryResult<T> {
   return { ok: true, value };
@@ -50,6 +51,9 @@ type State = {
   intents: IntentState[];
   deactivatedTokens: string[];
   nextId: number;
+  preferencesUnavailable: boolean;
+  settingsUnavailable: boolean;
+  timeContextUnavailable: boolean;
 };
 
 function createState(overrides: Partial<State> = {}): State {
@@ -63,6 +67,9 @@ function createState(overrides: Partial<State> = {}): State {
     intents: [],
     deactivatedTokens: [],
     nextId: 0,
+    preferencesUnavailable: false,
+    settingsUnavailable: false,
+    timeContextUnavailable: false,
     ...overrides,
   };
 }
@@ -105,7 +112,7 @@ function notification(state: State, type: NotificationRecord["type"] = "task_rem
     title: "Task reminder",
     body: "You have a task reminder",
     targetType: "task",
-    targetId: "task-1",
+    targetId: TASK_ID,
     idempotencyKey: `task_reminder:${state.notifications.length + 1}`,
     readAt: null,
     openedAt: null,
@@ -302,6 +309,7 @@ function createRepositories(state: State) {
 
   const preferenceRepository = {
     async listPreferences(actor: { userId: string }) {
+      if (state.preferencesUnavailable) return { ok: false as const, error: { code: "unknown" as const } };
       return ok(state.preferences.filter((p) => p.ownerUserId === actor.userId));
     },
     async upsertPreference(_actor: { userId: string }, input: {
@@ -323,6 +331,7 @@ function createRepositories(state: State) {
 
   const settingsRepository = {
     async getSettings() {
+      if (state.settingsUnavailable) return { ok: false as const, error: { code: "unknown" as const } };
       return ok(state.settings);
     },
     async upsertSettings(_actor: { userId: string }, input: {
@@ -344,6 +353,7 @@ function createRepositories(state: State) {
 
   const timeContextRepository: TimeContextRepository = {
     async getTimezone() {
+      if (state.timeContextUnavailable) return { ok: false as const, error: { code: "unknown" as const } };
       return ok(state.timezone);
     },
     async setTimezone() {
@@ -424,7 +434,7 @@ test("duplicate producer trigger yields one event and one delivery per channel/d
   state.intents.push({
     id: "reminder-1",
     ownerUserId: OWNER,
-    taskId: "task-1",
+    taskId: TASK_ID,
     remindAt: NOW_ISO,
     deliveryMode: "both",
     status: "pending",
@@ -465,7 +475,7 @@ test("channel opt-out prevents delivery rows but keeps the canonical notificatio
   state.intents.push({
     id: "reminder-1",
     ownerUserId: OWNER,
-    taskId: "task-1",
+    taskId: TASK_ID,
     remindAt: NOW_ISO,
     deliveryMode: "both",
     status: "pending",
@@ -496,7 +506,7 @@ test("quiet hours at queue time records suppressed deliveries and no deferred qu
   state.intents.push({
     id: "reminder-1",
     ownerUserId: OWNER,
-    taskId: "task-1",
+    taskId: TASK_ID,
     remindAt: NOW_ISO,
     deliveryMode: "both",
     status: "pending",
@@ -509,7 +519,7 @@ test("quiet hours at queue time records suppressed deliveries and no deferred qu
     dueOptions(state, new Date("2026-01-15T22:30:00.000Z")),
   );
   assert.equal(result.ok, true);
-  assert.equal(result.ok ? result.data.deliveriesQueued : -1, 2);
+  assert.equal(result.ok ? result.data.deliveriesQueued : -1, 0);
   assert.equal(result.ok ? result.data.suppressed : -1, 2);
   assert.equal(state.deliveries.length, 2);
   for (const row of state.deliveries) {
@@ -743,7 +753,7 @@ test("private finance events persist and push generic copy with no amount/mercha
       type: "money_threshold",
       title: "Spent $4,312 at Acme Motors",
       body: "Account ending 9911 crossed your $3,000 threshold at Acme Motors.",
-      target: { type: "money", id: "budget-1" },
+      target: { type: "money", id: "33333333-3333-3333-3333-333333333333" },
       idempotencyKey: "money_threshold:evt-1",
     },
   );
@@ -751,11 +761,19 @@ test("private finance events persist and push generic copy with no amount/mercha
 
   const persisted = state.notifications[0]!;
   assert.equal(persisted.title, "Finance update");
+  assert.equal(persisted.targetType, "money");
   assert.doesNotMatch(persisted.body ?? "", /4,?312|Acme|9911|3,?000/i);
 
   delivery(state, { notificationId: persisted.id, deviceId: d.id });
+  delivery(state, {
+    notificationId: persisted.id,
+    channel: "email",
+    deviceId: null,
+    provider: "resend",
+  });
 
   const captures: Array<{ title: string; body: string | null; data: Record<string, string> }> = [];
+  const emailCaptures: Array<{ subject: string; html: string }> = [];
   const provider: PushProvider = {
     async send(payload) {
       captures.push({ title: payload.title, body: payload.body, data: payload.data });
@@ -764,13 +782,196 @@ test("private finance events persist and push generic copy with no amount/mercha
   };
 
   const result = await processPendingNotificationDeliveries(
-    deliveryOptions(state, provider, { async send() { return { ok: true }; } }),
+    deliveryOptions(state, provider, {
+      async send({ subject, html }) {
+        emailCaptures.push({ subject, html });
+        return { ok: true, providerMessageId: "email-1" };
+      },
+    }),
   );
   assert.equal(result.ok, true);
-  assert.equal(result.ok ? result.data.accepted : -1, 1);
+  assert.equal(result.ok ? result.data.accepted : -1, 2);
   const captured = captures[0];
   assert.ok(captured);
   assert.equal(captured.title, "Finance update");
   assert.doesNotMatch(captured.body ?? "", /4,?312|Acme|9911|3,?000/i);
   assert.doesNotMatch(JSON.stringify(captured.data), /4,?312|Acme|9911|3,?000/i);
+
+  const email = emailCaptures[0];
+  assert.ok(email);
+  assert.match(email.subject, /^Finance update$/);
+  assert.doesNotMatch(email.html, /4,?312|Acme|9911|3,?000/i);
+});
+
+test("queue-time preference read failure leaves the intent retryable with no fan-out", async () => {
+  const state = createState({ preferencesUnavailable: true });
+  device(state);
+  state.intents.push({
+    id: "reminder-1",
+    ownerUserId: OWNER,
+    taskId: TASK_ID,
+    remindAt: NOW_ISO,
+    deliveryMode: "both",
+    status: "pending",
+    taskTitle: "Close payroll review",
+  });
+
+  const result = await processDueTaskReminders(null, dueOptions(state));
+  assert.equal(result.ok, true);
+  assert.equal(result.ok ? result.data.skipped : -1, 1);
+  assert.equal(result.ok ? result.data.notificationsCreated : -1, 0);
+  assert.equal(result.ok ? result.data.deliveriesQueued : -1, 0);
+  assert.equal(state.notifications.length, 0);
+  assert.equal(state.deliveries.length, 0);
+  // Claimed but never marked processed, so lease reclaim can retry.
+  assert.equal(state.intents[0]!.status, "processing");
+});
+
+test("queue-time quiet-hours settings read failure leaves the intent retryable", async () => {
+  const state = createState({ settingsUnavailable: true });
+  device(state);
+  preference(state, true, true);
+  state.intents.push({
+    id: "reminder-1",
+    ownerUserId: OWNER,
+    taskId: TASK_ID,
+    remindAt: NOW_ISO,
+    deliveryMode: "both",
+    status: "pending",
+    taskTitle: "Close payroll review",
+  });
+
+  const result = await processDueTaskReminders(null, dueOptions(state));
+  assert.equal(result.ok, true);
+  assert.equal(result.ok ? result.data.skipped : -1, 1);
+  assert.equal(state.notifications.length, 0);
+  assert.equal(state.deliveries.length, 0);
+  assert.equal(state.intents[0]!.status, "processing");
+});
+
+test("live task producer routes through the canonical use case (non-UUID target degrades)", async () => {
+  const state = createState();
+  device(state);
+  preference(state, true, true);
+  state.intents.push({
+    id: "reminder-1",
+    ownerUserId: OWNER,
+    taskId: "not-a-uuid",
+    remindAt: NOW_ISO,
+    deliveryMode: "both",
+    status: "pending",
+    taskTitle: "Close payroll review",
+  });
+
+  const result = await processDueTaskReminders(null, dueOptions(state));
+  assert.equal(result.ok, true);
+  assert.equal(result.ok ? result.data.notificationsCreated : -1, 1);
+  // The raw repository call would have persisted target_type='task' with a
+  // non-UUID id and failed at the uuid column; the use case degrades safely.
+  assert.equal(state.notifications[0]!.targetType, null);
+  assert.equal(state.notifications[0]!.targetId, null);
+});
+
+test("dispatch preference read failure defers without provider calls", async () => {
+  const state = createState({ preferencesUnavailable: true });
+  const d = device(state);
+  const n = notification(state);
+  const row = delivery(state, { notificationId: n.id, deviceId: d.id });
+
+  let calls = 0;
+  const provider: PushProvider = {
+    async send() {
+      calls += 1;
+      return { ok: true, providerMessageId: "should-not-happen" };
+    },
+  };
+
+  const result = await processPendingNotificationDeliveries(
+    deliveryOptions(state, provider, { async send() { calls += 1; return { ok: true }; } }),
+  );
+  assert.equal(result.ok, true);
+  assert.equal(result.ok ? result.data.retried : -1, 1);
+  assert.equal(row.status, "retry_scheduled");
+  assert.equal(row.lastErrorCode, "preferences_unavailable");
+  assert.ok(row.nextAttemptAt);
+  assert.equal(calls, 0);
+
+  // Exhaust the bounded retry budget: the same deferral becomes terminal with
+  // an actionable error code instead of silently sending.
+  const mutableRow = row as unknown as {
+    status: string;
+    nextAttemptAt: string | null;
+    attemptCount: number;
+  };
+  mutableRow.status = "retry_scheduled";
+  mutableRow.nextAttemptAt = "2020-01-01T00:00:00.000Z";
+  mutableRow.attemptCount = 5;
+
+  const exhausted = await processPendingNotificationDeliveries(
+    deliveryOptions(state, provider, { async send() { calls += 1; return { ok: true }; } }),
+  );
+  assert.equal(exhausted.ok, true);
+  assert.equal(exhausted.ok ? exhausted.data.failed : -1, 1);
+  assert.equal(row.status, "failed");
+  assert.equal(row.lastErrorCode, "preferences_unavailable");
+  assert.equal(row.nextAttemptAt, null);
+  assert.equal(calls, 0);
+});
+
+test("dispatch quiet-hours settings read failure defers without provider calls", async () => {
+  const state = createState({ settingsUnavailable: true });
+  const d = device(state);
+  const n = notification(state);
+  const row = delivery(state, { notificationId: n.id, deviceId: d.id });
+  preference(state, true, true);
+
+  let calls = 0;
+  const provider: PushProvider = {
+    async send() {
+      calls += 1;
+      return { ok: true, providerMessageId: "should-not-happen" };
+    },
+  };
+
+  const result = await processPendingNotificationDeliveries(
+    deliveryOptions(state, provider, { async send() { calls += 1; return { ok: true }; } }),
+  );
+  assert.equal(result.ok, true);
+  assert.equal(result.ok ? result.data.retried : -1, 1);
+  assert.equal(row.status, "retry_scheduled");
+  assert.equal(row.lastErrorCode, "quiet_hours_unavailable");
+  assert.equal(calls, 0);
+});
+
+test("dispatch time-context read failure defers without provider calls", async () => {
+  const state = createState({ timeContextUnavailable: true });
+  const d = device(state);
+  const n = notification(state);
+  const row = delivery(state, { notificationId: n.id, deviceId: d.id });
+  preference(state, true, true);
+  state.settings = {
+    ownerUserId: OWNER,
+    quietHoursEnabled: true,
+    quietHoursStart: "22:00",
+    quietHoursEnd: "07:00",
+    createdAt: NOW_ISO,
+    updatedAt: NOW_ISO,
+  };
+
+  let calls = 0;
+  const provider: PushProvider = {
+    async send() {
+      calls += 1;
+      return { ok: true, providerMessageId: "should-not-happen" };
+    },
+  };
+
+  const result = await processPendingNotificationDeliveries(
+    deliveryOptions(state, provider, { async send() { calls += 1; return { ok: true }; } }),
+  );
+  assert.equal(result.ok, true);
+  assert.equal(result.ok ? result.data.retried : -1, 1);
+  assert.equal(row.status, "retry_scheduled");
+  assert.equal(row.lastErrorCode, "quiet_hours_unavailable");
+  assert.equal(calls, 0);
 });

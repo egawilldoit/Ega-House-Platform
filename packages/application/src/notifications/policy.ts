@@ -225,13 +225,23 @@ export type NormalizedNotificationTarget = Readonly<{
   id: string | null;
 }>;
 
-const SAFE_TARGET_ID_RE = /^[A-Za-z0-9._-]{1,200}$/;
+/**
+ * Entity targets persist into `notifications.target_id uuid`. Non-UUID ids
+ * must degrade to "no target" rather than reaching Postgres and failing with
+ * 22P02. `review`/`today` are singleton targets and keep `id: null`.
+ */
+const UUID_RE =
+  /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+
+export function isUuid(value: string | null | undefined): boolean {
+  return typeof value === "string" && UUID_RE.test(value.trim());
+}
 
 /**
- * Normalizes a semantic target. Unknown types, blank entity ids, and raw
- * router/path-like ids are rejected (null) so a token from an untrusted
- * producer can never become a navigation target. Singleton types keep a null
- * id instead of inventing a fake one.
+ * Normalizes a semantic target. Unknown types, blank/non-UUID entity ids, and
+ * raw router/path-like ids are rejected (null) so a token from an untrusted
+ * producer can never become a navigation target or a failing uuid insert.
+ * Singleton types keep a null id instead of inventing a fake one.
  */
 export function normalizeNotificationTarget(
   type: string | null | undefined,
@@ -242,10 +252,8 @@ export function normalizeNotificationTarget(
   if (!isNotificationTargetType(trimmedType)) return null;
 
   if (isNotificationEntityTargetType(trimmedType)) {
-    if (typeof id !== "string") return null;
-    const trimmedId = id.trim();
-    if (!SAFE_TARGET_ID_RE.test(trimmedId)) return null;
-    return { type: trimmedType, id: trimmedId };
+    if (typeof id !== "string" || !isUuid(id)) return null;
+    return { type: trimmedType, id: id.trim() };
   }
 
   // Singleton targets: ignore any supplied id.
@@ -257,6 +265,25 @@ const EVENT_KEY_RE = /^[A-Za-z0-9._:-]{3,300}$/;
 
 export function isValidNotificationEventKey(value: string | null | undefined): boolean {
   return typeof value === "string" && EVENT_KEY_RE.test(value.trim());
+}
+
+/**
+ * Normalizes a provided event key against the canonical `${type}:${eventId}`
+ * identity. Outer whitespace is trimmed, but the key must already use the
+ * event type's canonical prefix and a valid event id. A key for a different
+ * type is rejected so one event id cannot be replayed under another taxonomy
+ * value.
+ */
+export function normalizeNotificationEventKey(
+  type: string,
+  key: string | null | undefined,
+): string | null {
+  if (!isNotificationType(type)) return null;
+  if (typeof key !== "string") return null;
+  const trimmed = key.trim();
+  const prefix = `${type}:`;
+  if (!trimmed.startsWith(prefix)) return null;
+  return buildNotificationEventKey(type, trimmed.slice(prefix.length));
 }
 
 /**
