@@ -31,8 +31,8 @@ test("owner edits, reloads and pauses a personal schedule through the redesigned
   await expect(saturday).toHaveValue("210");
   await page.getByRole("button", { name: "Startup", exact: true }).click();
   await expect(page.locator("#guidance-0-start")).toHaveValue("05:45");
-  await expect(page.getByText("47.5h")).toBeVisible();
-  await expect(page.getByText("2,850 minutes per week")).toBeVisible();
+  await expect(page.getByText("47h", { exact: true })).toBeVisible();
+  await expect(page.getByText("2,820 minutes per week")).toBeVisible();
 
   await page.goto("/settings/appearance");
   await page.getByText("Dark", { exact: true }).click();

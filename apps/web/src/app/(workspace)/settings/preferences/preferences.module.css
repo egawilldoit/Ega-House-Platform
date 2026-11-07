@@ -877,6 +877,11 @@
   min-width: 0;
 }
 
+.formShim:focus {
+  outline: var(--ega-focus-outline);
+  outline-offset: 4px;
+}
+
 .feedback {
   margin: 0;
   font-size: var(--text-meta);

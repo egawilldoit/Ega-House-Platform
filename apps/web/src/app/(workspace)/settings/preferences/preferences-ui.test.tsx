@@ -321,6 +321,7 @@ describe("PersonalOperationsForm", () => {
     expect(field<HTMLElement>('[role="status"]').textContent).toContain(
       "Personal schedule saved.",
     );
+    expect(document.activeElement).toBe(field<HTMLFormElement>("form"));
   });
 
   it("keeps edits and shows an accessible error when the server rejects a save", async () => {
@@ -418,6 +419,7 @@ describe("PersonalOperationsForm", () => {
     expect(container.querySelector('[role="alert"]')).toBeNull();
     expect(container.textContent).not.toContain("Unable to save preferences");
     expect(container.textContent).not.toContain("Unsaved changes");
+    expect(document.activeElement).toBe(field<HTMLFormElement>("form"));
   });
 
   it("clears a previous success message when discarding", async () => {
@@ -452,6 +454,7 @@ describe("PersonalOperationsForm", () => {
 
     expect(container.textContent).not.toContain("Personal schedule saved.");
     expect(container.querySelector('[role="status"]')?.textContent).toBe("");
+    expect(document.activeElement).toBe(field<HTMLFormElement>("form"));
   });
 
   it("distinguishes an invalid account time zone from no guidance", async () => {
