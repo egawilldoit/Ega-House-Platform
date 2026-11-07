@@ -7,6 +7,7 @@ import {
   EXPENSE_CURRENCY,
   EXPENSE_NEED_VS_WANT_VALUES,
   EXPENSE_PAYMENT_METHOD_VALUES,
+  expenseCreateFingerprint,
   expenseMatchesCreateValues,
   isExpenseId,
   parseCreateExpenseInput,
@@ -119,6 +120,48 @@ test("create rejects invalid dates, enums and oversized metadata", () => {
   );
   expectCreateFailure({ ...VALID_CREATE, idempotencyKey: "   " }, "idempotencyKey");
   expectCreateFailure({ ...VALID_CREATE, idempotencyKey: undefined }, "idempotencyKey");
+});
+
+test("create rejects impossible calendar dates and clock values instead of shifting them", () => {
+  for (const occurredAt of [
+    "2026-02-30T10:00:00Z",
+    "2026-04-31T10:00:00Z",
+    "2026-02-29T10:00:00Z",
+    "2026-11-07T24:00:00Z",
+    "2026-11-07T23:60:00Z",
+    "2026-11-07T23:59:60Z",
+    "2026-11-07T10:00:00+24:00",
+    "2026-11-07T10:00:00+01:60",
+  ]) {
+    expectCreateFailure({ ...VALID_CREATE, occurredAt }, "occurredAt");
+  }
+
+  const leapDay = parseCreateExpenseInput({
+    ...VALID_CREATE,
+    occurredAt: "2028-02-29T23:59:59.123Z",
+  });
+  assert.equal(leapDay.ok, true);
+});
+
+test("create rejects NUL, unpaired surrogates and disallowed control characters", () => {
+  for (const field of ["note", "merchant", "idempotencyKey"] as const) {
+    expectCreateFailure({ ...VALID_CREATE, [field]: `bad\u0000value` }, field);
+    expectCreateFailure({ ...VALID_CREATE, [field]: "bad\ud800value" }, field);
+    expectCreateFailure({ ...VALID_CREATE, [field]: "bad\u0001value" }, field);
+    expectCreateFailure({ ...VALID_CREATE, [field]: "bad\u007fvalue" }, field);
+  }
+
+  const multiline = parseCreateExpenseInput({
+    ...VALID_CREATE,
+    note: "line one\nline two\tend\r",
+  });
+  assert.equal(multiline.ok, true);
+  if (multiline.ok) assert.equal(multiline.value.note, "line one\nline two\tend");
+
+  expectCreateFailure(
+    { ...VALID_CREATE, idempotencyKey: "line\nbreak" },
+    "idempotencyKey",
+  );
 });
 
 test("update requires a positive integer expected version", () => {
@@ -264,6 +307,36 @@ test("list rejects unknown query keys and invalid timezones", () => {
   );
   assert.equal(timezone.ok, false);
   if (!timezone.ok) assert.equal(timezone.field, "timezone");
+});
+
+test("create fingerprint binds the canonical original payload deterministically", () => {
+  const parsed = parseCreateExpenseInput(VALID_CREATE);
+  assert.equal(parsed.ok, true);
+  if (!parsed.ok) return;
+
+  const fingerprint = expenseCreateFingerprint(parsed.value);
+  assert.equal(fingerprint, expenseCreateFingerprint({ ...parsed.value }));
+  assert.equal(
+    fingerprint,
+    expenseCreateFingerprint({
+      ...parsed.value,
+      occurredAt: "2026-11-07T08:30:00.000Z",
+    }),
+    "equivalent timestamp spellings produce the same fingerprint",
+  );
+  assert.notEqual(
+    fingerprint,
+    expenseCreateFingerprint({ ...parsed.value, amountMinor: 2251 }),
+  );
+  assert.notEqual(
+    fingerprint,
+    expenseCreateFingerprint({ ...parsed.value, note: "different" }),
+  );
+  assert.notEqual(
+    fingerprint,
+    expenseCreateFingerprint({ ...parsed.value, idempotencyKey: "key-2" }),
+  );
+  assert.ok(fingerprint.includes("1794040200000"));
 });
 
 test("idempotent replay compares canonical values and instants", () => {

@@ -40,8 +40,11 @@ function errorResponse(
   if (code === "validation") {
     return c.json({ error: { code: "VALIDATION", message } }, 400);
   }
-  if (code === "notFound" || code === "forbidden") {
+  if (code === "notFound") {
     return c.json({ error: { code: "NOT_FOUND", message } }, 404);
+  }
+  if (code === "forbidden") {
+    return c.json({ error: { code: "FORBIDDEN", message } }, 403);
   }
   if (code === "conflict") {
     return c.json({ error: { code: "CONFLICT", message } }, 409);

@@ -126,6 +126,25 @@ test("get, update and remove target the encoded expense path", async () => {
   assert.deepEqual(calls[1].body, { version: 2, amountMinor: 1990 });
 });
 
+test("a 403 FORBIDDEN envelope remains a typed forbidden error", async () => {
+  const { client } = makeHarness(403, {
+    error: { code: "FORBIDDEN", message: "You do not have permission." },
+  });
+  const result = await client.expenses.create({
+    occurredAt: EXPENSE.occurredAt,
+    amountMinor: 2250,
+    category: "coffee",
+    needVsWant: "want",
+    idempotencyKey: "key-1",
+  });
+
+  assert.equal(result.ok, false);
+  if (!result.ok) {
+    assert.equal(result.error.code, "FORBIDDEN");
+    assert.equal(result.error.status, 403);
+  }
+});
+
 test("the standard error envelope is preserved as a typed conflict", async () => {
   const { client } = makeHarness(409, {
     error: { code: "CONFLICT", message: "That idempotency key was already used." },

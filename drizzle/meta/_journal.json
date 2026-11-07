@@ -556,10 +556,10 @@
       "breakpoints": true
     },
     {
-      "idx": 79,
+      "idx": 101,
       "version": "7",
-      "when": 1787880000029,
-      "tag": "0079_personal_expenses",
+      "when": 1787880000051,
+      "tag": "0088_personal_expenses",
       "breakpoints": true
     }
   ]

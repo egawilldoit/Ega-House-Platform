@@ -67,6 +67,13 @@ export type ExpensePaginationDto = Readonly<{
   hasMore: boolean;
 }>;
 
+/**
+ * `replayed` is true when the owner+idempotency key was already consumed by a
+ * create with the same immutable original payload. Replay returns the current
+ * expense row (later edits are reflected) and remains true after a soft
+ * delete, in which case `expense.deletedAt` is populated. The key stays
+ * consumed; it is never reusable for a different payload.
+ */
 export type CreateExpenseResponse = Readonly<{
   ok: true;
   expense: ExpenseDto;
@@ -101,6 +108,7 @@ export type ExpenseErrorCode =
   | "VALIDATION"
   | "NOT_FOUND"
   | "CONFLICT"
+  | "FORBIDDEN"
   | "UNAUTHENTICATED"
   | "INTERNAL";
 

@@ -71,6 +71,10 @@ export function sanitizeSupabaseError(
   const code = error.code ?? "";
   const message = (error.message ?? "").toLowerCase();
 
+  if (code === "42501") {
+    return { code: "forbidden" };
+  }
+
   if (code === conflictCode || (conflictMessageHint && message.includes(conflictMessageHint.toLowerCase()))) {
     return { code: "conflict" };
   }

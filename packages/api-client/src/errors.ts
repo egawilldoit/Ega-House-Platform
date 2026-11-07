@@ -8,7 +8,13 @@
  * message.
  */
 
-export type ApiErrorCode = "UNAUTHENTICATED" | "VALIDATION" | "NOT_FOUND" | "CONFLICT" | "INTERNAL";
+export type ApiErrorCode =
+  | "UNAUTHENTICATED"
+  | "VALIDATION"
+  | "NOT_FOUND"
+  | "CONFLICT"
+  | "FORBIDDEN"
+  | "INTERNAL";
 
 export type ApiErrorPayload = {
   code: ApiErrorCode;
@@ -25,6 +31,7 @@ const KNOWN_CODES: ReadonlySet<string> = new Set([
   "VALIDATION",
   "NOT_FOUND",
   "CONFLICT",
+  "FORBIDDEN",
   "INTERNAL",
 ]);
 
@@ -41,6 +48,7 @@ const DEFAULT_MESSAGES: Record<ApiErrorCode, string> = {
   VALIDATION: "Request was invalid.",
   NOT_FOUND: "Resource not found.",
   CONFLICT: "The request conflicts with current state.",
+  FORBIDDEN: "You do not have permission to perform this action.",
   INTERNAL: "Internal server error.",
 };
 
@@ -50,6 +58,7 @@ function codeForStatus(status: number): ApiErrorCode {
   if (status === 400) return "VALIDATION";
   if (status === 404) return "NOT_FOUND";
   if (status === 409) return "CONFLICT";
+  if (status === 403) return "FORBIDDEN";
   return "INTERNAL";
 }
 

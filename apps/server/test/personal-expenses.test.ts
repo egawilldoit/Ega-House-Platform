@@ -3,6 +3,8 @@ import test from "node:test";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import { expenseCreateFingerprint } from "@ega/domain/expenses";
+
 import { createApp } from "../src/index";
 
 type QueryResult = {
@@ -112,6 +114,7 @@ function row(overrides: Record<string, unknown> = {}) {
     need_vs_want: "want",
     payment_method: "card",
     idempotency_key: "key-1",
+    create_fingerprint: FINGERPRINT,
     version: 1,
     deleted_at: null,
     created_at: "2026-11-07T08:31:00+00:00",
@@ -130,6 +133,17 @@ const BODY = {
   paymentMethod: "card",
   idempotencyKey: "key-1",
 };
+
+const FINGERPRINT = expenseCreateFingerprint({
+  occurredAt: "2026-11-07T08:30:00.000Z",
+  amountMinor: 2250,
+  category: "coffee",
+  note: "morning coffee",
+  merchant: "Cafe Atlas",
+  needVsWant: "want",
+  paymentMethod: "card",
+  idempotencyKey: "key-1",
+});
 
 function makeApp(fake: FakeSupabase, now = new Date("2026-11-07T12:00:00.000Z")) {
   return createApp({
@@ -211,7 +225,7 @@ test("POST /api/expenses replays a prior receipt with 200", async () => {
 test("POST /api/expenses rejects a same-key different-payload conflict with 409", async () => {
   const fake = new FakeSupabase();
   fake.push("personal_expenses", {
-    data: row({ amount_minor: 999 }),
+    data: row({ amount_minor: 999, create_fingerprint: "different-original" }),
     error: null,
   });
 
@@ -224,6 +238,25 @@ test("POST /api/expenses rejects a same-key different-payload conflict with 409"
   assert.equal(res.status, 409);
   const body = await res.json();
   assert.equal(body.error.code, "CONFLICT");
+});
+
+test("POST /api/expenses maps a permission failure to 403 FORBIDDEN", async () => {
+  const fake = new FakeSupabase();
+  fake.push("personal_expenses", { data: null, error: null });
+  fake.push("personal_expenses", {
+    data: null,
+    error: { code: "42501", message: "permission denied for table personal_expenses" },
+  });
+
+  const res = await makeApp(fake).request("/api/expenses", {
+    method: "POST",
+    headers: { ...AUTH, "content-type": "application/json" },
+    body: JSON.stringify(BODY),
+  });
+
+  assert.equal(res.status, 403);
+  const body = await res.json();
+  assert.equal(body.error.code, "FORBIDDEN");
 });
 
 test("POST /api/expenses rejects invalid amounts and caller identity before persistence", async () => {
