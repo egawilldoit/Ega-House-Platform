@@ -1,5 +1,11 @@
 export const DAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"] as const;
 export type Day = (typeof DAYS)[number];
+
+/**
+ * The personal schedule stays an exactly-3-key value. The stable job-search
+ * reference is a separate top-level preference so it can be patched
+ * independently and cannot collide with schedule saves.
+ */
 export type PersonalOperations = {
   paused: boolean;
   targets: Record<Day, { work: number; jobSearch: number }>;
@@ -32,9 +38,9 @@ function time(value: unknown): value is string {
   return typeof value === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
 }
 
-/** Validates a complete schedule; enabled guidance may not overlap on a day. */
+/** Validates a complete 3-key schedule; enabled guidance may not overlap on a day. */
 export function isPersonalOperations(value: unknown): value is PersonalOperations {
-  if (!record(value) || Object.keys(value).some(k => !["paused", "targets", "guidance"].includes(k)) || typeof value.paused !== "boolean" || !record(value.targets) || !Array.isArray(value.guidance) || value.guidance.length > 20) return false;
+  if (!record(value) || Object.keys(value).length !== 3 || Object.keys(value).some(k => !["paused", "targets", "guidance"].includes(k)) || typeof value.paused !== "boolean" || !record(value.targets) || !Array.isArray(value.guidance) || value.guidance.length > 20) return false;
   const targets = value.targets;
   if (Object.keys(targets).length !== DAYS.length || !DAYS.every(day => {
     const target = targets[day];

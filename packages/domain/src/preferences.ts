@@ -32,8 +32,38 @@ export type UserTaskLayout = (typeof USER_TASK_LAYOUT_VALUES)[number];
 export const USER_TASK_OPEN_MODE_VALUES = ["panel", "full"] as const;
 export type UserTaskOpenMode = (typeof USER_TASK_OPEN_MODE_VALUES)[number];
 
+/**
+ * Stable job-search task reference.
+ *
+ * Task-only by design. Project references and per-session project/reference
+ * snapshots are deliberately deferred: `task_sessions` has no immutable
+ * project snapshot (Track B owns session mutations), so changing the reference
+ * intentionally reclassifies historical totals. That is the documented open
+ * integration blocker, not a claim of historical project stability.
+ */
+export type JobSearchReference = Readonly<{
+  kind: "task";
+  id: string;
+}>;
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Validates the stable job-search reference shape (kind=task + UUID id). */
+export function isJobSearchReference(value: unknown): value is JobSearchReference {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    !Array.isArray(value) &&
+    Object.keys(value).length === 2 &&
+    (value as Record<string, unknown>).kind === "task" &&
+    typeof (value as Record<string, unknown>).id === "string" &&
+    UUID_RE.test((value as Record<string, unknown>).id as string)
+  );
+}
+
 export type UserPreferences = Readonly<{
   personalOperations: PersonalOperations;
+  jobSearchReference: JobSearchReference | null;
   theme: UserTheme;
   accent: UserAccent;
   density: UserDensity;
@@ -51,6 +81,7 @@ export type UserPreferences = Readonly<{
  */
 export const DEFAULT_USER_PREFERENCES: UserPreferences = Object.freeze({
   personalOperations: DEFAULT_PERSONAL_OPERATIONS,
+  jobSearchReference: null,
   theme: "system",
   accent: "neutral",
   density: "comfortable",
@@ -113,6 +144,7 @@ export function normalizeUserPreferences(input: unknown): UserPreferences {
   const value = input && typeof input === "object" ? (input as Record<string, unknown>) : {};
   return {
     personalOperations: isPersonalOperations(value.personalOperations) ? value.personalOperations : DEFAULT_PERSONAL_OPERATIONS,
+    jobSearchReference: isJobSearchReference(value.jobSearchReference) ? value.jobSearchReference : null,
     theme: isUserTheme(value.theme) ? value.theme : DEFAULT_USER_PREFERENCES.theme,
     accent: isUserAccent(value.accent) ? value.accent : DEFAULT_USER_PREFERENCES.accent,
     density: isUserDensity(value.density) ? value.density : DEFAULT_USER_PREFERENCES.density,
@@ -142,6 +174,7 @@ export type UserPreferencesPatchParseResult =
 
 const PATCH_FIELDS = [
   "personalOperations",
+  "jobSearchReference",
   "theme",
   "accent",
   "density",
@@ -166,13 +199,23 @@ export function parseUserPreferencesPatch(input: unknown): UserPreferencesPatchP
   const patch: UserPreferencesPatch = {};
 
   for (const field of PATCH_FIELDS) {
-    if (!(field in value) || value[field] === undefined || (value[field] === null && field !== "personalOperations")) continue;
+    if (!(field in value) || value[field] === undefined || (value[field] === null && field !== "personalOperations" && field !== "jobSearchReference")) continue;
     const raw = value[field];
 
     switch (field) {
       case "personalOperations":
         if (!isPersonalOperations(raw)) return { ok: false, field, message: "Check schedule targets and guidance; enabled blocks cannot overlap." };
         patch.personalOperations = raw;
+        break;
+      case "jobSearchReference":
+        if (raw === null) {
+          patch.jobSearchReference = null;
+          break;
+        }
+        if (!isJobSearchReference(raw)) {
+          return { ok: false, field, message: "Choose a valid task for job search." };
+        }
+        patch.jobSearchReference = raw;
         break;
       case "reducedMotion":
         if (typeof raw !== "boolean") {

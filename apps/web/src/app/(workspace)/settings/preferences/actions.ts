@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
+import { verifyJobSearchReferenceTask } from "@/lib/services/job-search-reference-service";
 import { updateWebUserPreferences } from "@/lib/services/user-preferences-service";
 
 const PREFERENCES_PATH = "/settings/preferences";
@@ -45,7 +46,36 @@ export async function updatePersonalOperationsAction(
   } catch {
     return { ok: false, message: "The schedule could not be read. Please check your entries and try again." };
   }
-  const result = await updateWebUserPreferences({ personalOperations });
+
+  // The reference is patched only when the owner touched it. A stale tab that
+  // saves the schedule must not erase a reference set concurrently elsewhere.
+  const referenceDirty = formData.get("jobSearchReferenceDirty") === "true";
+  let jobSearchReference: { kind: "task"; id: string } | null = null;
+  if (referenceDirty) {
+    const rawReference = formData.get("jobSearchReference");
+    if (typeof rawReference !== "string") {
+      return { ok: false, message: "The job-search reference could not be read." };
+    }
+    if (rawReference !== "") {
+      const match = /^task:([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i.exec(rawReference);
+      if (!match?.[1]) {
+        return { ok: false, message: "Choose a valid task for job search." };
+      }
+      jobSearchReference = { kind: "task", id: match[1] };
+      const verification = await verifyJobSearchReferenceTask({ taskId: jobSearchReference.id });
+      if (!verification.ok) {
+        return { ok: false, message: verification.errorMessage ?? "That task is not available in your workspace." };
+      }
+    }
+  }
+
+  const patch: {
+    personalOperations: unknown;
+    jobSearchReference?: { kind: "task"; id: string } | null;
+  } = { personalOperations };
+  if (referenceDirty) patch.jobSearchReference = jobSearchReference;
+
+  const result = await updateWebUserPreferences(patch);
   if (result.errorMessage) return { ok: false, message: result.errorMessage };
   revalidatePath("/", "layout");
   return { ok: true, message: "Personal schedule saved." };
