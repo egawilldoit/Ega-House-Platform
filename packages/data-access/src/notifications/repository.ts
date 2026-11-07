@@ -31,11 +31,17 @@ function isMissingNotificationSettingsTable(error: unknown): boolean {
   const code = typeof candidate?.code === "string" ? candidate.code : "";
   const message = typeof candidate?.message === "string" ? candidate.message : "";
 
+  // Genuine table-missing signals only.
+  if (code === "42P01" || code === "PGRST205") return true;
+  // Schema drift (undefined column / column missing from PostgREST cache) must
+  // surface as a failure, not silently disable quiet hours.
+  if (code === "42703" || code === "PGRST204") return false;
+  if (/column\b.*\bdoes not exist/i.test(message)) return false;
+
+  // Exact table-missing message patterns only (no broad "schema cache" match).
   return (
-    code === "42P01"
-    || code === "PGRST205"
-    || (/notification_settings/.test(message)
-      && /does not exist|schema cache|could not find/i.test(message))
+    /relation\s+["']?(?:public\.)?notification_settings["']?\s+does not exist/i.test(message)
+    || /could not find the table\s+["']?(?:public\.)?notification_settings["']?/i.test(message)
   );
 }
 
