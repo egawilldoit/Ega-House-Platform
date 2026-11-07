@@ -49,6 +49,29 @@ test("FCM error classification invalidates only proven token evidence", async ()
   assert.equal(classifyFcmError({ httpStatus: 400, fcmCode: "INVALID_PAYLOAD" }), "permanent");
   assert.equal(classifyFcmError({ httpStatus: 400, fcmCode: "SENDER_ID_MISMATCH" }), "auth");
 
+  // Broad/substring/config matches must not deactivate a valid token.
+  assert.equal(classifyFcmError({ httpStatus: 400, fcmCode: "UNREGISTERED_PROJECT" }), "permanent");
+  assert.equal(classifyFcmError({ httpStatus: 400, fcmCode: "UNREGISTERED_APP" }), "permanent");
+  assert.equal(
+    classifyFcmError({ httpStatus: 400, details: [{ reason: "app unregistered" }] }),
+    "permanent",
+  );
+  assert.equal(
+    classifyFcmError({
+      httpStatus: 400,
+      details: [{ errorCode: "SOME_CONFIG", detail: "project-unregistered-detail" }],
+    }),
+    "permanent",
+  );
+  assert.equal(
+    classifyFcmError({
+      httpStatus: 400,
+      fcmCode: "INVALID_ARGUMENT",
+      message: "The registration token is valid; the message payload is invalid.",
+    }),
+    "permanent",
+  );
+
   // Transient/auth retained.
   assert.equal(classifyFcmError({ httpStatus: 429 }), "transient");
   assert.equal(classifyFcmError({ httpStatus: 503, fcmCode: "UNAVAILABLE" }), "transient");
@@ -124,8 +147,36 @@ test("FcmPushProvider never treats bare 404/410 or config errors as stale tokens
   if (!senderMismatch.ok) assert.equal(senderMismatch.errorCode, "auth");
 });
 
-test("FcmPushProvider keeps transient 429/5xx retry semantics", async () => {
-  const throttled = await fcmProvider(429, { error: { status: "RESOURCE_EXHAUSTED" } }).send(PUSH);
+test("FcmPushProvider keeps config/substring/mixed errors non-deactivating", async () => {
+  const project = await fcmProvider(400, {
+    error: { status: "UNREGISTERED_PROJECT", message: "Project is unregistered" },
+  }).send(PUSH);
+  assert.equal(project.ok, false);
+  if (!project.ok) assert.equal(project.errorCode, "permanent");
+
+  const app = await fcmProvider(400, {
+    error: { status: "UNREGISTERED_APP", message: "App is unregistered" },
+  }).send(PUSH);
+  assert.equal(app.ok, false);
+  if (!app.ok) assert.equal(app.errorCode, "permanent");
+
+  const reasonDetail = await fcmProvider(400, {
+    error: { status: "INVALID_ARGUMENT", details: [{ reason: "app unregistered" }] },
+  }).send(PUSH);
+  assert.equal(reasonDetail.ok, false);
+  if (!reasonDetail.ok) assert.equal(reasonDetail.errorCode, "permanent");
+
+  const mixedMessage = await fcmProvider(400, {
+    error: {
+      status: "INVALID_ARGUMENT",
+      message: "The registration token is valid; the message payload is invalid.",
+    },
+  }).send(PUSH);
+  assert.equal(mixedMessage.ok, false);
+  if (!mixedMessage.ok) assert.equal(mixedMessage.errorCode, "permanent");
+});
+
+test("FcmPushProvider keeps transient 429/5xx retry semantics", async () => {  const throttled = await fcmProvider(429, { error: { status: "RESOURCE_EXHAUSTED" } }).send(PUSH);
   assert.equal(throttled.ok, false);
   if (!throttled.ok) assert.equal(throttled.errorCode, "transient");
 
@@ -315,4 +366,29 @@ test("patchSettings surfaces update errors instead of success-shaped data", asyn
   const repository = new SupabaseNotificationSettingsRepository(client);
   const result = await repository.patchSettings({ userId: "user-1" }, { quietHoursEnabled: true });
   assert.equal(result.ok, false);
+});
+
+test("patchSettings maps the quiet-hours window check violation to a conflict", async () => {
+  const updatePath = fakeSettingsWriteClient([
+    { data: null, error: { code: "23514", message: "check constraint violated" } },
+  ]);
+  const updateRepo = new SupabaseNotificationSettingsRepository(updatePath.client);
+  const updateResult = await updateRepo.patchSettings(
+    { userId: "user-1" },
+    { quietHoursEnd: "23:00" },
+  );
+  assert.equal(updateResult.ok, false);
+  if (!updateResult.ok) assert.equal(updateResult.error.code, "conflict");
+
+  const insertPath = fakeSettingsWriteClient([
+    { data: null, error: null },
+    { data: null, error: { code: "23514", message: "check constraint violated" } },
+  ]);
+  const insertRepo = new SupabaseNotificationSettingsRepository(insertPath.client);
+  const insertResult = await insertRepo.patchSettings(
+    { userId: "user-1" },
+    { quietHoursEnd: "23:00" },
+  );
+  assert.equal(insertResult.ok, false);
+  if (!insertResult.ok) assert.equal(insertResult.error.code, "conflict");
 });

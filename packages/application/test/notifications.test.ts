@@ -60,6 +60,10 @@ test("classifyFcmError only invalidates endpoints on proven token evidence", () 
   // Proven token-invalid evidence.
   assert.equal(classifyFcmError({ httpStatus: 404, fcmCode: "UNREGISTERED" }), "invalid_endpoint");
   assert.equal(
+    classifyFcmError({ httpStatus: 400, fcmCode: "REGISTRATION_TOKEN_NOT_REGISTERED" }),
+    "invalid_endpoint",
+  );
+  assert.equal(
     classifyFcmError({
       httpStatus: 404,
       fcmCode: "NOT_FOUND",
@@ -84,6 +88,29 @@ test("classifyFcmError only invalidates endpoints on proven token evidence", () 
   assert.equal(classifyFcmError({ httpStatus: 400, fcmCode: "INVALID_PAYLOAD" }), "permanent");
   assert.equal(classifyFcmError({ httpStatus: 400, fcmCode: "SENDER_ID_MISMATCH" }), "auth");
   assert.equal(classifyFcmError({ httpStatus: 400, fcmCode: "INVALID_TOKEN" }), "permanent");
+
+  // Broad/substring/config matches must not deactivate a valid token.
+  assert.equal(classifyFcmError({ httpStatus: 400, fcmCode: "UNREGISTERED_PROJECT" }), "permanent");
+  assert.equal(classifyFcmError({ httpStatus: 400, fcmCode: "UNREGISTERED_APP" }), "permanent");
+  assert.equal(
+    classifyFcmError({ httpStatus: 400, details: [{ reason: "app unregistered" }] }),
+    "permanent",
+  );
+  assert.equal(
+    classifyFcmError({
+      httpStatus: 400,
+      details: [{ errorCode: "SOME_CONFIG", detail: "project-unregistered-detail" }],
+    }),
+    "permanent",
+  );
+  assert.equal(
+    classifyFcmError({
+      httpStatus: 400,
+      fcmCode: "INVALID_ARGUMENT",
+      message: "The registration token is valid; the message payload is invalid.",
+    }),
+    "permanent",
+  );
 
   // Transient and auth semantics retained.
   assert.equal(classifyFcmError({ httpStatus: 429, fcmCode: "RESOURCE_EXHAUSTED" }), "transient");
@@ -461,4 +488,28 @@ test("enabling quiet hours requires a valid owner timezone; disabling does not",
   });
   assert.equal(disabled.ok, true);
   assert.deepEqual(patches.at(-1), { quietHoursEnabled: false });
+});
+
+test("settings patch conflict from the DB window constraint maps to a typed conflict", async () => {
+  const fakeSettings: NotificationSettingsRepository = {
+    getSettings: async () =>
+      ok({
+        ownerUserId: ACTOR.userId,
+        quietHoursEnabled: true,
+        quietHoursStart: "22:00",
+        quietHoursEnd: "07:00",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      }),
+    patchSettings: async () => ({ ok: false, error: { code: "conflict" } }),
+  };
+  const timeContext: TimeContextRepository = {
+    getTimezone: async () => ok("UTC"),
+    setTimezone: async () => ok("UTC"),
+  };
+  const result = await updateNotificationSettings(ACTOR, fakeSettings, timeContext, {
+    quietHoursEnd: "23:00",
+  });
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.equal(result.code, "conflict");
 });

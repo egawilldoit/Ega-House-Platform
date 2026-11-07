@@ -25,7 +25,8 @@ CREATE TABLE IF NOT EXISTS "notification_settings" (
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "notification_settings_quiet_hours_start_check" CHECK ("notification_settings"."quiet_hours_start" ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'),
-	CONSTRAINT "notification_settings_quiet_hours_end_check" CHECK ("notification_settings"."quiet_hours_end" ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$')
+	CONSTRAINT "notification_settings_quiet_hours_end_check" CHECK ("notification_settings"."quiet_hours_end" ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'),
+	CONSTRAINT "notification_settings_quiet_hours_window_check" CHECK ("notification_settings"."quiet_hours_start" <> "notification_settings"."quiet_hours_end")
 );--> statement-breakpoint
 ALTER TABLE "notification_settings" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
 ALTER TABLE "notification_settings" FORCE ROW LEVEL SECURITY;--> statement-breakpoint

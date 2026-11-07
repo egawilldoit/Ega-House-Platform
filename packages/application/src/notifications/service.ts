@@ -314,6 +314,9 @@ export async function updateNotificationSettings(
 
   const result = await repository.patchSettings(actor, patch);
   if (!result.ok) {
+    if (result.error.code === "conflict") {
+      return applicationFailure("quietHoursStart and quietHoursEnd must differ.", "conflict");
+    }
     return applicationFailure("Unable to save notification settings right now.", "unknown");
   }
   return applicationSuccess(mapSettingsRecord(result.value));

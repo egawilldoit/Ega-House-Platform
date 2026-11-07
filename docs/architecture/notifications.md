@@ -56,7 +56,7 @@ SQL).
   - `unique(owner_user_id, notification_type)`
 - `notification_settings` (0079)
   - `owner_user_id PK default auth.uid(), quiet_hours_enabled bool not null default false, quiet_hours_start varchar(5) not null default '22:00', quiet_hours_end varchar(5) not null default '07:00', created_at, updated_at`
-  - `HH:MM` check constraints, RLS ENABLE + FORCE, owner select/insert/update policies, grants to `authenticated`; no service-role CRUD shortcut.
+  - `HH:MM` check constraints plus `quiet_hours_start <> quiet_hours_end` (`notification_settings_quiet_hours_window_check`), RLS ENABLE + FORCE, owner select/insert/update policies, grants to `authenticated`; no service-role CRUD shortcut. The window check is the DB backstop for concurrent complementary-time patches; `23514` maps to a typed conflict (409).
 
 
 **Evolved `task_reminders`:**
@@ -204,7 +204,7 @@ remains the existing shared Time Context authority
   RETURNING *`; when no row exists it inserts supplied fields plus documented
   defaults, retries the partial `UPDATE` once on `23505`, and returns the actual
   post-write row.
-- `fcm-provider.ts` — `FcmPushProvider` using `google-auth-library` JWT (no hand-rolled crypto), FCM HTTP v1 `https://fcm.googleapis.com/v1/projects/{projectId}/messages:send`, payload `token, notification.title/body, data {notificationId, type, targetType, targetId}, android.priority=HIGH`. Never logs token or private key. Returns `providerMessageId` on 200. Endpoint invalidation requires verified token evidence (`UNREGISTERED`/registration-token-not-registered or explicit token-invalid details/message); bare 404/410, generic `NOT_FOUND`, malformed `INVALID_ARGUMENT`, and `SENDER_ID_MISMATCH` do **not** deactivate. 429/5xx/`UNAVAILABLE` → `retry_scheduled`; 401/403 → `failed` with `auth`. Uses `resolveFcmServiceAccountFromEnv` reading `FCM_SERVICE_ACCOUNT_JSON` or `FCM_PROJECT_ID`/`FCM_CLIENT_EMAIL`/`FCM_PRIVATE_KEY` (with `\\n` → `\n` normalization).
+- `fcm-provider.ts` — `FcmPushProvider` using `google-auth-library` JWT (no hand-rolled crypto), FCM HTTP v1 `https://fcm.googleapis.com/v1/projects/{projectId}/messages:send`, payload `token, notification.title/body, data {notificationId, type, targetType, targetId}, android.priority=HIGH`. Never logs token or private key. Returns `providerMessageId` on 200. Endpoint invalidation requires exact structured token-invalid codes (`UNREGISTERED`, `REGISTRATION_TOKEN_NOT_REGISTERED`, `INVALID_REGISTRATION`) or an anchored registration-token-invalid message; broad substrings/`UNREGISTERED_PROJECT`/`UNREGISTERED_APP`/`reason: "app unregistered"` do not match. Bare 404/410, generic `NOT_FOUND`, malformed `INVALID_ARGUMENT`, and `SENDER_ID_MISMATCH` do **not** deactivate. 429/5xx/`UNAVAILABLE` → `retry_scheduled`; 401/403 → `failed` with `auth`. Uses `resolveFcmServiceAccountFromEnv` reading `FCM_SERVICE_ACCOUNT_JSON` or `FCM_PROJECT_ID`/`FCM_CLIENT_EMAIL`/`FCM_PRIVATE_KEY` (with `\\n` → `\n` normalization).
 - `email-provider.ts` — `ResendEmailProvider` and `SupabaseEmailResolver` (best-effort lookup via `profiles` or `auth.getUser`).
 
 ## 6. Server API (Hono)
@@ -273,7 +273,7 @@ All UI reuses `mobileTheme.colors.background/surface/accent` glass primitives; n
 ## 12. Retry / Failure Behavior
 
 - `transient` (408, 429, 5xx, `UNAVAILABLE`, `INTERNAL`, `DEADLINE_EXCEEDED`, `RESOURCE_EXHAUSTED`, `ABORTED`) → `retry_scheduled` with `nextRetryAt` (1m,2m,4m,8m,16m) until `attemptCount > 5` → `failed`.
-- `invalid_endpoint` requires verified token-invalid evidence (`UNREGISTERED`, registration-token-not-registered, or explicit token-invalid details/message) → device deactivated, no retry. Bare HTTP 404/410, generic `NOT_FOUND`, malformed `INVALID_ARGUMENT`, and `SENDER_ID_MISMATCH` do **not** deactivate; they classify as permanent/config or `auth`.
+- `invalid_endpoint` requires exact structured token-invalid codes (`UNREGISTERED`, `REGISTRATION_TOKEN_NOT_REGISTERED`, `INVALID_REGISTRATION`) or an anchored registration-token-invalid message → device deactivated, no retry. Broad substrings, `UNREGISTERED_PROJECT`/`UNREGISTERED_APP`, `reason: "app unregistered"`, bare HTTP 404/410, generic `NOT_FOUND`, malformed `INVALID_ARGUMENT`, and `SENDER_ID_MISMATCH` do **not** deactivate; they classify as permanent/config or `auth`.
 - `auth` (401/403/`UNAUTHENTICATED`/`PERMISSION_DENIED`) and other permanent 4xx → `failed` with `failedAt`, surfaced in cron result.
 - `suppressed` is a terminal recorded result for opt-out/quiet hours; it is never picked by `listPending` and is not a deferred queue.
 - `provider_accepted` never called `delivered`; `read_at`/`opened_at` remain separate. At-least-once semantics remain: provider acceptance is not exactly-once delivery or user-read proof.
@@ -362,12 +362,17 @@ port.
   two overlapping sessions (`enabled=true` vs `start=23:00`) both remained
   durable; concurrent first-row creation resolved via `23505` + partial update
   with both fields durable; independent `start`/`end` updates both remained
-  durable; the second session blocked on the first row lock (≈1.6 s) proving
-  real overlap; owner B could not update owner A's row under RLS; first insert
-  defaults and invalid `HH:MM` rejection verified. DB dropped afterward.
-- FCM classification/provider tests cover verified token-invalid vs bare
-  404/410, generic `NOT_FOUND`, malformed `INVALID_ARGUMENT`,
-  `SENDER_ID_MISMATCH`, and 429/5xx; no live FCM delivery is claimed.
+  durable; the complementary-time race (`start=23:00` vs `end=23:00`) was
+  rejected by `notification_settings_quiet_hours_window_check` (`23514`) so the
+  final row was never `start === end`; the second session blocked on the first
+  row lock (≈1.7 s) proving real overlap; owner B could not update owner A's
+  row under RLS; first insert defaults, equal-window rejection, and invalid
+  `HH:MM` rejection verified. DB dropped afterward.
+- FCM classification/provider tests cover exact structured token-invalid codes
+  vs broad/config substrings (`UNREGISTERED_PROJECT`, `UNREGISTERED_APP`,
+  `reason: "app unregistered"`, mixed valid-token message), bare 404/410,
+  generic `NOT_FOUND`, malformed `INVALID_ARGUMENT`, `SENDER_ID_MISMATCH`, and
+  429/5xx; no live FCM delivery is claimed.
 - Suffix environment notes (not repository-wide proof):
   - `mobile:typecheck`/`mobile:test` pass only after a clean lockfile `npm ci`;
     dependency drift in a reused `node_modules` can surface untouched-file

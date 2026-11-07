@@ -677,6 +677,13 @@ export class SupabaseNotificationSettingsRepository implements NotificationSetti
       return failure({ message: "No notification settings fields supplied" });
     }
 
+    const settingsFailure = (
+      error: { code?: string; message?: string } | null,
+    ): RepositoryResult<NotificationSettingsRecord> =>
+      error?.code === "23514"
+        ? { ok: false, error: { code: "conflict" } }
+        : failure(error);
+
     // Atomic per-field update for an existing row. Only supplied columns change,
     // so concurrent stale writers cannot clobber each other's fields.
     const update = await this.supabase
@@ -685,7 +692,7 @@ export class SupabaseNotificationSettingsRepository implements NotificationSetti
       .eq("owner_user_id", actor.userId)
       .select("*")
       .maybeSingle();
-    if (update.error) return failure(update.error);
+    if (update.error) return settingsFailure(update.error);
     if (update.data) return { ok: true, value: mapSettings(asRow(update.data)) };
 
     // No row: create it with supplied fields plus documented defaults. A
@@ -713,11 +720,11 @@ export class SupabaseNotificationSettingsRepository implements NotificationSetti
         .eq("owner_user_id", actor.userId)
         .select("*")
         .maybeSingle();
-      if (retry.error) return failure(retry.error);
+      if (retry.error) return settingsFailure(retry.error);
       if (!retry.data) return failure({ message: "Settings patch retry returned no row" });
       return { ok: true, value: mapSettings(asRow(retry.data)) };
     }
-    if (insert.error) return failure(insert.error);
+    if (insert.error) return settingsFailure(insert.error);
     return failure({ message: "Settings insert returned no data" });
   }
 }

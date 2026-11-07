@@ -399,3 +399,30 @@ test("PATCH /api/notifications/settings maps operational failures to 500, not 40
   const body = await res.json() as { error: { code: string } };
   assert.equal(body.error.code, "INTERNAL");
 });
+
+test("PATCH settings maps the DB window conflict to 409", async () => {
+  const fake = new FakeSupabase();
+  fake.push("notification_settings", {
+    data: {
+      owner_user_id: "user-123",
+      quiet_hours_enabled: true,
+      quiet_hours_start: "22:00",
+      quiet_hours_end: "07:00",
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    },
+    error: null,
+  });
+  fake.push("notification_settings", {
+    data: null,
+    error: { code: "23514", message: "check constraint violated" },
+  });
+  const res = await makeApp(fake).request("/api/notifications/settings", {
+    method: "PATCH",
+    headers: JSON_HEADERS,
+    body: JSON.stringify({ quietHoursEnd: "23:00" }),
+  });
+  assert.equal(res.status, 409);
+  const body = await res.json() as { error: { code: string } };
+  assert.equal(body.error.code, "CONFLICT");
+});
