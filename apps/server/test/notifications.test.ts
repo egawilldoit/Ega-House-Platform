@@ -415,7 +415,10 @@ test("PATCH settings maps the DB window conflict to 409", async () => {
   });
   fake.push("notification_settings", {
     data: null,
-    error: { code: "23514", message: "check constraint violated" },
+    error: {
+      code: "23514",
+      message: 'new row violates check constraint "notification_settings_quiet_hours_window_check"',
+    },
   });
   const res = await makeApp(fake).request("/api/notifications/settings", {
     method: "PATCH",

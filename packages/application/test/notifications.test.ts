@@ -118,6 +118,34 @@ test("classifyFcmError only invalidates endpoints on proven token evidence", () 
   assert.equal(classifyFcmError({ httpStatus: 503, fcmCode: "UNAVAILABLE" }), "transient");
   assert.equal(classifyFcmError({ httpStatus: 401, fcmCode: "UNAUTHENTICATED" }), "auth");
   assert.equal(classifyFcmError({ httpStatus: 403 }), "auth");
+
+  // Precedence: transient/auth evidence wins over token-invalid text/details.
+  assert.equal(
+    classifyFcmError({
+      httpStatus: 503,
+      message: "The registration token is not a valid FCM registration token",
+    }),
+    "transient",
+  );
+  assert.equal(
+    classifyFcmError({
+      httpStatus: 429,
+      details: [{ errorCode: "UNREGISTERED" }],
+    }),
+    "transient",
+  );
+  assert.equal(classifyFcmError({ httpStatus: 500, fcmCode: "UNREGISTERED" }), "transient");
+  assert.equal(
+    classifyFcmError({
+      httpStatus: 401,
+      message: "The registration token is not a valid FCM registration token",
+    }),
+    "auth",
+  );
+  assert.equal(
+    classifyFcmError({ httpStatus: 403, details: [{ errorCode: "UNREGISTERED" }] }),
+    "auth",
+  );
 });
 
 test("createNotification validates input and delegates idempotently", async () => {
