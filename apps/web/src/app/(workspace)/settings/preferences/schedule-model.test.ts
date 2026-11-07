@@ -14,6 +14,7 @@ import {
   getWeeklyTotals,
   getZonedClock,
   hasInvalidTargets,
+  isValidTimeZone,
   parseTimeToMinutes,
   type Schedule,
 } from "./schedule-model";
@@ -221,5 +222,36 @@ describe("next guidance", () => {
       dayIndex: 6,
       minutes: 1410,
     });
+  });
+
+  it("measures the next guidance across a DST transition in absolute time", () => {
+    const schedule = defaultSchedule();
+    schedule.guidance = [
+      {
+        name: "Run",
+        days: ["sunday"],
+        start: "09:00",
+        end: "09:30",
+        enabled: true,
+      },
+    ];
+
+    // Saturday 09:00 EST -> Sunday 09:00 EDT is 23 hours, not 24.
+    const next = getNextGuidance(
+      schedule,
+      "America/New_York",
+      new Date("2026-03-07T14:00:00.000Z"),
+    );
+
+    expect(next).toMatchObject({
+      day: "sunday",
+      dayOffset: 1,
+      startsInMinutes: 1380,
+    });
+  });
+
+  it("distinguishes a valid IANA zone from an invalid one", () => {
+    expect(isValidTimeZone("America/New_York")).toBe(true);
+    expect(isValidTimeZone("Mars/Olympus")).toBe(false);
   });
 });

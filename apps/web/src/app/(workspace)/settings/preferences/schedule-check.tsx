@@ -8,6 +8,7 @@ import {
   formatDuration,
   getNextGuidance,
   getPlannedGuidanceMinutes,
+  isValidTimeZone,
 } from "./schedule-model";
 
 function nextDetail(next: NextGuidance): string {
@@ -41,7 +42,10 @@ export function ScheduleCheck({
   const hasConflicts = conflicts.messages.length > 0;
   const planned = getPlannedGuidanceMinutes(schedule.guidance);
   const maxPlanned = Math.max(1, ...DAYS.map((day) => planned[day]));
-  const next = timezone && now ? getNextGuidance(schedule, timezone, now) : null;
+  const timezoneInvalid = timezone !== null && !isValidTimeZone(timezone);
+  const hasUsableTimezone = timezone !== null && !timezoneInvalid;
+  const next =
+    hasUsableTimezone && now ? getNextGuidance(schedule, timezone, now) : null;
 
   let nextTitle = "Next guidance";
   let nextText = "Checking your schedule…";
@@ -50,6 +54,9 @@ export function ScheduleCheck({
     nextText = "Upcoming guidance is hidden while the schedule is paused.";
   } else if (!timezone) {
     nextText = "The account time zone is unavailable, so upcoming guidance cannot be shown.";
+  } else if (timezoneInvalid) {
+    nextTitle = "Time zone unavailable";
+    nextText = `"${timezone}" is not a valid IANA time zone, so upcoming guidance cannot be shown.`;
   } else if (!now) {
     nextText = "Checking your schedule in your account time zone…";
   } else if (next) {
@@ -103,7 +110,10 @@ export function ScheduleCheck({
             <span className={styles.checkTitle}>{nextTitle}</span>
             <span className={styles.checkDetail}>{nextText}</span>
             {timezone ? (
-              <span className={styles.checkDetail}>Account time zone: {timezone}</span>
+              <span className={styles.checkDetail}>
+                Account time zone: {timezone}
+                {timezoneInvalid ? " (invalid)" : ""}
+              </span>
             ) : null}
           </div>
         </div>

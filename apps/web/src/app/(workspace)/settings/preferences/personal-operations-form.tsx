@@ -88,7 +88,13 @@ export function PersonalOperationsForm({
   );
   const [state, submitAction, pending] = useActionState(submit, INITIAL_STATE);
   const submittedRef = useRef<Schedule | null>(null);
+  const [ignoredState, setIgnoredState] =
+    useState<PersonalOperationsActionState | null>(null);
+  const inFlightRef = useRef(false);
+  const focusEditorRef = useRef(false);
+  const editorHeadingRef = useRef<HTMLHeadingElement>(null);
   const errorRef = useRef<HTMLSpanElement>(null);
+  const visibleState = ignoredState === state ? INITIAL_STATE : state;
 
   const dirty = !schedulesEqual(baseline, draft);
   const conflicts = useMemo(
@@ -109,6 +115,7 @@ export function PersonalOperationsForm({
     : [];
 
   useEffect(() => {
+    inFlightRef.current = false;
     if (!state.message || submittedRef.current === null) return;
     const submitted = submittedRef.current;
     submittedRef.current = null;
@@ -118,6 +125,15 @@ export function PersonalOperationsForm({
     }
     errorRef.current?.focus();
   }, [state]);
+
+  useEffect(() => {
+    if (!focusEditorRef.current) return;
+    focusEditorRef.current = false;
+    const heading = editorHeadingRef.current;
+    if (!heading) return;
+    heading.focus({ preventScroll: true });
+    heading.scrollIntoView?.({ block: "nearest" });
+  }, [resolvedSelectedIndex]);
 
   // A draft that only exists in memory must not disappear without a warning.
   useEffect(() => {
@@ -178,6 +194,17 @@ export function PersonalOperationsForm({
     };
   }, [dirty, disabled]);
 
+  function selectGuidance(index: number) {
+    if (index === resolvedSelectedIndex) {
+      const heading = editorHeadingRef.current;
+      heading?.focus({ preventScroll: true });
+      heading?.scrollIntoView?.({ block: "nearest" });
+      return;
+    }
+    focusEditorRef.current = true;
+    setSelectedIndex(index);
+  }
+
   function updateGuidance(index: number, patch: Partial<Schedule["guidance"][number]>) {
     setDraft((current) => ({
       ...current,
@@ -201,10 +228,12 @@ export function PersonalOperationsForm({
   }
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    if (pending || !canSave) {
+    if (pending || inFlightRef.current || !canSave) {
       event.preventDefault();
       return;
     }
+    inFlightRef.current = true;
+    setIgnoredState(null);
     submittedRef.current = draft;
   }
 
@@ -212,18 +241,23 @@ export function PersonalOperationsForm({
   let statusIsError = false;
   if (pending) {
     status = "Saving personal schedule…";
-  } else if (state.message && !state.ok) {
-    status = state.message;
+  } else if (visibleState.message && !visibleState.ok) {
+    status = visibleState.message;
     statusIsError = true;
   } else if (dirty) {
     status = blocked
       ? "Fix the highlighted schedule problems before saving."
       : "Unsaved changes";
-  } else if (state.ok && state.message) {
-    status = state.message;
+  } else if (visibleState.ok && visibleState.message) {
+    status = visibleState.message;
   }
 
-  const showBar = dirty || pending || Boolean(state.message);
+  const showBar = dirty || pending || Boolean(visibleState.message);
+  const announcement = pending
+    ? "Saving personal schedule…"
+    : visibleState.ok && visibleState.message && !dirty
+      ? visibleState.message
+      : "";
 
   return (
     <form
@@ -254,7 +288,7 @@ export function PersonalOperationsForm({
               conflicts={conflicts}
               selectedIndex={resolvedSelectedIndex}
               paused={draft.paused}
-              onSelect={setSelectedIndex}
+              onSelect={selectGuidance}
             />
 
             {selected ? (
@@ -262,6 +296,7 @@ export function PersonalOperationsForm({
                 block={selected}
                 index={resolvedSelectedIndex}
                 conflictMessages={selectedConflicts}
+                headingRef={editorHeadingRef}
                 onChange={(patch) => updateGuidance(resolvedSelectedIndex, patch)}
               />
             ) : (
@@ -286,8 +321,12 @@ export function PersonalOperationsForm({
         </div>
       </fieldset>
 
+      <div className={styles.srOnly} role="status" aria-live="polite">
+        {announcement}
+      </div>
+
       {showBar ? (
-        <div className={styles.saveBar} aria-live="polite">
+        <div className={styles.saveBar}>
           <span
             ref={errorRef}
             tabIndex={statusIsError ? -1 : undefined}
@@ -305,6 +344,7 @@ export function PersonalOperationsForm({
               className={styles.saveBarButton}
               disabled={pending}
               onClick={() => {
+                setIgnoredState(state);
                 setDraft(baseline);
                 setSelectedIndex((current) =>
                   Math.max(0, Math.min(current, baseline.guidance.length - 1)),
