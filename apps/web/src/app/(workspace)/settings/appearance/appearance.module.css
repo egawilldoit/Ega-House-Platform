@@ -1,0 +1,339 @@
+/* Appearance — theme, accent, density and motion cards.
+ * Scoped to the Appearance settings surface. */
+
+.panel {
+  border: 1px solid var(--ega-border);
+  border-radius: var(--radius-lg);
+  background: var(--ega-surface);
+  color: var(--ega-text);
+  min-width: 0;
+}
+
+.panelBody {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding: 20px;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.section + .section {
+  padding-top: 20px;
+  border-top: 1px solid var(--ega-divider);
+}
+
+.sectionHeading {
+  margin: 0;
+  font-size: var(--text-panel-title);
+  font-weight: 600;
+  letter-spacing: var(--tracking-tight);
+}
+
+.sectionDescription {
+  margin: -2px 0 0;
+  font-size: var(--text-meta-lg);
+  line-height: var(--leading-snug);
+  color: var(--ega-text-secondary);
+}
+
+/* Theme previews are decorative artwork. Their literal neutrals depict the
+   two palettes; every label and border outside the artwork uses tokens. */
+.themePreview {
+  display: flex;
+  width: 100%;
+  height: 58px;
+  overflow: hidden;
+  border: 1px solid var(--ega-border);
+  border-radius: var(--radius-sm);
+  background: #ffffff;
+}
+
+.themeRail {
+  flex: 0 0 24%;
+  background: #ededed;
+  border-right: 1px solid #e5e5e5;
+}
+
+.themeCanvas {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 5px;
+  padding: 9px 8px;
+  background: #ffffff;
+}
+
+.themeLine {
+  display: block;
+  width: 82%;
+  height: 5px;
+  border-radius: 2px;
+  background: #d6d6d6;
+}
+
+.themeLineShort {
+  display: block;
+  width: 55%;
+  height: 5px;
+  border-radius: 2px;
+  background: #e5e5e5;
+}
+
+.themePreview[data-theme-preview="dark"] {
+  background: #171717;
+}
+
+.themePreview[data-theme-preview="dark"] .themeRail {
+  background: #22252c;
+  border-right-color: #2f323a;
+}
+
+.themePreview[data-theme-preview="dark"] .themeCanvas {
+  background: #171717;
+}
+
+.themePreview[data-theme-preview="dark"] .themeLine {
+  background: #3d414b;
+}
+
+.themePreview[data-theme-preview="dark"] .themeLineShort {
+  background: #2c2f36;
+}
+
+.themePreview[data-theme-preview="system"] {
+  background: linear-gradient(90deg, #ffffff 50%, #171717 50%);
+}
+
+.themePreview[data-theme-preview="system"] .themeRail {
+  background: linear-gradient(90deg, #ededed 50%, #22252c 50%);
+  border-right-color: #3a3d45;
+}
+
+.themePreview[data-theme-preview="system"] .themeCanvas {
+  background: linear-gradient(90deg, #ffffff 50%, #171717 50%);
+}
+
+.themePreview[data-theme-preview="system"] .themeLine {
+  background: linear-gradient(90deg, #d6d6d6 50%, #3d414b 50%);
+}
+
+.themePreview[data-theme-preview="system"] .themeLineShort {
+  background: linear-gradient(90deg, #e5e5e5 50%, #2c2f36 50%);
+}
+
+.accentPreview {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+}
+
+.accentSwatch {
+  width: 28px;
+  height: 28px;
+  border: 2px solid var(--ega-surface);
+  border-radius: 50%;
+  background: var(--swatch, var(--ega-text));
+  box-shadow: 0 0 0 1px var(--ega-border-strong);
+}
+
+.accentPreview[data-accent-preview="neutral"] {
+  --swatch: var(--ega-text);
+}
+
+.accentPreview[data-accent-preview="blue"] {
+  --swatch: var(--ega-data-blue);
+}
+
+.accentPreview[data-accent-preview="green"] {
+  --swatch: var(--ega-data-green);
+}
+
+.accentPreview[data-accent-preview="violet"] {
+  --swatch: var(--ega-data-purple);
+}
+
+.accentPreview[data-accent-preview="amber"] {
+  --swatch: var(--ega-data-yellow);
+}
+
+.accentText {
+  font-size: var(--text-meta);
+  font-weight: 600;
+  color: var(--ega-text-secondary);
+}
+
+.densityPreview {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  height: 46px;
+  padding: 6px;
+  border: 1px solid var(--ega-border);
+  border-radius: var(--radius-xs);
+  background: var(--ega-surface-subtle);
+}
+
+.densityPreview[data-density-preview="compact"] {
+  gap: 2px;
+  padding-block: 5px;
+}
+
+.densityRow {
+  flex: 1;
+  min-height: 4px;
+  border-radius: 2px;
+  background: var(--ega-border);
+}
+
+.densityPreview[data-density-preview="compact"] .densityRow {
+  min-height: 3px;
+}
+
+/* The motion row is one label, so the text and the switch are a single
+   clickable target. The native checkbox stays focusable. */
+.motionCard {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 14px 16px;
+  border: 1px solid var(--ega-border);
+  border-radius: var(--radius-md);
+  background: var(--ega-surface-subtle);
+  cursor: pointer;
+}
+
+.motionCard:hover {
+  border-color: var(--ega-border-strong);
+}
+
+.motionCard:has(input:focus-visible) {
+  outline: var(--ega-focus-outline);
+  outline-offset: 2px;
+}
+
+.motionCopy {
+  min-width: 0;
+}
+
+.motionTitle {
+  display: block;
+  font-size: var(--text-body);
+  font-weight: 600;
+  color: var(--ega-text);
+}
+
+.motionDescription {
+  display: block;
+  margin-top: 3px;
+  max-width: 68ch;
+  font-size: var(--text-meta);
+  line-height: var(--leading-snug);
+  color: var(--ega-text-secondary);
+}
+
+.motionSwitch {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  width: 42px;
+  height: 24px;
+  margin-top: 1px;
+}
+
+.motionInput {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.motionTrack {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius-pill);
+  background: var(--ega-border-strong);
+  transition: background var(--duration-fast) var(--ease-default);
+  pointer-events: none;
+}
+
+.motionTrack::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--ega-on-ink);
+  transition: transform var(--duration-fast) var(--ease-default);
+}
+
+.motionInput:checked + .motionTrack {
+  background: var(--ega-ink);
+}
+
+.motionInput:checked + .motionTrack::after {
+  transform: translateX(18px);
+}
+
+.motionHint {
+  margin: 6px 0 0;
+  padding-left: 2px;
+  font-size: var(--text-meta);
+  color: var(--ega-text-secondary);
+}
+
+.saveRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 20px;
+  border-top: 1px solid var(--ega-divider);
+}
+
+.saveNote {
+  margin: 0;
+  max-width: 56ch;
+  font-size: var(--text-meta);
+  line-height: var(--leading-snug);
+  color: var(--ega-text-secondary);
+}
+
+@media (max-width: 700px) {
+  .panelBody {
+    padding: 14px;
+    gap: 18px;
+  }
+
+  .section + .section {
+    padding-top: 16px;
+  }
+
+  .saveRow {
+    align-items: stretch;
+  }
+
+  .saveRow > * {
+    width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .motionTrack,
+  .motionTrack::after {
+    transition: none;
+  }
+}
