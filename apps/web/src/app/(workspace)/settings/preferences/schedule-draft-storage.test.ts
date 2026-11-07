@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { DEFAULT_USER_PREFERENCES } from "@ega/domain/preferences";
 
 import {
+  SCHEDULE_DRAFT_MAX_AGE_MS,
   SCHEDULE_DRAFT_VERSION,
   clearScheduleDraft,
   createScheduleDraftKey,
@@ -50,6 +51,16 @@ describe("schedule draft storage", () => {
     expect(createScheduleDraftKey("/settings/preferences", baseline)).not.toBe(
       createScheduleDraftKey("/settings/preferences", changed),
     );
+    expect(
+      createScheduleDraftKey("/settings/preferences", baseline, "account-a"),
+    ).toBe(
+      createScheduleDraftKey("/settings/preferences", baseline, "account-a"),
+    );
+    expect(
+      createScheduleDraftKey("/settings/preferences", baseline, "account-a"),
+    ).not.toBe(
+      createScheduleDraftKey("/settings/preferences", baseline, "account-b"),
+    );
   });
 
   it("round-trips an invalid in-progress draft unchanged", () => {
@@ -65,7 +76,7 @@ describe("schedule draft storage", () => {
 
     writeScheduleDraft(storage, key, draft, 1234);
 
-    expect(readScheduleDraft(storage, key)).toEqual(draft);
+    expect(readScheduleDraft(storage, key, 1234)).toEqual(draft);
   });
 
   it("clears the stored draft", () => {
@@ -103,6 +114,16 @@ describe("schedule draft storage", () => {
       JSON.stringify({ version: SCHEDULE_DRAFT_VERSION, schedule: { paused: false } }),
     );
     expect(readScheduleDraft(storage, key)).toBeNull();
+    expect(storage.entries.has(key)).toBe(false);
+  });
+
+  it("expires a draft after the conservative age limit", () => {
+    const storage = memoryStorage();
+    const key = createScheduleDraftKey("/settings/preferences", schedule());
+    writeScheduleDraft(storage, key, schedule(), 1_000);
+
+    expect(readScheduleDraft(storage, key, 1_000 + SCHEDULE_DRAFT_MAX_AGE_MS - 1)).not.toBeNull();
+    expect(readScheduleDraft(storage, key, 1_000 + SCHEDULE_DRAFT_MAX_AGE_MS + 1)).toBeNull();
     expect(storage.entries.has(key)).toBe(false);
   });
 

@@ -12,6 +12,8 @@ import { DAYS, type Schedule } from "./schedule-model";
 
 export const SCHEDULE_DRAFT_PREFIX = "ega:settings:preferences:draft";
 export const SCHEDULE_DRAFT_VERSION = 1;
+/** A session draft older than this is stale even if the tab survived. */
+export const SCHEDULE_DRAFT_MAX_AGE_MS = 12 * 60 * 60_000;
 
 export type SessionStorageLike = Pick<
   Storage,
@@ -102,8 +104,13 @@ export function scheduleFingerprint(schedule: Schedule): string {
   return hash(JSON.stringify(stableValue(schedule)));
 }
 
-export function createScheduleDraftKey(pathname: string, baseline: Schedule): string {
-  return `${SCHEDULE_DRAFT_PREFIX}:${pathname}:${scheduleFingerprint(baseline)}`;
+export function createScheduleDraftKey(
+  pathname: string,
+  baseline: Schedule,
+  accountScope: string | null = null,
+): string {
+  const accountPart = accountScope ? hash(accountScope) : "anonymous";
+  return `${SCHEDULE_DRAFT_PREFIX}:${pathname}:${accountPart}:${scheduleFingerprint(baseline)}`;
 }
 
 export function writeScheduleDraft(
@@ -128,6 +135,7 @@ export function writeScheduleDraft(
 export function readScheduleDraft(
   storage: SessionStorageLike | null,
   key: string,
+  now: number = Date.now(),
 ): Schedule | null {
   if (!storage) return null;
 
@@ -144,6 +152,9 @@ export function readScheduleDraft(
     if (
       !isRecord(parsed) ||
       parsed.version !== SCHEDULE_DRAFT_VERSION ||
+      typeof parsed.savedAt !== "number" ||
+      !Number.isFinite(parsed.savedAt) ||
+      now - parsed.savedAt > SCHEDULE_DRAFT_MAX_AGE_MS ||
       !isRestorableSchedule(parsed.schedule)
     ) {
       clearScheduleDraft(storage, key);

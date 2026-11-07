@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act } from "react";
+import { StrictMode, act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -161,6 +161,165 @@ describe("PersonalOperationsForm", () => {
     expect(mondayWork.value).toBe("480");
     expect(container.textContent).not.toContain("Unsaved changes restored");
     expect(window.sessionStorage.getItem(key)).toBeNull();
+  });
+
+  it("keeps the restorable draft when an unrelated confirmed submit stays on the page", async () => {
+    const initial = schedule();
+    const key = createScheduleDraftKey("/settings/preferences", initial);
+    const action = vi.fn<PersonalOperationsAction>();
+
+    await act(async () => {
+      root.render(
+        <PersonalOperationsForm
+          initial={initial}
+          disabled={false}
+          timezone="UTC"
+          action={action}
+        />,
+      );
+    });
+
+    const mondayWork = field<HTMLInputElement>(
+      'input[aria-label="Monday work minutes"]',
+    );
+    await act(async () => {
+      setInputValue(mondayWork, "450");
+    });
+    expect(window.sessionStorage.getItem(key)).not.toBeNull();
+
+    const otherForm = document.createElement("form");
+    otherForm.addEventListener("submit", (event) => event.preventDefault());
+    document.body.append(otherForm);
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+
+    await act(async () => {
+      otherForm.dispatchEvent(
+        new Event("submit", { bubbles: true, cancelable: true }),
+      );
+    });
+
+    expect(confirm).toHaveBeenCalledWith(
+      expect.stringContaining("schedule draft will be kept"),
+    );
+    expect(window.sessionStorage.getItem(key)).not.toBeNull();
+    expect(mondayWork.value).toBe("450");
+
+    await act(async () => {
+      root.unmount();
+    });
+    root = createRoot(container);
+    await act(async () => {
+      root.render(
+        <PersonalOperationsForm
+          initial={initial}
+          disabled={false}
+          timezone="UTC"
+          action={action}
+        />,
+      );
+      await Promise.resolve();
+    });
+
+    expect(
+      field<HTMLInputElement>('input[aria-label="Monday work minutes"]').value,
+    ).toBe("450");
+    expect(container.textContent).toContain("Unsaved changes restored");
+    otherForm.remove();
+  });
+
+  it("clears the draft on a confirmed anchor leave", async () => {
+    const initial = schedule();
+    const key = createScheduleDraftKey("/settings/preferences", initial);
+
+    await act(async () => {
+      root.render(
+        <PersonalOperationsForm
+          initial={initial}
+          disabled={false}
+          timezone="UTC"
+          action={vi.fn()}
+        />,
+      );
+    });
+
+    const mondayWork = field<HTMLInputElement>(
+      'input[aria-label="Monday work minutes"]',
+    );
+    await act(async () => {
+      setInputValue(mondayWork, "450");
+    });
+    expect(window.sessionStorage.getItem(key)).not.toBeNull();
+
+    const link = document.createElement("a");
+    link.href = "/settings/appearance";
+    link.textContent = "Appearance";
+    link.addEventListener("click", (event) => event.preventDefault());
+    document.body.append(link);
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+
+    await act(async () => {
+      link.click();
+    });
+
+    expect(window.sessionStorage.getItem(key)).toBeNull();
+    link.remove();
+  });
+
+  it("restores a draft under StrictMode double-invoked effects", async () => {
+    const initial = schedule();
+    const draft = structuredClone(initial);
+    draft.targets.monday.work = 450;
+    const key = createScheduleDraftKey("/settings/preferences", initial);
+    writeScheduleDraft(window.sessionStorage, key, draft);
+
+    await act(async () => {
+      root.render(
+        <StrictMode>
+          <PersonalOperationsForm
+            initial={initial}
+            disabled={false}
+            timezone="UTC"
+            action={vi.fn()}
+          />
+        </StrictMode>,
+      );
+      await Promise.resolve();
+    });
+
+    expect(
+      field<HTMLInputElement>('input[aria-label="Monday work minutes"]').value,
+    ).toBe("450");
+    expect(container.textContent).toContain("Unsaved changes restored");
+  });
+
+  it("restores a draft only for the matching account scope", async () => {
+    const initial = schedule();
+    const draft = structuredClone(initial);
+    draft.targets.monday.work = 450;
+    const key = createScheduleDraftKey(
+      "/settings/preferences",
+      initial,
+      "account-a",
+    );
+    writeScheduleDraft(window.sessionStorage, key, draft);
+
+    await act(async () => {
+      root.render(
+        <PersonalOperationsForm
+          initial={initial}
+          disabled={false}
+          timezone="UTC"
+          accountScope="account-a"
+          action={vi.fn()}
+        />,
+      );
+      await Promise.resolve();
+    });
+
+    expect(
+      field<HTMLInputElement>('input[aria-label="Monday work minutes"]').value,
+    ).toBe("450");
+    expect(container.textContent).toContain("Unsaved changes restored");
   });
 
   it("does not restore a draft keyed to a different baseline", async () => {

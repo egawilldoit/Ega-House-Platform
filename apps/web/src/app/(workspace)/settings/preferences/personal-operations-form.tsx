@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  startTransition,
   useActionState,
   useCallback,
   useEffect,
@@ -68,11 +69,13 @@ export function PersonalOperationsForm({
   initial,
   disabled,
   timezone,
+  accountScope = null,
   action,
 }: {
   initial: Schedule;
   disabled: boolean;
   timezone: string | null;
+  accountScope?: string | null;
   action: PersonalOperationsAction;
 }) {
   const [draft, setDraft] = useState<Schedule>(initial);
@@ -82,8 +85,8 @@ export function PersonalOperationsForm({
   const restoredCheckedRef = useRef(false);
   const hadDirtyRef = useRef(false);
   const draftKey = useMemo(
-    () => createScheduleDraftKey("/settings/preferences", initial),
-    [initial],
+    () => createScheduleDraftKey("/settings/preferences", initial, accountScope),
+    [initial, accountScope],
   );
   const now = useMinuteNow();
   const submit = useCallback(
@@ -158,11 +161,13 @@ export function PersonalOperationsForm({
       clearScheduleDraft(storage, draftKey);
       return;
     }
-    const timer = window.setTimeout(() => {
+    // A transition is safe under StrictMode's double-invoked effects:
+    // `restoredCheckedRef` lets only the first invocation schedule the restore,
+    // and there is no timer cleanup that could cancel the surviving update.
+    startTransition(() => {
       setDraft(restored);
       setRestoredNotice(true);
-    }, 0);
-    return () => window.clearTimeout(timer);
+    });
   }, [disabled, draftKey, initial]);
 
   // Keep the snapshot in sync with the editable draft. A first mount with no
@@ -206,16 +211,7 @@ export function PersonalOperationsForm({
       event.returnValue = "";
     };
 
-    const warnBeforeLeaving = () => {
-      const confirmed = window.confirm(
-        "You have unsaved schedule changes. Leave this page and discard them?",
-      );
-      if (confirmed) {
-        clearScheduleDraft(getSessionStorage(), draftKey);
-        hadDirtyRef.current = false;
-      }
-      return confirmed;
-    };
+    const warnBeforeLeaving = (message: string) => window.confirm(message);
 
     const onClick = (event: MouseEvent) => {
       if (
@@ -236,20 +232,32 @@ export function PersonalOperationsForm({
       }
       const href = anchor.getAttribute("href");
       if (!href || href.startsWith("#")) return;
-      if (!warnBeforeLeaving()) {
+      const confirmed = warnBeforeLeaving(
+        "You have unsaved schedule changes. Leave this page and discard them?",
+      );
+      if (!confirmed) {
         event.preventDefault();
         event.stopPropagation();
+        return;
       }
+      clearScheduleDraft(getSessionStorage(), draftKey);
+      hadDirtyRef.current = false;
     };
 
     const onSubmit = (event: SubmitEvent) => {
       const form = event.target;
       if (!(form instanceof HTMLFormElement)) return;
       if (form.dataset.personalOperationsForm === "true") return;
-      if (!warnBeforeLeaving()) {
+      const confirmed = warnBeforeLeaving(
+        "You have unsaved schedule changes. Continue with this submission? The schedule draft will be kept and restored if this page reloads.",
+      );
+      if (!confirmed) {
         event.preventDefault();
         event.stopPropagation();
       }
+      // Deliberately do not clear the snapshot here. This form may stay mounted
+      // (for example Workspace defaults) or navigate; either way the dirty
+      // schedule must remain restorable.
     };
 
     window.addEventListener("beforeunload", beforeUnload);

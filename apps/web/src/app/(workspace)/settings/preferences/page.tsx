@@ -8,6 +8,7 @@ import {
 import { PersonalOperationsForm } from "@/app/(workspace)/settings/preferences/personal-operations-form";
 import { WorkspaceDefaultsForm } from "@/app/(workspace)/settings/preferences/workspace-defaults-form";
 import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
+import { getCurrentUser } from "@/lib/services/auth-service";
 import { getWebTimeContext } from "@/lib/services/time-context-service";
 import { getWebUserPreferencesState } from "@/lib/services/user-preferences-service";
 
@@ -24,12 +25,15 @@ type WorkspacePreferencesPageProps = {
 export default async function WorkspacePreferencesPage({
   searchParams,
 }: WorkspacePreferencesPageProps) {
-  const [{ success, error }, state, timeContext] = await Promise.all([
+  const [{ success, error }, state, timeContext, account] = await Promise.all([
     searchParams,
     getWebUserPreferencesState(),
     // Display-only: upcoming guidance is expressed in the account time zone.
     // A missing context keeps the schedule usable and hides that one line.
     getWebTimeContext().catch(() => null),
+    // Request-memoized verified identity, used only to scope the local draft
+    // snapshot so same-baseline accounts in one tab cannot share a draft.
+    getCurrentUser().catch(() => null),
   ]);
   const preferences = state.preferences;
   const loadError = error ?? state.errorMessage;
@@ -59,6 +63,7 @@ export default async function WorkspacePreferencesPage({
           initial={preferences.personalOperations}
           disabled={Boolean(state.errorMessage)}
           timezone={timeContext?.timezone ?? null}
+          accountScope={account?.id ?? null}
           action={updatePersonalOperationsAction}
         />
 
