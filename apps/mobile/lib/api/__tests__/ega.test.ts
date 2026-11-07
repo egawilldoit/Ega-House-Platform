@@ -210,6 +210,13 @@ function makeFakeClient(): EgaApiClient {
       preferences: jest.fn(),
       updatePreferences: jest.fn(),
     },
+    expenses: {
+      list: jest.fn(),
+      create: jest.fn(),
+      get: jest.fn(),
+      update: jest.fn(),
+      remove: jest.fn(),
+    },
   };
 }
 

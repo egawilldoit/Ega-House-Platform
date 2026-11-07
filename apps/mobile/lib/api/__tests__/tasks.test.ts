@@ -44,6 +44,7 @@ function makeFullFakeClient(): EgaApiClient {
     timeContext: { get: jest.fn(), set: jest.fn() },
     timer: { workspace: jest.fn(), start: jest.fn(), stop: jest.fn() },
     notifications: { list: jest.fn(), unreadCount: jest.fn(), markRead: jest.fn(), markOpened: jest.fn(), markAllRead: jest.fn(), registerDevice: jest.fn(), unregisterDevice: jest.fn(), preferences: jest.fn(), updatePreferences: jest.fn() },
+    expenses: { list: jest.fn(), create: jest.fn(), get: jest.fn(), update: jest.fn(), remove: jest.fn() },
   };
 }
 
