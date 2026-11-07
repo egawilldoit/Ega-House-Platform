@@ -29,11 +29,16 @@ function reconcileTimerWorkspace(queryClient: QueryClient) {
 
 export function useTimerWorkspaceQuery() {
   // No placeholderData — timer is server-authoritative; stale banner shows last synced instead of placeholder.
-  // No useFocusEffect: relies on focus-manager (refetchOnWindowFocus) + invalidation after start/stop,
-  // and pull-to-refresh. Keeps focus transition cheap (no heavy sync during tab press).
+  // Real native reconnect boundary: AppState resume drives focusManager, which
+  // with staleTime: 0 + refetchOnWindowFocus "always" re-reads the server even
+  // when the cache is fresh; pull-to-refresh is the manual escape hatch.
+  // No NetInfo/onlineManager is installed, so refetchOnReconnect would be inert
+  // and is intentionally not configured.
   return useQuery({
     queryKey: timerQueryKeys.workspace(),
     queryFn: fetchTimerWorkspace,
+    staleTime: 0,
+    refetchOnWindowFocus: "always",
   });
 }
 
@@ -55,7 +60,7 @@ export function useStopTimerMutation() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (sessionId: string | undefined) => stopTimerSession(sessionId),
+    mutationFn: (sessionId: string) => stopTimerSession(sessionId),
     onSuccess: () => {
       invalidateTimerDependentCaches(queryClient);
     },

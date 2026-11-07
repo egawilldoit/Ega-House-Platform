@@ -40,6 +40,9 @@ export async function startTimerAction(formData: FormData) {
   const taskId = String(formData.get("taskId") ?? "").trim();
   const result = await startTimerForTask(taskId);
   if (result.errorMessage) {
+    // Revalidate even on failure so a losing concurrent start immediately shows
+    // the server's authoritative active session instead of a stale idle page.
+    revalidateWorkspaceFor("timer", { returnTo: returnPath });
     redirectToTimer(returnPath, { errorMessage: result.errorMessage });
   }
 
@@ -56,6 +59,9 @@ export async function stopTimerAction(formData: FormData) {
   }
 
   revalidateWorkspaceFor("timer", { returnTo: returnPath });
+  if (result.outcome === "already_stopped") {
+    redirectToTimer(returnPath, { successMessage: "Timer was already stopped." });
+  }
   redirectToTimer(returnPath, {
     successMessage: result.stoppedTaskId
       ? "Timer stopped. Choose the task outcome."
@@ -74,7 +80,8 @@ export async function cancelTimerAction(formData: FormData) {
 
   revalidateWorkspaceFor("timer", { returnTo: returnPath });
   redirectToTimer(returnPath, {
-    successMessage: "Timer cancelled.",
+    successMessage:
+      result.outcome === "already_stopped" ? "Timer was already stopped." : "Timer cancelled.",
   });
 }
 

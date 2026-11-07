@@ -21,6 +21,16 @@ vi.mock("next/link", () => ({
   ),
 }));
 
+// TimerSyncStatus imports the Server Function; this suite only renders the
+// server component tree, so the action is never invoked.
+vi.mock("@/lib/timer/reconcile-action", () => ({
+  reconcileTimerSurface: async () => ({
+    ok: true,
+    syncedAt: "2026-11-07T12:00:00.000Z",
+    activeSessionId: null,
+  }),
+}));
+
 import { TimerPageView } from "./TimerPageView";
 import type { TimerPageModel } from "../_lib/timer-page-model";
 

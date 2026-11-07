@@ -688,6 +688,33 @@ describe("OwnerScopedRealtimeRefresh", () => {
     unmount();
   });
 
+  test("owner switch resets the watermark so the new owner's earlier events refresh", () => {
+    mount({ ownerUserId: "owner-a", channelPrefix: "today", tables: ["task_sessions"], refreshDebounceMs: 100 });
+    assert.ok(activeOnPayload);
+    act(() => {
+      activeOnPayload!(createPayload("UPDATE", { owner_user_id: "owner-a", updated_at: "2026-04-18T00:05:00.000Z" }));
+      vi.advanceTimersByTime(101);
+    });
+    assert.equal(routerRefreshCalls.length, 1);
+
+    // In-place owner change: the effect cleans up and resubscribes on the same root.
+    mount({ ownerUserId: "owner-b", channelPrefix: "today", tables: ["task_sessions"], refreshDebounceMs: 100 });
+    assert.equal(subscribeCalls.length, 2);
+    const ownerBOnPayload = subscribeCalls[1]!.onPayload;
+    assert.ok(ownerBOnPayload);
+
+    act(() => {
+      ownerBOnPayload(createPayload("UPDATE", { owner_user_id: "owner-b", updated_at: "2026-04-18T00:03:00.000Z" }));
+      vi.advanceTimersByTime(101);
+    });
+    assert.equal(
+      routerRefreshCalls.length,
+      2,
+      "owner B's earlier updated_at must not be suppressed by owner A's watermark",
+    );
+    unmount();
+  });
+
   test("queued debounce defers refresh when hidden before execution", () => {
     mount({ ownerUserId: "user-1", channelPrefix: "dashboard", tables: ["task_sessions"], refreshDebounceMs: 100 });
     assert.ok(activeOnPayload);
@@ -728,6 +755,65 @@ describe("OwnerScopedRealtimeRefresh", () => {
     assert.equal(routerRefreshCalls.length, 1, "pending catch-up must survive hiding again");
     act(() => { vi.advanceTimersByTime(200); });
     assert.equal(routerRefreshCalls.length, 1);
+    unmount();
+  });
+
+  test("reconcileOnVisibility=false drops a payload buffered while hidden", () => {
+    mount({
+      ownerUserId: "user-1",
+      channelPrefix: "timer",
+      tables: ["task_sessions"],
+      refreshDebounceMs: 100,
+      reconcileOnVisibility: false,
+    });
+
+    Object.defineProperty(document, "hidden", { configurable: true, value: true });
+    assert.ok(activeOnPayload);
+    act(() => {
+      activeOnPayload!(createPayload("INSERT", { updated_at: "2026-04-18T00:01:00.000Z" }));
+    });
+    act(() => { vi.advanceTimersByTime(200); });
+    assert.equal(routerRefreshCalls.length, 0);
+
+    // The verified TimerSyncStatus owns this transition; the realtime
+    // component must drop the pending flag rather than refresh as well.
+    Object.defineProperty(document, "hidden", { configurable: true, value: false });
+    act(() => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    act(() => { vi.advanceTimersByTime(200); });
+    assert.equal(routerRefreshCalls.length, 0, "verified reconcile owns visibility");
+
+    // A subsequent visible payload still refreshes normally.
+    act(() => {
+      activeOnPayload!(createPayload("UPDATE", { updated_at: "2026-04-18T00:02:00.000Z" }));
+    });
+    act(() => { vi.advanceTimersByTime(101); });
+    assert.equal(routerRefreshCalls.length, 1);
+
+    unmount();
+  });
+
+  test("reconcileOnVisibility defaults to true for other pages", () => {
+    mount({
+      ownerUserId: "user-1",
+      channelPrefix: "dashboard",
+      tables: ["task_sessions"],
+      refreshDebounceMs: 100,
+    });
+
+    Object.defineProperty(document, "hidden", { configurable: true, value: true });
+    assert.ok(activeOnPayload);
+    act(() => {
+      activeOnPayload!(createPayload("INSERT", { updated_at: "2026-04-18T00:01:00.000Z" }));
+    });
+    Object.defineProperty(document, "hidden", { configurable: true, value: false });
+    act(() => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    act(() => { vi.advanceTimersByTime(1); });
+    assert.equal(routerRefreshCalls.length, 1, "default behavior must keep the catch-up refresh");
+
     unmount();
   });
 });
