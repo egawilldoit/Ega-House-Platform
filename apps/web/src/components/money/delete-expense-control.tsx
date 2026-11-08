@@ -5,6 +5,7 @@ import * as DialogPrimitive from "@radix-ui/react-dialog";
 
 import { Button } from "@/components/ui/button";
 import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
+import { useExpenseRequestScope } from "./use-expense-request-scope";
 
 export type ExpenseDeleteResult =
   | { ok: true; alreadyDeleted: boolean }
@@ -40,14 +41,16 @@ export function DeleteExpenseControl({
   triggerLabel = "Delete expense",
   dataTestId,
 }: DeleteExpenseControlProps) {
+  const scope = `${expenseId}::${ownerKey}`;
+  const captureRequestScope = useExpenseRequestScope(scope);
   const [open, setOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Owner isolation: never carry an open confirm or error across accounts.
-  const [ownerScope, setOwnerScope] = useState(ownerKey);
-  if (ownerScope !== ownerKey) {
-    setOwnerScope(ownerKey);
+  const [ownerScope, setOwnerScope] = useState(scope);
+  if (ownerScope !== scope) {
+    setOwnerScope(scope);
     setOpen(false);
     setIsDeleting(false);
     setError(null);
@@ -57,8 +60,10 @@ export function DeleteExpenseControl({
     if (isDeleting) return;
     setIsDeleting(true);
     setError(null);
+    const isCurrent = captureRequestScope();
     try {
       const result = await deleteExpense(expenseId);
+      if (!isCurrent()) return;
       if (result.ok) {
         setOpen(false);
         onDeleted?.(expenseId, result.alreadyDeleted);
@@ -66,11 +71,12 @@ export function DeleteExpenseControl({
       }
       setError(result.error);
     } catch {
+      if (!isCurrent()) return;
       setError(
         "We could not confirm whether this expense was removed. Retry safely; repeating the delete is safe.",
       );
     } finally {
-      setIsDeleting(false);
+      if (isCurrent()) setIsDeleting(false);
     }
   }
 

@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ExpenseDto } from "@ega/contracts/expenses";
 
-import { ExpenseEditForm } from "./expense-edit-form";
+import { ExpenseEditForm, type ExpenseEditFormProps, type ExpenseEditSubmitResult } from "./expense-edit-form";
 
 let container: HTMLDivElement;
 let root: Root;
@@ -62,6 +62,62 @@ async function save() {
 }
 
 describe("ExpenseEditForm", () => {
+  it.each(["2026-11-08T10:00:37.123Z", "2026-11-01T06:30:37.123Z"])("preserves the exact occurrence instant %s when editing another field", async (occurredAt) => {
+    const expense = { ...BASE_EXPENSE, occurredAt };
+    const submitUpdate = vi.fn<ExpenseEditFormProps["submitUpdate"]>(async () => ({ ok: true as const, expense }));
+    await act(async () => root.render(<ExpenseEditForm ownerKey="owner-a" expense={expense} submitUpdate={submitUpdate} fetchLatest={vi.fn()} />));
+    await act(async () => setAmount("30.00"));
+    await save();
+    expect(submitUpdate.mock.calls[0]?.[1]).not.toHaveProperty("occurredAt");
+  });
+
+  it("ignores a pending save after changing expense", async () => {
+    let resolve!: (value: ExpenseEditSubmitResult) => void;
+    const submitUpdate = vi.fn(() => new Promise<ExpenseEditSubmitResult>((done) => { resolve = done; }));
+    const onUpdated = vi.fn();
+    const renderExpense = async (expense: ExpenseDto) => {
+      await act(async () => root.render(<ExpenseEditForm ownerKey="owner-a" expense={expense} submitUpdate={submitUpdate} fetchLatest={vi.fn()} onUpdated={onUpdated} />));
+    };
+    await renderExpense(BASE_EXPENSE);
+    await save();
+    await renderExpense({ ...BASE_EXPENSE, id: "other-expense" });
+    await act(async () => resolve({ ok: true, expense: { ...BASE_EXPENSE, version: 4 } }));
+    expect(onUpdated).not.toHaveBeenCalled();
+  });
+
+  it("does not adopt a refresh version from a previous draft", async () => {
+    let resolve!: (value: { ok: true; expense: ExpenseDto }) => void;
+    const fetchLatest = vi.fn(() => new Promise<{ ok: true; expense: ExpenseDto }>((done) => { resolve = done; }));
+    const submitUpdate = vi.fn<ExpenseEditFormProps["submitUpdate"]>()
+      .mockResolvedValueOnce({ ok: false, code: "CONFLICT", error: "Stale version." })
+      .mockResolvedValue({ ok: true, expense: BASE_EXPENSE });
+    const renderOwner = async (ownerKey: string) => {
+      await act(async () => root.render(<ExpenseEditForm ownerKey={ownerKey} expense={BASE_EXPENSE} submitUpdate={submitUpdate} fetchLatest={fetchLatest} />));
+    };
+    await renderOwner("owner-a");
+    await save();
+    await act(async () => {
+      Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("Refresh"))!.click();
+    });
+    await renderOwner("owner-b");
+    await act(async () => resolve({ ok: true, expense: { ...BASE_EXPENSE, version: 99 } }));
+    await save();
+    expect(submitUpdate.mock.calls[1]?.[1].version).toBe(BASE_EXPENSE.version);
+    expect(document.body.textContent).not.toContain("Loaded the latest saved version");
+  });
+
+  it("sends an explicitly changed occurrence time", async () => {
+    const submitUpdate = vi.fn<ExpenseEditFormProps["submitUpdate"]>(async () => ({ ok: true, expense: BASE_EXPENSE }));
+    await act(async () => root.render(<ExpenseEditForm ownerKey="owner-a" expense={BASE_EXPENSE} submitUpdate={submitUpdate} fetchLatest={vi.fn()} />));
+    await act(async () => {
+      const input = container.querySelector<HTMLInputElement>(`#expense-edit-occurred-${BASE_EXPENSE.id}`)!;
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "2026-11-09T12:34");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await save();
+    expect(submitUpdate.mock.calls[0]?.[1].occurredAt).toBe(new Date("2026-11-09T12:34").toISOString());
+  });
+
   it("preserves the draft on version conflict and retries only after explicit refresh", async () => {
     const submittedVersions: number[] = [];
     const submitUpdate = vi.fn(async (_id: string, patch: { version: number }) => {
