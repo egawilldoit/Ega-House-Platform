@@ -43,14 +43,10 @@ function isMissingPreferencesTable(error: unknown): boolean {
 
 function isMissingJobSearchReferenceColumn(error: unknown): boolean {
   const candidate = error as { code?: unknown; message?: unknown } | null;
-  const code = typeof candidate?.code === "string" ? candidate.code : "";
-  const message = typeof candidate?.message === "string" ? candidate.message : "";
-
   return (
-    code === "42703"
-    || code === "PGRST204"
-    || (/job_search_reference/.test(message)
-      && /does not exist|schema cache|could not find/i.test(message))
+    (candidate?.code === "42703" || candidate?.code === "PGRST204")
+    && typeof candidate.message === "string"
+    && /job_search_reference/i.test(candidate.message)
   );
 }
 

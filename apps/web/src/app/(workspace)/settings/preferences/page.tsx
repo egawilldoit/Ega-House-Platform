@@ -107,7 +107,6 @@ export default async function WorkspacePreferencesPage({
           accountScope={account.id}
           action={updatePersonalOperationsAction}
         />
->>>>>>> origin/main
 
         <WorkspaceDefaultsForm
           preferences={preferences}
