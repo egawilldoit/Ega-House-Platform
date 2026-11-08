@@ -16,6 +16,7 @@ import {
 import type { ExpenseDto } from "@ega/contracts/expenses";
 
 import { useStableIdempotencyKey } from "./use-stable-expense-key";
+import { useExpenseRequestScope } from "./use-expense-request-scope";
 
 export type ExpenseCreateSubmitInput = ValidatedExpenseFormValues & {
   idempotencyKey: string;
@@ -56,6 +57,7 @@ export function ExpenseCreateForm({
   submitExpense,
   onCreated,
 }: ExpenseCreateFormProps) {
+  const captureRequestScope = useExpenseRequestScope(ownerKey);
   const [idempotencyKey, rotateKey] = useStableIdempotencyKey({
     ownerKey,
     purchaseNonce: "default",
@@ -128,11 +130,13 @@ export function ExpenseCreateForm({
     setFormError(null);
     submittingRef.current = true;
     setIsSubmitting(true);
+    const isCurrent = captureRequestScope();
     try {
       const result = await submitExpense({
         ...validation.value,
         idempotencyKey,
       });
+      if (!isCurrent()) return;
       if (result.ok) {
         setSuccess({ replayed: result.replayed });
         onCreated?.(result.expense, result.replayed);
@@ -142,10 +146,13 @@ export function ExpenseCreateForm({
       // idempotent replay, never a duplicate purchase.
       setFormError(result.error);
     } catch {
+      if (!isCurrent()) return;
       setFormError("Unable to save the expense right now. Retry — no duplicate will be created.");
     } finally {
-      submittingRef.current = false;
-      setIsSubmitting(false);
+      if (isCurrent()) {
+        submittingRef.current = false;
+        setIsSubmitting(false);
+      }
     }
   }
 
