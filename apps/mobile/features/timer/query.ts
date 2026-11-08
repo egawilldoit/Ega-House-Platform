@@ -29,16 +29,15 @@ function reconcileTimerWorkspace(queryClient: QueryClient) {
 
 export function useTimerWorkspaceQuery() {
   // No placeholderData — timer is server-authoritative; stale banner shows last synced instead of placeholder.
-  // Real native reconnect boundary: AppState resume drives focusManager, which
-  // with staleTime: 0 + refetchOnWindowFocus "always" re-reads the server even
-  // when the cache is fresh; pull-to-refresh is the manual escape hatch.
-  // No NetInfo/onlineManager is installed, so refetchOnReconnect would be inert
-  // and is intentionally not configured.
+  // AppState resume and bounded foreground polling reconcile other clients'
+  // changes, including reconnects without an AppState transition. AppState's
+  // focusManager pauses polling in the background; elapsed ticks stay local.
   return useQuery({
     queryKey: timerQueryKeys.workspace(),
     queryFn: fetchTimerWorkspace,
     staleTime: 0,
     refetchOnWindowFocus: "always",
+    refetchInterval: 30_000,
   });
 }
 
