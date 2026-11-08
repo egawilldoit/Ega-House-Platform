@@ -24,6 +24,14 @@ test("money page honors owner timezone and formats stored integer centimes as MA
   assert.doesNotMatch(source, /Africa\/Casablanca/);
 });
 
+test("money ledger displays need-vs-want and keeps notes visible beside merchants", () => {
+  assert.match(source, /Need or want/);
+  assert.match(source, /expense\.needVsWant/);
+  assert.match(source, /expense\.merchant\s*\?\?\s*"Expense"/);
+  assert.match(source, /expense\.note\s*&&/);
+  assert.doesNotMatch(source, /expense\.merchant\s*\?\?\s*expense\.note/);
+});
+
 test("money ledger has bounded URL pagination and accessible loading failure recovery", () => {
   assert.match(source, /limit:\s*"25"/);
   assert.match(source, /Math\.min\(parsedOffset,\s*100_000\)/);
