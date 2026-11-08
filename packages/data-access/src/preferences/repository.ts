@@ -9,7 +9,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { sanitizeSupabaseError } from "../supabase/errors";
 
 type UserPreferencesRow = {
-  personal_operations: unknown;
+  personal_operations?: unknown;
   theme: string | null;
   accent: string | null;
   density: string | null;
@@ -27,9 +27,16 @@ function isMissingPreferencesTable(error: unknown): boolean {
   return (
     code === "42P01"
     || code === "PGRST205"
-    || (/user_preferences/.test(message)
+    || (!/personal_operations/i.test(message) && /user_preferences/.test(message)
       && /does not exist|schema cache|could not find/i.test(message))
   );
+}
+
+function isMissingScheduleColumn(error: unknown): boolean {
+  const candidate = error as { code?: unknown; message?: unknown } | null;
+  return (candidate?.code === "42703" || candidate?.code === "PGRST204")
+    && typeof candidate.message === "string"
+    && /personal_operations/i.test(candidate.message);
 }
 
 function toPreferences(row: UserPreferencesRow): UserPreferences {
@@ -56,13 +63,21 @@ export class SupabaseUserPreferencesRepository implements UserPreferencesReposit
   constructor(private readonly supabase: SupabaseClient) {}
 
   async get(actor: AuthenticatedActor): Promise<RepositoryResult<UserPreferences | null>> {
-    const { data, error } = await this.supabase
+    let { data, error } = await this.supabase
       .from("user_preferences")
       .select(
         "theme, accent, density, reduced_motion, launch_page, task_layout, task_open_mode, personal_operations",
       )
       .eq("user_id", actor.userId)
       .maybeSingle();
+
+    if (error && isMissingScheduleColumn(error)) {
+      ({ data, error } = await this.supabase
+        .from("user_preferences")
+        .select("theme, accent, density, reduced_motion, launch_page, task_layout, task_open_mode")
+        .eq("user_id", actor.userId)
+        .maybeSingle());
+    }
 
     if (error) {
       if (isMissingPreferencesTable(error)) {
