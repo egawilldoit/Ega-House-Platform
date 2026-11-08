@@ -1,6 +1,15 @@
+import { WorkspaceSkeletonShell } from "@/components/layout/workspace-skeleton-shell";
+import { Skeleton } from "@/components/ui/skeleton";
+
 export default function MoneyLoading() {
-  return <main aria-busy="true" className="mx-auto w-full max-w-5xl px-4 py-6 sm:px-6">
-    <h1 className="text-xl font-semibold">Money</h1>
-    <p role="status" className="mt-6 text-ega-text-secondary">Loading expenses…</p>
-  </main>;
+  return (
+    <WorkspaceSkeletonShell title="Money" description="Your personal expense ledger.">
+      <div role="status" className="space-y-3">
+        <span className="sr-only">Loading expenses…</span>
+        {Array.from({ length: 5 }, (_, index) => (
+          <Skeleton key={index} className="h-12 w-full rounded-[var(--radius-md)]" />
+        ))}
+      </div>
+    </WorkspaceSkeletonShell>
+  );
 }
