@@ -63,6 +63,54 @@ async function submitForm() {
 }
 
 describe("ExpenseCreateForm", () => {
+  it("ignores an old owner's response without releasing the new owner's pending submit", async () => {
+    const responses: Array<(value: ExpenseCreateSubmitResult) => void> = [];
+    const submitExpense = vi.fn(() => new Promise<ExpenseCreateSubmitResult>((resolve) => responses.push(resolve)));
+    const onCreated = vi.fn();
+    const renderOwner = async (ownerKey: string) => {
+      await act(async () => root.render(<ExpenseCreateForm ownerKey={ownerKey} submitExpense={submitExpense} onCreated={onCreated} />));
+    };
+    await renderOwner("owner-a");
+    await act(async () => fillValidForm());
+    await submitForm();
+    await renderOwner("owner-b");
+    await act(async () => fillValidForm());
+    await submitForm();
+    await act(async () => responses[0]({ ok: true, expense: { id: "owner-a-expense" } as never, replayed: false }));
+    expect(onCreated).not.toHaveBeenCalled();
+    expect(container.querySelector('[role="status"]')).toBeNull();
+    await submitForm();
+    expect(submitExpense).toHaveBeenCalledTimes(2);
+    await act(async () => responses[1]({ ok: true, expense: { id: "owner-b-expense" } as never, replayed: false }));
+    expect(onCreated).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(["failure", "rejection", "unmount"])("ignores a stale %s response even after returning to the original owner", async (outcome) => {
+    let resolve!: (value: ExpenseCreateSubmitResult) => void;
+    let reject!: (reason: Error) => void;
+    const submitExpense = vi.fn(() => new Promise<ExpenseCreateSubmitResult>((done, fail) => {
+      resolve = done;
+      reject = fail;
+    }));
+    const onCreated = vi.fn();
+    const renderOwner = async (ownerKey: string) => {
+      await act(async () => root.render(<ExpenseCreateForm ownerKey={ownerKey} submitExpense={submitExpense} onCreated={onCreated} />));
+    };
+    await renderOwner("owner-a");
+    await act(async () => fillValidForm());
+    await submitForm();
+    await renderOwner("owner-b");
+    await renderOwner("owner-a");
+    if (outcome === "unmount") await act(async () => root.render(null));
+    await act(async () => {
+      if (outcome === "rejection") reject(new Error("old owner transport error"));
+      else if (outcome === "failure") resolve({ ok: false, error: "old owner failure" });
+      else resolve({ ok: true, expense: { id: "old-owner-row" } as never, replayed: false });
+    });
+    expect(onCreated).not.toHaveBeenCalled();
+    expect(document.body.textContent).not.toMatch(/old owner failure|Unable to save/);
+  });
+
   it("blocks double submit and reuses one idempotency key across the attempts", async () => {
     const seenKeys: string[] = [];
     let resolveSubmit!: (value: ExpenseCreateSubmitResult) => void;
