@@ -160,7 +160,7 @@ export async function getTimerWorkspace(
 
   const [openResult, recentResult] = await Promise.all([
     repository.listOpenSessions(actor),
-    repository.listRecentSessions(actor, { limit: 150 }),
+    repository.listSummarySessions(actor),
   ]);
 
   if (!openResult.ok) return applicationFailure("Unable to load the timer workspace right now.");

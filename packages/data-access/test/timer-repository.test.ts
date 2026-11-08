@@ -14,10 +14,10 @@ type QueryResult = {
 };
 
 class FakeTimerSupabase {
-  constructor(private readonly results: QueryResult[]) {}
+  constructor(private readonly results: QueryResult[], private readonly table = "task_sessions") {}
 
   from(table: string) {
-    assert.equal(table, "task_sessions");
+    assert.equal(table, this.table);
     return new FakeTimerQueryBuilder(this);
   }
 
@@ -27,6 +27,16 @@ class FakeTimerSupabase {
     return result;
   }
 }
+
+test("review tasks cannot start timers through the shared/native repository", async () => {
+  const fake = new FakeTimerSupabase([{ data: { id: "task-review", title: "Review me",
+    status: "review", archived_at: null }, error: null }], "tasks");
+  const result = await timerRepository(fake).getStartableTask(ACTOR, { taskId: "task-review" });
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.deepEqual(result.value, { eligible: false,
+    reason: "Move this task to In progress before starting a timer.", taskTitle: "Review me" });
+});
 
 class FakeTimerQueryBuilder {
   private readonly steps: string[] = [];
@@ -40,6 +50,11 @@ class FakeTimerQueryBuilder {
 
   eq(column: string, value: unknown) {
     this.steps.push(`eq:${column}=${String(value)}`);
+    return this;
+  }
+
+  gt(column: string, value: unknown) {
+    this.steps.push(`gt:${column}=${String(value)}`);
     return this;
   }
 
@@ -94,6 +109,40 @@ class FakeTimerQueryBuilder {
 function timerRepository(fake: FakeTimerSupabase) {
   return new SupabaseTimerSessionRepository(fake as unknown as SupabaseClient);
 }
+
+test("summary reads every page with owner scope and an immutable-id cursor", async () => {
+  const rows = Array.from({ length: 501 }, (_, index) => ({
+    id: String(index).padStart(4, "0"), task_id: "task-1",
+    started_at: "2026-08-10T10:00:00Z", ended_at: "2026-08-10T10:00:01Z",
+    duration_seconds: 1, tasks: { title: "Focus" },
+  }));
+  const fake = new FakeTimerSupabase([
+    { data: rows.slice(0, 500), error: null }, { data: rows.slice(500), error: null },
+  ]);
+  const queries: FakeTimerQueryBuilder[] = [];
+  const from = fake.from.bind(fake);
+  fake.from = table => { const query = from(table); queries.push(query); return query; };
+  const result = await timerRepository(fake).listSummarySessions(ACTOR);
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.value.length, 501);
+  assert.equal(new Set(result.value.map(row => row.id)).size, 501);
+  for (const query of queries) {
+    assert.ok(query.recordedSteps().includes("eq:owner_user_id=user-timer"));
+    assert.ok(query.recordedSteps().includes("order:id"));
+    assert.ok(query.recordedSteps().includes("limit:500"));
+  }
+  assert.ok(queries[1].recordedSteps().includes("gt:id=0499"));
+});
+
+test("summary page failure fails closed instead of returning partial totals", async () => {
+  const fake = new FakeTimerSupabase([
+    { data: Array.from({ length: 500 }, (_, index) => ({ id: String(index) })), error: null },
+    { data: null, error: { code: "PGRST301", message: "JWT expired" } },
+  ]);
+  const result = await timerRepository(fake).listSummarySessions(ACTOR);
+  assert.deepEqual(result, { ok: false, error: { code: "unknown" } });
+});
 
 test("sanitizeSupabaseError maps 23505 and the open-session index name to conflict", () => {
   assert.deepEqual(sanitizeSupabaseError({ code: "23505" }), { code: "conflict" });

@@ -785,13 +785,25 @@ export async function getTimerWorkspaceData(options?: {
         .not("ended_at", "is", null)
         .order("started_at", { ascending: false })
         .limit(50),
-      supabase
-        .from("task_sessions")
-        .select("id, task_id, started_at, ended_at, duration_seconds, tasks(id, title)")
-        .lt("started_at", nextDayStartIso)
-        .or(`ended_at.gte.${todayWindow.startIso},ended_at.is.null`)
-        .order("started_at", { ascending: false })
-        .limit(80),
+      (async () => {
+        const sessions: TimerAggregateSessionRow[] = [];
+        let afterId: string | null = null;
+        for (;;) {
+          let query = supabase.from("task_sessions")
+            .select("id, task_id, started_at, ended_at, duration_seconds, tasks(id, title)")
+            .lt("started_at", nextDayStartIso)
+            .or(`ended_at.gte.${todayWindow.startIso},ended_at.is.null`)
+            .order("id", { ascending: true }).limit(500);
+          if (afterId !== null) query = query.gt("id", afterId);
+          const result = await query;
+          if (result.error) return { data: [], error: result.error };
+          const page = result.data ?? [];
+          sessions.push(...page);
+          if (page.length < 500) break;
+          afterId = page[page.length - 1].id;
+        }
+        return { data: sessions, error: null };
+      })(),
     ]);
 
   if (tasksResult.error) {
