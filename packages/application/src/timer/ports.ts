@@ -18,10 +18,8 @@ export type StartableTask = Readonly<{
 
 export interface TimerSessionRepository {
   listOpenSessions(actor: AuthenticatedActor): Promise<RepositoryResult<TimerSessionRecord[]>>;
-  listRecentSessions(
-    actor: AuthenticatedActor,
-    input: Readonly<{ limit: number }>,
-  ): Promise<RepositoryResult<TimerSessionRecord[]>>;
+  /** Complete owner history for totals, independent of display/history limits. */
+  listSummarySessions(actor: AuthenticatedActor): Promise<RepositoryResult<TimerSessionRecord[]>>;
   getStartableTask(
     actor: AuthenticatedActor,
     input: Readonly<{ taskId: string }>,
@@ -29,6 +27,10 @@ export interface TimerSessionRepository {
   findSessionByOperation(
     actor: AuthenticatedActor,
     input: Readonly<{ mcpOperationId: string; mcpClientId: string }>,
+  ): Promise<RepositoryResult<TimerSessionRecord | null>>;
+  findSessionById(
+    actor: AuthenticatedActor,
+    input: Readonly<{ sessionId: string }>,
   ): Promise<RepositoryResult<TimerSessionRecord | null>>;
   insertOpenSession(
     actor: AuthenticatedActor,

@@ -44,7 +44,14 @@ const WORKSPACE: TimerWorkspaceState = {
 
 const START_RESPONSE: TimerStartResponse = { ok: true, activeSession: WORKSPACE.activeSession! };
 
-type QueryOptions = { queryKey: unknown[]; queryFn: () => Promise<unknown> };
+type QueryOptions = {
+  queryKey: unknown[];
+  queryFn: () => Promise<unknown>;
+  staleTime?: number;
+  refetchOnWindowFocus?: "always" | boolean;
+  refetchOnReconnect?: boolean;
+  refetchInterval?: number;
+};
 type MutationOptions = {
   mutationFn: (input: unknown) => Promise<unknown>;
   onSuccess?: (data: unknown) => void;
@@ -94,6 +101,54 @@ describe('timer query hooks', () => {
     expect(timerApi.fetchTimerWorkspace).toHaveBeenCalledTimes(1);
   });
 
+  it('refetches on AppState resume even when the cached workspace is fresh', () => {
+    useTimerWorkspaceQuery();
+
+    // A 30s default staleTime would let a resume within 30s skip the refetch,
+    // leaving another device's start/stop invisible.
+    expect(queryCall?.staleTime).toBe(0);
+    expect(queryCall?.refetchOnWindowFocus).toBe('always');
+    // Reconnects without AppState changes are covered by foreground polling.
+    expect(queryCall?.refetchOnReconnect).toBeUndefined();
+  });
+
+  it('adopts remote starts/stops and recovers from failed reads while still foregrounded', async () => {
+    jest.useFakeTimers();
+    const { QueryClient, QueryObserver, focusManager } = jest.requireActual<typeof ReactQuery>('@tanstack/react-query');
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    focusManager.setFocused(true);
+    mock(timerApi.fetchTimerWorkspace).mockResolvedValue(WORKSPACE);
+    useTimerWorkspaceQuery();
+    const observer = new QueryObserver(client, queryCall!);
+    const unsubscribe = observer.subscribe(() => {});
+    try {
+      await jest.advanceTimersByTimeAsync(0);
+      expect(observer.getCurrentResult().data).toEqual(WORKSPACE);
+      const stopped = { ...WORKSPACE, activeSession: null };
+      mock(timerApi.fetchTimerWorkspace).mockResolvedValue(stopped);
+      await jest.advanceTimersByTimeAsync(29_999);
+      expect(timerApi.fetchTimerWorkspace).toHaveBeenCalledTimes(1);
+      await jest.advanceTimersByTimeAsync(1);
+      expect(observer.getCurrentResult().data).toEqual(stopped);
+      mock(timerApi.fetchTimerWorkspace).mockRejectedValue(new Error('offline'));
+      await jest.advanceTimersByTimeAsync(30_000);
+      expect(observer.getCurrentResult().isError).toBe(true);
+      expect(observer.getCurrentResult().data).toEqual(stopped);
+      mock(timerApi.fetchTimerWorkspace).mockResolvedValue(WORKSPACE);
+      await jest.advanceTimersByTimeAsync(30_000);
+      expect(observer.getCurrentResult().data).toEqual(WORKSPACE);
+      expect(observer.getCurrentResult().isError).toBe(false);
+      focusManager.setFocused(false);
+      await jest.advanceTimersByTimeAsync(90_000);
+      expect(timerApi.fetchTimerWorkspace).toHaveBeenCalledTimes(4);
+    } finally {
+      unsubscribe();
+      client.clear();
+      focusManager.setFocused(undefined);
+      jest.useRealTimers();
+    }
+  });
+
   it('start success invalidates timer, today, and tracked-task caches', async () => {
     mock(timerApi.startTimerForTask).mockResolvedValue(START_RESPONSE);
     const invalidateQueries = installQueryClient();
@@ -133,6 +188,7 @@ describe('timer query hooks', () => {
       ok: true as const,
       sessionId: 'session-1',
       taskId: 'task-1',
+      outcome: 'stopped' as const,
     });
     const invalidateQueries = installQueryClient();
 
@@ -145,6 +201,36 @@ describe('timer query hooks', () => {
     const keys = invalidatedKeys(invalidateQueries);
     expect(keys).toContainEqual(['timer']);
     expect(keys).toContainEqual(['today']);
+  });
+
+  it('already-stopped acknowledgement is a success and still invalidates caches', async () => {
+    mock(timerApi.stopTimerSession).mockResolvedValue({
+      ok: true as const,
+      sessionId: 'session-1',
+      taskId: 'task-1',
+      outcome: 'already_stopped' as const,
+    });
+    const invalidateQueries = installQueryClient();
+
+    useStopTimerMutation();
+
+    await expect(mutationCalls[0].mutationFn('session-1')).resolves.toEqual({
+      ok: true,
+      sessionId: 'session-1',
+      taskId: 'task-1',
+      outcome: 'already_stopped',
+    });
+
+    mutationCalls[0].onSuccess?.({
+      ok: true,
+      sessionId: 'session-1',
+      taskId: 'task-1',
+      outcome: 'already_stopped',
+    });
+    const keys = invalidatedKeys(invalidateQueries);
+    expect(keys).toContainEqual(['timer']);
+    expect(keys).toContainEqual(['today']);
+    expect(keys).toContainEqual(['tasks', 'list']);
   });
 
   it('a rejected stop (no matching session) reconciles the workspace without touching other caches', async () => {

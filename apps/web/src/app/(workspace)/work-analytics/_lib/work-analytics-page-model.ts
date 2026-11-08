@@ -9,6 +9,7 @@ import {
 import { buildWorkAnalyticsReport, type WorkAnalyticsTaskCounts } from "@/lib/services/work-analytics-report-builder";
 import { buildWorkActivityReadModel, type WorkActivityReadModel } from "@/lib/services/work-activity-read-model";
 import { getWebTimeContext } from "@/lib/services/time-context-service";
+import { getWorkTargetProgress } from "@/lib/services/work-target-progress-service";
 
 const NO_TASK_COUNTS: WorkAnalyticsTaskCounts = {
   completedCount: 0,
@@ -18,7 +19,7 @@ const NO_TASK_COUNTS: WorkAnalyticsTaskCounts = {
 
 export async function getWorkAnalyticsPageModel(searchParams: Record<string, string | undefined>) {
   const user = await getCurrentUser();
-  if (!user) return { user: null, error: "Please log in to view work analytics.", report: null as unknown as ReturnType<typeof buildWorkAnalyticsReport>, filters: null, timezone: null as string | null, workActivity: null as WorkActivityReadModel | null, workActivityError: null as string | null };
+  if (!user) return { user: null, error: "Please log in to view work analytics.", report: null as unknown as ReturnType<typeof buildWorkAnalyticsReport>, filters: null, timezone: null as string | null, workActivity: null as WorkActivityReadModel | null, workActivityError: null as string | null, workTargets: null as Awaited<ReturnType<typeof getWorkTargetProgress>>["data"], workTargetsError: null as string | null };
   const filters = parseAnalyticsFilters(
     new URLSearchParams(Object.entries(searchParams).filter(([, v]) => v !== undefined) as [string, string][]),
   );
@@ -41,15 +42,19 @@ export async function getWorkAnalyticsPageModel(searchParams: Record<string, str
   const evidenceWindow = computeEvidenceWindowForRange(filters.range, now, analyticsTimezone);
   const last30Window = computeLast30DaysWindow(now, analyticsTimezone);
 
-  const [sessionsResult, selectedTaskCountsResult, last30TaskCountsResult, workActivityResult] = await Promise.all([
+  const [sessionsResult, selectedTaskCountsResult, last30TaskCountsResult, workActivityResult, workTargetsResult] = await Promise.all([
     getWorkAnalyticsSessionsForWindow({ ownerUserId: user.id, window: evidenceWindow }),
     getWorkAnalyticsTaskCounts({ ownerUserId: user.id, window: selectedWindow }),
     getWorkAnalyticsTaskCounts({ ownerUserId: user.id, window: last30Window }),
     buildWorkActivityReadModel({ ownerUserId: user.id, now }),
+    // One bounded current-week read. Targets are never derived from the
+    // selected/recent-N analytics window. The page's explicit open-session
+    // opt-in is shared with the canonical evidence policy.
+    getWorkTargetProgress({ now, includeOpenSessions: filters.includeOpen }),
   ]);
 
   if (sessionsResult.errorMessage || !sessionsResult.data)
-    return { user, error: "Failed to load work analytics data.", report: null as unknown as ReturnType<typeof buildWorkAnalyticsReport>, filters, timezone: analyticsTimezone ?? null, workActivity: workActivityResult.data, workActivityError: workActivityResult.errorMessage };
+    return { user, error: "Failed to load work analytics data.", report: null as unknown as ReturnType<typeof buildWorkAnalyticsReport>, filters, timezone: analyticsTimezone ?? null, workActivity: workActivityResult.data, workActivityError: workActivityResult.errorMessage, workTargets: workTargetsResult.data, workTargetsError: workTargetsResult.errorMessage };
 
   const sessions = sessionsResult.data;
   const report = buildWorkAnalyticsReport(
@@ -70,6 +75,8 @@ export async function getWorkAnalyticsPageModel(searchParams: Record<string, str
     timezone: analyticsTimezone ?? null,
     workActivity: workActivityResult.data,
     workActivityError: workActivityResult.errorMessage,
+    workTargets: workTargetsResult.data,
+    workTargetsError: workTargetsResult.errorMessage,
   };
 }
 

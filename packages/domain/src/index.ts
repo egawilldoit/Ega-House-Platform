@@ -7,5 +7,7 @@ export * from "./friction/index";
 export * from "./inbox/index";
 export * from "./inbox-ai/index";
 export * from "./time-context";
+export * from "./personal-operations";
 export * from "./preferences";
+export * from "./expenses";
 export * from "./attachments";

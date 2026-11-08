@@ -1,8 +1,21 @@
+import type { ReactNode } from "react";
+
+import styles from "./choice-group.module.css";
+
 export type ChoiceOption = {
   value: string;
   label: string;
   description?: string;
+  /** Decorative preview rendered above/beside the label; never the only name. */
+  preview?: ReactNode;
 };
+
+const GRID_CLASSES = {
+  auto: styles.gridAuto,
+  two: styles.gridTwo,
+  three: styles.gridThree,
+  five: styles.gridFive,
+} as const;
 
 /**
  * Native radio group rendered as selectable cards.
@@ -10,7 +23,8 @@ export type ChoiceOption = {
  * A real `<fieldset>/<legend>` keeps the group name and description available to
  * assistive technology, arrow-key navigation and Space/Enter selection come from
  * the radios themselves, and the visible focus ring is on the card wrapper
- * (`.choice-card`) rather than a decorative span. No client JavaScript needed.
+ * rather than a decorative span. No client JavaScript is needed, so saved
+ * values survive reload even before hydration.
  */
 export function ChoiceGroup({
   name,
@@ -19,6 +33,11 @@ export function ChoiceGroup({
   value,
   options,
   idPrefix,
+  columns = "auto",
+  layout = "row",
+  visuallyHideInput = false,
+  visuallyHideLegend = false,
+  describedBy,
 }: {
   name: string;
   legend: string;
@@ -26,36 +45,47 @@ export function ChoiceGroup({
   value: string;
   options: readonly ChoiceOption[];
   idPrefix: string;
+  columns?: keyof typeof GRID_CLASSES;
+  layout?: "row" | "stack";
+  /** Keeps the native radio focusable while a swatch or preview carries the UI. */
+  visuallyHideInput?: boolean;
+  /** Use when a visible section heading already names the group. */
+  visuallyHideLegend?: boolean;
+  /** External description id when the visible copy lives outside the group. */
+  describedBy?: string;
 }) {
-  const descriptionId = description ? `${idPrefix}-description` : undefined;
+  const descriptionId = description ? `${idPrefix}-description` : describedBy;
 
   return (
-    <fieldset className="flex flex-col gap-2" aria-describedby={descriptionId}>
-      <legend className="text-[length:var(--text-body)] font-medium text-ega-text">
+    <fieldset className={styles.group} aria-describedby={descriptionId}>
+      <legend className={visuallyHideLegend ? styles.srOnly : styles.legend}>
         {legend}
       </legend>
       {description ? (
-        <p
-          id={descriptionId}
-          className="text-[length:var(--text-meta)] text-ega-text-secondary"
-        >
+        <p id={descriptionId} className={styles.description}>
           {description}
         </p>
       ) : null}
-      <div className="grid gap-2 sm:grid-cols-2">
+      <div className={`${styles.grid} ${GRID_CLASSES[columns]}`}>
         {options.map((option) => (
-          <label key={option.value} className="choice-card">
+          <label
+            key={option.value}
+            className={`${styles.card} ${layout === "stack" ? styles.cardStack : styles.cardRow}`}
+          >
             <input
               type="radio"
               name={name}
               value={option.value}
               defaultChecked={option.value === value}
-              className="mt-0.5 h-4 w-4 flex-none accent-[var(--ega-ink)]"
+              className={visuallyHideInput ? styles.inputHidden : styles.input}
             />
-            <span className="min-w-0">
-              <span className="choice-card-label">{option.label}</span>
+            {option.preview ? (
+              <span className={styles.preview}>{option.preview}</span>
+            ) : null}
+            <span className={styles.copy}>
+              <span className={styles.label}>{option.label}</span>
               {option.description ? (
-                <span className="choice-card-description">{option.description}</span>
+                <span className={styles.cardDescription}>{option.description}</span>
               ) : null}
             </span>
           </label>
