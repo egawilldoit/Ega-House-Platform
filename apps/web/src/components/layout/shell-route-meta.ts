@@ -13,6 +13,7 @@ export const COMMAND_ROUTES = [
   { href: "/goals", label: "Goals", group: "primary", description: "Direction and progress" },
   { href: "/timer", label: "Timer", group: "primary", description: "Focus session" },
   { href: "/review", label: "Review", group: "primary", description: "Weekly feedback loop" },
+  { href: "/money", label: "Money", group: "primary", description: "Personal expense ledger" },
   {
     href: "/work-analytics",
     label: "Analytics",
