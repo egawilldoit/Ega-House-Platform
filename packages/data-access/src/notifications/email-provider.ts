@@ -1,4 +1,5 @@
 import type {
+  EmailDestinationResolution,
   EmailDestinationResolver,
   EmailProvider,
   EmailProviderPayload,
@@ -93,37 +94,65 @@ function classifyEmailError(error: unknown): "transient" | "permanent" {
   return "transient";
 }
 
+/**
+ * A permanent invalid-owner response is genuine absence, not a transient
+ * provider outage. Do not retry it through the email delivery budget.
+ */
+function isPermanentOwnerLookupFailure(error: unknown): boolean {
+  const status = readStatus(error);
+  if (status !== null) {
+    if (status === 400 || status === 404 || status === 422) return true;
+    return false;
+  }
+
+  const text = stringifyError(error).toLowerCase();
+  return /user not found|user_not_found|invalid user|invalid owner|not found/.test(text);
+}
+
 export class SupabaseEmailResolver implements EmailDestinationResolver {
   constructor(private readonly supabase: import("@supabase/supabase-js").SupabaseClient) {}
 
-  async resolve(ownerUserId: string): Promise<string | null> {
+  async resolve(ownerUserId: string): Promise<EmailDestinationResolution> {
     // The canonical owner email lives in Supabase Auth. The cron uses a service
     // client, so resolve by the owner id from the delivery. Never use the
     // session-bound getUser(): it resolves the service identity, not the owner.
-    try {
-      const admin = (this.supabase as unknown as {
-        auth?: {
-          admin?: {
-            getUserById?: (id: string) => Promise<{
-              data?: { user?: { email?: string | null } | null } | null;
-              error?: unknown;
-            }>;
-          };
+    let adminOutcome: "absent" | "unavailable" = "unavailable";
+    let adminReason = "Supabase Auth admin lookup is unavailable.";
+
+    const admin = (this.supabase as unknown as {
+      auth?: {
+        admin?: {
+          getUserById?: (id: string) => Promise<{
+            data?: { user?: { email?: string | null } | null } | null;
+            error?: unknown;
+          }>;
         };
-      }).auth?.admin;
-      if (admin?.getUserById) {
+      };
+    }).auth?.admin;
+
+    if (admin?.getUserById) {
+      try {
         const { data, error } = await admin.getUserById(ownerUserId);
         if (!error) {
           const email = data?.user?.email;
-          if (typeof email === "string" && email.trim()) return email.trim();
+          if (typeof email === "string" && email.trim()) {
+            return { status: "resolved", email: email.trim() };
+          }
+          adminOutcome = "absent";
+        } else if (isPermanentOwnerLookupFailure(error)) {
+          adminOutcome = "absent";
+          adminReason = "Owner account was not found.";
+        } else {
+          adminReason = "Supabase Auth admin lookup failed.";
         }
+      } catch {
+        adminReason = "Supabase Auth admin lookup failed.";
       }
-    } catch {
-      // fall through to the legacy profiles path
     }
 
     // Compatibility fallback for deployments that still expose an owner-scoped
-    // profiles.email row. The lookup is by the owner id from the delivery.
+    // profiles.email row. A missing/erroring fallback is not proof of absence;
+    // the authoritative admin outcome decides that.
     try {
       const result = await (this.supabase as unknown as {
         from: (t: string) => {
@@ -141,12 +170,15 @@ export class SupabaseEmailResolver implements EmailDestinationResolver {
 
       if (!result.error && result.data) {
         const row = result.data as { email?: string | null };
-        if (row.email) return row.email;
+        if (typeof row.email === "string" && row.email.trim()) {
+          return { status: "resolved", email: row.email.trim() };
+        }
       }
     } catch {
-      // ignore
+      // fallback unavailable; admin outcome remains authoritative
     }
 
-    return null;
+    if (adminOutcome === "absent") return { status: "absent" };
+    return { status: "unavailable", reason: adminReason };
   }
 }

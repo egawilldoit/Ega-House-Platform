@@ -277,6 +277,11 @@ export interface EmailProvider {
   send(payload: EmailProviderPayload): Promise<EmailProviderResult>;
 }
 
+export type EmailDestinationResolution =
+  | Readonly<{ status: "resolved"; email: string }>
+  | Readonly<{ status: "absent" }>
+  | Readonly<{ status: "unavailable"; reason: string }>;
+
 export interface EmailDestinationResolver {
-  resolve(ownerUserId: string): Promise<string | null>;
+  resolve(ownerUserId: string): Promise<EmailDestinationResolution>;
 }
