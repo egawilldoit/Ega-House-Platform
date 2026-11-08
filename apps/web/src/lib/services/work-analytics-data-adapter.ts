@@ -62,26 +62,33 @@ export async function getWorkAnalyticsSessionsForWindow(args: {
     return { data: null, errorMessage: "Invalid window for work analytics." };
   }
   const supabase = await resolveSupabaseClient(args.supabase);
-  const load = (select: string) =>
-    supabase
+  const pageSize = 500;
+  const rows: ExecutionEvidenceSessionRow[] = [];
+  let select = ANALYTICS_SESSION_SELECT;
+  for (let offset = 0; ; offset += pageSize) {
+    const load = (columns: string) => supabase
       .from("task_sessions")
-      .select(select)
+      .select(columns)
       .eq("owner_user_id", args.ownerUserId)
       .lt("started_at", args.window.endIso)
       .or(`ended_at.is.null,ended_at.gte.${args.window.startIso}`)
-      .order("started_at", { ascending: false });
+      .order("started_at", { ascending: false })
+      .order("id", { ascending: false })
+      .range(offset, offset + pageSize - 1);
 
-  let { data, error } = await load(ANALYTICS_SESSION_SELECT);
-
-  if (error && isMissingAreasRelation(error)) {
-    ({ data, error } = await load(ANALYTICS_SESSION_SELECT_WITHOUT_AREAS));
+    let { data, error } = await load(select);
+    if (error && isMissingAreasRelation(error)) {
+      select = ANALYTICS_SESSION_SELECT_WITHOUT_AREAS;
+      ({ data, error } = await load(select));
+    }
+    if (error) {
+      return { data: null, errorMessage: `Failed to load work analytics sessions: ${error.message}` };
+    }
+    const page = (data ?? []) as unknown as ExecutionEvidenceSessionRow[];
+    rows.push(...page);
+    if (page.length < pageSize) break;
   }
-
-  if (error) {
-    return { data: null, errorMessage: `Failed to load work analytics sessions: ${error.message}` };
-  }
-
-  return { data: (data ?? []) as unknown as ExecutionEvidenceSessionRow[], errorMessage: null };
+  return { data: rows, errorMessage: null };
 }
 
 export type WorkAnalyticsTaskCounts = {

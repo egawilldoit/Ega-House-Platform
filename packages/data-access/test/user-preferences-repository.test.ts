@@ -113,6 +113,7 @@ test("get reads the owner row scoped by verified user_id", async () => {
   if (result.ok) {
     assert.deepEqual(result.value, {
       personalOperations: DEFAULT_USER_PREFERENCES.personalOperations,
+      jobSearchReference: null,
       theme: "dark",
       accent: "violet",
       density: "compact",
@@ -125,6 +126,54 @@ test("get reads the owner row scoped by verified user_id", async () => {
   assert.ok(fake.calls[0]?.steps.some((step) => step.includes("eq:user_id=owner-preferences")));
   assert.ok(fake.calls[0]?.steps.some((step) => step.startsWith("select:")));
   assert.ok(fake.calls[0]?.steps.includes("maybeSingle"));
+});
+
+test("get maps the top-level job-search reference", async () => {
+  const fake = new FakePreferencesSupabase([{
+    data: {
+      ...STORED_ROW,
+      job_search_reference: {
+        kind: "task",
+        id: "11111111-1111-4111-8111-111111111111",
+      },
+    },
+    error: null,
+  }]);
+  const result = await repo(fake).get(ACTOR);
+
+  assert.equal(result.ok, true);
+  if (!result.ok || !result.value) return;
+  assert.deepEqual(result.value.jobSearchReference, {
+    kind: "task",
+    id: "11111111-1111-4111-8111-111111111111",
+  });
+  assert.ok(
+    fake.calls[0]?.steps.some((step) => step.includes("job_search_reference")),
+  );
+});
+
+test("get retries without the reference column before 0089 is applied", async () => {
+  const fake = new FakePreferencesSupabase([
+    {
+      data: null,
+      error: {
+        code: "42703",
+        message: 'column "job_search_reference" does not exist',
+      },
+    },
+    { data: STORED_ROW, error: null },
+  ]);
+  const result = await repo(fake).get(ACTOR);
+
+  assert.equal(result.ok, true);
+  if (!result.ok || !result.value) return;
+  assert.equal(result.value.jobSearchReference, null);
+  assert.equal(result.value.theme, "dark");
+  assert.equal(fake.calls.length, 2);
+  const firstSelect = fake.calls[0]?.steps.find((step) => step.startsWith("select:")) ?? "";
+  const secondSelect = fake.calls[1]?.steps.find((step) => step.startsWith("select:")) ?? "";
+  assert.ok(firstSelect.includes("job_search_reference"));
+  assert.ok(!secondSelect.includes("job_search_reference"));
 });
 
 test("get maps a persisted non-null personal_operations column", async () => {
@@ -261,6 +310,18 @@ test("patch treats a null response as failure", async () => {
     assert.equal(result.ok, false, `data=${JSON.stringify(data)} must fail`);
     if (!result.ok) assert.deepEqual(result.error, { code: "unknown" });
   }
+});
+
+test("patch can send the top-level reference independently", async () => {
+  const fake = new FakePreferencesSupabase([{ data: STORED_ROW, error: null }]);
+  const result = await repo(fake).patch(ACTOR, {
+    jobSearchReference: { kind: "task", id: "11111111-1111-4111-8111-111111111111" },
+  });
+  assert.equal(result.ok, true);
+  assert.equal(fake.rpcCalls[0]?.name, "patch_user_preferences");
+  const args = JSON.stringify(fake.rpcCalls[0]?.args);
+  assert.ok(args.includes('"jobSearchReference":{"kind":"task"'));
+  assert.ok(!args.includes('"personalOperations"'));
 });
 
 test("patch returns failure when persistence fails", async () => {
