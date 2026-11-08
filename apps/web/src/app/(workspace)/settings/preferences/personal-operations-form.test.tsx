@@ -290,7 +290,8 @@ describe("PersonalOperationsForm job-search reference", () => {
       setter.call(select(), "");
       select().dispatchEvent(new Event("change", { bubbles: true }));
     });
-    expect(dirty().value).toBe("true");
+    // Reverting to the stored reference is clean again (no reference patch).
+    expect(dirty().value).toBe("false");
     expect(select().value).toBe("");
 
     await act(async () => {

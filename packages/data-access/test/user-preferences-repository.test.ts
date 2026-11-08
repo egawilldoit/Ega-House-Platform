@@ -318,9 +318,10 @@ test("patch can send the top-level reference independently", async () => {
     jobSearchReference: { kind: "task", id: "11111111-1111-4111-8111-111111111111" },
   });
   assert.equal(result.ok, true);
-  const step = fake.calls[0]?.steps.find(entry => entry.startsWith("upsert:"));
-  assert.ok(step?.includes('"jobSearchReference":{"kind":"task"'));
-  assert.ok(!step?.includes('"personalOperations"'));
+  assert.equal(fake.rpcCalls[0]?.name, "patch_user_preferences");
+  const args = JSON.stringify(fake.rpcCalls[0]?.args);
+  assert.ok(args.includes('"jobSearchReference":{"kind":"task"'));
+  assert.ok(!args.includes('"personalOperations"'));
 });
 
 test("patch returns failure when persistence fails", async () => {
