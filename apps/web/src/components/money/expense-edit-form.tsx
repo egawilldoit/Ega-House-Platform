@@ -155,16 +155,10 @@ export function ExpenseEditForm({
         return true;
       }
       if (result.code === "CONFLICT") {
-        // Preserve the draft; require deliberate reconciliation.
-        setConflict((current) =>
-          current ?? {
-            serverVersion: null,
-            serverUpdatedAt: null,
-          },
-        );
-        setFormError(
-          "This expense changed elsewhere. Your edits are preserved — refresh the latest version before retrying.",
-        );
+        // Every conflict invalidates the previously fetched version. Preserve
+        // the draft, but require a fresh reconciliation before retrying.
+        setConflict({ serverVersion: null, serverUpdatedAt: null });
+        setFormError(null);
         return false;
       }
       setFormError(result.error);
@@ -186,7 +180,16 @@ export function ExpenseEditForm({
   }
 
   async function handleRefresh() {
-    const latest = await fetchLatest(expense.id);
+    setFormError(null);
+    let latest: Awaited<ReturnType<typeof fetchLatest>>;
+    try {
+      latest = await fetchLatest(expense.id);
+    } catch {
+      setFormError(
+        "Could not refresh the latest expense. Your edits are preserved — retry the refresh before saving.",
+      );
+      return;
+    }
     if (!latest.ok) {
       setFormError(latest.error);
       return;
@@ -351,6 +354,7 @@ export function ExpenseEditForm({
               ? "Version conflict: your edits above are preserved. Refresh the latest saved version before retrying."
               : `Latest saved version: ${conflict.serverVersion}. Your edits above are preserved.`}
           </p>
+          {formError ? <p>{formError}</p> : null}
           <div className="flex flex-wrap gap-2">
             <Button
               type="button"

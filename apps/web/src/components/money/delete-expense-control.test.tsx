@@ -114,4 +114,33 @@ describe("DeleteExpenseControl", () => {
     expect(document.body.textContent).toContain("Unable to delete right now.");
     expect(onDeleted).not.toHaveBeenCalled();
   });
+
+  it("describes an uncertain delete outcome and allows a safe retry", async () => {
+    const deleteExpense = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("request timed out after commit"))
+      .mockResolvedValueOnce({ ok: true as const, alreadyDeleted: true });
+    const onDeleted = vi.fn();
+    await act(async () => {
+      root.render(
+        <DeleteExpenseControl
+          ownerKey="owner-a"
+          expenseId="expense-1"
+          expenseLabel="Weekly shop"
+          deleteExpense={deleteExpense}
+          onDeleted={onDeleted}
+          dataTestId="expense-delete-1"
+        />,
+      );
+    });
+
+    await openAndConfirm();
+    expect(document.body.textContent).toContain("could not confirm whether");
+    expect(document.body.textContent).toContain("repeating the delete is safe");
+    expect(onDeleted).not.toHaveBeenCalled();
+
+    await click(document.body.querySelector('[data-testid="expense-delete-1-confirm"]'));
+    expect(deleteExpense).toHaveBeenCalledTimes(2);
+    expect(onDeleted).toHaveBeenCalledWith("expense-1", true);
+  });
 });

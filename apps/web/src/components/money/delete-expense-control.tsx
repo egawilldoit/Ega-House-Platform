@@ -66,7 +66,9 @@ export function DeleteExpenseControl({
       }
       setError(result.error);
     } catch {
-      setError("Unable to delete the expense right now. Retry — nothing was removed.");
+      setError(
+        "We could not confirm whether this expense was removed. Retry safely; repeating the delete is safe.",
+      );
     } finally {
       setIsDeleting(false);
     }

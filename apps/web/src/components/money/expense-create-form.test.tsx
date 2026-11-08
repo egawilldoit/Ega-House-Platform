@@ -101,6 +101,12 @@ describe("ExpenseCreateForm", () => {
       });
     });
     expect(onCreated).toHaveBeenCalledTimes(1);
+    expect(container.querySelector('[role="status"]')?.textContent).toContain(
+      "Expense saved successfully",
+    );
+    expect(
+      container.querySelector<HTMLButtonElement>('[data-testid="expense-create-submit"]')?.disabled,
+    ).toBe(true);
     expect(seenKeys).toHaveLength(1);
   });
 
@@ -131,6 +137,9 @@ describe("ExpenseCreateForm", () => {
     await submitForm();
     expect(submitExpense).toHaveBeenCalledTimes(2);
     expect(new Set(seenKeys).size).toBe(1);
+    expect(container.querySelector('[role="status"]')?.textContent).toContain(
+      "already saved",
+    );
 
     // A genuinely new purchase rotates the key.
     await act(async () => {
