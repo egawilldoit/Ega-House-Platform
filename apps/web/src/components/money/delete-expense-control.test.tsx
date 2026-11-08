@@ -3,7 +3,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { DeleteExpenseControl } from "./delete-expense-control";
+import { DeleteExpenseControl, type ExpenseDeleteResult } from "./delete-expense-control";
 
 let container: HTMLDivElement;
 let root: Root;
@@ -37,6 +37,20 @@ async function openAndConfirm() {
 }
 
 describe("DeleteExpenseControl", () => {
+  it("ignores a pending delete after the owner changes", async () => {
+    let resolve!: (value: ExpenseDeleteResult) => void;
+    const deleteExpense = vi.fn(() => new Promise<ExpenseDeleteResult>((done) => { resolve = done; }));
+    const onDeleted = vi.fn();
+    const renderOwner = async (ownerKey: string) => {
+      await act(async () => root.render(<DeleteExpenseControl ownerKey={ownerKey} expenseId="expense-1" expenseLabel="Weekly shop" deleteExpense={deleteExpense} onDeleted={onDeleted} dataTestId="expense-delete-1" />));
+    };
+    await renderOwner("owner-a");
+    await openAndConfirm();
+    await renderOwner("owner-b");
+    await act(async () => resolve({ ok: true, alreadyDeleted: false }));
+    expect(onDeleted).not.toHaveBeenCalled();
+  });
+
   it("confirms before deleting and reconciles the list on success", async () => {
     const deleteExpense = vi.fn(async () => ({
       ok: true as const,
