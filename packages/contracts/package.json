@@ -20,7 +20,8 @@
     "./health": "./src/health.ts",
     "./projects": "./src/projects.ts",
     "./goals": "./src/goals.ts",
-    "./task-comments": "./src/task-comments.ts"
+    "./task-comments": "./src/task-comments.ts",
+    "./expenses": "./src/expenses.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
