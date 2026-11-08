@@ -68,9 +68,8 @@ class FakeTimerRepository implements TimerSessionRepository {
     );
   }
 
-  async listRecentSessions(actor: AuthenticatedActor, input: { limit: number }) {
-    void actor;
-    return ok(this.sessions.slice(0, input.limit));
+  async listSummarySessions(actor: AuthenticatedActor) {
+    return ok(this.sessions.filter(session => this.owns(actor, session.id)));
   }
 
   async getStartableTask(actor: AuthenticatedActor, input: { taskId: string }) {
@@ -501,6 +500,24 @@ test("workspace rejects an invalid current time without throwing", async () => {
 
   assert.equal(result.ok, false);
   if (!result.ok) assert.equal(result.errorMessage, "Current time is invalid.");
+});
+
+test("workspace totals include sessions beyond the recent 150, including midnight overlap", async () => {
+  const repository = new FakeTimerRepository();
+  for (let index = 0; index < 150; index += 1) {
+    repository.seed({ id: `recent-${index}`, startedAt: "2026-08-10T10:00:00Z",
+      endedAt: "2026-08-10T10:00:01Z", durationSeconds: 1 });
+  }
+  repository.seed({ id: "older", startedAt: "2026-08-09T23:00:00Z",
+    endedAt: "2026-08-10T01:00:00Z", durationSeconds: 7200 });
+  const result = await getTimerWorkspace(createAuthenticatedActor("user-timer"), repository,
+    new FakeTimeContextRepo("UTC"), { now: NOW });
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.data.summary.trackedTotalSeconds, 7350);
+  assert.equal(result.data.summary.trackedTodaySeconds, 3750);
+  assert.equal(result.data.summary.sessionsTodayCount, 151);
+  assert.equal(result.data.summary.longestSessionSeconds, 7200);
 });
 
 test("summarizeTimerSessions clamps open sessions to now for today overlap", () => {
