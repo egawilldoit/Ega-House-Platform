@@ -144,7 +144,6 @@ export class SupabaseEmailResolver implements EmailDestinationResolver {
     // The canonical owner email lives in Supabase Auth. The cron uses a service
     // client, so resolve by the owner id from the delivery. Never use the
     // session-bound getUser(): it resolves the service identity, not the owner.
-    let allowProfilesFallback = false;
     let reason = "Supabase Auth admin lookup is unavailable.";
 
     const admin = (this.supabase as unknown as {
@@ -174,7 +173,6 @@ export class SupabaseEmailResolver implements EmailDestinationResolver {
           return { status: "absent" };
         }
         if (isTransientOwnerLookupFailure(error)) {
-          allowProfilesFallback = true;
           reason = "Supabase Auth admin lookup failed.";
         } else {
           // Ambiguous 400/404/422 and auth/config errors are not proof of
@@ -182,41 +180,36 @@ export class SupabaseEmailResolver implements EmailDestinationResolver {
           return { status: "unavailable", reason: "Supabase Auth admin lookup failed." };
         }
       } catch {
-        allowProfilesFallback = true;
         reason = "Supabase Auth admin lookup failed.";
       }
-    } else {
-      allowProfilesFallback = true;
     }
 
-    if (allowProfilesFallback) {
-      // Compatibility fallback for deployments that still expose an
-      // owner-scoped profiles.email row. Only transient/unavailable canonical
-      // lookups reach this path; authoritative absence never does.
-      try {
-        const result = await (this.supabase as unknown as {
-          from: (t: string) => {
-            select: (c: string) => {
-              eq: (col: string, val: string) => {
-                maybeSingle: () => Promise<{ data: unknown; error: unknown }>;
-              };
+    // Compatibility fallback for deployments that still expose an
+    // owner-scoped profiles.email row. Only transient/unavailable canonical
+    // lookups reach this point; authoritative absence returns above.
+    try {
+      const result = await (this.supabase as unknown as {
+        from: (t: string) => {
+          select: (c: string) => {
+            eq: (col: string, val: string) => {
+              maybeSingle: () => Promise<{ data: unknown; error: unknown }>;
             };
           };
-        })
-          .from("profiles")
-          .select("email")
-          .eq("id", ownerUserId)
-          .maybeSingle();
+        };
+      })
+        .from("profiles")
+        .select("email")
+        .eq("id", ownerUserId)
+        .maybeSingle();
 
-        if (!result.error && result.data) {
-          const row = result.data as { email?: string | null };
-          if (typeof row.email === "string" && row.email.trim()) {
-            return { status: "resolved", email: row.email.trim() };
-          }
+      if (!result.error && result.data) {
+        const row = result.data as { email?: string | null };
+        if (typeof row.email === "string" && row.email.trim()) {
+          return { status: "resolved", email: row.email.trim() };
         }
-      } catch {
-        // fallback unavailable; preserve the transient failure
       }
+    } catch {
+      // fallback unavailable; preserve the transient failure
     }
 
     return { status: "unavailable", reason };
