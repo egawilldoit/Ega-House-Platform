@@ -17,8 +17,8 @@ const PREFERENCES_SELECT_WITHOUT_REFERENCE =
   "theme, accent, density, reduced_motion, launch_page, task_layout, task_open_mode, personal_operations";
 
 type UserPreferencesRow = {
-  personal_operations: unknown;
-  job_search_reference: unknown;
+  personal_operations?: unknown;
+  job_search_reference?: unknown;
   theme: string | null;
   accent: string | null;
   density: string | null;
@@ -36,7 +36,7 @@ function isMissingPreferencesTable(error: unknown): boolean {
   return (
     code === "42P01"
     || code === "PGRST205"
-    || (/user_preferences/.test(message)
+    || (!/personal_operations/i.test(message) && /user_preferences/.test(message)
       && /does not exist|schema cache|could not find/i.test(message))
   );
 }
@@ -52,6 +52,13 @@ function isMissingJobSearchReferenceColumn(error: unknown): boolean {
     || (/job_search_reference/.test(message)
       && /does not exist|schema cache|could not find/i.test(message))
   );
+}
+
+function isMissingScheduleColumn(error: unknown): boolean {
+  const candidate = error as { code?: unknown; message?: unknown } | null;
+  return (candidate?.code === "42703" || candidate?.code === "PGRST204")
+    && typeof candidate.message === "string"
+    && /personal_operations/i.test(candidate.message);
 }
 
 function toPreferences(row: UserPreferencesRow): UserPreferences {
@@ -91,6 +98,14 @@ export class SupabaseUserPreferencesRepository implements UserPreferencesReposit
       ({ data, error } = await load(PREFERENCES_SELECT_WITHOUT_REFERENCE));
     }
 
+    if (error && isMissingScheduleColumn(error)) {
+      ({ data, error } = await this.supabase
+        .from("user_preferences")
+        .select("theme, accent, density, reduced_motion, launch_page, task_layout, task_open_mode")
+        .eq("user_id", actor.userId)
+        .maybeSingle());
+    }
+
     if (error) {
       if (isMissingPreferencesTable(error)) {
         return { ok: true, value: null };
@@ -109,9 +124,15 @@ export class SupabaseUserPreferencesRepository implements UserPreferencesReposit
     _actor: AuthenticatedActor,
     preferences: UserPreferencesPatch,
   ): Promise<RepositoryResult<UserPreferences>> {
-    const { data, error } = await this.supabase.rpc("patch_user_preferences", { patch: preferences }).single();
+    // The RPC is authenticated by the request-scoped session (auth.uid()), so
+    // the payload carries only the validated patch. PostgREST may hand back a
+    // composite object or a one-element array; normalise both shapes instead of
+    // depending on `.single()` to throw or coerce.
+    const { data, error } = await this.supabase.rpc("patch_user_preferences", { patch: preferences });
     if (error) return { ok: false, error: sanitizeSupabaseError(error) };
-    if (!data) return { ok: false, error: { code: "unknown" } };
-    return { ok: true, value: toPreferences(data as UserPreferencesRow) };
+
+    const row = Array.isArray(data) ? data[0] : data;
+    if (!row) return { ok: false, error: { code: "unknown" } };
+    return { ok: true, value: toPreferences(row as UserPreferencesRow) };
   }
 }

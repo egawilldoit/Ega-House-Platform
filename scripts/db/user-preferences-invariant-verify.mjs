@@ -12,15 +12,30 @@
  *   RLS READ   - an owner sees only their own row.
  *   RLS WRITE  - an owner cannot insert under another owner's id, update or
  *                delete another owner's row.
+ *   ANON       - under Supabase-default grants anon holds the table privileges
+ *                and the RPC EXECUTE grant; RLS still returns zero rows for
+ *                reads and updates and the RPC's auth.uid() guard rejects the
+ *                call (P0001).
+ *   AUTH       - authenticated without a JWT subject has no auth.uid().
+ *   CROSS OWNER- owner B's RPC patch never changes owner A's row.
+ *   GUIDANCE   - overlapping enabled blocks fail; the same overlap disabled is
+ *                accepted.
+ *   PAUSE      - pausing keeps the configured target minutes on read-back.
+ *   RPC RETURN - the RPC returns the patched row.
  *   IDEMPOTENCE- re-applying the migration succeeds (up-only).
  *
  * Usage:
- *   node scripts/db/user-preferences-invariant-verify.mjs --url <postgres-url>
+ *   node scripts/db/user-preferences-invariant-verify.mjs --url <postgres-url> [--socket <dir|file>]
+ *
+ * --socket points postgres.js at a Unix socket. Pass the socket directory (the
+ * .s.PGSQL.<port> file name is derived) or the socket file itself. When the URL
+ * carries ?port=, that port wins over the URL authority port.
  *
  * The database identified by --url is destroyed by this script (DROP SCHEMA
  * public/auth CASCADE). Only point it at a throwaway container.
  */
 import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { argv, exit } from "node:process";
 
 import postgres from "postgres";
@@ -85,7 +100,18 @@ async function applySupabaseShim(sql) {
   `);
   await sql.unsafe(`CREATE SCHEMA IF NOT EXISTS auth;`);
   await sql.unsafe(`GRANT USAGE ON SCHEMA public TO anon, authenticated, supabase_auth_admin;`);
-  await sql.unsafe(`GRANT USAGE ON SCHEMA auth TO authenticated;`);
+  await sql.unsafe(`GRANT USAGE ON SCHEMA auth TO anon, authenticated;`);
+  // Supabase grants every new public object to anon and authenticated, then
+  // relies on RLS and function guards for denial. Mirror that here so the proof
+  // exercises the production security outcome instead of a missing grant.
+  await sql.unsafe(`
+    ALTER DEFAULT PRIVILEGES IN SCHEMA public
+    GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO authenticated, anon;
+  `);
+  await sql.unsafe(`
+    ALTER DEFAULT PRIVILEGES IN SCHEMA public
+    GRANT EXECUTE ON FUNCTIONS TO authenticated, anon;
+  `);
   await sql.unsafe(`
     CREATE TABLE IF NOT EXISTS auth.users (
       id uuid PRIMARY KEY,
@@ -104,6 +130,8 @@ async function applySupabaseShim(sql) {
       SELECT COALESCE(NULLIF(current_setting('request.jwt.claims', true), '')::jsonb, '{}'::jsonb)
     $fn$;
   `);
+  await sql.unsafe(`GRANT EXECUTE ON FUNCTION auth.uid() TO anon, authenticated;`);
+  await sql.unsafe(`GRANT EXECUTE ON FUNCTION auth.jwt() TO anon, authenticated;`);
   await sql.unsafe(`
     INSERT INTO auth.users (id, email) VALUES
       ('11111111-1111-4111-8111-111111111111'::uuid, 'ab.mortaki@gmail.com')
@@ -155,7 +183,36 @@ function session(sql, userId) {
   };
 }
 
-async function expectFailure(label, fn, expectedCodes) {
+/** Authenticated database role with no JWT subject, so auth.uid() is NULL. */
+function unauthenticatedJwtSession(sql) {
+  return {
+    run(fn) {
+      return sql.begin(async (tx) => {
+        await tx.unsafe(`SET LOCAL ROLE authenticated`);
+        await tx.unsafe(`SELECT set_config('request.jwt.claim.sub', '', true)`);
+        await tx.unsafe(`SELECT set_config('request.jwt.claims', '{}', true)`);
+        return fn(tx);
+      });
+    },
+  };
+}
+
+/**
+ * Anonymous client role. It keeps Supabase's default table and function grants;
+ * RLS and the RPC's auth.uid() guard are what deny it.
+ */
+function anonymousSession(sql) {
+  return {
+    run(fn) {
+      return sql.begin(async (tx) => {
+        await tx.unsafe(`SET LOCAL ROLE anon`);
+        return fn(tx);
+      });
+    },
+  };
+}
+
+async function expectFailure(label, fn, expectedCodes, messagePattern) {
   try {
     await fn();
   } catch (error) {
@@ -163,6 +220,12 @@ async function expectFailure(label, fn, expectedCodes) {
       expectedCodes.includes(error.code),
       `${label}: expected one of ${expectedCodes.join(", ")}, got ${error.code} ${error.message}`,
     );
+    if (messagePattern) {
+      assert(
+        messagePattern.test(error.message),
+        `${label}: expected message matching ${messagePattern}, got "${error.message}"`,
+      );
+    }
     log("DENIED", `${label} (${error.code})`);
     return;
   }
@@ -175,7 +238,21 @@ async function main() {
   const tags = await readJournal();
   assert(tags.includes(MIGRATION_TAG), `journal must include ${MIGRATION_TAG}`);
 
-  const sql = postgres(url, { max: 4, onnotice: () => {}, ...(socket ? { path: socket } : {}) });
+  // --socket may name the socket directory (as the disposable-cluster
+  // instructions do) or the socket file itself. An explicit ?port= wins over
+  // the URL authority port when deriving the socket file name.
+  const parsedUrl = new URL(url);
+  const socketPort = parsedUrl.searchParams.get("port") || parsedUrl.port || "5432";
+  const socketPath =
+    socket && !socket.includes(".s.PGSQL.") ? join(socket, `.s.PGSQL.${socketPort}`) : socket;
+  // postgres.js forwards unrecognised query parameters as server startup
+  // settings, so consume ?port= locally instead of letting it reach the server.
+  if (socketPath) parsedUrl.searchParams.delete("port");
+  const sql = postgres(parsedUrl.toString(), {
+    max: 4,
+    onnotice: () => {},
+    ...(socketPath ? { path: socketPath } : {}),
+  });
   try {
     await reset(sql);
     await applySupabaseShim(sql);
@@ -193,7 +270,27 @@ async function main() {
     const legacy = await sql.unsafe(`SELECT theme, personal_operations, job_search_reference FROM public.user_preferences WHERE user_id = '44444444-4444-4444-8444-444444444444'`);
     assert(legacy[0].theme === "light" && legacy[0].personal_operations === null && legacy[0].job_search_reference === null, "legacy preference row survives upgrade");
 
-    await sql.unsafe(`GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.user_preferences TO authenticated`);
+    // The Supabase-default privileges installed above must already cover the
+    // new table. Fail loudly if the shim stops modelling that reality.
+    const [tablePrivilege] = await sql.unsafe(
+      `SELECT has_table_privilege('anon', 'public.user_preferences', 'SELECT,INSERT,UPDATE,DELETE') AS granted`,
+    );
+    assert(tablePrivilege.granted, "Supabase-default grants must reach user_preferences");
+
+    // 0078 revokes the function from PUBLIC and grants authenticated only.
+    // Supabase-default EXECUTE still reaches anon; grant it explicitly if this
+    // shim changes, so the guard (not a missing grant) rejects the call.
+    let [functionPrivilege] = await sql.unsafe(
+      `SELECT has_function_privilege('anon', 'public.patch_user_preferences(jsonb)', 'EXECUTE') AS granted`,
+    );
+    if (!functionPrivilege.granted) {
+      await sql.unsafe(`GRANT EXECUTE ON FUNCTION public.patch_user_preferences(jsonb) TO anon`);
+      [functionPrivilege] = await sql.unsafe(
+        `SELECT has_function_privilege('anon', 'public.patch_user_preferences(jsonb)', 'EXECUTE') AS granted`,
+      );
+    }
+    assert(functionPrivilege.granted, "anon must hold RPC EXECUTE so auth.uid() is what denies it");
+
     await sql.unsafe(`
       INSERT INTO auth.users (id, email) VALUES
         ('${OWNER_A}'::uuid, 'owner-a@example.test'),
@@ -362,6 +459,125 @@ async function main() {
     );
     assert(afterAttacks[0].theme === "system", "owner A's row must be unchanged");
     log("RLS", "owner isolation on insert/update/delete proven");
+
+    // ANONYMOUS DENIAL ---------------------------------------------------------
+    // Supabase gives anon the default privileges, so denial must come from RLS
+    // (zero rows) and the RPC's auth.uid() guard (P0001), not missing grants.
+    const anonymous = anonymousSession(sql);
+    const anonSelect = await anonymous.run((tx) =>
+      tx.unsafe(`SELECT count(*)::int AS count FROM public.user_preferences`),
+    );
+    assert(anonSelect[0].count === 0, "anon SELECT must return zero rows under RLS, not a privilege error");
+
+    const anonUpdate = await anonymous.run((tx) =>
+      tx.unsafe(`UPDATE public.user_preferences SET theme = 'dark' RETURNING user_id`),
+    );
+    assert(anonUpdate.count === 0, "anon UPDATE must affect zero rows under RLS, not a privilege error");
+
+    await expectFailure(
+      "anon RPC patch",
+      () => anonymous.run((tx) => tx.unsafe(`SELECT public.patch_user_preferences($1::jsonb)`, [{ theme: "dark" }])),
+      ["P0001"],
+      /authentication required/i,
+    );
+
+    const afterAnon = await ownerA.run((tx) =>
+      tx.unsafe(`SELECT theme FROM public.user_preferences WHERE user_id = auth.uid()`),
+    );
+    assert(afterAnon[0].theme === "system", "anon attempts must leave owner A's row unchanged");
+    log(
+      "ANON",
+      "RLS returned zero rows and the auth.uid() guard rejected the RPC under Supabase-default grants",
+    );
+
+    // AUTHENTICATED WITHOUT A SUBJECT -----------------------------------------
+    const noSubject = unauthenticatedJwtSession(sql);
+    await expectFailure(
+      "authenticated without JWT subject",
+      () => noSubject.run((tx) => tx.unsafe(`SELECT public.patch_user_preferences($1::jsonb)`, [{ theme: "dark" }])),
+      ["P0001"],
+      /authentication required/i,
+    );
+    log("AUTH", "missing JWT subject is rejected by auth.uid() NULL guard");
+
+    // CROSS-OWNER RPC ----------------------------------------------------------
+    const ownerABefore = await ownerA.run((tx) =>
+      tx.unsafe(`SELECT theme FROM public.user_preferences WHERE user_id = auth.uid()`),
+    );
+    await ownerB.run((tx) => tx.unsafe(`SELECT public.patch_user_preferences($1::jsonb)`, [{ theme: "light" }]));
+    const crossOwner = await Promise.all([
+      ownerA.run((tx) => tx.unsafe(`SELECT theme FROM public.user_preferences WHERE user_id = auth.uid()`)),
+      ownerB.run((tx) => tx.unsafe(`SELECT theme FROM public.user_preferences WHERE user_id = auth.uid()`)),
+    ]);
+    assert(
+      crossOwner[0][0].theme === ownerABefore[0].theme,
+      "owner B's RPC patch must not change owner A's row",
+    );
+    assert(crossOwner[1][0].theme === "light", "owner B's RPC patch must change owner B's row");
+    log("CROSS OWNER", "owner B patch changed only owner B's row");
+
+    // GUIDANCE OVERLAP + PAUSE + RPC RETURN ------------------------------------
+    const baseTargets = Object.fromEntries(
+      ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"].map((day) => [
+        day,
+        { work: day === "saturday" || day === "sunday" ? 240 : 480, jobSearch: day === "saturday" || day === "sunday" ? 0 : 90 },
+      ]),
+    );
+    const overlappingGuidance = [
+      { name: "Block A", days: ["monday"], start: "06:00", end: "07:00", enabled: true },
+      { name: "Block B", days: ["monday"], start: "06:30", end: "07:30", enabled: true },
+    ];
+    await expectFailure(
+      "overlapping enabled guidance",
+      () =>
+        ownerA.run((tx) =>
+          tx.unsafe(`SELECT public.patch_user_preferences($1::jsonb)`, [
+            { personalOperations: { paused: false, targets: baseTargets, guidance: overlappingGuidance } },
+          ]),
+        ),
+      ["23514"],
+    );
+
+    const disabledOverlap = overlappingGuidance.map((block, index) =>
+      index === 1 ? { ...block, enabled: false } : block,
+    );
+    const accepted = await ownerA.run((tx) =>
+      tx.unsafe(
+        `WITH patched AS (SELECT public.patch_user_preferences($1::jsonb) AS row)
+         SELECT (row).personal_operations AS personal_operations FROM patched`,
+        [{ personalOperations: { paused: false, targets: baseTargets, guidance: disabledOverlap } }],
+      ),
+    );
+    assert(accepted[0].personal_operations.guidance.length === 2, "disabled overlap must be accepted");
+    log("GUIDANCE", "enabled overlap rejected (23514); disabled overlap accepted");
+
+    const pausedSchedule = {
+      paused: true,
+      targets: baseTargets,
+      guidance: disabledOverlap,
+    };
+    const pausedPatch = await ownerA.run((tx) =>
+      tx.unsafe(`SELECT (public.patch_user_preferences($1::jsonb)).theme AS theme`, [
+        { personalOperations: pausedSchedule, theme: "dark" },
+      ]),
+    );
+    assert(pausedPatch[0].theme === "dark", "the RPC must return the patched row");
+    const pausedRead = await ownerA.run((tx) =>
+      tx.unsafe(`SELECT personal_operations FROM public.user_preferences WHERE user_id = auth.uid()`),
+    );
+    assert(pausedRead[0].personal_operations.paused === true, "pause must persist");
+    assert(
+      pausedRead[0].personal_operations.targets.monday.work === 480
+        && pausedRead[0].personal_operations.targets.monday.jobSearch === 90,
+      "pausing must retain the configured target minutes",
+    );
+    assert(
+      pausedRead[0].personal_operations.targets.sunday.work === 240
+        && pausedRead[0].personal_operations.targets.sunday.jobSearch === 0,
+      "weekend targets must survive the pause patch",
+    );
+    log("PAUSE", "pause retained weekday and weekend targets on read-back");
+    log("RPC RETURN", "RPC returned the patched row (theme dark)");
 
     // OWNER WRITE + IDEMPOTENCE ------------------------------------------------
     const updated = await ownerA.run((tx) =>

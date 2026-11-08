@@ -1,0 +1,174 @@
+/* Settings option cards — shared by Preferences workspace defaults and
+ * Appearance. Native radios stay in the markup, so arrow keys, Space/Enter and
+ * the accessible name come from the platform. */
+
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.legend {
+  padding: 0;
+  font-size: var(--text-body);
+  font-weight: 600;
+  color: var(--ega-text);
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.description {
+  margin: 0;
+  max-width: 72ch;
+  font-size: var(--text-meta);
+  line-height: var(--leading-snug);
+  color: var(--ega-text-secondary);
+}
+
+.grid {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.gridAuto {
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+
+.gridTwo {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.gridThree {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.gridFive {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.card {
+  position: relative;
+  display: flex;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--ega-border);
+  border-radius: var(--radius-md);
+  background: var(--ega-surface);
+  cursor: pointer;
+  transition:
+    border-color var(--duration-fast) var(--ease-default),
+    background var(--duration-fast) var(--ease-default),
+    box-shadow var(--duration-fast) var(--ease-default);
+}
+
+.cardRow {
+  align-items: flex-start;
+}
+
+.cardStack {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.card:hover {
+  border-color: var(--ega-border-strong);
+  background: var(--ega-surface-hover);
+}
+
+.card:has(input:checked) {
+  border-color: var(--ega-ink);
+  background: var(--ega-surface-subtle);
+  box-shadow: 0 0 0 1px var(--ega-ink);
+}
+
+.card:has(input:focus-visible) {
+  outline: var(--ega-focus-outline);
+  outline-offset: 2px;
+}
+
+.input {
+  margin: 2px 0 0;
+  flex: none;
+  accent-color: var(--ega-ink);
+}
+
+.inputHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.preview {
+  display: block;
+  min-width: 0;
+  flex: none;
+}
+
+.copy {
+  min-width: 0;
+}
+
+.label {
+  display: block;
+  font-size: var(--text-body);
+  font-weight: 600;
+  color: var(--ega-text);
+}
+
+.cardDescription {
+  display: block;
+  margin-top: 2px;
+  font-size: var(--text-meta);
+  line-height: var(--leading-snug);
+  color: var(--ega-text-secondary);
+}
+
+@media (max-width: 900px) {
+  .gridFive {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 680px) {
+  .gridTwo,
+  .gridThree,
+  .gridFive {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 440px) {
+  .gridTwo,
+  .gridThree,
+  .gridFive {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card {
+    transition: none;
+  }
+}

@@ -65,6 +65,27 @@ export class SupabaseTimerSessionRepository implements TimerSessionRepository {
     return { ok: true, value: ((result.data ?? []) as Row[]).map(mapSession) };
   }
 
+  async listSummarySessions(
+    actor: AuthenticatedActor,
+  ): Promise<RepositoryResult<TimerSessionRecord[]>> {
+    const sessions: TimerSessionRecord[] = [];
+    let afterId: string | null = null;
+    for (;;) {
+      let query = this.supabase.from("task_sessions").select(SESSION_SELECT)
+        .eq("owner_user_id", actor.userId).order("id", { ascending: true }).limit(500);
+      // Immutable-id cursor avoids duplicate durations when another client
+      // inserts a session or corrects a timestamp between pages.
+      if (afterId !== null) query = query.gt("id", afterId);
+      const result = await query;
+      if (result.error) return { ok: false, error: sanitizeSupabaseError(result.error) };
+      const page = ((result.data ?? []) as Row[]).map(mapSession);
+      sessions.push(...page);
+      if (page.length < 500) break;
+      afterId = page[page.length - 1].id;
+    }
+    return { ok: true, value: sessions };
+  }
+
   async getStartableTask(
     actor: AuthenticatedActor,
     input: Readonly<{ taskId: string }>,
@@ -92,6 +113,9 @@ export class SupabaseTimerSessionRepository implements TimerSessionRepository {
     if (isTaskCanceledStatus(status)) {
       return { ok: true, value: { eligible: false, reason: "Canceled tasks cannot start a timer.", taskTitle: title } };
     }
+    if (status === "review") {
+      return { ok: true, value: { eligible: false, reason: "Move this task to In progress before starting a timer.", taskTitle: title } };
+    }
 
     return { ok: true, value: { eligible: true, reason: null, taskTitle: title } };
   }
@@ -106,6 +130,21 @@ export class SupabaseTimerSessionRepository implements TimerSessionRepository {
       .eq("owner_user_id", actor.userId)
       .eq("mcp_client_id", input.mcpClientId)
       .eq("mcp_operation_id", input.mcpOperationId)
+      .maybeSingle();
+
+    if (result.error) return { ok: false, error: sanitizeSupabaseError(result.error) };
+    return { ok: true, value: result.data ? mapSession(asRow(result.data)) : null };
+  }
+
+  async findSessionById(
+    actor: AuthenticatedActor,
+    input: Readonly<{ sessionId: string }>,
+  ): Promise<RepositoryResult<TimerSessionRecord | null>> {
+    const result = await this.supabase
+      .from("task_sessions")
+      .select(SESSION_SELECT)
+      .eq("id", input.sessionId)
+      .eq("owner_user_id", actor.userId)
       .maybeSingle();
 
     if (result.error) return { ok: false, error: sanitizeSupabaseError(result.error) };

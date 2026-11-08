@@ -1,35 +1,29 @@
-import { PersonalOperationsForm } from "./personal-operations-form";
 import type { Metadata } from "next";
 
-import { ChoiceGroup } from "@/app/(workspace)/settings/_components/choice-group";
 import { SettingsNav } from "@/app/(workspace)/settings/_components/settings-nav";
-import { updateWorkspacePreferencesAction } from "@/app/(workspace)/settings/preferences/actions";
+import {
+  updatePersonalOperationsAction,
+  updateWorkspacePreferencesAction,
+} from "@/app/(workspace)/settings/preferences/actions";
+import { PersonalOperationsForm } from "@/app/(workspace)/settings/preferences/personal-operations-form";
+import { WorkspaceDefaultsForm } from "@/app/(workspace)/settings/preferences/workspace-defaults-form";
+import {
+  redirectToSettingsLogin,
+  requireSettingsPageUser,
+} from "@/app/(workspace)/settings/_lib/settings-auth-guard";
 import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
+import { isAuthServiceError } from "@/lib/services/auth-service";
 import { getJobSearchReferenceOptions } from "@/lib/services/job-search-reference-options";
+import { getWebTimeContext } from "@/lib/services/time-context-service";
 import { getWebUserPreferencesState } from "@/lib/services/user-preferences-service";
 
 export const metadata: Metadata = {
   title: "Preferences",
-  description: "Launch page, default task layout and task detail behaviour.",
+  description:
+    "Weekly targets, guidance blocks, launch page and task presentation.",
 };
 
-const LAUNCH_OPTIONS = [
-  { value: "home", label: "Home", description: "Workspace overview and current focus." },
-  { value: "today", label: "Today", description: "The daily execution plan." },
-  { value: "tasks", label: "Tasks", description: "The full work inventory." },
-] as const;
-
-const LAYOUT_OPTIONS = [
-  { value: "list", label: "List", description: "Dense, sortable rows." },
-  { value: "kanban", label: "Kanban", description: "Status columns you can scan across." },
-] as const;
-
-const OPEN_MODE_OPTIONS = [
-  { value: "panel", label: "Side panel", description: "Keeps the current list in view." },
-  { value: "full", label: "Full page", description: "Gives the task detail the whole surface." },
-] as const;
+const PREFERENCES_PATH = "/settings/preferences";
 
 type WorkspacePreferencesPageProps = {
   searchParams: Promise<{ success?: string; error?: string }>;
@@ -38,26 +32,48 @@ type WorkspacePreferencesPageProps = {
 export default async function WorkspacePreferencesPage({
   searchParams,
 }: WorkspacePreferencesPageProps) {
+  // Verify the request identity before any protected read. The returned user is
+  // the request-memoized verified identity used only to scope the local draft
+  // snapshot so same-baseline accounts in one tab cannot share a draft.
+  const account = await requireSettingsPageUser(PREFERENCES_PATH);
+
   const [{ success, error }, state, referenceOptions] = await Promise.all([
     searchParams,
     getWebUserPreferencesState(),
     getJobSearchReferenceOptions(),
   ]);
+
+  // The schedule can still be edited when the account time context is
+  // unavailable; the form is told there is no local date to resolve. An expired
+  // session is not a degradation, so auth failures still go to the login page.
+  let timeContext: Awaited<ReturnType<typeof getWebTimeContext>> | null = null;
+  try {
+    timeContext = await getWebTimeContext();
+  } catch (loadError) {
+    if (isAuthServiceError(loadError)) {
+      redirectToSettingsLogin(PREFERENCES_PATH);
+    }
+    timeContext = null;
+  }
+
   const preferences = state.preferences;
   const loadError = error ?? state.errorMessage;
 
   return (
     <>
       <WorkspacePageHeader
-      title="Preferences"
-      description="Where the workspace opens and how tasks are presented."
-    />
-      <div className="flex max-w-3xl flex-col gap-6">
+        title="Preferences"
+        description="Your weekly rhythm, guidance and how the workspace opens."
+      />
+      <div className="flex w-full min-w-0 flex-col gap-6 pb-24">
         <SettingsNav active="preferences" />
 
         {loadError ? (
           <div role="alert" className="feedback-block feedback-block-error">
-            {loadError} The defaults are shown; saving replaces the stored values.
+            {loadError}
+            {state.errorMessage
+              ? " The schedule is read-only until preferences load."
+              : null}
           </div>
         ) : null}
 
@@ -73,55 +89,30 @@ export default async function WorkspacePreferencesPage({
           </div>
         ) : null}
 
-        <Card>
-          <CardHeader><CardTitle>Personal schedule</CardTitle><CardDescription>Targets and optional guidance in your account time zone.</CardDescription></CardHeader>
-          <CardContent><PersonalOperationsForm initial={preferences.personalOperations} initialReference={preferences.jobSearchReference} disabled={Boolean(state.errorMessage)} referenceOptions={referenceOptions.data} /></CardContent>
-        </Card>
+        <PersonalOperationsForm
+          initial={preferences.personalOperations}
+          initialReference={preferences.jobSearchReference}
+          referenceOptions={referenceOptions.data}
+          disabled={Boolean(state.errorMessage)}
+          timeContext={
+            timeContext
+              ? {
+                  timezone: timeContext.timezone,
+                  persistedTimezone: timeContext.persistedTimezone,
+                  fallback: timeContext.fallback,
+                  localDate: timeContext.localDate,
+                }
+              : null
+          }
+          accountScope={account.id}
+          action={updatePersonalOperationsAction}
+        />
+>>>>>>> origin/main
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Workspace defaults</CardTitle>
-            <CardDescription>
-              Stored on your account. Explicit list controls still win for the current view.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form action={updateWorkspacePreferencesAction} className="flex flex-col gap-6">
-              <ChoiceGroup
-                name="launchPage"
-                legend="Open on launch"
-                description="Where signing in and opening the workspace begins."
-                value={preferences.launchPage}
-                options={LAUNCH_OPTIONS}
-                idPrefix="preferences-launch"
-              />
-
-              <ChoiceGroup
-                name="taskLayout"
-                legend="Default task layout"
-                description="Used when the Tasks view has no explicit layout in its address."
-                value={preferences.taskLayout}
-                options={LAYOUT_OPTIONS}
-                idPrefix="preferences-layout"
-              />
-
-              <ChoiceGroup
-                name="taskOpenMode"
-                legend="Open tasks in"
-                description="The drawer controls still switch this for an individual selection."
-                value={preferences.taskOpenMode}
-                options={OPEN_MODE_OPTIONS}
-                idPrefix="preferences-open-mode"
-              />
-
-              <div>
-                <PendingSubmitButton type="submit" pendingLabel="Saving...">
-                  Save preferences
-                </PendingSubmitButton>
-              </div>
-            </form>
-          </CardContent>
-        </Card>
+        <WorkspaceDefaultsForm
+          preferences={preferences}
+          action={updateWorkspacePreferencesAction}
+        />
       </div>
     </>
   );

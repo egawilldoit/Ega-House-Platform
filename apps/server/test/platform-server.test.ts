@@ -9,6 +9,10 @@ import { resolveServerPort } from "../src/serve";
 const AUTH = { authorization: "Bearer good" };
 const JSON_HEADERS = { ...AUTH, "content-type": "application/json" };
 
+// Valid UUIDs are required at the /stop transport boundary.
+const SESSION_ID = "11111111-1111-4111-8111-111111111111";
+const UNKNOWN_SESSION_ID = "22222222-2222-4222-8222-222222222222";
+
 type Result = { data: unknown; error: { code?: string; message?: string } | null };
 
 class FakeSupabase {
@@ -172,7 +176,7 @@ test("POST /api/auth/logout requires a verified bearer token", async () => {
 
 function sessionRow(overrides: Record<string, unknown> = {}) {
   return {
-    id: "session-1",
+    id: SESSION_ID,
     task_id: "task-1",
     started_at: "2026-08-10T11:00:00.000Z",
     ended_at: null,
@@ -206,7 +210,7 @@ test("GET /api/timer/workspace returns active session and summary", async () => 
   assert.equal(response.status, 200);
   const body = await response.json();
   assert.deepEqual(body.activeSession, {
-    sessionId: "session-1",
+    sessionId: SESSION_ID,
     taskId: "task-1",
     startedAt: "2026-08-10T11:00:00.000Z",
     elapsedLabel: "1h 0m 0s",
@@ -244,7 +248,7 @@ test("POST /api/timer/start enforces single-active and inserts an owned open ses
   assert.equal((insert.args[0] as Record<string, unknown>).owner_user_id, "user-123");
 });
 
-test("POST /api/timer/start rejects a second concurrent session", async () => {
+test("POST /api/timer/start rejects a second concurrent session with 409 CONFLICT", async () => {
   const fake = new FakeSupabase();
   fake.push("tasks", { data: { id: "task-1", title: "Focus work", status: "todo", archived_at: null }, error: null });
   fake.push("task_sessions", { data: [sessionRow()], error: null });
@@ -255,14 +259,74 @@ test("POST /api/timer/start rejects a second concurrent session", async () => {
     body: JSON.stringify({ taskId: "task-1" }),
   });
 
-  assert.equal(response.status, 400);
-  assert.match((await response.json()).error.message, /already running/);
+  assert.equal(response.status, 409);
+  const body = await response.json();
+  assert.equal(body.error.code, "CONFLICT");
+  assert.match(body.error.message, /already running/);
+});
+
+test("POST /api/timer/start maps a lost unique-index race to 409 CONFLICT", async () => {
+  const fake = new FakeSupabase();
+  fake.push("tasks", { data: { id: "task-1", title: "Focus work", status: "todo", archived_at: null }, error: null });
+  // Pre-check sees no open session, then a concurrent device's insert wins.
+  fake.push("task_sessions", { data: [], error: null });
+  fake.push("task_sessions", {
+    data: null,
+    error: {
+      code: "23505",
+      message:
+        'duplicate key value violates unique constraint "task_sessions_owner_open_unique"',
+    },
+  });
+
+  const response = await makeApp(fake).request("/api/timer/start", {
+    method: "POST",
+    headers: JSON_HEADERS,
+    body: JSON.stringify({ taskId: "task-1" }),
+  });
+
+  assert.equal(response.status, 409);
+  const body = await response.json();
+  assert.equal(body.error.code, "CONFLICT");
+  assert.match(body.error.message, /already running/);
 });
 
 test("POST /api/timer/stop finalizes the open session with computed duration", async () => {
   const fake = new FakeSupabase();
-  fake.push("task_sessions", { data: [sessionRow()], error: null });
+  fake.push("task_sessions", { data: sessionRow(), error: null });
   fake.push("task_sessions", { data: [{ id: "session-1" }], error: null });
+
+  const response = await makeApp(fake).request("/api/timer/stop", {
+    method: "POST",
+    headers: JSON_HEADERS,
+    body: JSON.stringify({ sessionId: SESSION_ID }),
+  });
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), {
+    ok: true,
+    sessionId: SESSION_ID,
+    taskId: "task-1",
+    outcome: "stopped",
+  });
+
+  const sessionCalls = fake.calls.filter((call) => call.table === "task_sessions");
+  assert.ok(
+    sessionCalls[0]?.steps.some(
+      (step) => step.method === "eq" && step.args[0] === "id" && step.args[1] === SESSION_ID,
+    ),
+  );
+  const finalizeCall = sessionCalls[1];
+  const update = finalizeCall?.steps.find((step) => step.method === "update");
+  assert.ok(update);
+  assert.equal((update.args[0] as Record<string, unknown>).duration_seconds, 3600);
+  assert.ok(finalizeCall?.steps.some(
+    (step) => step.method === "is" && step.args[0] === "ended_at" && step.args[1] === null,
+  ));
+});
+
+test("POST /api/timer/stop rejects a missing session id before any write", async () => {
+  const fake = new FakeSupabase();
 
   const response = await makeApp(fake).request("/api/timer/stop", {
     method: "POST",
@@ -270,16 +334,95 @@ test("POST /api/timer/stop finalizes the open session with computed duration", a
     body: JSON.stringify({}),
   });
 
-  assert.equal(response.status, 200);
-  assert.deepEqual(await response.json(), { ok: true, sessionId: "session-1", taskId: "task-1" });
+  assert.equal(response.status, 400);
+  const body = await response.json();
+  assert.equal(body.error.code, "VALIDATION");
+  assert.match(body.error.message, /session id/i);
+  assert.equal(fake.calls.length, 0);
+});
 
-  const finalizeCall = fake.calls.filter((call) => call.table === "task_sessions")[1];
-  const update = finalizeCall?.steps.find((step) => step.method === "update");
-  assert.ok(update);
-  assert.equal((update.args[0] as Record<string, unknown>).duration_seconds, 3600);
-  assert.ok(finalizeCall?.steps.some(
-    (step) => step.method === "is" && step.args[0] === "ended_at" && step.args[1] === null,
-  ));
+test("POST /api/timer/stop acknowledges an already-stopped session as a success outcome", async () => {
+  const fake = new FakeSupabase();
+  fake.push("task_sessions", {
+    data: sessionRow({
+      ended_at: "2026-08-10T11:30:00.000Z",
+      duration_seconds: 1800,
+    }),
+    error: null,
+  });
+
+  const response = await makeApp(fake).request("/api/timer/stop", {
+    method: "POST",
+    headers: JSON_HEADERS,
+    body: JSON.stringify({ sessionId: SESSION_ID }),
+  });
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), {
+    ok: true,
+    sessionId: SESSION_ID,
+    taskId: "task-1",
+    outcome: "already_stopped",
+  });
+  assert.equal(fake.calls.length, 1);
+  assert.ok(!fake.calls[0]?.steps.some((step) => step.method === "update"));
+});
+
+test("POST /api/timer/stop returns 404 NOT_FOUND for an unknown session id", async () => {
+  const fake = new FakeSupabase();
+  fake.push("task_sessions", { data: null, error: null });
+
+  const response = await makeApp(fake).request("/api/timer/stop", {
+    method: "POST",
+    headers: JSON_HEADERS,
+    body: JSON.stringify({ sessionId: UNKNOWN_SESSION_ID }),
+  });
+
+  assert.equal(response.status, 404);
+  const body = await response.json();
+  assert.equal(body.error.code, "NOT_FOUND");
+  assert.match(body.error.message, /no running timer session/i);
+  assert.equal(fake.calls.length, 1);
+  assert.ok(!fake.calls[0]?.steps.some((step) => step.method === "update"));
+});
+
+test("POST /api/timer/stop returns 409 CONFLICT when the fenced finalize loses and the session re-reads open", async () => {
+  const fake = new FakeSupabase();
+  // Read the session as open, lose the fenced UPDATE (no row returned), then
+  // re-read the same row as still open. That is the canonical application
+  // branch that yields TIMER_SESSION_NO_LONGER_RUNNING_MESSAGE.
+  fake.push("task_sessions", { data: sessionRow(), error: null });
+  fake.push("task_sessions", { data: [], error: null });
+  fake.push("task_sessions", { data: sessionRow(), error: null });
+
+  const response = await makeApp(fake).request("/api/timer/stop", {
+    method: "POST",
+    headers: JSON_HEADERS,
+    body: JSON.stringify({ sessionId: SESSION_ID }),
+  });
+
+  assert.equal(response.status, 409);
+  const body = await response.json();
+  assert.equal(body.error.code, "CONFLICT");
+  assert.match(body.error.message, /no longer running/i);
+  assert.equal(fake.calls.length, 3);
+  assert.ok(fake.calls[1]?.steps.some((step) => step.method === "update"));
+});
+
+test("POST /api/timer/stop rejects a non-UUID session id before any query", async () => {
+  const fake = new FakeSupabase();
+
+  const response = await makeApp(fake).request("/api/timer/stop", {
+    method: "POST",
+    headers: JSON_HEADERS,
+    body: JSON.stringify({ sessionId: "abc" }),
+  });
+
+  assert.equal(response.status, 400);
+  const body = await response.json();
+  assert.equal(body.error.code, "VALIDATION");
+  assert.equal(body.error.message, "Invalid timer session id.");
+  assert.equal(fake.calls.length, 0);
 });
 
 test("GET /ready reports dependency health through injected probe", async () => {
