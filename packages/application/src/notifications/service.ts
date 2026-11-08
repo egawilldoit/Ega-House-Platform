@@ -632,7 +632,8 @@ async function deferDeliveryForInfrastructure(args: {
     | "preferences_unavailable"
     | "quiet_hours_unavailable"
     | "notification_unavailable"
-    | "device_lookup_unavailable";
+    | "device_lookup_unavailable"
+    | "email_destination_unavailable";
   reason: string;
   now: Date;
   nowIso: string;
@@ -921,9 +922,23 @@ export async function processPendingNotificationDeliveries(
       continue;
     }
 
-    // Email channel
-    const to = await options.emailResolver.resolve(delivery.ownerUserId);
-    if (!to) {
+    // Email channel. A lookup failure is infrastructure, not proof that the
+    // owner has no email; defer with the bounded budget. Only an authoritative
+    // absence is terminal missing_destination.
+    const destination = await options.emailResolver.resolve(delivery.ownerUserId);
+    if (destination.status === "unavailable") {
+      const outcome = await deferDeliveryForInfrastructure({
+        repository: options.deliveryRepository,
+        delivery,
+        code: "email_destination_unavailable",
+        reason: "Email destination lookup is temporarily unavailable.",
+        now,
+        nowIso,
+      });
+      recordDeferralOutcome(counts, outcome);
+      continue;
+    }
+    if (destination.status === "absent") {
       await options.deliveryRepository.updateDelivery(delivery.id, {
         status: "failed",
         lastErrorCode: "missing_destination",
@@ -937,6 +952,7 @@ export async function processPendingNotificationDeliveries(
       continue;
     }
 
+    const to = destination.email;
     const subject = notification.title;
     const html = `<p>${notification.body ?? ""}</p><p><a href="https://www.egawilldoit.online/notifications">Open EGA House</a></p>`;
     const emailResult = await options.emailProvider.send({ to, subject, html });
