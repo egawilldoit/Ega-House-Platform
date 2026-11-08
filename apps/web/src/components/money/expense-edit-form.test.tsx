@@ -66,15 +66,21 @@ describe("ExpenseEditForm", () => {
     const submittedVersions: number[] = [];
     const submitUpdate = vi.fn(async (_id: string, patch: { version: number }) => {
       submittedVersions.push(patch.version);
-      if (patch.version === 3) {
+      if (patch.version === 3 || patch.version === 4) {
         return { ok: false, code: "CONFLICT", error: "Stale version." } as const;
       }
-      return { ok: true, expense: { ...BASE_EXPENSE, version: 5 } } as const;
+      return { ok: true, expense: { ...BASE_EXPENSE, version: 6 } } as const;
     });
-    const fetchLatest = vi.fn(async () => ({
-      ok: true as const,
-      expense: { ...BASE_EXPENSE, version: 4 },
-    }));
+    const fetchLatest = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true as const,
+        expense: { ...BASE_EXPENSE, version: 4 },
+      })
+      .mockResolvedValueOnce({
+        ok: true as const,
+        expense: { ...BASE_EXPENSE, version: 5 },
+      });
     const onUpdated = vi.fn();
 
     await act(async () => {
@@ -115,7 +121,59 @@ describe("ExpenseEditForm", () => {
 
     await save();
     expect(submittedVersions).toEqual([3, 4]);
+    expect(amountInput().value).toBe("30.00");
+    expect(document.body.querySelector<HTMLButtonElement>(
+      `[data-testid="expense-edit-save-${BASE_EXPENSE.id}"]`,
+    )?.disabled).toBe(true);
+    await save();
+    expect(submittedVersions).toEqual([3, 4]);
+
+    // The second conflict invalidates version 4 too; a new refresh is required.
+    await act(async () => {
+      document.body
+        .querySelector(`[data-testid="expense-edit-refresh-${BASE_EXPENSE.id}"]`)!
+        .dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await save();
+    expect(submittedVersions).toEqual([3, 4, 5]);
     expect(onUpdated).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the draft and blocks saving when latest-version refresh rejects", async () => {
+    const submitUpdate = vi.fn(async () => ({
+      ok: false as const,
+      code: "CONFLICT",
+      error: "Stale version.",
+    }));
+    const fetchLatest = vi.fn(async () => {
+      throw new Error("request timed out");
+    });
+    await act(async () => {
+      root.render(
+        <ExpenseEditForm
+          ownerKey="owner-a"
+          expense={BASE_EXPENSE}
+          submitUpdate={submitUpdate}
+          fetchLatest={fetchLatest}
+        />,
+      );
+    });
+
+    setAmount("30.00");
+    await save();
+    await act(async () => {
+      document.body
+        .querySelector(`[data-testid="expense-edit-refresh-${BASE_EXPENSE.id}"]`)!
+        .dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(document.body.textContent).toContain("Could not refresh the latest expense");
+    expect(amountInput().value).toBe("30.00");
+    expect(document.body.querySelector<HTMLButtonElement>(
+      `[data-testid="expense-edit-save-${BASE_EXPENSE.id}"]`,
+    )?.disabled).toBe(true);
+    await save();
+    expect(submitUpdate).toHaveBeenCalledTimes(1);
   });
 
   it("sends the current version on a clean save", async () => {

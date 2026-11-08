@@ -32,8 +32,6 @@ export type ExpenseCreateFormProps = {
    * accounts after a switch or sign-out/in.
    */
   ownerKey: string;
-  /** Increment to start a genuinely new purchase (rotates the key). */
-  purchaseNonce?: string | number;
   defaultOccurredAtInput?: string;
   submitExpense: (
     input: ExpenseCreateSubmitInput,
@@ -54,14 +52,13 @@ const FIELD_LABEL = "form-label";
  */
 export function ExpenseCreateForm({
   ownerKey,
-  purchaseNonce = "default",
   defaultOccurredAtInput = "",
   submitExpense,
   onCreated,
 }: ExpenseCreateFormProps) {
   const [idempotencyKey, rotateKey] = useStableIdempotencyKey({
     ownerKey,
-    purchaseNonce,
+    purchaseNonce: "default",
   });
   const [amountInput, setAmountInput] = useState("");
   const [occurredAtInput, setOccurredAtInput] = useState(
@@ -74,6 +71,7 @@ export function ExpenseCreateForm({
   const [paymentMethod, setPaymentMethod] = useState("");
   const [fieldErrors, setFieldErrors] = useState<ExpenseFormFieldErrors>({});
   const [formError, setFormError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<{ replayed: boolean } | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const submittingRef = useRef(false);
   const formErrorRef = useRef<HTMLParagraphElement | null>(null);
@@ -95,6 +93,7 @@ export function ExpenseCreateForm({
     setPaymentMethod("");
     setFieldErrors({});
     setFormError(null);
+    setSuccess(null);
     setIsSubmitting(false);
   }
   useEffect(() => {
@@ -135,6 +134,7 @@ export function ExpenseCreateForm({
         idempotencyKey,
       });
       if (result.ok) {
+        setSuccess({ replayed: result.replayed });
         onCreated?.(result.expense, result.replayed);
         return;
       }
@@ -160,6 +160,7 @@ export function ExpenseCreateForm({
     setPaymentMethod("");
     setFieldErrors({});
     setFormError(null);
+    setSuccess(null);
   }
 
   const amountErrorId = "expense-create-amount-error";
@@ -187,7 +188,7 @@ export function ExpenseCreateForm({
           onChange={(event) => setAmountInput(event.target.value)}
           aria-invalid={Boolean(fieldErrors.amountInput)}
           aria-describedby={fieldErrors.amountInput ? amountErrorId : undefined}
-          disabled={isSubmitting}
+          disabled={isSubmitting || success !== null}
           className="h-11 w-full"
         />
         {fieldErrors.amountInput ? (
@@ -211,7 +212,7 @@ export function ExpenseCreateForm({
             onChange={(event) => setOccurredAtInput(event.target.value)}
             aria-invalid={Boolean(fieldErrors.occurredAtInput)}
             aria-describedby={fieldErrors.occurredAtInput ? occurredAtErrorId : undefined}
-            disabled={isSubmitting}
+            disabled={isSubmitting || success !== null}
             className="h-11 w-full"
           />
           {fieldErrors.occurredAtInput ? (
@@ -231,7 +232,7 @@ export function ExpenseCreateForm({
             required
             value={category}
             onChange={(event) => setCategory(event.target.value)}
-            disabled={isSubmitting}
+            disabled={isSubmitting || success !== null}
             className="input-instrument h-11 w-full text-sm"
           >
             <option value="">Select a category</option>
@@ -258,7 +259,7 @@ export function ExpenseCreateForm({
             required
             value={needVsWant}
             onChange={(event) => setNeedVsWant(event.target.value)}
-            disabled={isSubmitting}
+            disabled={isSubmitting || success !== null}
             className="input-instrument h-11 w-full text-sm"
           >
             <option value="">Select need or want</option>
@@ -284,7 +285,7 @@ export function ExpenseCreateForm({
             name="paymentMethod"
             value={paymentMethod}
             onChange={(event) => setPaymentMethod(event.target.value)}
-            disabled={isSubmitting}
+            disabled={isSubmitting || success !== null}
             className="input-instrument h-11 w-full text-sm"
           >
             <option value="">No payment method</option>
@@ -312,7 +313,7 @@ export function ExpenseCreateForm({
           autoComplete="off"
           value={merchant}
           onChange={(event) => setMerchant(event.target.value)}
-          disabled={isSubmitting}
+          disabled={isSubmitting || success !== null}
           className="h-11 w-full"
         />
         {fieldErrors.merchant ? (
@@ -331,7 +332,7 @@ export function ExpenseCreateForm({
           name="note"
           value={note}
           onChange={(event) => setNote(event.target.value)}
-          disabled={isSubmitting}
+          disabled={isSubmitting || success !== null}
           placeholder="Optional note for this purchase."
           className="min-h-20 w-full resize-none"
         />
@@ -341,6 +342,14 @@ export function ExpenseCreateForm({
           </p>
         ) : null}
       </div>
+
+      {success ? (
+        <p role="status" aria-live="polite" className="feedback-block">
+          {success.replayed
+            ? "This purchase was already saved. The retry confirmed the existing expense; no duplicate was created."
+            : "Expense saved successfully."} Choose “New purchase” to enter another expense.
+        </p>
+      ) : null}
 
       {formError ? (
         <p
@@ -358,11 +367,11 @@ export function ExpenseCreateForm({
           type="submit"
           variant="primary"
           size="lg"
-          disabled={isSubmitting}
+          disabled={isSubmitting || success !== null}
           aria-busy={isSubmitting}
           data-testid="expense-create-submit"
         >
-          {isSubmitting ? "Saving…" : "Add expense"}
+          {isSubmitting ? "Saving…" : success ? "Saved" : "Add expense"}
         </Button>
         <Button
           type="button"
