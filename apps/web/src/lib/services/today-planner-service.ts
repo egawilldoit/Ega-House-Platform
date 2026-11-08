@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { getTodayLocalIsoDate } from "@/lib/task-due-date";
+import { getLocalDateInTimezone } from "@ega/domain/time-context";
 import {
   getActiveTimerSession,
   getTimerSummary,
@@ -51,12 +52,20 @@ export async function getTodayPlannerData(options?: {
    * when the caller cannot resolve Time Context (degraded mode).
    */
   localDate?: string;
+  /** Owner's effective IANA timezone from canonical Time Context. */
+  timezone?: string;
+  /** Verified owner id for explicit summary scoping; RLS remains the fallback. */
+  ownerUserId?: string;
   activeTimerResult?: Awaited<ReturnType<typeof getActiveTimerSession>>;
   timerSummaryResult?: Awaited<ReturnType<typeof getTimerSummary>>;
 }) {
   const supabase = await resolveSupabaseClient(options?.supabase);
   const now = options?.now ?? new Date();
-  const today = options?.localDate ?? getTodayLocalIsoDate(now);
+  const today =
+    options?.localDate ??
+    (options?.timezone
+      ? getLocalDateInTimezone(now, options.timezone)
+      : getTodayLocalIsoDate(now));
 
   const [selectedResult, pinnedResult, inProgressResult, activeTimerResult, timerSummaryResult] =
     await Promise.all([
@@ -68,8 +77,19 @@ export async function getTodayPlannerData(options?: {
         : getActiveTimerSession({ supabase }),
       options?.timerSummaryResult
         ? Promise.resolve(options.timerSummaryResult)
-        : getTimerSummary({ supabase, limit: 120 }),
+        : getTimerSummary({
+            supabase,
+            now,
+            timezone: options?.timezone,
+            todayDate: today,
+            ownerUserId: options?.ownerUserId,
+          }),
     ]);
+
+  if (timerSummaryResult.errorMessage) {
+    console.error("Today planner timer summary failed", timerSummaryResult.errorMessage);
+    return { errorMessage: "Could not load Today plan right now.", data: null };
+  }
 
   if (selectedResult.errorMessage) {
     console.error("Today planner selected query failed", selectedResult.errorMessage);

@@ -1981,50 +1981,6 @@ html[data-reduce-motion="true"] .workspace-drawer-panel-enter {
   outline-offset: 2px;
 }
 
-.choice-card {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  padding: 12px;
-  border: 1px solid var(--ega-border);
-  border-radius: var(--radius-md);
-  background: var(--ega-surface);
-  cursor: pointer;
-  transition: border-color var(--duration-fast) var(--ease-default),
-    background var(--duration-fast) var(--ease-default);
-}
-
-.choice-card:hover {
-  border-color: var(--ega-border-strong);
-  background: var(--ega-surface-hover);
-}
-
-.choice-card:has(input:checked) {
-  border-color: var(--ega-ink);
-  background: var(--ega-surface-subtle);
-}
-
-/* `:has()` keeps the focus ring on the whole selectable card while the native
-   radio keeps arrow keys, Space/Enter and its own accessible name. */
-.choice-card:has(input:focus-visible) {
-  outline: var(--ega-focus-outline);
-  outline-offset: 2px;
-}
-
-.choice-card-label {
-  display: block;
-  font-size: var(--text-body);
-  font-weight: 500;
-  color: var(--ega-text);
-}
-
-.choice-card-description {
-  display: block;
-  margin-top: 2px;
-  font-size: var(--text-meta);
-  color: var(--ega-text-secondary);
-}
-
 .theme-control-error {
   margin: 6px 6px 2px;
   font-size: var(--text-meta);
@@ -2034,10 +1990,6 @@ html[data-reduce-motion="true"] .workspace-drawer-panel-enter {
 @media (pointer: coarse) {
   .settings-nav-link {
     min-height: 44px;
-  }
-
-  .choice-card {
-    min-height: 48px;
   }
 }
 /* ---------------------------------------------------------------------------

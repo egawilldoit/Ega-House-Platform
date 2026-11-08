@@ -45,6 +45,7 @@ function createSupabaseMock(queryResults: QueryResult[]) {
       not: () => chain,
       order: () => chain,
       limit: () => chain,
+      range: () => chain,
 
       // The await handler — returns a Promise that resolves to the result
       then(
@@ -413,4 +414,22 @@ test("work analytics sessions do not hide unrelated query failures", async () =>
   assert.equal(result.data, null);
   assert.match(result.errorMessage ?? "", /permission denied/);
   assert.equal(supabase.selects.length, 1);
+});
+
+
+test("work analytics reads every page and fails closed on a later error", async () => {
+  const firstPage = Array.from({ length: 500 }, (_, i) => ({ task_id: `task-${i}` }));
+  const supabase = createSupabaseMock([
+    { data: firstPage, count: null, error: null },
+    { data: [{ task_id: "last" }], count: null, error: null },
+  ]);
+  const result = await getWorkAnalyticsSessionsForWindow({ ownerUserId: "user-1", window, supabase: supabase as never });
+  assert.equal(result.data?.length, 501);
+  const failing = createSupabaseMock([
+    { data: firstPage, count: null, error: null },
+    { data: null, count: null, error: { message: "page failed" } },
+  ]);
+  const failed = await getWorkAnalyticsSessionsForWindow({ ownerUserId: "user-1", window, supabase: failing as never });
+  assert.equal(failed.data, null);
+  assert.match(failed.errorMessage ?? "", /page failed/);
 });

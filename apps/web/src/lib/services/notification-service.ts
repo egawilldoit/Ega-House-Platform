@@ -9,7 +9,7 @@ import {
   type NotificationRecord,
 } from "@ega/application";
 import { SupabaseNotificationRepository } from "@ega/data-access/notifications";
-import type { Notification } from "@ega/contracts";
+import { isNotificationTargetType, type Notification, type NotificationTarget } from "@ega/contracts";
 
 import { createClient } from "@/lib/supabase/server";
 import { requireAuthenticatedUser } from "@/lib/services/auth-service";
@@ -36,16 +36,22 @@ export type WebNotificationResult<T> = {
   errorMessage: string | null;
 };
 
+function mapTarget(record: NotificationRecord): NotificationTarget | null {
+  if (!record.targetType || !isNotificationTargetType(record.targetType)) return null;
+  if (record.targetType === "review" || record.targetType === "today") {
+    return { type: record.targetType, id: null };
+  }
+  if (!record.targetId) return null;
+  return { type: record.targetType, id: record.targetId };
+}
+
 function mapNotification(record: NotificationRecord): Notification {
   return {
     id: record.id,
     type: record.type,
     title: record.title,
     body: record.body,
-    target:
-      record.targetType === "task" && record.targetId
-        ? { type: "task", id: record.targetId }
-        : null,
+    target: mapTarget(record),
     readAt: record.readAt,
     openedAt: record.openedAt,
     createdAt: record.createdAt,

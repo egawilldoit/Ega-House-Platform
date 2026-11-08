@@ -1,9 +1,13 @@
-import type {
-  NotificationType,
+import {
+  isNotificationType,
+  type NotificationSettings,
+  type NotificationType,
 } from "@ega/contracts";
+import { isValidIANATimeZone } from "@ega/domain";
 
 import type { AuthenticatedActor } from "../auth/actor";
 import { applicationFailure, applicationSuccess, type ApplicationResult } from "../shared/result";
+import type { TimeContextRepository } from "../shared/time-context";
 
 import type {
   CreateNotificationInput,
@@ -15,32 +19,62 @@ import type {
   NotificationPreferenceRepository,
   NotificationRecord,
   NotificationRepository,
+  NotificationSettingsRecord,
+  NotificationSettingsRepository,
   PushProvider,
   TaskReminderIntentRepository,
 } from "./ports";
+import { buildPushDataPayload, nextRetryAt, resolveDeliveryChannels } from "./delivery";
 import {
-  nextRetryAt,
-  resolveDeliveryChannels,
-} from "./delivery";
+  buildNotificationEventKey,
+  isNotificationTypeCritical,
+  isValidClockTime,
+  isWithinQuietHours,
+  normalizeNotificationEventKey,
+  normalizeNotificationTarget,
+  sanitizeNotificationCopy,
+} from "./policy";
 
 function requireActor(actor: AuthenticatedActor) {
   if (!actor?.userId) return applicationFailure("Authentication required.");
   return null;
 }
 
+export type CreateNotificationResult = Readonly<{
+  notification: NotificationRecord;
+  created: boolean;
+}>;
+
 export async function createNotification(
   actor: AuthenticatedActor,
   repository: NotificationRepository,
   input: CreateNotificationInput,
-): Promise<ApplicationResult<NotificationRecord>> {
+): Promise<ApplicationResult<CreateNotificationResult>> {
   const err = requireActor(actor);
   if (err) return err;
 
-  if (!input.title?.trim()) return applicationFailure("Notification title is required.");
-  if (!input.type) return applicationFailure("Notification type is required.");
-  if (!input.idempotencyKey?.trim()) return applicationFailure("Idempotency key is required.");
+  if (!isNotificationType(input.type)) {
+    return applicationFailure("Unsupported notification type.");
+  }
+  const eventKey = normalizeNotificationEventKey(input.type, input.idempotencyKey);
+  if (!eventKey) {
+    return applicationFailure("A valid notification event key is required.");
+  }
 
-  const result = await repository.createNotification(actor, input);
+  const copy = sanitizeNotificationCopy(input.type, input.title, input.body);
+  if (!copy.title) return applicationFailure("Notification title is required.");
+
+  const target = input.target
+    ? normalizeNotificationTarget(input.target.type, input.target.id)
+    : null;
+
+  const result = await repository.createNotification(actor, {
+    ...input,
+    title: copy.title,
+    body: copy.body,
+    target,
+    idempotencyKey: eventKey,
+  });
   if (!result.ok) return applicationFailure("Unable to create notification right now.");
   return applicationSuccess(result.value);
 }
@@ -120,7 +154,8 @@ export async function getNotificationPreferences(
   if (err) return err;
   const result = await repository.listPreferences(actor);
   if (!result.ok) return applicationFailure("Unable to load preferences right now.");
-  // Ensure default entry for task_reminder exists
+  // Ensure the legacy task reminder default entry keeps the mobile settings
+  // screen working even before the owner stores an explicit preference.
   const hasTaskReminder = result.value.some((p) => p.notificationType === "task_reminder");
   if (!hasTaskReminder) {
     return applicationSuccess([
@@ -148,7 +183,7 @@ export async function updateNotificationPreferences(
 ): Promise<ApplicationResult<{ notificationType: NotificationType; pushEnabled: boolean; emailEnabled: boolean }>> {
   const err = requireActor(actor);
   if (err) return err;
-  if (input.notificationType !== "task_reminder") {
+  if (!isNotificationType(input.notificationType)) {
     return applicationFailure("Unsupported notification type.");
   }
   if (typeof input.pushEnabled !== "boolean" && typeof input.emailEnabled !== "boolean") {
@@ -161,6 +196,130 @@ export async function updateNotificationPreferences(
     pushEnabled: result.value.pushEnabled,
     emailEnabled: result.value.emailEnabled,
   });
+}
+
+export const DEFAULT_NOTIFICATION_SETTINGS = Object.freeze({
+  quietHoursEnabled: false,
+  quietHoursStart: "22:00",
+  quietHoursEnd: "07:00",
+});
+
+function mapSettingsRecord(record: NotificationSettingsRecord | null): NotificationSettings {
+  if (!record) {
+    return {
+      quietHoursEnabled: DEFAULT_NOTIFICATION_SETTINGS.quietHoursEnabled,
+      quietHoursStart: DEFAULT_NOTIFICATION_SETTINGS.quietHoursStart,
+      quietHoursEnd: DEFAULT_NOTIFICATION_SETTINGS.quietHoursEnd,
+    };
+  }
+  return {
+    quietHoursEnabled: record.quietHoursEnabled,
+    quietHoursStart: record.quietHoursStart,
+    quietHoursEnd: record.quietHoursEnd,
+    updatedAt: record.updatedAt ?? undefined,
+  };
+}
+
+export async function getNotificationSettings(
+  actor: AuthenticatedActor,
+  repository: NotificationSettingsRepository,
+): Promise<ApplicationResult<NotificationSettings>> {
+  const err = requireActor(actor);
+  if (err) return err;
+  const result = await repository.getSettings(actor);
+  if (!result.ok) return applicationFailure("Unable to load notification settings right now.");
+  return applicationSuccess(mapSettingsRecord(result.value));
+}
+
+export async function updateNotificationSettings(
+  actor: AuthenticatedActor,
+  repository: NotificationSettingsRepository,
+  timeContextRepository: TimeContextRepository,
+  input: {
+    quietHoursEnabled?: boolean;
+    quietHoursStart?: string;
+    quietHoursEnd?: string;
+  },
+): Promise<ApplicationResult<NotificationSettings>> {
+  const err = requireActor(actor);
+  if (err) return err;
+
+  // Only fields the caller actually supplied are sent to persistence. Never
+  // read-merge-upsert the whole row: concurrent stale writers must not clobber
+  // each other.
+  const patch: {
+    quietHoursEnabled?: boolean;
+    quietHoursStart?: string;
+    quietHoursEnd?: string;
+  } = {};
+  if (typeof input.quietHoursEnabled === "boolean") {
+    patch.quietHoursEnabled = input.quietHoursEnabled;
+  }
+  if (typeof input.quietHoursStart === "string") {
+    patch.quietHoursStart = input.quietHoursStart.trim();
+  }
+  if (typeof input.quietHoursEnd === "string") {
+    patch.quietHoursEnd = input.quietHoursEnd.trim();
+  }
+
+  if (
+    patch.quietHoursEnabled === undefined &&
+    patch.quietHoursStart === undefined &&
+    patch.quietHoursEnd === undefined
+  ) {
+    return applicationFailure("At least one settings field is required.", "validation");
+  }
+
+  if (patch.quietHoursStart !== undefined && !isValidClockTime(patch.quietHoursStart)) {
+    return applicationFailure("quietHoursStart must use 24-hour HH:MM.", "validation");
+  }
+  if (patch.quietHoursEnd !== undefined && !isValidClockTime(patch.quietHoursEnd)) {
+    return applicationFailure("quietHoursEnd must use 24-hour HH:MM.", "validation");
+  }
+
+  // Preserve the start !== end invariant. When only one time field is supplied
+  // we read the other for validation only; the write remains the partial patch.
+  if (patch.quietHoursStart !== undefined || patch.quietHoursEnd !== undefined) {
+    let start = patch.quietHoursStart;
+    let end = patch.quietHoursEnd;
+    if (start === undefined || end === undefined) {
+      const existing = await repository.getSettings(actor);
+      if (!existing.ok) {
+        return applicationFailure("Unable to load notification settings right now.", "unknown");
+      }
+      const base = mapSettingsRecord(existing.value);
+      start = start ?? base.quietHoursStart;
+      end = end ?? base.quietHoursEnd;
+    }
+    if (start === end) {
+      return applicationFailure("quietHoursStart and quietHoursEnd must differ.", "validation");
+    }
+  }
+
+  // Enabling quiet hours requires a valid owner timezone; disable always works
+  // so a bad configuration can be turned off.
+  if (patch.quietHoursEnabled === true) {
+    const timezoneResult = await timeContextRepository.getTimezone(actor);
+    if (!timezoneResult.ok) {
+      return applicationFailure("Unable to verify owner timezone right now.", "unknown");
+    }
+    const timezone = timezoneResult.value?.trim() ?? "";
+    if (!timezone || !isValidIANATimeZone(timezone)) {
+      return applicationFailure(
+        "A valid owner timezone is required to enable quiet hours.",
+        "validation",
+      );
+    }
+  }
+
+  const result = await repository.patchSettings(actor, patch);
+  if (!result.ok) {
+    if (result.error.code === "conflict") {
+      return applicationFailure("quietHoursStart and quietHoursEnd must differ.", "conflict");
+    }
+    return applicationFailure("Unable to save notification settings right now.", "unknown");
+  }
+  return applicationSuccess(mapSettingsRecord(result.value));
 }
 
 export async function registerNotificationDevice(
@@ -193,14 +352,57 @@ export async function unregisterNotificationDevice(
   return applicationSuccess({ ok: true });
 }
 
+export type QuietHoursResolution =
+  | Readonly<{ status: "not_quiet" }>
+  | Readonly<{ status: "quiet" }>
+  /** An infrastructure read failed; callers must not guess quiet/awake. */
+  | Readonly<{ status: "unavailable" }>;
+
+async function resolveQuietHoursSuppression(args: {
+  actor: AuthenticatedActor;
+  notificationType: NotificationType;
+  settingsRepository: NotificationSettingsRepository;
+  timeContextRepository: TimeContextRepository;
+  now: Date;
+}): Promise<QuietHoursResolution> {
+  if (!isNotificationType(args.notificationType)) return { status: "not_quiet" };
+  // Critical events bypass quiet hours by policy.
+  if (isNotificationTypeCritical(args.notificationType)) return { status: "not_quiet" };
+
+  const settingsResult = await args.settingsRepository.getSettings(args.actor);
+  if (!settingsResult.ok) return { status: "unavailable" };
+  const settings = settingsResult.value;
+  // No stored settings row = documented defaults (quiet hours disabled).
+  if (!settings) return { status: "not_quiet" };
+  if (!settings.quietHoursEnabled) return { status: "not_quiet" };
+
+  // The owner timezone is the existing Time Context authority. When quiet hours
+  // are enabled, a missing/invalid timezone or a read failure is unresolved:
+  // dispatch must defer (fail closed), never treat it as "not quiet".
+  const timezoneResult = await args.timeContextRepository.getTimezone(args.actor);
+  if (!timezoneResult.ok) return { status: "unavailable" };
+  const timezone = timezoneResult.value?.trim() ?? "";
+  if (!timezone || !isValidIANATimeZone(timezone)) return { status: "unavailable" };
+
+  return isWithinQuietHours({
+    now: args.now,
+    timezone,
+    start: settings.quietHoursStart,
+    end: settings.quietHoursEnd,
+  })
+    ? { status: "quiet" }
+    : { status: "not_quiet" };
+}
+
 // Orchestration: due reminders → notification → deliveries
 
 export type ProcessDueTaskRemindersOptions = {
-  supabase?: unknown; // not used; for future cron composition
   notificationRepository: NotificationRepository;
   deliveryRepository: NotificationDeliveryRepository;
   deviceRepository: NotificationDeviceRepository;
   preferenceRepository: NotificationPreferenceRepository;
+  settingsRepository: NotificationSettingsRepository;
+  timeContextRepository: TimeContextRepository;
   intentRepository: TaskReminderIntentRepository;
   now?: Date;
   limit?: number;
@@ -211,11 +413,12 @@ export type ProcessDueResult = {
   claimed: number;
   notificationsCreated: number;
   deliveriesQueued: number;
+  suppressed: number;
   skipped: number;
 };
 
 export async function processDueTaskReminders(
-  actorForSystem: null, // system cron uses intent repository directly; actor scoping via RLS is not needed for this path, but we will fetch preferences per owner
+  _actorForSystem: null,
   options: ProcessDueTaskRemindersOptions,
 ): Promise<ApplicationResult<ProcessDueResult>> {
   const now = options.now ?? new Date();
@@ -230,11 +433,11 @@ export async function processDueTaskReminders(
     claimed: 0,
     notificationsCreated: 0,
     deliveriesQueued: 0,
+    suppressed: 0,
     skipped: 0,
   };
 
   for (const intent of dueResult.value) {
-    // Claim intent atomically
     const claimed = await options.intentRepository.claimIntent(intent.id, nowIso);
     if (!claimed.ok || !claimed.value) {
       counts.skipped += 1;
@@ -244,141 +447,131 @@ export async function processDueTaskReminders(
 
     const ownerActor: AuthenticatedActor = { userId: claimed.value.ownerUserId };
 
-    // Fetch preferences for this owner
+    // Fail closed on preference reads: a failed read is not "no preference".
     const prefsResult = await options.preferenceRepository.listPreferences(ownerActor);
-    const pref = prefsResult.ok
-      ? prefsResult.value.find((p) => p.notificationType === "task_reminder") ?? null
-      : null;
+    if (!prefsResult.ok) {
+      // Do not create deliveries or mark processed; the intent remains
+      // retryable through the existing lease/claim path.
+      counts.skipped += 1;
+      continue;
+    }
+    const pref = prefsResult.value.find((p) => p.notificationType === "task_reminder") ?? null;
 
     const channels = resolveDeliveryChannels({
       deliveryMode: claimed.value.deliveryMode,
       preferences: pref ? { pushEnabled: pref.pushEnabled, emailEnabled: pref.emailEnabled } : null,
     });
 
-    // Create idempotent notification
-    const title = "Task reminder";
-    const body = (claimed.value.taskTitle?.trim() || "You have a task reminder").slice(0, 500);
-    const idempotencyKey = `task-reminder:${claimed.value.id}`;
+    // Fail closed at dispatch, but do not stall the producer here: if the
+    // settings/timezone read fails we cannot classify quiet hours, so create
+    // the event + queued (non-suppressed) deliveries and let dispatch make the
+    // authoritative bounded retry/fail decision without provider calls.
+    // Invalid/missing timezone remains the documented safe default.
+    const quiet = await resolveQuietHoursSuppression({
+      actor: ownerActor,
+      notificationType: "task_reminder",
+      settingsRepository: options.settingsRepository,
+      timeContextRepository: options.timeContextRepository,
+      now,
+    });
 
-    const notifResult = await options.notificationRepository.createNotification(ownerActor, {
+    const title = "Task reminder";
+    const body = claimed.value.taskTitle?.trim() || "You have a task reminder";
+    const typedEventKey = buildNotificationEventKey("task_reminder", claimed.value.id);
+    if (!typedEventKey) {
+      counts.skipped += 1;
+      continue;
+    }
+    // Preserve the persisted reminder identity across the event taxonomy change.
+    const eventKey = typedEventKey.replace("task_reminder:", "task-reminder:");
+
+    // Every producer goes through the canonical use case so copy and target
+    // policy are enforced at one boundary even for the live cron producer.
+    const notifResult = await createNotification(ownerActor, options.notificationRepository, {
       type: "task_reminder",
       title,
       body,
       target: { type: "task", id: claimed.value.taskId },
-      idempotencyKey,
+      idempotencyKey: eventKey,
     });
 
     if (!notifResult.ok) {
-      // Do not mark processed if notification creation failed; allow retry
+      // Do not mark processed if notification creation failed; allow retry.
       counts.skipped += 1;
       continue;
     }
 
-    const isNew =
-      notifResult.value.idempotencyKey === idempotencyKey &&
-      // If create returned existing, we should not duplicate deliveries
-      // Repository should return existing on conflict. We detect via creation time? Instead, check if deliveries already exist
-      true;
+    if (notifResult.data.created) counts.notificationsCreated += 1;
 
-    // Only queue deliveries if this is the first time we process this intent
-    // We check by attempting to create deliveries; DB unique constraint will prevent duplicates.
-    // However we need to know if deliveries already exist to avoid double counting.
-    // Simpler: attempt to queue; if constraint violation, treat as already queued.
+    const deliveriesToCreate: Array<{
+      channel: "push" | "email";
+      deviceId: string | null;
+      provider: "fcm" | "resend";
+      status?: "queued" | "suppressed";
+      lastErrorCode?: string | null;
+      lastErrorReason?: string | null;
+    }> = [];
 
-    const deliveriesToCreate: Array<{ channel: "push" | "email"; deviceId: string | null; provider: "fcm" | "resend" }> = [];
+    const suppressedFields = quiet.status === "quiet"
+      ? {
+          status: "suppressed" as const,
+          lastErrorCode: "quiet_hours",
+          lastErrorReason: "Suppressed during owner quiet hours.",
+        }
+      : {};
 
     if (channels.email) {
-      deliveriesToCreate.push({ channel: "email", deviceId: null, provider: "resend" });
+      deliveriesToCreate.push({
+        channel: "email",
+        deviceId: null,
+        provider: "resend",
+        ...suppressedFields,
+      });
     }
 
     if (channels.push) {
       const devicesResult = await options.deviceRepository.listActiveDevices(ownerActor);
-      if (devicesResult.ok) {
-        for (const device of devicesResult.value) {
-          deliveriesToCreate.push({ channel: "push", deviceId: device.id, provider: "fcm" });
-        }
+      if (!devicesResult.ok) {
+        // Do not silently drop push. Leave the intent unprocessed so lease
+        // reclaim retries the whole event idempotently.
+        counts.skipped += 1;
+        continue;
       }
-      // If push desired but no devices, still create canonical notification; no push deliveries
+      for (const device of devicesResult.value) {
+        deliveriesToCreate.push({
+          channel: "push",
+          deviceId: device.id,
+          provider: "fcm",
+          ...suppressedFields,
+        });
+      }
+      // If push desired but no devices, still keep the canonical notification.
     }
 
-    // If both channels disabled or no push devices and email disabled, we still want canonical notification but zero deliveries
-    // Do not fail the intent in that case.
-
-    let deliveriesOk = true;
     if (deliveriesToCreate.length > 0) {
       const deliveryResult = await options.deliveryRepository.createDeliveries(ownerActor, {
-        notificationId: notifResult.value.id,
+        notificationId: notifResult.data.notification.id,
         deliveries: deliveriesToCreate,
       });
 
       if (!deliveryResult.ok) {
-        // Queue creation failed (transient DB) — do not mark processed; lease reclaim will retry
+        // Do not mark processed; lease reclaim will retry idempotently.
         counts.skipped += 1;
-        deliveriesOk = false;
-      } else {
-        // If deliveries were deduplicated, length may be 0; we still count
-        const createdCount = deliveryResult.value.length;
-        // If this was a replay (notification already existed), duplicate deliveries would be blocked and createdCount 0
-        // We treat that as not new.
-        if (createdCount > 0) {
-          counts.deliveriesQueued += createdCount;
-        } else {
-          // Check if this is truly replay: if notification existed before, don't count as new notification
-          // We need to know if notification was newly created. Since repository returns existing on conflict, we can't know easily
-          // without extra query. For now, approximate: if deliveries already existed, we consider notification not new.
-          // We will probe: if delivery count 0 and we attempted to create, assume replay and don't increment notificationsCreated
-          // Otherwise increment.
-        }
-        // For first-time processing, we consider notification created
-        // We need to know if this is first time: we can check if intent was just claimed and notification creation succeeded.
-        // Since we just claimed, it is first time we process; if deliveries were 0 due to replay, that means previous run already created notification+deliveries but failed to mark processed.
-        // In that case we should not double-count notification.
-        // We can treat deliveriesQueued 0 as replay.
-        if (createdCount > 0 || deliveriesToCreate.length === 0) {
-          // For zero-delivery case (e.g., preferences disabled), we still count notification as created if first time
-          // But we need to avoid double counting on replay where deliveries already existed.
-          // To keep simple, only increment notificationsCreated when deliveries were created or when no deliveries expected
-          // For replay where deliveries already existed, createdCount 0 but we shouldn't increment.
-          // We can't distinguish between "no devices, so 0 deliveries expected" vs "replay, 0 deliveries created".
-          // We'll check: if deliveriesToCreate.length === 0, then zero deliveries is expected and it's first time -> count 1
-          // If deliveriesToCreate.length >0 and createdCount 0 -> replay -> don't count.
-          if (deliveriesToCreate.length === 0) {
-            counts.notificationsCreated += 1;
-          } else if (createdCount > 0) {
-            counts.notificationsCreated += 1;
-          }
-        }
+        continue;
       }
-    } else {
-      // No deliveries but still notification
-      // Determine if this is replay: if we just created notification but no deliveries, it's still new
-      // We can treat as new unless we can prove replay. For simplicity, count it.
-      // To avoid double counting on replay, we could check if notification was previously existed — but without timestamp we approximate.
-      // We'll assume if deliveriesToCreate empty, it's new only if notification creation was new.
-      // Since we can't know, we will count notification but ensure idempotency prevents double notification creation.
-      // For now, increment only if we consider this first processing.
-      // We'll increment tentatively; duplicate runs will create zero deliveries next time but still notification exists — second run will attempt same notification creation and get existing, then try to create same zero deliveries (none) -> would count again incorrectly.
-      // To avoid double counting, we need a better signal: check if notifResult returned existing vs new. We can detect via createdAt close to nowIso? Use heuristic: if notification.createdAt === nowIso within 2 sec, it's new.
-      // Simpler: only increment notificationsCreated when we successfully marked processed? Actually markProcessed happens after, so second run won't claim again (status changed). So second run won't increment anyway because claim will fail on replay? Wait intent status becomes processed after markProcessed, so second run won't even enter loop. So replay scenario is only when crash between create and markProcessed. In that crash case, second run will claim again? No, claim changes status to processing, so second run's claim will still succeed if first didn't mark processed? Our claim moves pending -> processing? Actually spec says claim then create notification then mark processed. If crash after create but before markProcessed, status remains processing? Or pending -> ??? Need to define.
-      // For now, assume intentRepository.claimIntent sets status to processing, not processed, and markProcessed later sets to processed. So second run after crash would find intent with status processing, not pending, and thus not in due list. So replay via due list won't happen. The only replay is via duplicate cron run that runs concurrently before first marks processed — then both will try to claim same id, one succeeds, one fails (counts.skipped). So counting is fine.
-      // Thus for non-concurrent replay, we don't need to worry. We'll increment.
-      counts.notificationsCreated += 1;
+
+      // `deliveriesQueued` means dispatchable (non-suppressed) rows; suppressed
+      // rows are recorded separately as terminal results.
+      counts.deliveriesQueued += deliveryResult.value.created.filter(
+        (delivery) => delivery.status !== "suppressed",
+      ).length;
+      counts.suppressed += deliveryResult.value.created.filter(
+        (delivery) => delivery.status === "suppressed",
+      ).length;
     }
 
-    if (!deliveriesOk) {
-      // Do not mark processed; allow lease reclaim. Notification already exists idempotently.
-      continue;
-    }
-
-    // Mark reminder processed only when notification + deliveries durable
-    const markResult = await options.intentRepository.markProcessed(claimed.value.id, nowIso);
-    if (!markResult.ok) {
-      // If mark fails, we still counted notification but intent remains processing; next run will retry? But due query filters pending only, so won't retry.
-      // Should we treat as skipped? For now keep counts.
-    }
-
-    // Suppress unused variable warning for isNew
-    void isNew;
+    // Mark reminder processed only after the event and deliveries are durable.
+    await options.intentRepository.markProcessed(claimed.value.id, nowIso);
   }
 
   return applicationSuccess(counts);
@@ -386,7 +579,10 @@ export async function processDueTaskReminders(
 
 export type ProcessDeliveriesOptions = {
   deliveryRepository: NotificationDeliveryRepository;
-  deviceRepository: NotificationDeviceRepository; // for deactivation
+  deviceRepository: NotificationDeviceRepository;
+  preferenceRepository: NotificationPreferenceRepository;
+  settingsRepository: NotificationSettingsRepository;
+  timeContextRepository: TimeContextRepository;
   pushProvider: PushProvider;
   emailProvider: EmailProvider;
   emailResolver: EmailDestinationResolver;
@@ -401,7 +597,82 @@ export type ProcessDeliveriesResult = {
   retried: number;
   invalidated: number;
   failed: number;
+  suppressed: number;
+  persistenceErrors: number;
 };
+
+async function markSuppressed(
+  repository: NotificationDeliveryRepository,
+  deliveryId: string,
+  reasonCode: "opt_out" | "quiet_hours",
+  reason: string,
+  nowIso: string,
+): Promise<"suppressed" | "persistence_failed"> {
+  const update = await repository.updateDelivery(deliveryId, {
+    status: "suppressed",
+    lastErrorCode: reasonCode,
+    lastErrorReason: reason,
+    nextAttemptAt: null,
+    updatedAt: nowIso,
+  });
+  // A failed write leaves the row `sending`; stale-lease reclaim is the
+  // backstop. Never report it as a recorded suppression.
+  return update.ok && update.value ? "suppressed" : "persistence_failed";
+}
+
+/**
+ * An infrastructure read (preferences/settings/timezone) failed. Do not call
+ * the provider and do not guess opt-in/awake: defer explicitly, then fail with
+ * an actionable code once the bounded retry budget is exhausted.
+ */
+async function deferDeliveryForInfrastructure(args: {
+  repository: NotificationDeliveryRepository;
+  delivery: { id: string; attemptCount: number };
+  code:
+    | "preferences_unavailable"
+    | "quiet_hours_unavailable"
+    | "notification_unavailable"
+    | "device_lookup_unavailable"
+    | "email_destination_unavailable";
+  reason: string;
+  now: Date;
+  nowIso: string;
+}): Promise<"retried" | "failed" | "persistence_failed"> {
+  const nextAttempt = nextRetryAt(args.delivery.attemptCount + 1, args.now);
+  if (!nextAttempt) {
+    const update = await args.repository.updateDelivery(args.delivery.id, {
+      status: "failed",
+      lastErrorCode: args.code,
+      lastErrorReason: args.reason,
+      attemptCount: args.delivery.attemptCount + 1,
+      failedAt: args.nowIso,
+      updatedAt: args.nowIso,
+      nextAttemptAt: null,
+    });
+    // The delivery stays `sending`; stale-lease reclaim is the backstop.
+    if (!update.ok || !update.value) return "persistence_failed";
+    return "failed";
+  }
+  const update = await args.repository.updateDelivery(args.delivery.id, {
+    status: "retry_scheduled",
+    lastErrorCode: args.code,
+    lastErrorReason: args.reason,
+    attemptCount: args.delivery.attemptCount + 1,
+    nextAttemptAt: nextAttempt,
+    updatedAt: args.nowIso,
+  });
+  if (!update.ok || !update.value) return "persistence_failed";
+  return "retried";
+}
+
+function recordDeferralOutcome(
+  counts: ProcessDeliveriesResult,
+  outcome: "retried" | "failed" | "persistence_failed",
+): void {
+  if (outcome === "retried") counts.retried += 1;
+  else if (outcome === "failed") counts.failed += 1;
+  else counts.persistenceErrors += 1;
+}
 
 export async function processPendingNotificationDeliveries(
   options: ProcessDeliveriesOptions,
@@ -419,76 +690,170 @@ export async function processPendingNotificationDeliveries(
     retried: 0,
     invalidated: 0,
     failed: 0,
+    suppressed: 0,
+    persistenceErrors: 0,
   };
 
   for (const delivery of pendingResult.value) {
-    // Move to sending
+    // Claim the attempt. A delivery already `sending` is only reclaimed after
+    // its lease expires; we never pretend it was unsent.
     const sending = await options.deliveryRepository.markSending(delivery.id);
-    if (!sending.ok || !sending.value) {
-      continue;
-    }
+    if (!sending.ok || !sending.value) continue;
 
     counts.processed += 1;
 
+    const ownerActor: AuthenticatedActor = { userId: delivery.ownerUserId };
+    const notifResult = await options.notificationRepository.getNotification(
+      ownerActor,
+      delivery.notificationId,
+    );
+
+    // A read failure is not the same as a missing row: defer without calling a
+    // provider, then fail after the bounded budget. A null row is terminal.
+    if (!notifResult.ok) {
+      const outcome = await deferDeliveryForInfrastructure({
+        repository: options.deliveryRepository,
+        delivery,
+        code: "notification_unavailable",
+        reason: "Unable to read notification before dispatch.",
+        now,
+        nowIso,
+      });
+      recordDeferralOutcome(counts, outcome);
+      continue;
+    }
+
+    const notification = notifResult.value;
+    if (!notification) {
+      await options.deliveryRepository.updateDelivery(delivery.id, {
+        status: "failed",
+        lastErrorCode: "missing_notification",
+        lastErrorReason: "Notification not found",
+        attemptCount: delivery.attemptCount + 1,
+        failedAt: nowIso,
+        updatedAt: nowIso,
+        nextAttemptAt: null,
+      });
+      counts.failed += 1;
+      continue;
+    }
+
+    // Re-check current per-type opt-out immediately before dispatch. A failed
+    // read must not be treated as "enabled"; defer without calling a provider.
+    const prefsResult = await options.preferenceRepository.listPreferences(ownerActor);
+    if (!prefsResult.ok) {
+      const outcome = await deferDeliveryForInfrastructure({
+        repository: options.deliveryRepository,
+        delivery,
+        code: "preferences_unavailable",
+        reason: "Unable to read notification preferences before dispatch.",
+        now,
+        nowIso,
+      });
+      recordDeferralOutcome(counts, outcome);
+      continue;
+    }
+    const pref = prefsResult.value.find((p) => p.notificationType === notification.type) ?? null;
+    // No stored row keeps the legacy enabled default; an explicit row controls
+    // the channel.
+    const channelEnabled = pref
+      ? delivery.channel === "push"
+        ? pref.pushEnabled
+        : pref.emailEnabled
+      : true;
+    if (!channelEnabled) {
+      const suppression = await markSuppressed(
+        options.deliveryRepository,
+        delivery.id,
+        "opt_out",
+        "Channel disabled by owner preference.",
+        nowIso,
+      );
+      if (suppression === "suppressed") counts.suppressed += 1;
+      else counts.persistenceErrors += 1;
+      continue;
+    }
+
+    // Re-check current quiet hours; terminal recorded result, not a queue. A
+    // read failure means we cannot know whether it is quiet, so defer.
+    const quiet = await resolveQuietHoursSuppression({
+      actor: ownerActor,
+      notificationType: notification.type,
+      settingsRepository: options.settingsRepository,
+      timeContextRepository: options.timeContextRepository,
+      now,
+    });
+    if (quiet.status === "unavailable") {
+      const outcome = await deferDeliveryForInfrastructure({
+        repository: options.deliveryRepository,
+        delivery,
+        code: "quiet_hours_unavailable",
+        reason: "Unable to read quiet-hours settings before dispatch.",
+        now,
+        nowIso,
+      });
+      recordDeferralOutcome(counts, outcome);
+      continue;
+    }
+    if (quiet.status === "quiet") {
+      const suppression = await markSuppressed(
+        options.deliveryRepository,
+        delivery.id,
+        "quiet_hours",
+        "Suppressed during owner quiet hours.",
+        nowIso,
+      );
+      if (suppression === "suppressed") counts.suppressed += 1;
+      else counts.persistenceErrors += 1;
+      continue;
+    }
+
     if (delivery.channel === "push") {
-      // Need to load device token? Our delivery record doesn't contain token; we need to fetch device? But we have deviceId.
-      // For now, assume device token is resolved via a separate lookup inside provider via deliveryRepository? Simplify: we need to fetch notification details for title/body.
-      // To avoid circular dependencies, we will expect device token to be available via a provider-specific resolver or delivery record should include token.
-      // For this implementation, we will fetch notification and device via direct repository calls if available.
-      // If device inactive or not found, mark invalid_endpoint.
-
-      // Fetch notification for title/body
-      // We don't have actor here; deliveries are system-level. Use ownerUserId to construct actor.
-      const ownerActor: AuthenticatedActor = { userId: delivery.ownerUserId };
-      const notifResult = await options.notificationRepository.getNotification(ownerActor, delivery.notificationId);
-      const notification = notifResult.ok ? notifResult.value : null;
-
-      // Fetch device token: we need deviceRepository.getDevice? Not defined for system. We'll attempt to use delivery's deviceId to load via a direct query in data-access layer.
-      // For now, we will treat device lookup as part of delivery processing that requires device token to be embedded in delivery? As fallback, if we cannot resolve, mark failed.
-      // To keep implementation testable, provider will be mocked to not need real token; we will simulate.
-      // Instead, we'll call pushProvider with token = `device:${delivery.deviceId}` as placeholder; real adapter will replace with actual token lookup.
-
       let token: string | null = null;
       if (delivery.deviceId) {
-        // Try to load device via repository if method exists; we will use a hack: query via deviceRepository.listActiveDevices and find matching id
         const devices = await options.deviceRepository.listActiveDevices(ownerActor);
-        if (devices.ok) {
-          const dev = devices.value.find((d) => d.id === delivery.deviceId);
-          token = dev?.providerToken ?? null;
+        if (!devices.ok) {
+          // A lookup failure is not proof the endpoint is invalid. Defer with
+          // the bounded budget and never deactivate or call the provider.
+          const outcome = await deferDeliveryForInfrastructure({
+            repository: options.deliveryRepository,
+            delivery,
+            code: "device_lookup_unavailable",
+            reason: "Unable to look up the notification device before dispatch.",
+            now,
+            nowIso,
+          });
+          recordDeferralOutcome(counts, outcome);
+          continue;
         }
+        const device = devices.value.find((d) => d.id === delivery.deviceId);
+        token = device?.providerToken ?? null;
       }
 
       if (!token) {
-        // No token -> invalid endpoint
+        // Successful lookup confirmed the device is absent/inactive.
         await options.deliveryRepository.updateDelivery(delivery.id, {
           status: "invalid_endpoint",
           lastErrorCode: "missing_token",
           lastErrorReason: "Device token not found or device inactive",
           failedAt: nowIso,
           updatedAt: nowIso,
+          nextAttemptAt: null,
         });
         counts.invalidated += 1;
-        // Deactivate device if applicable
-        if (delivery.deviceId) {
-          // Find device to deactivate? We can just mark via deviceRepository? No direct method for system; skip.
-        }
         continue;
       }
 
-      const title = notification?.title ?? "Task reminder";
-      const body = notification?.body ?? null;
-      const data: Record<string, string> = {
-        notificationId: delivery.notificationId,
-        type: notification?.type ?? "task_reminder",
-      };
-      if (notification?.targetType) data.targetType = notification.targetType;
-      if (notification?.targetId) data.targetId = notification.targetId;
-
       const pushResult = await options.pushProvider.send({
         token,
-        title,
-        body,
-        data,
+        title: notification.title,
+        body: notification.body,
+        data: buildPushDataPayload({
+          notificationId: delivery.notificationId,
+          type: notification.type,
+          targetType: notification.targetType,
+          targetId: notification.targetId,
+        }),
       });
 
       if (pushResult.ok) {
@@ -516,13 +881,7 @@ export async function processPendingNotificationDeliveries(
             nextAttemptAt: null,
           });
           counts.invalidated += 1;
-          // Deactivate device
-          if (delivery.deviceId) {
-            // We need to deactivate via repository; use system deactivation via deviceRepository with owner actor
-            // For now, best effort: find device and deactivate via deactivateDevice? That requires installationId, not deviceId.
-            // Instead we can call deactivateByToken if implemented
-            await options.deviceRepository.deactivateByToken(delivery.ownerUserId, token);
-          }
+          await options.deviceRepository.deactivateByToken(delivery.ownerUserId, token);
         } else if (classification === "transient") {
           const nextAttempt = nextRetryAt(delivery.attemptCount + 1, now);
           if (!nextAttempt) {
@@ -548,7 +907,6 @@ export async function processPendingNotificationDeliveries(
             counts.retried += 1;
           }
         } else {
-          // permanent or auth
           await options.deliveryRepository.updateDelivery(delivery.id, {
             status: "failed",
             lastErrorCode: pushResult.errorCode,
@@ -561,91 +919,91 @@ export async function processPendingNotificationDeliveries(
           counts.failed += 1;
         }
       }
-    } else if (delivery.channel === "email") {
-      const ownerActor: AuthenticatedActor = { userId: delivery.ownerUserId };
-      const notifResult = await options.notificationRepository.getNotification(ownerActor, delivery.notificationId);
-      const notification = notifResult.ok ? notifResult.value : null;
-      if (!notification) {
+      continue;
+    }
+
+    // Email channel. A lookup failure is infrastructure, not proof that the
+    // owner has no email; defer with the bounded budget. Only an authoritative
+    // absence is terminal missing_destination.
+    const destination = await options.emailResolver.resolve(delivery.ownerUserId);
+    if (destination.status === "unavailable") {
+      const outcome = await deferDeliveryForInfrastructure({
+        repository: options.deliveryRepository,
+        delivery,
+        code: "email_destination_unavailable",
+        reason: "Email destination lookup is temporarily unavailable.",
+        now,
+        nowIso,
+      });
+      recordDeferralOutcome(counts, outcome);
+      continue;
+    }
+    if (destination.status === "absent") {
+      await options.deliveryRepository.updateDelivery(delivery.id, {
+        status: "failed",
+        lastErrorCode: "missing_destination",
+        lastErrorReason: "Email destination not found",
+        attemptCount: delivery.attemptCount + 1,
+        failedAt: nowIso,
+        updatedAt: nowIso,
+        nextAttemptAt: null,
+      });
+      counts.failed += 1;
+      continue;
+    }
+
+    const to = destination.email;
+    const subject = notification.title;
+    const html = `<p>${notification.body ?? ""}</p><p><a href="https://www.egawilldoit.online/notifications">Open EGA House</a></p>`;
+    const emailResult = await options.emailProvider.send({ to, subject, html });
+
+    if (emailResult.ok) {
+      await options.deliveryRepository.updateDelivery(delivery.id, {
+        status: "provider_accepted",
+        providerMessageId: emailResult.providerMessageId ?? null,
+        attemptCount: delivery.attemptCount + 1,
+        providerAcceptedAt: nowIso,
+        updatedAt: nowIso,
+        nextAttemptAt: null,
+        lastErrorCode: null,
+        lastErrorReason: null,
+      });
+      counts.accepted += 1;
+    } else if (emailResult.errorCode === "transient") {
+      const nextAttempt = nextRetryAt(delivery.attemptCount + 1, now);
+      if (!nextAttempt) {
         await options.deliveryRepository.updateDelivery(delivery.id, {
           status: "failed",
-          lastErrorCode: "missing_notification",
-          lastErrorReason: "Notification not found",
+          lastErrorCode: emailResult.errorCode,
+          lastErrorReason: emailResult.errorReason,
           attemptCount: delivery.attemptCount + 1,
           failedAt: nowIso,
-          updatedAt: nowIso,
-        });
-        counts.failed += 1;
-        continue;
-      }
-      const to = await options.emailResolver.resolve(delivery.ownerUserId);
-      if (!to) {
-        await options.deliveryRepository.updateDelivery(delivery.id, {
-          status: "failed",
-          lastErrorCode: "missing_destination",
-          lastErrorReason: "Email destination not found",
-          attemptCount: delivery.attemptCount + 1,
-          failedAt: nowIso,
-          updatedAt: nowIso,
-        });
-        counts.failed += 1;
-        continue;
-      }
-      // Build email subject/html via helper? For now minimal
-      const subject = notification.title;
-      const html = `<p>${notification.body ?? ""}</p><p><a href="https://www.egawilldoit.online/tasks">Open task</a></p>`;
-
-      const emailResult = await options.emailProvider.send({ to, subject, html });
-
-      if (emailResult.ok) {
-        await options.deliveryRepository.updateDelivery(delivery.id, {
-          status: "provider_accepted",
-          providerMessageId: emailResult.providerMessageId ?? null,
-          attemptCount: delivery.attemptCount + 1,
-          providerAcceptedAt: nowIso,
           updatedAt: nowIso,
           nextAttemptAt: null,
-          lastErrorCode: null,
-          lastErrorReason: null,
         });
-        counts.accepted += 1;
+        counts.failed += 1;
       } else {
-        if (emailResult.errorCode === "transient") {
-          const nextAttempt = nextRetryAt(delivery.attemptCount + 1, now);
-          if (!nextAttempt) {
-            await options.deliveryRepository.updateDelivery(delivery.id, {
-              status: "failed",
-              lastErrorCode: emailResult.errorCode,
-              lastErrorReason: emailResult.errorReason,
-              attemptCount: delivery.attemptCount + 1,
-              failedAt: nowIso,
-              updatedAt: nowIso,
-              nextAttemptAt: null,
-            });
-            counts.failed += 1;
-          } else {
-            await options.deliveryRepository.updateDelivery(delivery.id, {
-              status: "retry_scheduled",
-              lastErrorCode: emailResult.errorCode,
-              lastErrorReason: emailResult.errorReason,
-              attemptCount: delivery.attemptCount + 1,
-              nextAttemptAt: nextAttempt,
-              updatedAt: nowIso,
-            });
-            counts.retried += 1;
-          }
-        } else {
-          await options.deliveryRepository.updateDelivery(delivery.id, {
-            status: "failed",
-            lastErrorCode: emailResult.errorCode,
-            lastErrorReason: emailResult.errorReason,
-            attemptCount: delivery.attemptCount + 1,
-            failedAt: nowIso,
-            updatedAt: nowIso,
-            nextAttemptAt: null,
-          });
-          counts.failed += 1;
-        }
+        await options.deliveryRepository.updateDelivery(delivery.id, {
+          status: "retry_scheduled",
+          lastErrorCode: emailResult.errorCode,
+          lastErrorReason: emailResult.errorReason,
+          attemptCount: delivery.attemptCount + 1,
+          nextAttemptAt: nextAttempt,
+          updatedAt: nowIso,
+        });
+        counts.retried += 1;
       }
+    } else {
+      await options.deliveryRepository.updateDelivery(delivery.id, {
+        status: "failed",
+        lastErrorCode: emailResult.errorCode,
+        lastErrorReason: emailResult.errorReason,
+        attemptCount: delivery.attemptCount + 1,
+        failedAt: nowIso,
+        updatedAt: nowIso,
+        nextAttemptAt: null,
+      });
+      counts.failed += 1;
     }
   }
 
