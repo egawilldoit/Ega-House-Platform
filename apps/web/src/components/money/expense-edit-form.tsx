@@ -14,6 +14,7 @@ import {
   type ExpenseFormFieldErrors,
 } from "@/lib/money/expense-form-validation";
 import type { ExpenseDto } from "@ega/contracts/expenses";
+import { useExpenseRequestScope } from "./use-expense-request-scope";
 
 export type ExpenseEditSubmitResult =
   | { ok: true; expense: ExpenseDto }
@@ -68,6 +69,7 @@ export function ExpenseEditForm({
   fetchLatest,
   onUpdated,
 }: ExpenseEditFormProps) {
+  const captureRequestScope = useExpenseRequestScope(`${expense.id}::${ownerKey}`);
   const [amountInput, setAmountInput] = useState(() =>
     formatMinorToMadInput(expense.amountMinor),
   );
@@ -137,10 +139,14 @@ export function ExpenseEditForm({
     setFormError(null);
     submittingRef.current = true;
     setIsSubmitting(true);
+    const isCurrent = captureRequestScope();
     try {
       const result = await submitUpdate(expense.id, {
         version,
-        occurredAt: validation.value.occurredAt,
+        // An unrelated edit must preserve seconds and DST-fold identity.
+        ...(occurredAtInput === toDatetimeLocalValue(expense.occurredAt)
+          ? {}
+          : { occurredAt: validation.value.occurredAt }),
         amountMinor: validation.value.amountMinor,
         category: validation.value.category,
         needVsWant: validation.value.needVsWant,
@@ -148,6 +154,7 @@ export function ExpenseEditForm({
         note: validation.value.note,
         paymentMethod: validation.value.paymentMethod,
       });
+      if (!isCurrent()) return false;
       if (result.ok) {
         setBaseVersion(result.expense.version);
         setConflict(null);
@@ -164,11 +171,14 @@ export function ExpenseEditForm({
       setFormError(result.error);
       return false;
     } catch {
+      if (!isCurrent()) return false;
       setFormError("Unable to save right now. Your edits are preserved — retry when ready.");
       return false;
     } finally {
-      submittingRef.current = false;
-      setIsSubmitting(false);
+      if (isCurrent()) {
+        submittingRef.current = false;
+        setIsSubmitting(false);
+      }
     }
   }
 
@@ -180,16 +190,19 @@ export function ExpenseEditForm({
   }
 
   async function handleRefresh() {
+    const isCurrent = captureRequestScope();
     setFormError(null);
     let latest: Awaited<ReturnType<typeof fetchLatest>>;
     try {
       latest = await fetchLatest(expense.id);
     } catch {
+      if (!isCurrent()) return;
       setFormError(
         "Could not refresh the latest expense. Your edits are preserved — retry the refresh before saving.",
       );
       return;
     }
+    if (!isCurrent()) return;
     if (!latest.ok) {
       setFormError(latest.error);
       return;
