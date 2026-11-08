@@ -172,6 +172,70 @@ test("SupabaseEmailResolver reports unavailable when admin API is absent and pro
   assert.equal(resolved.status, "unavailable");
 });
 
+test("authoritative no-email does not let a stale profile override absence", async () => {
+  const { client, calls } = fakeSupabase({
+    adminEmail: null,
+    profilesEmail: "stale@example.com",
+  });
+
+  const resolved = await new SupabaseEmailResolver(client).resolve("owner-9");
+
+  assert.deepEqual(resolved, { status: "absent" });
+  assert.deepEqual(calls.profileIds, []);
+});
+
+test("explicit user_not_found does not let a stale profile override absence", async () => {
+  const { client, calls } = fakeSupabase({
+    adminError: { status: 404, code: "user_not_found", message: "User not found" },
+    profilesEmail: "stale@example.com",
+  });
+
+  const resolved = await new SupabaseEmailResolver(client).resolve("owner-10");
+
+  assert.deepEqual(resolved, { status: "absent" });
+  assert.deepEqual(calls.profileIds, []);
+});
+
+test("ambiguous 400/404/422 errors are unavailable, not missing owner", async () => {
+  for (const adminError of [
+    { status: 400, message: "Bad request" },
+    { status: 404, message: "Not found" },
+    { status: 422, message: "Unprocessable entity" },
+    { status: 404, message: "route not found" },
+  ]) {
+    const { client } = fakeSupabase({
+      adminError,
+      profilesError: { code: "42P01", message: 'relation "profiles" does not exist' },
+    });
+
+    const resolved = await new SupabaseEmailResolver(client).resolve("owner-11");
+    assert.equal(resolved.status, "unavailable", String(adminError));
+  }
+});
+
+test("ambiguous errors do not use a stale profile", async () => {
+  const { client, calls } = fakeSupabase({
+    adminError: { status: 404, message: "Not found" },
+    profilesEmail: "stale@example.com",
+  });
+
+  const resolved = await new SupabaseEmailResolver(client).resolve("owner-12");
+
+  assert.equal(resolved.status, "unavailable");
+  assert.deepEqual(calls.profileIds, []);
+});
+
+test("a temporary admin lookup throw still uses a valid owner profile", async () => {
+  const { client } = fakeSupabase({
+    adminError: new Error("network timeout"),
+    profilesEmail: "fallback@example.com",
+  });
+
+  const resolved = await new SupabaseEmailResolver(client).resolve("owner-13");
+
+  assert.deepEqual(resolved, { status: "resolved", email: "fallback@example.com" });
+});
+
 function resendProvider(error: unknown) {
   return new ResendEmailProvider(
     {

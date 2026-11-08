@@ -94,19 +94,47 @@ function classifyEmailError(error: unknown): "transient" | "permanent" {
   return "transient";
 }
 
+function readErrorCode(error: unknown): string | null {
+  if (!error || typeof error !== "object") return null;
+  const record = error as Record<string, unknown>;
+  for (const key of ["code", "errorCode"]) {
+    const value = record[key];
+    if (typeof value === "string" && value.trim()) return value.trim().toLowerCase();
+  }
+  return null;
+}
+
+function readErrorMessage(error: unknown): string {
+  if (error && typeof error === "object") {
+    const message = (error as Record<string, unknown>).message;
+    if (typeof message === "string") return message;
+  }
+  return stringifyError(error);
+}
+
 /**
- * A permanent invalid-owner response is genuine absence, not a transient
- * provider outage. Do not retry it through the email delivery budget.
+ * Only a documented Supabase Auth `user_not_found` code (or the exact
+ * owner-not-found response) proves absence. Generic 400/404/422 or unrelated
+ * "not found" text is ambiguous and must be retried, not turned into a
+ * permanent missing destination.
  */
-function isPermanentOwnerLookupFailure(error: unknown): boolean {
+function isExplicitOwnerNotFound(error: unknown): boolean {
+  if (readErrorCode(error) === "user_not_found") return true;
+  const status = readStatus(error);
+  const message = readErrorMessage(error).trim().toLowerCase().replace(/\.$/, "");
+  return status === 404 && message === "user not found";
+}
+
+function isTransientOwnerLookupFailure(error: unknown): boolean {
   const status = readStatus(error);
   if (status !== null) {
-    if (status === 400 || status === 404 || status === 422) return true;
-    return false;
+    return status === 408 || status === 429 || (status >= 500 && status <= 599);
   }
 
-  const text = stringifyError(error).toLowerCase();
-  return /user not found|user_not_found|invalid user|invalid owner|not found/.test(text);
+  const text = readErrorMessage(error).toLowerCase();
+  return /(timeout|timed out|network|fetch failed|failed to fetch|econn|etimedout|enotfound|unavailable|rate limit)/.test(
+    text,
+  );
 }
 
 export class SupabaseEmailResolver implements EmailDestinationResolver {
@@ -116,8 +144,8 @@ export class SupabaseEmailResolver implements EmailDestinationResolver {
     // The canonical owner email lives in Supabase Auth. The cron uses a service
     // client, so resolve by the owner id from the delivery. Never use the
     // session-bound getUser(): it resolves the service identity, not the owner.
-    let adminOutcome: "absent" | "unavailable" = "unavailable";
-    let adminReason = "Supabase Auth admin lookup is unavailable.";
+    let allowProfilesFallback = false;
+    let reason = "Supabase Auth admin lookup is unavailable.";
 
     const admin = (this.supabase as unknown as {
       auth?: {
@@ -138,47 +166,59 @@ export class SupabaseEmailResolver implements EmailDestinationResolver {
           if (typeof email === "string" && email.trim()) {
             return { status: "resolved", email: email.trim() };
           }
-          adminOutcome = "absent";
-        } else if (isPermanentOwnerLookupFailure(error)) {
-          adminOutcome = "absent";
-          adminReason = "Owner account was not found.";
+          // Authoritative success with no email is genuine absence. A stale
+          // legacy profile must never override this.
+          return { status: "absent" };
+        }
+        if (isExplicitOwnerNotFound(error)) {
+          return { status: "absent" };
+        }
+        if (isTransientOwnerLookupFailure(error)) {
+          allowProfilesFallback = true;
+          reason = "Supabase Auth admin lookup failed.";
         } else {
-          adminReason = "Supabase Auth admin lookup failed.";
+          // Ambiguous 400/404/422 and auth/config errors are not proof of
+          // absence; retry instead of using a legacy profile to override them.
+          return { status: "unavailable", reason: "Supabase Auth admin lookup failed." };
         }
       } catch {
-        adminReason = "Supabase Auth admin lookup failed.";
+        allowProfilesFallback = true;
+        reason = "Supabase Auth admin lookup failed.";
       }
+    } else {
+      allowProfilesFallback = true;
     }
 
-    // Compatibility fallback for deployments that still expose an owner-scoped
-    // profiles.email row. A missing/erroring fallback is not proof of absence;
-    // the authoritative admin outcome decides that.
-    try {
-      const result = await (this.supabase as unknown as {
-        from: (t: string) => {
-          select: (c: string) => {
-            eq: (col: string, val: string) => {
-              maybeSingle: () => Promise<{ data: unknown; error: unknown }>;
+    if (allowProfilesFallback) {
+      // Compatibility fallback for deployments that still expose an
+      // owner-scoped profiles.email row. Only transient/unavailable canonical
+      // lookups reach this path; authoritative absence never does.
+      try {
+        const result = await (this.supabase as unknown as {
+          from: (t: string) => {
+            select: (c: string) => {
+              eq: (col: string, val: string) => {
+                maybeSingle: () => Promise<{ data: unknown; error: unknown }>;
+              };
             };
           };
-        };
-      })
-        .from("profiles")
-        .select("email")
-        .eq("id", ownerUserId)
-        .maybeSingle();
+        })
+          .from("profiles")
+          .select("email")
+          .eq("id", ownerUserId)
+          .maybeSingle();
 
-      if (!result.error && result.data) {
-        const row = result.data as { email?: string | null };
-        if (typeof row.email === "string" && row.email.trim()) {
-          return { status: "resolved", email: row.email.trim() };
+        if (!result.error && result.data) {
+          const row = result.data as { email?: string | null };
+          if (typeof row.email === "string" && row.email.trim()) {
+            return { status: "resolved", email: row.email.trim() };
+          }
         }
+      } catch {
+        // fallback unavailable; preserve the transient failure
       }
-    } catch {
-      // fallback unavailable; admin outcome remains authoritative
     }
 
-    if (adminOutcome === "absent") return { status: "absent" };
-    return { status: "unavailable", reason: adminReason };
+    return { status: "unavailable", reason };
   }
 }
