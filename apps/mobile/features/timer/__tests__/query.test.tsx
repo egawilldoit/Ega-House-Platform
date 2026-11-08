@@ -50,6 +50,7 @@ type QueryOptions = {
   staleTime?: number;
   refetchOnWindowFocus?: "always" | boolean;
   refetchOnReconnect?: boolean;
+  refetchInterval?: number;
 };
 type MutationOptions = {
   mutationFn: (input: unknown) => Promise<unknown>;
@@ -107,9 +108,45 @@ describe('timer query hooks', () => {
     // leaving another device's start/stop invisible.
     expect(queryCall?.staleTime).toBe(0);
     expect(queryCall?.refetchOnWindowFocus).toBe('always');
-    // No NetInfo/onlineManager is installed, so refetchOnReconnect would never
-    // fire; the documented boundary is AppState resume + pull-to-refresh.
+    // Reconnects without AppState changes are covered by foreground polling.
     expect(queryCall?.refetchOnReconnect).toBeUndefined();
+  });
+
+  it('adopts remote starts/stops and recovers from failed reads while still foregrounded', async () => {
+    jest.useFakeTimers();
+    const { QueryClient, QueryObserver, focusManager } = jest.requireActual<typeof ReactQuery>('@tanstack/react-query');
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    focusManager.setFocused(true);
+    mock(timerApi.fetchTimerWorkspace).mockResolvedValue(WORKSPACE);
+    useTimerWorkspaceQuery();
+    const observer = new QueryObserver(client, queryCall!);
+    const unsubscribe = observer.subscribe(() => {});
+    try {
+      await jest.advanceTimersByTimeAsync(0);
+      expect(observer.getCurrentResult().data).toEqual(WORKSPACE);
+      const stopped = { ...WORKSPACE, activeSession: null };
+      mock(timerApi.fetchTimerWorkspace).mockResolvedValue(stopped);
+      await jest.advanceTimersByTimeAsync(29_999);
+      expect(timerApi.fetchTimerWorkspace).toHaveBeenCalledTimes(1);
+      await jest.advanceTimersByTimeAsync(1);
+      expect(observer.getCurrentResult().data).toEqual(stopped);
+      mock(timerApi.fetchTimerWorkspace).mockRejectedValue(new Error('offline'));
+      await jest.advanceTimersByTimeAsync(30_000);
+      expect(observer.getCurrentResult().isError).toBe(true);
+      expect(observer.getCurrentResult().data).toEqual(stopped);
+      mock(timerApi.fetchTimerWorkspace).mockResolvedValue(WORKSPACE);
+      await jest.advanceTimersByTimeAsync(30_000);
+      expect(observer.getCurrentResult().data).toEqual(WORKSPACE);
+      expect(observer.getCurrentResult().isError).toBe(false);
+      focusManager.setFocused(false);
+      await jest.advanceTimersByTimeAsync(90_000);
+      expect(timerApi.fetchTimerWorkspace).toHaveBeenCalledTimes(4);
+    } finally {
+      unsubscribe();
+      client.clear();
+      focusManager.setFocused(undefined);
+      jest.useRealTimers();
+    }
   });
 
   it('start success invalidates timer, today, and tracked-task caches', async () => {
