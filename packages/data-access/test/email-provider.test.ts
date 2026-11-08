@@ -14,6 +14,7 @@ type FakeSupabaseInput = Readonly<{
   sessionEmail?: string | null;
   adminError?: unknown;
   profilesError?: unknown;
+  adminAvailable?: boolean;
 }>;
 
 function fakeSupabase(input: FakeSupabaseInput) {
@@ -22,20 +23,25 @@ function fakeSupabase(input: FakeSupabaseInput) {
     profileIds: [],
   };
 
+  const admin =
+    input.adminAvailable === false
+      ? {}
+      : {
+          async getUserById(id: string) {
+            calls.adminIds.push(id);
+            if (input.adminError) {
+              return { data: { user: null }, error: input.adminError };
+            }
+            return {
+              data: { user: input.adminEmail ? { email: input.adminEmail } : null },
+              error: null,
+            };
+          },
+        };
+
   const client = {
     auth: {
-      admin: {
-        async getUserById(id: string) {
-          calls.adminIds.push(id);
-          if (input.adminError) {
-            return { data: { user: null }, error: input.adminError };
-          }
-          return {
-            data: { user: input.adminEmail ? { email: input.adminEmail } : null },
-            error: null,
-          };
-        },
-      },
+      admin,
       async getUser() {
         return {
           data: { user: input.sessionEmail ? { email: input.sessionEmail } : null },
@@ -77,7 +83,7 @@ test("SupabaseEmailResolver resolves the owner email through the service admin A
 
   const resolved = await new SupabaseEmailResolver(client).resolve("owner-1");
 
-  assert.equal(resolved, "owner@example.com");
+  assert.deepEqual(resolved, { status: "resolved", email: "owner@example.com" });
   assert.deepEqual(calls.adminIds, ["owner-1"]);
 });
 
@@ -89,7 +95,7 @@ test("SupabaseEmailResolver preserves the owner-scoped profiles fallback", async
 
   const resolved = await new SupabaseEmailResolver(client).resolve("owner-2");
 
-  assert.equal(resolved, "fallback@example.com");
+  assert.deepEqual(resolved, { status: "resolved", email: "fallback@example.com" });
   assert.deepEqual(calls.profileIds, ["owner-2"]);
 });
 
@@ -102,7 +108,68 @@ test("SupabaseEmailResolver never falls back to the service session user", async
 
   const resolved = await new SupabaseEmailResolver(client).resolve("owner-3");
 
-  assert.equal(resolved, null);
+  assert.deepEqual(resolved, { status: "absent" });
+});
+
+test("SupabaseEmailResolver reports unavailable when admin lookup fails and profiles is missing", async () => {
+  const { client } = fakeSupabase({
+    adminError: { status: 503, message: "auth unavailable" },
+    profilesError: { code: "42P01", message: 'relation "profiles" does not exist' },
+  });
+
+  const resolved = await new SupabaseEmailResolver(client).resolve("owner-4");
+
+  assert.equal(resolved.status, "unavailable");
+});
+
+test("SupabaseEmailResolver reports unavailable for auth-provider failures", async () => {
+  for (const adminError of [
+    { status: 401, message: "unauthorized" },
+    { status: 429, message: "rate limited" },
+    { status: 500, message: "internal error" },
+    new Error("network timeout"),
+  ]) {
+    const { client } = fakeSupabase({
+      adminError,
+      profilesError: { code: "42P01", message: 'relation "profiles" does not exist' },
+    });
+
+    const resolved = await new SupabaseEmailResolver(client).resolve("owner-5");
+    assert.equal(resolved.status, "unavailable", String(adminError));
+  }
+});
+
+test("SupabaseEmailResolver treats a permanent missing owner as absent", async () => {
+  const { client } = fakeSupabase({
+    adminError: { status: 404, message: "User not found" },
+    profilesError: { code: "42P01", message: 'relation "profiles" does not exist' },
+  });
+
+  const resolved = await new SupabaseEmailResolver(client).resolve("owner-6");
+
+  assert.deepEqual(resolved, { status: "absent" });
+});
+
+test("SupabaseEmailResolver treats authoritative no-email as absent", async () => {
+  const { client } = fakeSupabase({
+    adminEmail: null,
+    profilesError: { code: "42P01", message: 'relation "profiles" does not exist' },
+  });
+
+  const resolved = await new SupabaseEmailResolver(client).resolve("owner-7");
+
+  assert.deepEqual(resolved, { status: "absent" });
+});
+
+test("SupabaseEmailResolver reports unavailable when admin API is absent and profiles is missing", async () => {
+  const { client } = fakeSupabase({
+    adminAvailable: false,
+    profilesError: { code: "42P01", message: 'relation "profiles" does not exist' },
+  });
+
+  const resolved = await new SupabaseEmailResolver(client).resolve("owner-8");
+
+  assert.equal(resolved.status, "unavailable");
 });
 
 function resendProvider(error: unknown) {
