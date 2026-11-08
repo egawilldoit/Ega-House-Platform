@@ -4,9 +4,11 @@ import type {
   MarkNotificationReadResponse,
   NotificationListResponse,
   NotificationPreferencesResponse,
+  NotificationSettingsResponse,
   NotificationUnreadCountResponse,
   RegisterNotificationDeviceInput,
   UpdateNotificationPreferencesInput,
+  UpdateNotificationSettingsInput,
 } from "@ega/contracts/notifications";
 
 import type { ApiResult } from "./errors";
@@ -22,6 +24,8 @@ export type NotificationsApi = {
   unregisterDevice(installationId: string): Promise<ApiResult<{ ok: true }>>;
   preferences(): Promise<ApiResult<NotificationPreferencesResponse>>;
   updatePreferences(input: UpdateNotificationPreferencesInput): Promise<ApiResult<{ ok: true; preference: { notificationType: string; pushEnabled: boolean; emailEnabled: boolean } }>>;
+  settings(): Promise<ApiResult<NotificationSettingsResponse>>;
+  updateSettings(input: UpdateNotificationSettingsInput): Promise<ApiResult<NotificationSettingsResponse>>;
 };
 
 export function createNotificationsApi(http: HttpClient): NotificationsApi {
@@ -75,6 +79,16 @@ export function createNotificationsApi(http: HttpClient): NotificationsApi {
     updatePreferences(input) {
       return http.request<{ ok: true; preference: { notificationType: string; pushEnabled: boolean; emailEnabled: boolean } }>({
         path: "/api/notifications/preferences",
+        method: "PATCH",
+        body: input,
+      });
+    },
+    settings() {
+      return http.request<NotificationSettingsResponse>({ path: "/api/notifications/settings" });
+    },
+    updateSettings(input) {
+      return http.request<NotificationSettingsResponse>({
+        path: "/api/notifications/settings",
         method: "PATCH",
         body: input,
       });

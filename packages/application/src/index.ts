@@ -23,6 +23,7 @@ export * from "./tasks/recurrence";
 export * from "./notifications/ports";
 export * from "./notifications/service";
 export * from "./notifications/delivery";
+export * from "./notifications/policy";
 export * from "./today/read-model";
 export * from "./today/ports";
 export * from "./today/plan";
