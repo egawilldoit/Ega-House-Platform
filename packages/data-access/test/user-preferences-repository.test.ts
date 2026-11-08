@@ -146,6 +146,20 @@ test("get returns null when the owner has no row", async () => {
   assert.deepEqual(result, { ok: true, value: null });
 });
 
+test("get preserves legacy preferences when the schedule column is missing", async () => {
+  for (const error of [
+    { code: "42703", message: "column user_preferences.personal_operations does not exist" },
+    { code: "PGRST204", message: "Could not find the 'personal_operations' column of 'user_preferences' in the schema cache" },
+  ]) {
+    const fake = new FakePreferencesSupabase([{ data: null, error }, { data: STORED_ROW, error: null }]);
+    const result = await repo(fake).get(ACTOR);
+    assert.equal(result.ok && result.value?.theme, "dark");
+    assert.equal(result.ok && result.value?.accent, "violet");
+    assert.ok(fake.calls[1]?.steps.includes("eq:user_id=owner-preferences"));
+    assert.ok(!fake.calls[1]?.steps[0]?.includes("personal_operations"));
+  }
+});
+
 test("get treats an unapplied additive migration as the documented defaults", async () => {
   const fake = new FakePreferencesSupabase([
     {
