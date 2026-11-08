@@ -426,11 +426,12 @@ function deliveryOptions(
   pushProvider: PushProvider,
   emailProvider: EmailProvider,
   now = NOW,
+  emailResolverOverride?: EmailDestinationResolver,
 ) {
   const repositories = createRepositories(state);
-  const emailResolver: EmailDestinationResolver = {
+  const emailResolver: EmailDestinationResolver = emailResolverOverride ?? {
     async resolve() {
-      return "owner@example.com";
+      return { status: "resolved", email: "owner@example.com" };
     },
   };
   return {
@@ -757,6 +758,218 @@ test("email transient retries and permanent fails explicitly", async () => {
   assert.equal(permanentResult.ok, true);
   assert.equal(permanentResult.ok ? permanentResult.data.failed : -1, 1);
   assert.equal(emailPermanent.status, "failed");
+});
+
+test("unavailable email destination lookup defers instead of terminal missing_destination", async () => {
+  const state = createState();
+  const n = notification(state);
+  const emailDelivery = delivery(state, {
+    notificationId: n.id,
+    channel: "email",
+    deviceId: null,
+    provider: "resend",
+  });
+  preference(state, true, true);
+
+  let emailCalls = 0;
+  const emailResolver: EmailDestinationResolver = {
+    async resolve() {
+      return { status: "unavailable", reason: "admin outage" };
+    },
+  };
+
+  const result = await processPendingNotificationDeliveries(
+    deliveryOptions(
+      state,
+      { async send() { return { ok: true, providerMessageId: "unused" }; } },
+      {
+        async send() {
+          emailCalls += 1;
+          return { ok: true, providerMessageId: "unused" };
+        },
+      },
+      NOW,
+      emailResolver,
+    ),
+  );
+
+  assert.equal(result.ok, true);
+  assert.equal(result.ok ? result.data.retried : -1, 1);
+  assert.equal(emailDelivery.status, "retry_scheduled");
+  assert.equal(emailDelivery.lastErrorCode, "email_destination_unavailable");
+  assert.equal(emailDelivery.nextAttemptAt !== null, true);
+  assert.equal(emailCalls, 0);
+});
+
+test("a later resolved owner email sends after a deferred lookup", async () => {
+  const state = createState();
+  const n = notification(state);
+  const emailDelivery = delivery(state, {
+    notificationId: n.id,
+    channel: "email",
+    deviceId: null,
+    provider: "resend",
+  });
+  preference(state, true, true);
+
+  let emailCalls = 0;
+  const emailProvider: EmailProvider = {
+    async send(payload) {
+      emailCalls += 1;
+      assert.equal(payload.to, "owner@example.com");
+      return { ok: true, providerMessageId: "email-1" };
+    },
+  };
+  const unavailable: EmailDestinationResolver = {
+    async resolve() {
+      return { status: "unavailable", reason: "503" };
+    },
+  };
+
+  const first = await processPendingNotificationDeliveries(
+    deliveryOptions(
+      state,
+      { async send() { return { ok: true, providerMessageId: "unused" }; } },
+      emailProvider,
+      NOW,
+      unavailable,
+    ),
+  );
+  assert.equal(first.ok ? first.data.retried : -1, 1);
+  assert.equal(emailDelivery.status, "retry_scheduled");
+  assert.equal(typeof emailDelivery.nextAttemptAt, "string");
+  assert.equal(emailCalls, 0);
+
+  const later = new Date(new Date(emailDelivery.nextAttemptAt!).getTime() + 1000);
+  const resolved: EmailDestinationResolver = {
+    async resolve() {
+      return { status: "resolved", email: "owner@example.com" };
+    },
+  };
+  const second = await processPendingNotificationDeliveries(
+    deliveryOptions(
+      state,
+      { async send() { return { ok: true, providerMessageId: "unused" }; } },
+      emailProvider,
+      later,
+      resolved,
+    ),
+  );
+  assert.equal(second.ok ? second.data.accepted : -1, 1);
+  assert.equal(emailDelivery.status, "provider_accepted");
+  assert.equal(emailCalls, 1);
+});
+
+test("authoritative absent owner email is terminal missing_destination", async () => {
+  const state = createState();
+  const n = notification(state);
+  const emailDelivery = delivery(state, {
+    notificationId: n.id,
+    channel: "email",
+    deviceId: null,
+    provider: "resend",
+  });
+  preference(state, true, true);
+
+  let emailCalls = 0;
+  const absent: EmailDestinationResolver = {
+    async resolve() {
+      return { status: "absent" };
+    },
+  };
+  const result = await processPendingNotificationDeliveries(
+    deliveryOptions(
+      state,
+      { async send() { return { ok: true, providerMessageId: "unused" }; } },
+      {
+        async send() {
+          emailCalls += 1;
+          return { ok: true, providerMessageId: "unused" };
+        },
+      },
+      NOW,
+      absent,
+    ),
+  );
+
+  assert.equal(result.ok ? result.data.failed : -1, 1);
+  assert.equal(emailDelivery.status, "failed");
+  assert.equal(emailDelivery.lastErrorCode, "missing_destination");
+  assert.equal(emailDelivery.nextAttemptAt, null);
+  assert.equal(emailCalls, 0);
+});
+
+test("email resolver receives the delivery owner id", async () => {
+  const state = createState();
+  const n = notification(state);
+  const emailDelivery = delivery(state, {
+    notificationId: n.id,
+    channel: "email",
+    deviceId: null,
+    provider: "resend",
+  });
+  preference(state, true, true);
+
+  let resolvedOwner: string | null = null;
+  const resolver: EmailDestinationResolver = {
+    async resolve(ownerUserId) {
+      resolvedOwner = ownerUserId;
+      return { status: "resolved", email: "owner@example.com" };
+    },
+  };
+  const result = await processPendingNotificationDeliveries(
+    deliveryOptions(
+      state,
+      { async send() { return { ok: true, providerMessageId: "unused" }; } },
+      { async send() { return { ok: true, providerMessageId: "email-1" }; } },
+      NOW,
+      resolver,
+    ),
+  );
+
+  assert.equal(result.ok ? result.data.accepted : -1, 1);
+  assert.equal(resolvedOwner, OWNER);
+  assert.equal(emailDelivery.status, "provider_accepted");
+});
+
+test("email destination lookup exhaustion fails after the bounded budget", async () => {
+  const state = createState();
+  const n = notification(state);
+  const emailDelivery = delivery(state, {
+    notificationId: n.id,
+    channel: "email",
+    deviceId: null,
+    provider: "resend",
+    attemptCount: 5,
+  });
+  preference(state, true, true);
+
+  let emailCalls = 0;
+  const unavailable: EmailDestinationResolver = {
+    async resolve() {
+      return { status: "unavailable", reason: "503" };
+    },
+  };
+  const result = await processPendingNotificationDeliveries(
+    deliveryOptions(
+      state,
+      { async send() { return { ok: true, providerMessageId: "unused" }; } },
+      {
+        async send() {
+          emailCalls += 1;
+          return { ok: true, providerMessageId: "unused" };
+        },
+      },
+      NOW,
+      unavailable,
+    ),
+  );
+
+  assert.equal(result.ok ? result.data.failed : -1, 1);
+  assert.equal(emailDelivery.status, "failed");
+  assert.equal(emailDelivery.lastErrorCode, "email_destination_unavailable");
+  assert.equal(emailDelivery.nextAttemptAt, null);
+  assert.equal(emailCalls, 0);
 });
 
 test("suppressed rows are never returned by the pending query", async () => {
