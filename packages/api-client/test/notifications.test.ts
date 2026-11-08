@@ -84,3 +84,32 @@ test("notifications.preferences GET and PATCH", async () => {
   assert.equal(calls2[0]!.method, "PATCH");
   assert.deepEqual(calls2[0]!.body, { notificationType: "task_reminder", pushEnabled: true });
 });
+
+test("notifications.settings GET and PATCH use the typed quiet-hours shape", async () => {
+  const { client, calls } = makeHarness({
+    ok: true,
+    settings: { quietHoursEnabled: false, quietHoursStart: "22:00", quietHoursEnd: "07:00" },
+  });
+  const getResult = await client.notifications.settings();
+  assert.equal(calls[0]!.url, "https://api.ega.example/api/notifications/settings");
+  assert.equal(calls[0]!.method, "GET");
+  assert.equal(getResult.ok, true);
+
+  const { client: client2, calls: calls2 } = makeHarness({
+    ok: true,
+    settings: { quietHoursEnabled: true, quietHoursStart: "21:30", quietHoursEnd: "06:30" },
+  });
+  const patchResult = await client2.notifications.updateSettings({
+    quietHoursEnabled: true,
+    quietHoursStart: "21:30",
+    quietHoursEnd: "06:30",
+  });
+  assert.equal(calls2[0]!.url, "https://api.ega.example/api/notifications/settings");
+  assert.equal(calls2[0]!.method, "PATCH");
+  assert.deepEqual(calls2[0]!.body, {
+    quietHoursEnabled: true,
+    quietHoursStart: "21:30",
+    quietHoursEnd: "06:30",
+  });
+  assert.equal(patchResult.ok, true);
+});

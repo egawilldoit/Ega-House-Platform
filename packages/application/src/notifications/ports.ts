@@ -1,11 +1,17 @@
-import type { NotificationDeliveryMode, NotificationType } from "@ega/contracts";
+import type {
+  NotificationDeliveryMode,
+  NotificationDeliveryStatus,
+  NotificationTargetType,
+  NotificationType,
+} from "@ega/contracts";
 
 import type { AuthenticatedActor } from "../auth/actor";
 import type { RepositoryResult } from "../shared/result";
 
 export type NotificationTargetInput = Readonly<{
-  type: "task";
-  id: string;
+  type: NotificationTargetType;
+  /** Null only for singleton target types (`review`, `today`). */
+  id: string | null;
 }>;
 
 export type NotificationRecord = Readonly<{
@@ -44,7 +50,14 @@ export type NotificationDeliveryRecord = Readonly<{
   channel: "push" | "email";
   deviceId: string | null;
   provider: "fcm" | "resend";
-  status: "queued" | "sending" | "provider_accepted" | "retry_scheduled" | "invalid_endpoint" | "failed";
+  status:
+    | "queued"
+    | "sending"
+    | "provider_accepted"
+    | "retry_scheduled"
+    | "invalid_endpoint"
+    | "failed"
+    | "suppressed";
   providerMessageId: string | null;
   attemptCount: number;
   nextAttemptAt: string | null;
@@ -85,10 +98,14 @@ export type ListNotificationsResult = Readonly<{
 }>;
 
 export interface NotificationRepository {
+  /**
+   * Persists a canonical event idempotently. `created` distinguishes a real
+   * insert from an idempotent replay so orchestration counts are truthful.
+   */
   createNotification(
     actor: AuthenticatedActor,
     input: CreateNotificationInput,
-  ): Promise<RepositoryResult<NotificationRecord>>;
+  ): Promise<RepositoryResult<{ notification: NotificationRecord; created: boolean }>>;
   getNotification(
     actor: AuthenticatedActor,
     notificationId: string,
@@ -131,18 +148,29 @@ export interface NotificationDeviceRepository {
   deactivateByToken(ownerUserId: string, providerToken: string): Promise<RepositoryResult<void>>;
 }
 
+export type NotificationDeliveryInput = Readonly<{
+  channel: "push" | "email";
+  deviceId: string | null;
+  provider: "fcm" | "resend";
+  /** Defaults to `queued`. `suppressed` records a terminal, non-dispatched result. */
+  status?: Extract<NotificationDeliveryStatus, "queued" | "suppressed">;
+  lastErrorCode?: string | null;
+  lastErrorReason?: string | null;
+}>;
+
+export type CreateDeliveriesResult = Readonly<{
+  created: NotificationDeliveryRecord[];
+  existing: NotificationDeliveryRecord[];
+}>;
+
 export interface NotificationDeliveryRepository {
   createDeliveries(
     actor: AuthenticatedActor,
     input: Readonly<{
       notificationId: string;
-      deliveries: Array<{
-        channel: "push" | "email";
-        deviceId: string | null;
-        provider: "fcm" | "resend";
-      }>;
+      deliveries: NotificationDeliveryInput[];
     }>,
-  ): Promise<RepositoryResult<NotificationDeliveryRecord[]>>;
+  ): Promise<RepositoryResult<CreateDeliveriesResult>>;
   listPending(
     query: Readonly<{ limit: number; nowIso: string }>,
   ): Promise<RepositoryResult<NotificationDeliveryRecord[]>>;
@@ -167,6 +195,35 @@ export interface NotificationPreferenceRepository {
       emailEnabled?: boolean;
     }>,
   ): Promise<RepositoryResult<NotificationPreferenceRecord>>;
+}
+
+export type NotificationSettingsRecord = Readonly<{
+  ownerUserId: string;
+  quietHoursEnabled: boolean;
+  quietHoursStart: string;
+  quietHoursEnd: string;
+  createdAt: string | null;
+  updatedAt: string | null;
+}>;
+
+export type NotificationSettingsPatch = Readonly<{
+  quietHoursEnabled?: boolean;
+  quietHoursStart?: string;
+  quietHoursEnd?: string;
+}>;
+
+export interface NotificationSettingsRepository {
+  getSettings(
+    actor: AuthenticatedActor,
+  ): Promise<RepositoryResult<NotificationSettingsRecord | null>>;
+  /**
+   * Atomically applies only the supplied fields. Omitted fields keep their
+   * stored value (or the documented default on first insert).
+   */
+  patchSettings(
+    actor: AuthenticatedActor,
+    patch: NotificationSettingsPatch,
+  ): Promise<RepositoryResult<NotificationSettingsRecord>>;
 }
 
 export type TaskReminderIntentRecord = Readonly<{
@@ -220,6 +277,11 @@ export interface EmailProvider {
   send(payload: EmailProviderPayload): Promise<EmailProviderResult>;
 }
 
+export type EmailDestinationResolution =
+  | Readonly<{ status: "resolved"; email: string }>
+  | Readonly<{ status: "absent" }>
+  | Readonly<{ status: "unavailable"; reason: string }>;
+
 export interface EmailDestinationResolver {
-  resolve(ownerUserId: string): Promise<string | null>;
+  resolve(ownerUserId: string): Promise<EmailDestinationResolution>;
 }

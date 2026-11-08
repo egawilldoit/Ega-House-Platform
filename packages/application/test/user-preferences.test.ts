@@ -134,13 +134,60 @@ test("read and write failures surface an actionable message, never success", asy
   if (!writeFailure.ok) assert.match(writeFailure.errorMessage, /save preferences/i);
 });
 
-test("an empty patch leaves the stored row unchanged", async () => {
+test("an empty patch leaves the stored row unchanged and never writes", async () => {
   const repository = new FakeUserPreferencesRepository(null);
   const result = await updateUserPreferences(ACTOR, repository, {});
 
   assert.equal(result.ok, true);
-  assert.equal(repository.writes.length, 1);
-  assert.deepEqual(repository.writes[0]?.preferences, DEFAULT_USER_PREFERENCES);
+  if (!result.ok) return;
+  assert.deepEqual(result.data, DEFAULT_USER_PREFERENCES);
+  assert.equal(repository.reads, 1);
+  assert.equal(repository.writes.length, 0);
+});
+
+test("one invalid field rejects the whole patch and writes nothing", async () => {
+  const repository = new FakeUserPreferencesRepository(null);
+  const result = await updateUserPreferences(ACTOR, repository, {
+    theme: "dark",
+    accent: "violet",
+    density: "tiny",
+  });
+
+  assert.equal(result.ok, false);
+  if (result.ok) return;
+  assert.equal(result.code, "validation");
+  assert.equal(repository.reads, 0);
+  assert.equal(repository.writes.length, 0);
+});
+
+test("a theme patch sends no schedule and a schedule patch sends no appearance", async () => {
+  const sent: UserPreferencesPatch[] = [];
+  const repository: UserPreferencesRepository = {
+    get: async () => ok({ ...DEFAULT_USER_PREFERENCES }),
+    patch: async (_actor, patch) => {
+      sent.push(patch);
+      return ok({ ...DEFAULT_USER_PREFERENCES, ...patch });
+    },
+  };
+
+  await updateUserPreferences(ACTOR, repository, { theme: "dark" });
+  assert.deepEqual(sent[0], { theme: "dark" });
+  assert.equal("personalOperations" in (sent[0] ?? {}), false);
+
+  const schedule = { ...DEFAULT_USER_PREFERENCES.personalOperations, paused: true };
+  await updateUserPreferences(ACTOR, repository, { personalOperations: schedule });
+  assert.deepEqual(sent[1], { personalOperations: schedule });
+  for (const field of [
+    "theme",
+    "accent",
+    "density",
+    "reducedMotion",
+    "launchPage",
+    "taskLayout",
+    "taskOpenMode",
+  ]) {
+    assert.equal(field in (sent[1] ?? {}), false, `${field} must not be sent by a schedule patch`);
+  }
 });
 
 

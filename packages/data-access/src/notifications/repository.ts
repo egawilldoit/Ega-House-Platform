@@ -1,8 +1,10 @@
 import type { AuthenticatedActor } from "@ega/application/auth/actor";
 import type {
+  CreateDeliveriesResult,
   CreateNotificationInput,
   ListNotificationsQuery,
   ListNotificationsResult,
+  NotificationDeliveryInput,
   NotificationDeliveryRecord,
   NotificationDeviceRecord,
   NotificationPreferenceRecord,
@@ -11,6 +13,8 @@ import type {
   NotificationDeliveryRepository,
   NotificationDeviceRepository,
   NotificationPreferenceRepository,
+  NotificationSettingsRecord,
+  NotificationSettingsRepository,
   TaskReminderIntentRecord,
   TaskReminderIntentRepository,
 } from "@ega/application/notifications/ports";
@@ -21,6 +25,25 @@ import { sanitizeSupabaseError } from "../supabase/errors";
 
 const REMINDER_LEASE_MS = 5 * 60 * 1000;
 const DELIVERY_LEASE_MS = 5 * 60 * 1000;
+
+function isMissingNotificationSettingsTable(error: unknown): boolean {
+  const candidate = error as { code?: unknown; message?: unknown } | null;
+  const code = typeof candidate?.code === "string" ? candidate.code : "";
+  const message = typeof candidate?.message === "string" ? candidate.message : "";
+
+  // Genuine table-missing signals only.
+  if (code === "42P01" || code === "PGRST205") return true;
+  // Schema drift (undefined column / column missing from PostgREST cache) must
+  // surface as a failure, not silently disable quiet hours.
+  if (code === "42703" || code === "PGRST204") return false;
+  if (/column\b.*\bdoes not exist/i.test(message)) return false;
+
+  // Exact table-missing message patterns only (no broad "schema cache" match).
+  return (
+    /relation\s+["']?(?:public\.)?notification_settings["']?\s+does not exist/i.test(message)
+    || /could not find the table\s+["']?(?:public\.)?notification_settings["']?/i.test(message)
+  );
+}
 
 type Row = Record<string, unknown>;
 
@@ -103,6 +126,17 @@ function mapPreference(row: Row): NotificationPreferenceRecord {
   };
 }
 
+function mapSettings(row: Row): NotificationSettingsRecord {
+  return {
+    ownerUserId: String(row.owner_user_id),
+    quietHoursEnabled: Boolean(row.quiet_hours_enabled),
+    quietHoursStart: String(row.quiet_hours_start),
+    quietHoursEnd: String(row.quiet_hours_end),
+    createdAt: nullableString(row.created_at),
+    updatedAt: nullableString(row.updated_at),
+  };
+}
+
 function mapIntent(row: Row, taskTitle?: string | null): TaskReminderIntentRecord {
   return {
     id: String(row.id),
@@ -121,7 +155,7 @@ export class SupabaseNotificationRepository implements NotificationRepository {
   async createNotification(
     actor: AuthenticatedActor,
     input: CreateNotificationInput,
-  ): Promise<RepositoryResult<NotificationRecord>> {
+  ): Promise<RepositoryResult<{ notification: NotificationRecord; created: boolean }>> {
     const payload = {
       owner_user_id: actor.userId,
       type: input.type,
@@ -139,7 +173,10 @@ export class SupabaseNotificationRepository implements NotificationRepository {
       .maybeSingle();
 
     if (!insert.error && insert.data) {
-      return { ok: true, value: mapNotification(asRow(insert.data)) };
+      return {
+        ok: true,
+        value: { notification: mapNotification(asRow(insert.data)), created: true },
+      };
     }
 
     // If conflict (23505), fetch existing
@@ -153,7 +190,10 @@ export class SupabaseNotificationRepository implements NotificationRepository {
 
       if (existing.error) return failure(existing.error);
       if (!existing.data) return failure({ message: "Failed to resolve idempotent notification" });
-      return { ok: true, value: mapNotification(asRow(existing.data)) };
+      return {
+        ok: true,
+        value: { notification: mapNotification(asRow(existing.data)), created: false },
+      };
     }
 
     if (insert.error) return failure(insert.error);
@@ -364,29 +404,36 @@ export class SupabaseNotificationDeliveryRepository implements NotificationDeliv
 
   async createDeliveries(
     actor: AuthenticatedActor,
-    input: { notificationId: string; deliveries: Array<{ channel: "push" | "email"; deviceId: string | null; provider: "fcm" | "resend" }> },
-  ): Promise<RepositoryResult<NotificationDeliveryRecord[]>> {
-    if (input.deliveries.length === 0) return { ok: true, value: [] };
+    input: { notificationId: string; deliveries: NotificationDeliveryInput[] },
+  ): Promise<RepositoryResult<CreateDeliveriesResult>> {
+    if (input.deliveries.length === 0) {
+      return { ok: true, value: { created: [], existing: [] } };
+    }
 
     const created: NotificationDeliveryRecord[] = [];
-    // Per-target insert to handle partial conflicts (existing + new)
+    const existingRows: NotificationDeliveryRecord[] = [];
+
+    // Per-target insert to handle partial conflicts (existing + new).
     for (const d of input.deliveries) {
-      const row = {
+      const row: Record<string, unknown> = {
         notification_id: input.notificationId,
         owner_user_id: actor.userId,
         channel: d.channel,
         device_id: d.deviceId,
         provider: d.provider,
-        status: "queued",
+        status: d.status ?? "queued",
         attempt_count: 0,
       };
+      if (d.lastErrorCode !== undefined) row.last_error_code = d.lastErrorCode;
+      if (d.lastErrorReason !== undefined) row.last_error_reason = d.lastErrorReason;
+
       const insert = await this.supabase.from("notification_deliveries").insert(row as never).select("*").maybeSingle();
       if (!insert.error && insert.data) {
         created.push(mapDelivery(asRow(insert.data)));
         continue;
       }
       if (insert.error && insert.error.code === "23505") {
-        // Already exists — fetch that specific delivery
+        // Already exists — fetch that specific delivery.
         let q = this.supabase
           .from("notification_deliveries")
           .select("*")
@@ -397,15 +444,13 @@ export class SupabaseNotificationDeliveryRepository implements NotificationDeliv
         else q = q.is("device_id", null);
         const existing = await q.maybeSingle();
         if (existing.error) return failure(existing.error);
-        if (existing.data) created.push(mapDelivery(asRow(existing.data)));
+        if (existing.data) existingRows.push(mapDelivery(asRow(existing.data)));
         continue;
       }
       if (insert.error) return failure(insert.error);
     }
 
-    // Also ensure we return all deliveries for this notification (including pre-existing that weren't in input? No, just the desired set)
-    // For idempotency, return the union of created + existing for the desired targets (already handled)
-    return { ok: true, value: created };
+    return { ok: true, value: { created, existing: existingRows } };
   }
 
   async listPending(query: { limit: number; nowIso: string }): Promise<RepositoryResult<NotificationDeliveryRecord[]>> {
@@ -585,8 +630,114 @@ export class SupabaseNotificationPreferenceRepository implements NotificationPre
   }
 }
 
-export class SupabaseTaskReminderIntentRepository implements TaskReminderIntentRepository {
+export class SupabaseNotificationSettingsRepository implements NotificationSettingsRepository {
   constructor(private readonly supabase: SupabaseClient) {}
+
+  async getSettings(
+    actor: AuthenticatedActor,
+  ): Promise<RepositoryResult<NotificationSettingsRecord | null>> {
+    const result = await this.supabase
+      .from("notification_settings")
+      .select("*")
+      .eq("owner_user_id", actor.userId)
+      .maybeSingle();
+    if (result.error) {
+      // 0079 is additive. Until it is present in a deployment, quiet hours
+      // safely degrade to the legacy disabled behavior rather than stalling
+      // the reminder producer.
+      if (isMissingNotificationSettingsTable(result.error)) {
+        return { ok: true, value: null };
+      }
+      return failure(result.error);
+    }
+    if (!result.data) return { ok: true, value: null };
+    return { ok: true, value: mapSettings(asRow(result.data)) };
+  }
+
+  async patchSettings(
+    actor: AuthenticatedActor,
+    input: {
+      quietHoursEnabled?: boolean;
+      quietHoursStart?: string;
+      quietHoursEnd?: string;
+    },
+  ): Promise<RepositoryResult<NotificationSettingsRecord>> {
+    const nowIso = new Date().toISOString();
+    const dbPatch: Record<string, unknown> = { updated_at: nowIso };
+    if (input.quietHoursEnabled !== undefined) {
+      dbPatch.quiet_hours_enabled = input.quietHoursEnabled;
+    }
+    if (input.quietHoursStart !== undefined) {
+      dbPatch.quiet_hours_start = input.quietHoursStart;
+    }
+    if (input.quietHoursEnd !== undefined) {
+      dbPatch.quiet_hours_end = input.quietHoursEnd;
+    }
+    if (Object.keys(dbPatch).length === 1) {
+      return failure({ message: "No notification settings fields supplied" });
+    }
+
+    const settingsFailure = (
+      error: {
+        code?: string;
+        message?: string;
+        constraint?: string;
+      } | null,
+    ): RepositoryResult<NotificationSettingsRecord> => {
+      const namesWindowConstraint =
+        error?.constraint === "notification_settings_quiet_hours_window_check" ||
+        /notification_settings_quiet_hours_window_check/.test(error?.message ?? "");
+      return error?.code === "23514" && namesWindowConstraint
+        ? { ok: false, error: { code: "conflict" } }
+        : failure(error);
+    };
+
+    // Atomic per-field update for an existing row. Only supplied columns change,
+    // so concurrent stale writers cannot clobber each other's fields.
+    const update = await this.supabase
+      .from("notification_settings")
+      .update(dbPatch as never)
+      .eq("owner_user_id", actor.userId)
+      .select("*")
+      .maybeSingle();
+    if (update.error) return settingsFailure(update.error);
+    if (update.data) return { ok: true, value: mapSettings(asRow(update.data)) };
+
+    // No row: create it with supplied fields plus documented defaults. A
+    // simultaneous first-row creation loses with 23505; retry the partial
+    // update once so both writers' fields land.
+    const insertRow = {
+      owner_user_id: actor.userId,
+      quiet_hours_enabled: input.quietHoursEnabled ?? false,
+      quiet_hours_start: input.quietHoursStart ?? "22:00",
+      quiet_hours_end: input.quietHoursEnd ?? "07:00",
+      updated_at: nowIso,
+    };
+    const insert = await this.supabase
+      .from("notification_settings")
+      .insert(insertRow as never)
+      .select("*")
+      .maybeSingle();
+    if (!insert.error && insert.data) {
+      return { ok: true, value: mapSettings(asRow(insert.data)) };
+    }
+    if (insert.error && insert.error.code === "23505") {
+      const retry = await this.supabase
+        .from("notification_settings")
+        .update(dbPatch as never)
+        .eq("owner_user_id", actor.userId)
+        .select("*")
+        .maybeSingle();
+      if (retry.error) return settingsFailure(retry.error);
+      if (!retry.data) return failure({ message: "Settings patch retry returned no row" });
+      return { ok: true, value: mapSettings(asRow(retry.data)) };
+    }
+    if (insert.error) return settingsFailure(insert.error);
+    return failure({ message: "Settings insert returned no data" });
+  }
+}
+
+export class SupabaseTaskReminderIntentRepository implements TaskReminderIntentRepository {  constructor(private readonly supabase: SupabaseClient) {}
 
   async findDueIntents(nowIso: string, limit: number): Promise<RepositoryResult<TaskReminderIntentRecord[]>> {
     const leaseCutoff = new Date(new Date(nowIso).getTime() - REMINDER_LEASE_MS).toISOString();

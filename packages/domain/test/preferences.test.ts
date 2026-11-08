@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  DAYS,
+  DEFAULT_PERSONAL_OPERATIONS,
   DEFAULT_USER_PREFERENCES,
   LAUNCH_PAGE_PATHS,
   USER_ACCENT_VALUES,
@@ -11,6 +13,8 @@ import {
   USER_TASK_OPEN_MODE_VALUES,
   USER_THEME_VALUES,
   getLaunchPagePath,
+  getPersonalOperationsDayPlan,
+  getPersonalOperationsWeekTotals,
   getUserThemeAttribute,
   normalizeUserPreferences,
   parseUserPreferencesPatch,
@@ -159,6 +163,108 @@ test("personal schedule defaults and validation", () => {
   assert.deepEqual(normalizeUserPreferences({}).personalOperations, schedule);
 });
 
+
+test("the default schedule is deep-frozen including targets and guidance", () => {
+  assert.equal(Object.isFrozen(DEFAULT_PERSONAL_OPERATIONS), true);
+  assert.equal(Object.isFrozen(DEFAULT_PERSONAL_OPERATIONS.targets), true);
+  assert.equal(Object.isFrozen(DEFAULT_PERSONAL_OPERATIONS.targets.monday), true);
+  assert.equal(Object.isFrozen(DEFAULT_PERSONAL_OPERATIONS.guidance), true);
+  assert.equal(Object.isFrozen(DEFAULT_PERSONAL_OPERATIONS.guidance[0]), true);
+  assert.equal(Object.isFrozen(DEFAULT_PERSONAL_OPERATIONS.guidance[0]?.days), true);
+  assert.throws(() => {
+    DEFAULT_PERSONAL_OPERATIONS.targets.monday.work = 1;
+  }, TypeError);
+});
+
+test("normalizeUserPreferences hands out a detached default schedule", () => {
+  const first = normalizeUserPreferences({});
+  first.personalOperations.targets.monday.work = 1;
+  first.personalOperations.guidance[0]!.name = "Mutated";
+
+  const second = normalizeUserPreferences({});
+  assert.equal(second.personalOperations.targets.monday.work, 480);
+  assert.equal(second.personalOperations.guidance[0]?.name, "Startup");
+  assert.equal(DEFAULT_PERSONAL_OPERATIONS.targets.monday.work, 480);
+});
+
+test("getPersonalOperationsDayPlan resolves the weekday and targets", () => {
+  // 2026-02-16 is a Monday, 2026-02-15 a Sunday.
+  const monday = getPersonalOperationsDayPlan(DEFAULT_PERSONAL_OPERATIONS, "2026-02-16");
+  assert.equal(monday.ok, true);
+  if (!monday.ok) return;
+  assert.equal(monday.value.day, "monday");
+  assert.equal(monday.value.date, "2026-02-16");
+  assert.deepEqual(monday.value.target, { work: 480, jobSearch: 90 });
+  assert.equal(monday.value.paused, false);
+
+  for (const [date, day] of [["2026-02-21", "saturday"], ["2026-02-15", "sunday"]] as const) {
+    const weekend = getPersonalOperationsDayPlan(DEFAULT_PERSONAL_OPERATIONS, date);
+    assert.equal(weekend.ok, true);
+    if (!weekend.ok) return;
+    assert.equal(weekend.value.day, day);
+    assert.deepEqual(weekend.value.target, { work: 240, jobSearch: 0 });
+  }
+});
+
+test("years below 100 resolve the real weekday instead of 1900+year", () => {
+  // 0099-01-01 is a Thursday; Date.UTC(99, 0, 1) would land on 1999 (Friday).
+  const plan = getPersonalOperationsDayPlan(DEFAULT_PERSONAL_OPERATIONS, "0099-01-01");
+  assert.equal(plan.ok, true);
+  if (!plan.ok) return;
+  assert.equal(plan.value.day, "thursday");
+  assert.equal(plan.value.date, "0099-01-01");
+});
+
+test("a paused schedule still reports its full targets", () => {
+  const paused = { ...DEFAULT_PERSONAL_OPERATIONS, paused: true };
+  const plan = getPersonalOperationsDayPlan(paused, "2026-02-16");
+  assert.equal(plan.ok, true);
+  if (!plan.ok) return;
+  assert.equal(plan.value.paused, true);
+  assert.deepEqual(plan.value.target, { work: 480, jobSearch: 90 });
+  assert.deepEqual(plan.value.guidance.map((block) => block.name), [
+    "Startup",
+    "Job search",
+    "Lunch",
+    "Leisure",
+  ]);
+});
+
+test("day guidance excludes disabled blocks and other weekdays, ordered by start", () => {
+  const schedule = {
+    ...DEFAULT_PERSONAL_OPERATIONS,
+    guidance: [
+      { name: "Other day", days: ["tuesday"] as const, start: "08:00", end: "08:30", enabled: true },
+      { name: "Disabled", days: ["monday"] as const, start: "09:00", end: "09:30", enabled: false },
+      { name: "Late", days: ["monday"] as const, start: "15:00", end: "16:00", enabled: true },
+      { name: "Early", days: ["monday"] as const, start: "07:00", end: "07:30", enabled: true },
+    ].map((block) => ({ ...block, days: [...block.days] })),
+  };
+  const plan = getPersonalOperationsDayPlan(schedule, "2026-02-16");
+  assert.equal(plan.ok, true);
+  if (!plan.ok) return;
+  assert.deepEqual(plan.value.guidance, [
+    { name: "Early", start: "07:00", end: "07:30" },
+    { name: "Late", start: "15:00", end: "16:00" },
+  ]);
+});
+
+test("getPersonalOperationsWeekTotals sums every weekday", () => {
+  assert.deepEqual(getPersonalOperationsWeekTotals(DEFAULT_PERSONAL_OPERATIONS), {
+    work: 2880,
+    jobSearch: 450,
+  });
+  assert.equal(DAYS.length, 7);
+});
+
+test("an invalid local date is rejected with an actionable message", () => {
+  for (const candidate of ["", "2026-2-16", "2026-02-30", "16/02/2026", "2026-13-01"]) {
+    const plan = getPersonalOperationsDayPlan(DEFAULT_PERSONAL_OPERATIONS, candidate);
+    assert.equal(plan.ok, false, `${candidate} should be rejected`);
+    if (plan.ok) continue;
+    assert.match(plan.message, /Invalid local date: expected YYYY-MM-DD/);
+  }
+});
 
 test("rejects malformed personal operations without partial acceptance", () => {
   const schedule = DEFAULT_USER_PREFERENCES.personalOperations;

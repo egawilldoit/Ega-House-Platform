@@ -517,11 +517,11 @@ export const notifications = pgTable(
       .where(sql`${table.readAt} is null`),
     check(
       "notifications_type_check",
-      sql`${table.type} in ('task_reminder', 'task_comment_mention')`,
+      sql`${table.type} in ('task_reminder', 'task_comment_mention', 'timer_state_change', 'routine_reminder', 'money_threshold', 'daily_review', 'weekly_review', 'job_search_reminder')`,
     ),
     check(
       "notifications_target_type_check",
-      sql`${table.targetType} is null or ${table.targetType} in ('task')`,
+      sql`${table.targetType} is null or ${table.targetType} in ('task', 'timer', 'routine', 'money', 'review', 'today')`,
     ),
   ],
 );
@@ -584,6 +584,11 @@ export const notificationDeliveries = pgTable(
       table.channel,
       table.deviceId,
     ),
+    uniqueIndex("notification_deliveries_unique_coalesce").on(
+      table.notificationId,
+      table.channel,
+      sql`coalesce(${table.deviceId}, '00000000-0000-0000-0000-000000000000'::uuid)`,
+    ),
     index("notification_deliveries_status_retry_idx").on(table.status, table.nextAttemptAt),
     index("notification_deliveries_notification_idx").on(table.notificationId),
     index("notification_deliveries_owner_idx").on(table.ownerUserId),
@@ -597,7 +602,7 @@ export const notificationDeliveries = pgTable(
     ),
     check(
       "notification_deliveries_status_check",
-      sql`${table.status} in ('queued', 'sending', 'provider_accepted', 'retry_scheduled', 'invalid_endpoint', 'failed')`,
+      sql`${table.status} in ('queued', 'sending', 'provider_accepted', 'retry_scheduled', 'invalid_endpoint', 'failed', 'suppressed')`,
     ),
     check("notification_deliveries_attempts_check", sql`${table.attemptCount} >= 0`),
   ],
@@ -619,7 +624,33 @@ export const notificationPreferences = pgTable(
     index("notification_preferences_owner_idx").on(table.ownerUserId),
     check(
       "notification_preferences_type_check",
-      sql`${table.notificationType} in ('task_reminder')`,
+      sql`${table.notificationType} in ('task_reminder', 'task_comment_mention', 'timer_state_change', 'routine_reminder', 'money_threshold', 'daily_review', 'weekly_review', 'job_search_reminder')`,
+    ),
+  ],
+);
+
+export const notificationSettings = pgTable(
+  "notification_settings",
+  {
+    ownerUserId: uuid("owner_user_id").default(sql`auth.uid()`).primaryKey(),
+    quietHoursEnabled: boolean("quiet_hours_enabled").notNull().default(false),
+    quietHoursStart: varchar("quiet_hours_start", { length: 5 }).notNull().default("22:00"),
+    quietHoursEnd: varchar("quiet_hours_end", { length: 5 }).notNull().default("07:00"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    check(
+      "notification_settings_quiet_hours_start_check",
+      sql`${table.quietHoursStart} ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'`,
+    ),
+    check(
+      "notification_settings_quiet_hours_end_check",
+      sql`${table.quietHoursEnd} ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'`,
+    ),
+    check(
+      "notification_settings_quiet_hours_window_check",
+      sql`${table.quietHoursStart} <> ${table.quietHoursEnd}`,
     ),
   ],
 );
@@ -1283,5 +1314,79 @@ export const operatorProposals = pgTable(
       foreignColumns: [table.id],
       name: "operator_proposals_parent_proposal_id_fkey",
     }).onDelete("set null"),
+  ],
+);
+
+/**
+ * Owner-scoped personal expense ledger (PO-06 Slice A, issue #346). Amounts
+ * are positive integer centimes of MAD; soft delete and optimistic version
+ * concurrency keep the ledger bounded and idempotent. The BEFORE UPDATE
+ * mutation guard lives in drizzle/0088_personal_expenses.sql because Drizzle
+ * cannot express triggers.
+ */
+export const personalExpenses = pgTable(
+  "personal_expenses",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    ownerUserId: uuid("owner_user_id").default(sql`auth.uid()`).notNull(),
+    occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull(),
+    amountMinor: integer("amount_minor").notNull(),
+    currency: varchar("currency", { length: 3 }).default("MAD").notNull(),
+    category: varchar("category", { length: 32 }).notNull(),
+    note: varchar("note", { length: 500 }),
+    merchant: varchar("merchant", { length: 120 }),
+    needVsWant: varchar("need_vs_want", { length: 8 }).notNull(),
+    paymentMethod: varchar("payment_method", { length: 32 }),
+    idempotencyKey: varchar("idempotency_key", { length: 128 }).notNull(),
+    createFingerprint: varchar("create_fingerprint", { length: 64 }).notNull(),
+    version: integer("version").default(1).notNull(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("personal_expenses_owner_idempotency_key_unique").on(
+      table.ownerUserId,
+      table.idempotencyKey,
+    ),
+    index("personal_expenses_owner_occurred_at_idx").on(
+      table.ownerUserId,
+      table.occurredAt.desc(),
+      table.id.desc(),
+    ),
+    check(
+      "personal_expenses_amount_minor_check",
+      sql`${table.amountMinor} >= 1 and ${table.amountMinor} <= 2147483647`,
+    ),
+    check("personal_expenses_currency_check", sql`${table.currency} = 'MAD'`),
+    check(
+      "personal_expenses_category_check",
+      sql`${table.category} in ('coffee','groceries','eating_out','transport','bills','subscriptions','household','health','other')`,
+    ),
+    check(
+      "personal_expenses_need_vs_want_check",
+      sql`${table.needVsWant} in ('need','want')`,
+    ),
+    check(
+      "personal_expenses_payment_method_check",
+      sql`${table.paymentMethod} is null or ${table.paymentMethod} in ('cash','card','bank_transfer','mobile_wallet','other')`,
+    ),
+    check("personal_expenses_version_check", sql`${table.version} > 0`),
+    check(
+      "personal_expenses_idempotency_key_check",
+      sql`length(btrim(${table.idempotencyKey})) > 0`,
+    ),
+    check(
+      "personal_expenses_create_fingerprint_check",
+      sql`${table.createFingerprint} ~ '^[0-9a-f]{64}$'`,
+    ),
+    check(
+      "personal_expenses_note_check",
+      sql`${table.note} is null or length(btrim(${table.note})) > 0`,
+    ),
+    check(
+      "personal_expenses_merchant_check",
+      sql`${table.merchant} is null or length(btrim(${table.merchant})) > 0`,
+    ),
   ],
 );

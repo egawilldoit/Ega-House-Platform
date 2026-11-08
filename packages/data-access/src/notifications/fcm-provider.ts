@@ -10,6 +10,8 @@ export type FcmServiceAccount = {
 export type FcmProviderConfig = {
   serviceAccount: FcmServiceAccount | null;
   fetchImpl?: typeof fetch;
+  /** Test seam; production defaults to google-auth-library JWT. */
+  accessTokenProvider?: (serviceAccount: FcmServiceAccount) => Promise<string>;
 };
 
 function normalizePrivateKey(key: string): string {
@@ -66,10 +68,12 @@ async function getAccessToken(serviceAccount: FcmServiceAccount): Promise<string
 export class FcmPushProvider implements PushProvider {
   private readonly serviceAccount: FcmServiceAccount | null;
   private readonly fetchImpl: typeof fetch;
+  private readonly accessTokenProvider: (serviceAccount: FcmServiceAccount) => Promise<string>;
 
   constructor(config: FcmProviderConfig) {
     this.serviceAccount = config.serviceAccount;
     this.fetchImpl = config.fetchImpl ?? fetch;
+    this.accessTokenProvider = config.accessTokenProvider ?? getAccessToken;
   }
 
   static fromEnv(fetchImpl?: typeof fetch): FcmPushProvider {
@@ -94,7 +98,7 @@ export class FcmPushProvider implements PushProvider {
 
     let accessToken: string;
     try {
-      accessToken = await getAccessToken(this.serviceAccount);
+      accessToken = await this.accessTokenProvider(this.serviceAccount);
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
       const isAuth = reason.toLowerCase().includes("auth") || reason.toLowerCase().includes("invalid_grant");
@@ -150,10 +154,12 @@ export class FcmPushProvider implements PushProvider {
     // Parse error
     let fcmCode: string | null = null;
     let message: string | null = null;
+    let details: unknown = null;
     try {
       const errBody = (await response.json()) as { error?: { status?: string; message?: string; details?: unknown } };
       fcmCode = errBody.error?.status ?? null;
       message = errBody.error?.message ?? null;
+      details = errBody.error?.details ?? null;
     } catch {
       // ignore
     }
@@ -162,6 +168,7 @@ export class FcmPushProvider implements PushProvider {
       httpStatus: response.status,
       fcmCode,
       message,
+      details,
     });
 
     const reason = message ? `${fcmCode ?? response.status}: ${message}`.slice(0, 500) : `FCM error ${response.status} ${fcmCode ?? ""}`.slice(0, 500);
@@ -170,7 +177,7 @@ export class FcmPushProvider implements PushProvider {
       ok: false,
       errorCode: classification,
       errorReason: reason,
-      raw: { status: response.status, code: fcmCode, message },
+      raw: { status: response.status, code: fcmCode, message, details },
     };
   }
 }

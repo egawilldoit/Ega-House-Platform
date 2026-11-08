@@ -181,6 +181,7 @@ test("sanitizeSupabaseError maps only the deliberate failure set", () => {
     { code: "conflict" },
   );
   assert.deepEqual(sanitizeSupabaseError({ code: "PGRST116" }), { code: "unknown" });
+  assert.deepEqual(sanitizeSupabaseError({ code: "42501" }), { code: "unknown" });
   assert.deepEqual(sanitizeSupabaseError(null), { code: "unknown" });
 });
 
