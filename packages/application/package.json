@@ -52,6 +52,8 @@
     "./shared/duration": "./src/shared/duration.ts",
     "./shared/execution-evidence": "./src/shared/execution-evidence.ts",
     "./preferences": "./src/preferences/user-preferences.ts",
+    "./expenses/ports": "./src/expenses/ports.ts",
+    "./expenses/service": "./src/expenses/service.ts",
     "./health/workload-snapshot": "./src/health/workload-snapshot.ts",
     "./health/recommendations": "./src/health/recommendations.ts"
   },

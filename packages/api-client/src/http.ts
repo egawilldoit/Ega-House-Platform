@@ -33,8 +33,14 @@ export type HttpClientOptions = {
   fetch?: FetchLike;
 };
 
-/** The five codes the transport can answer with. */
-export type ServerErrorCode = "UNAUTHENTICATED" | "VALIDATION" | "NOT_FOUND" | "CONFLICT" | "INTERNAL";
+/** The six codes the transport can answer with. */
+export type ServerErrorCode =
+  | "UNAUTHENTICATED"
+  | "VALIDATION"
+  | "NOT_FOUND"
+  | "CONFLICT"
+  | "FORBIDDEN"
+  | "INTERNAL";
 
 export type HttpRequestOptions = {
   /** Relative path under the base URL, e.g. `/api/projects`. */
