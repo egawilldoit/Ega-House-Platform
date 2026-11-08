@@ -566,9 +566,16 @@ export function buildApplicationModuleMock(): Record<string, unknown> {
         (candidate) => candidate.owner_user_id === actor.userId && candidate.id === input.sessionId,
       );
       if (!row) return Promise.resolve({ ok: false, errorMessage: "No open timer session." });
+      if (row.ended_at) {
+        return Promise.resolve(
+          storeData({ status: "already_stopped", sessionId: row.id, taskId: row.task_id }),
+        );
+      }
       row.ended_at = nowIso();
       row.duration_seconds = 0;
-      return Promise.resolve(storeData(row));
+      return Promise.resolve(
+        storeData({ status: "stopped", sessionId: row.id, taskId: row.task_id }),
+      );
     },
   );
 
@@ -854,6 +861,13 @@ export class FakeSupabaseTimerSessionRepository {
       (candidate) => candidate.owner_user_id === actor.userId
         && candidate.mcp_client_id === input.mcpClientId
         && candidate.mcp_operation_id === input.mcpOperationId,
+    );
+    return { ok: true as const, value: row ? timerRecord(row) : null };
+  }
+
+  async findSessionById(actor: { userId: string }, input: { sessionId: string }) {
+    const row = (requireCurrentE2eStore().tables.get("task_sessions") ?? []).find(
+      (candidate) => candidate.owner_user_id === actor.userId && candidate.id === input.sessionId,
     );
     return { ok: true as const, value: row ? timerRecord(row) : null };
   }

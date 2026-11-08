@@ -637,6 +637,14 @@ jobs:
         env:
           PROOF_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ega_proof
         run: node scripts/db/user-preferences-invariant-verify.mjs --url "$PROOF_DATABASE_URL"
+      - name: Prove personal expense ledger checks, RLS and soft delete through the migration journal
+        env:
+          PROOF_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ega_proof
+        run: node scripts/db/personal-expenses-invariant-verify.mjs --url "$PROOF_DATABASE_URL"
+      - name: Prove personal expense Hono CRUD, idempotency and owner isolation against Postgres
+        env:
+          PROOF_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ega_proof
+        run: node --import tsx scripts/db/personal-expenses-api-verify.mjs --url "$PROOF_DATABASE_URL"
 
   hygiene:
     needs: [changes, workspace, contracts, domain, application, data-access, regressions, lint-changed, lint-report, web, web-typecheck, web-tests, mobile, server, api-client, db-invariants]

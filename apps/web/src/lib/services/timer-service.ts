@@ -257,17 +257,29 @@ async function finalizeOpenSessionById(args: {
   sessionId: string;
   startedAtIso: string;
   endedAtIso: string;
+  /**
+   * Exact-id stop passes the verified owner so the write cannot finalize a
+   * foreign row if a transport-level RLS policy were ever missing. Bulk
+   * task-stop/conflict resolution leave this undefined to preserve their
+   * existing owner-scoped-by-RLS semantics.
+   */
+  ownerUserId?: string;
 }) {
   const durationSeconds = getSafeDurationSeconds(args.startedAtIso, args.endedAtIso);
 
-  const { data, error } = await args.supabase
+  const baseUpdate = args.supabase
     .from("task_sessions")
     .update({
       ended_at: args.endedAtIso,
       duration_seconds: durationSeconds,
       updated_at: args.endedAtIso,
     })
-    .eq("id", args.sessionId)
+    .eq("id", args.sessionId);
+  const ownedUpdate = args.ownerUserId
+    ? baseUpdate.eq("owner_user_id", args.ownerUserId)
+    : baseUpdate;
+
+  const { data, error } = await ownedUpdate
     .is("ended_at", null)
     .select("id")
     .maybeSingle();
@@ -468,49 +480,134 @@ export async function startTimerForTask(
   return { errorMessage: null };
 }
 
+export type TimerStopOutcome = "stopped" | "already_stopped";
+
+export type StopTimerSessionResult = {
+  errorMessage: string | null;
+  stoppedTaskId: string | null;
+  outcome: TimerStopOutcome | null;
+};
+
+async function findTimerSessionById(args: {
+  supabase: SupabaseServerClient;
+  sessionId: string;
+  ownerUserId: string;
+}) {
+  return args.supabase
+    .from("task_sessions")
+    .select("id, task_id, started_at, ended_at, duration_seconds")
+    .eq("id", args.sessionId)
+    .eq("owner_user_id", args.ownerUserId)
+    .maybeSingle();
+}
+
 export async function stopTimerSession(
   options?: { sessionId?: string; supabase?: SupabaseServerClient; nowIso?: string },
-) {
-  const supabase = await resolveSupabaseClient(options?.supabase);
-  const { data: openSessions, errorMessage } = await getOpenTimerSessions({ supabase });
-
-  if (errorMessage || !openSessions) {
-    return { errorMessage: "Unable to load open timer sessions.", stoppedTaskId: null };
-  }
-
-  if (openSessions.length > 1) {
+): Promise<StopTimerSessionResult> {
+  const sessionId = options?.sessionId?.trim();
+  if (!sessionId) {
     return {
-      errorMessage:
-        "Multiple open sessions detected. Resolve the conflict before stopping timers.",
+      errorMessage: "A timer session id is required to stop the timer.",
       stoppedTaskId: null,
+      outcome: null,
     };
   }
 
-  const submittedSessionId = options?.sessionId?.trim();
-  const targetSession = submittedSessionId
-    ? openSessions.find((session) => session.id === submittedSessionId)
-    : openSessions[0];
+  const supabase = await resolveSupabaseClient(options?.supabase);
 
-  if (!targetSession) {
+  // Fail closed: an unverified identity must not read or write session state,
+  // even if the request-scoped client would be filtered by RLS.
+  const { data: authData, error: authError } = await supabase.auth.getUser();
+  const ownerUserId = authData?.user?.id;
+  if (authError || !ownerUserId) {
     return {
-      errorMessage: "No active timer session is available to stop.",
+      errorMessage: "Your session expired. Sign in again to stop the timer.",
       stoppedTaskId: null,
+      outcome: null,
+    };
+  }
+
+  const { data: session, error } = await findTimerSessionById({
+    supabase,
+    sessionId,
+    ownerUserId,
+  });
+
+  if (error) {
+    return {
+      errorMessage: "Unable to load the timer session.",
+      stoppedTaskId: null,
+      outcome: null,
+    };
+  }
+
+  if (!session) {
+    return {
+      errorMessage: "No running timer session matches this request.",
+      stoppedTaskId: null,
+      outcome: null,
+    };
+  }
+
+  if (session.ended_at) {
+    // Idempotent acknowledgement: another device/PWA already stopped exactly
+    // this session. Never re-write ended_at or re-extend duration.
+    return {
+      errorMessage: null,
+      stoppedTaskId: session.task_id,
+      outcome: "already_stopped",
     };
   }
 
   const endedAtIso = options?.nowIso ?? new Date().toISOString();
   const finalizeResult = await finalizeOpenSessionById({
     supabase,
-    sessionId: targetSession.id,
-    startedAtIso: targetSession.started_at,
+    sessionId: session.id,
+    startedAtIso: session.started_at,
     endedAtIso,
+    ownerUserId,
   });
 
   if (finalizeResult.errorMessage) {
-    return { errorMessage: finalizeResult.errorMessage, stoppedTaskId: null };
+    return {
+      errorMessage: finalizeResult.errorMessage,
+      stoppedTaskId: null,
+      outcome: null,
+    };
   }
 
-  return { errorMessage: null, stoppedTaskId: targetSession.task_id };
+  if (!finalizeResult.finalized) {
+    const { data: reread, error: rereadError } = await findTimerSessionById({
+      supabase,
+      sessionId,
+      ownerUserId,
+    });
+    if (rereadError) {
+      return {
+        errorMessage: "Unable to load the timer session.",
+        stoppedTaskId: null,
+        outcome: null,
+      };
+    }
+    if (reread?.ended_at) {
+      return {
+        errorMessage: null,
+        stoppedTaskId: reread.task_id,
+        outcome: "already_stopped",
+      };
+    }
+    return {
+      errorMessage: "That timer session is no longer running.",
+      stoppedTaskId: null,
+      outcome: null,
+    };
+  }
+
+  return {
+    errorMessage: null,
+    stoppedTaskId: session.task_id,
+    outcome: "stopped",
+  };
 }
 
 export async function stopActiveTimerSessionsForTask(
@@ -688,13 +785,25 @@ export async function getTimerWorkspaceData(options?: {
         .not("ended_at", "is", null)
         .order("started_at", { ascending: false })
         .limit(50),
-      supabase
-        .from("task_sessions")
-        .select("id, task_id, started_at, ended_at, duration_seconds, tasks(id, title)")
-        .lt("started_at", nextDayStartIso)
-        .or(`ended_at.gte.${todayWindow.startIso},ended_at.is.null`)
-        .order("started_at", { ascending: false })
-        .limit(80),
+      (async () => {
+        const sessions: TimerAggregateSessionRow[] = [];
+        let afterId: string | null = null;
+        for (;;) {
+          let query = supabase.from("task_sessions")
+            .select("id, task_id, started_at, ended_at, duration_seconds, tasks(id, title)")
+            .lt("started_at", nextDayStartIso)
+            .or(`ended_at.gte.${todayWindow.startIso},ended_at.is.null`)
+            .order("id", { ascending: true }).limit(500);
+          if (afterId !== null) query = query.gt("id", afterId);
+          const result = await query;
+          if (result.error) return { data: [], error: result.error };
+          const page = result.data ?? [];
+          sessions.push(...page);
+          if (page.length < 500) break;
+          afterId = page[page.length - 1].id;
+        }
+        return { data: sessions, error: null };
+      })(),
     ]);
 
   if (tasksResult.error) {

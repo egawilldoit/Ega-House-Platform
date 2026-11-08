@@ -22,6 +22,8 @@ export const TIMER_NO_OPEN_SESSION_MATCH_MESSAGE =
   "No running timer session matches this request.";
 export const TIMER_SESSION_NO_LONGER_RUNNING_MESSAGE =
   "That timer session is no longer running.";
+export const TIMER_SESSION_ID_REQUIRED_MESSAGE =
+  "A timer session id is required to stop the timer.";
 
 export type TimerActiveSession = Readonly<{
   sessionId: string;
@@ -45,6 +47,17 @@ export type TimerSummary = Readonly<{
 export type TimerWorkspace = Readonly<{
   activeSession: TimerActiveSession | null;
   summary: TimerSummary;
+}>;
+
+/**
+ * Result of an idempotent stop request. `already_stopped` is a successful
+ * acknowledgement for a session that was already finalized by an earlier or
+ * concurrent request; it performs no second write.
+ */
+export type TimerStopOutcome = Readonly<{
+  status: "stopped" | "already_stopped";
+  sessionId: string;
+  taskId: string;
 }>;
 
 export function summarizeTimerSessions(
@@ -147,7 +160,7 @@ export async function getTimerWorkspace(
 
   const [openResult, recentResult] = await Promise.all([
     repository.listOpenSessions(actor),
-    repository.listRecentSessions(actor, { limit: 150 }),
+    repository.listSummarySessions(actor),
   ]);
 
   if (!openResult.ok) return applicationFailure("Unable to load the timer workspace right now.");
@@ -231,36 +244,54 @@ export async function stopTaskSession(
   repository: TimerSessionRepository,
   input: Readonly<{ sessionId?: unknown }>,
   options: Readonly<{ now?: Date }> = {},
-): Promise<ApplicationResult<Readonly<{ sessionId: string; taskId: string }>>> {
-  const requestedSessionId = String(input.sessionId ?? "").trim();
+): Promise<ApplicationResult<TimerStopOutcome>> {
+  const sessionId = String(input.sessionId ?? "").trim();
+  if (!sessionId) return applicationFailure(TIMER_SESSION_ID_REQUIRED_MESSAGE);
 
-  const openResult = await repository.listOpenSessions(actor);
-  if (!openResult.ok) return applicationFailure("Unable to load running timers right now.");
+  // Stop must target the exact session the caller observed. Falling back to a
+  // "newest open" session can end a different device's newer timer.
+  const foundResult = await repository.findSessionById(actor, { sessionId });
+  if (!foundResult.ok) return applicationFailure("Unable to load running timers right now.");
+  const session = foundResult.value;
+  if (!session) return applicationFailure(TIMER_NO_OPEN_SESSION_MATCH_MESSAGE);
 
-  const openSessions = [...openResult.value].sort((left, right) =>
-    right.startedAt.localeCompare(left.startedAt),
-  );
-
-  const target = requestedSessionId
-    ? openSessions.find((session) => session.id === requestedSessionId)
-    : openSessions[0];
-
-  if (!target) {
-    return applicationFailure(TIMER_NO_OPEN_SESSION_MATCH_MESSAGE);
+  if (session.endedAt !== null) {
+    return applicationSuccess({
+      status: "already_stopped",
+      sessionId: session.id,
+      taskId: session.taskId,
+    });
   }
 
   const endedAtIso = (options.now ?? new Date()).toISOString();
-  const durationSeconds = getSessionDurationSeconds(target, endedAtIso);
+  const durationSeconds = getSessionDurationSeconds(session, endedAtIso);
 
   const finalizeResult = await repository.finalizeOpenSession(actor, {
-    sessionId: target.id,
+    sessionId: session.id,
     endedAtIso,
     durationSeconds,
   });
   if (!finalizeResult.ok) return applicationFailure("Unable to stop the timer right now.");
-  if (!finalizeResult.value) {
-    return applicationFailure(TIMER_SESSION_NO_LONGER_RUNNING_MESSAGE);
+  if (finalizeResult.value) {
+    return applicationSuccess({
+      status: "stopped",
+      sessionId: session.id,
+      taskId: session.taskId,
+    });
   }
 
-  return applicationSuccess({ sessionId: target.id, taskId: target.taskId });
+  // A concurrent request finalized the row between our read and UPDATE. Re-read
+  // the same id: an ended row is an idempotent success; a still-open row means
+  // the fenced write failed for another reason.
+  const rereadResult = await repository.findSessionById(actor, { sessionId });
+  if (!rereadResult.ok) return applicationFailure("Unable to load running timers right now.");
+  if (rereadResult.value?.endedAt) {
+    return applicationSuccess({
+      status: "already_stopped",
+      sessionId: rereadResult.value.id,
+      taskId: rereadResult.value.taskId,
+    });
+  }
+
+  return applicationFailure(TIMER_SESSION_NO_LONGER_RUNNING_MESSAGE);
 }

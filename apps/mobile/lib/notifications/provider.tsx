@@ -132,7 +132,9 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         // ignore
       }
 
-      const target = parsed.targetType && parsed.targetId ? { type: parsed.targetType, id: parsed.targetId } : null;
+      const target = parsed.targetType
+        ? { type: parsed.targetType, id: parsed.targetId }
+        : null;
       const route = notificationTargetToRoute(target);
       // Wait a tick for navigation to be ready
       setTimeout(() => {
