@@ -5,7 +5,7 @@ import {
   getTaskSessionDurationSeconds,
   getTaskTotalDurationMap,
 } from "@/lib/task-session";
-import { getCurrentLocalDayWindow } from "@ega/domain/time-context";
+import { getCurrentLocalDayWindow, getLocalDayWindow } from "@ega/domain/time-context";
 import { isTaskCanceledStatus, isTaskCompletedStatus } from "@/lib/task-domain";
 import {
   calculateExecutionEvidenceForWindow,
@@ -899,30 +899,89 @@ export async function getActiveTimerSession(options?: {
   };
 }
 
+type TimerSummarySessionRow = TimerAggregateSessionRow & {
+  id: string;
+};
+
+const TIMER_SUMMARY_PAGE_SIZE = 500;
+
+/**
+ * Complete owner-scoped session read for authoritative totals.
+ *
+ * The previous `.limit(120/150)` call silently understated lifetime and
+ * tracked-today totals beyond that row count. Display history keeps its own
+ * bounds; this path pages all rows with an immutable-id cursor and fails closed
+ * on any page error instead of returning partial totals.
+ */
+async function loadTimerSummarySessions(
+  supabase: SupabaseServerClient,
+  ownerUserId?: string,
+) {
+  const rows: TimerSummarySessionRow[] = [];
+  let afterId: string | null = null;
+
+  for (;;) {
+    let query = supabase
+      .from("task_sessions")
+      .select("id, task_id, started_at, ended_at, duration_seconds, tasks(title)")
+      .order("id", { ascending: true })
+      .limit(TIMER_SUMMARY_PAGE_SIZE);
+    if (ownerUserId) {
+      query = query.eq("owner_user_id", ownerUserId);
+    }
+    if (afterId !== null) {
+      query = query.gt("id", afterId);
+    }
+
+    const { data, error } = await query;
+    if (error) {
+      return { data: null, errorMessage: "Could not load timer summary right now." };
+    }
+
+    const page = (data ?? []) as TimerSummarySessionRow[];
+    rows.push(...page);
+    if (page.length < TIMER_SUMMARY_PAGE_SIZE) break;
+    afterId = page[page.length - 1].id;
+  }
+
+  return { data: rows, errorMessage: null };
+}
+
 export async function getTimerSummary(options?: {
   supabase?: SupabaseServerClient;
   now?: Date;
-  limit?: number;
   timezone?: string;
+  /** Selected owner-local date; keeps the summary window on the same day. */
+  todayDate?: string;
+  /** Verified owner id when supplied; RLS remains the fallback authority. */
+  ownerUserId?: string;
 }) {
   const supabase = await resolveSupabaseClient(options?.supabase);
   const now = options?.now ?? new Date();
   const nowIso = now.toISOString();
-  const todayWindow = getCurrentDayWindow(now, options?.timezone);
-  const { data, error } = await supabase
-    .from("task_sessions")
-    .select("task_id, started_at, ended_at, duration_seconds, tasks(title)")
-    .order("started_at", { ascending: false })
-    .limit(options?.limit ?? 150);
+  const todayWindow =
+    options?.todayDate && options?.timezone
+      ? (() => {
+          const dayWindow = getLocalDayWindow(options.timezone, options.todayDate);
+          return {
+            startIso: dayWindow.startUtcIso,
+            endIso: nowIso < dayWindow.endUtcIso ? nowIso : dayWindow.endUtcIso,
+          };
+        })()
+      : getCurrentDayWindow(now, options?.timezone);
+  const sessionResult = await loadTimerSummarySessions(
+    supabase,
+    options?.ownerUserId,
+  );
 
-  if (error) {
+  if (sessionResult.errorMessage || !sessionResult.data) {
     return {
       data: null,
       errorMessage: "Could not load timer summary right now.",
     };
   }
 
-  const sessions = data ?? [];
+  const sessions = sessionResult.data;
   const aggregateSummary = calculateTimerAggregates(sessions, {
     nowIso,
     todayWindow,
