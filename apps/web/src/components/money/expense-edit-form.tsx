@@ -182,7 +182,7 @@ export function ExpenseEditForm({
     event.preventDefault();
     if (submittingRef.current) return;
     if (conflict && conflict.serverVersion === null) return;
-    await persist(conflict ? conflict.serverVersion : baseVersion);
+    await persist(conflict?.serverVersion ?? baseVersion);
   }
 
   async function handleRefresh() {
