@@ -130,7 +130,7 @@ test("FcmPushProvider maps structured token-invalid responses to invalid_endpoin
     error: {
       status: "NOT_FOUND",
       message: "Requested entity was not found.",
-      details: [{ errorCode: "UNREGISTERED" }],
+      details: [{ "@type": "type.googleapis.com/google.firebase.fcm.v1.FcmError", errorCode: "UNREGISTERED" }],
     },
   }).send(PUSH);
   assert.equal(unregistered.ok, false);
