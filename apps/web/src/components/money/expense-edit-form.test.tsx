@@ -97,6 +97,13 @@ describe("ExpenseEditForm", () => {
     expect(amountInput().value).toBe("30.00");
     expect(onUpdated).not.toHaveBeenCalled();
 
+    // A guessed next version must not bypass reading the latest server row.
+    await save();
+    expect(submitUpdate).toHaveBeenCalledTimes(1);
+    expect(document.body.querySelector<HTMLButtonElement>(
+      `[data-testid="expense-edit-save-${BASE_EXPENSE.id}"]`,
+    )?.disabled).toBe(true);
+
     // Deliberate reconciliation: explicit refresh, then explicit retry.
     await act(async () => {
       document.body

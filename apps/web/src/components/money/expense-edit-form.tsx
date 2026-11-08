@@ -83,8 +83,8 @@ export function ExpenseEditForm({
   const [fieldErrors, setFieldErrors] = useState<ExpenseFormFieldErrors>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [conflict, setConflict] = useState<{
-    serverVersion: number;
-    serverUpdatedAt: string;
+    serverVersion: number | null;
+    serverUpdatedAt: string | null;
   } | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const submittingRef = useRef(false);
@@ -158,12 +158,12 @@ export function ExpenseEditForm({
         // Preserve the draft; require deliberate reconciliation.
         setConflict((current) =>
           current ?? {
-            serverVersion: baseVersion + 1,
-            serverUpdatedAt: new Date().toISOString(),
+            serverVersion: null,
+            serverUpdatedAt: null,
           },
         );
         setFormError(
-          "This expense changed elsewhere. Your edits are preserved — refresh to compare, then retry deliberately.",
+          "This expense changed elsewhere. Your edits are preserved — refresh the latest version before retrying.",
         );
         return false;
       }
@@ -181,6 +181,7 @@ export function ExpenseEditForm({
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     if (submittingRef.current) return;
+    if (conflict && conflict.serverVersion === null) return;
     await persist(conflict ? conflict.serverVersion : baseVersion);
   }
 
@@ -346,8 +347,9 @@ export function ExpenseEditForm({
           className="feedback-block feedback-block-error flex-col items-stretch gap-2"
         >
           <p>
-            Version conflict: the saved expense is now at version{" "}
-            {conflict.serverVersion}. Your edits above are preserved.
+            {conflict.serverVersion === null
+              ? "Version conflict: your edits above are preserved. Refresh the latest saved version before retrying."
+              : `Latest saved version: ${conflict.serverVersion}. Your edits above are preserved.`}
           </p>
           <div className="flex flex-wrap gap-2">
             <Button
@@ -380,7 +382,7 @@ export function ExpenseEditForm({
           type="submit"
           variant="primary"
           size="md"
-          disabled={isSubmitting}
+          disabled={isSubmitting || (conflict !== null && conflict.serverVersion === null)}
           aria-busy={isSubmitting}
           data-testid={`expense-edit-save-${expense.id}`}
         >
