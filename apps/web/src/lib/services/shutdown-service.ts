@@ -188,6 +188,10 @@ export async function getShutdownData(options?: {
   now?: Date;
   /** Canonical account local date from Time Context (see getTodayPlannerData). */
   localDate?: string;
+  /** Owner's effective IANA timezone from canonical Time Context. */
+  timezone?: string;
+  /** Verified owner id for explicit summary scoping. */
+  ownerUserId?: string;
   todayPlannerResult?: { errorMessage: string | null; data: TodayPlannerData | null };
 }) {
   const supabase = await resolveSupabaseClient(options?.supabase);
@@ -202,6 +206,8 @@ export async function getShutdownData(options?: {
       supabase,
       now,
       localDate: options?.localDate,
+      timezone: options?.timezone,
+      ownerUserId: options?.ownerUserId,
     }));
 
   if (todayResult.errorMessage || !todayResult.data) {
