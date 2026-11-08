@@ -9,7 +9,7 @@ import type { HttpClient } from "./http";
 export type TimerApi = {
   workspace(): Promise<ApiResult<TimerWorkspaceState>>;
   start(taskId: string): Promise<ApiResult<TimerStartResponse>>;
-  stop(sessionId?: string): Promise<ApiResult<TimerStopResponse>>;
+  stop(sessionId: string): Promise<ApiResult<TimerStopResponse>>;
 };
 
 export function createTimerApi(http: HttpClient): TimerApi {
@@ -28,7 +28,7 @@ export function createTimerApi(http: HttpClient): TimerApi {
       return http.request<TimerStopResponse>({
         path: "/api/timer/stop",
         method: "POST",
-        body: sessionId ? { sessionId } : {},
+        body: { sessionId },
       });
     },
   };

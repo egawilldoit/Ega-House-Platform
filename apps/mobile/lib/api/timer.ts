@@ -4,7 +4,7 @@
  *
  *   GET  /api/timer/workspace -> TimerWorkspaceState
  *   POST /api/timer/start     -> { ok: true, activeSession }
- *   POST /api/timer/stop      -> { ok: true, sessionId, taskId }
+ *   POST /api/timer/stop      -> { ok: true, sessionId, taskId, outcome }
  */
 import type {
   TimerStartResponse,
@@ -21,6 +21,6 @@ export async function startTimerForTask(taskId: string): Promise<TimerStartRespo
   return unwrapApiResult(await getMobileEgaApiClient().timer.start(taskId));
 }
 
-export async function stopTimerSession(sessionId?: string): Promise<TimerStopResponse> {
+export async function stopTimerSession(sessionId: string): Promise<TimerStopResponse> {
   return unwrapApiResult(await getMobileEgaApiClient().timer.stop(sessionId));
 }

@@ -1,4 +1,24 @@
-import { DEFAULT_PERSONAL_OPERATIONS, isPersonalOperations, type PersonalOperations } from "./personal-operations";
+import {
+  DAYS,
+  DEFAULT_PERSONAL_OPERATIONS,
+  clonePersonalOperations,
+  getPersonalOperationsDayPlan,
+  getPersonalOperationsWeekTotals,
+  isPersonalOperations,
+  type Day,
+  type PersonalOperations,
+  type PersonalOperationsDayPlan,
+  type PersonalOperationsDayPlanResult,
+} from "./personal-operations";
+
+export {
+  DAYS,
+  DEFAULT_PERSONAL_OPERATIONS,
+  getPersonalOperationsDayPlan,
+  getPersonalOperationsWeekTotals,
+  isPersonalOperations,
+};
+export type { Day, PersonalOperations, PersonalOperationsDayPlan, PersonalOperationsDayPlanResult };
 
 /**
  * Durable workspace preferences (EGA-798).
@@ -112,7 +132,12 @@ export function getUserThemeAttribute(theme: UserTheme): "light" | "dark" {
 export function normalizeUserPreferences(input: unknown): UserPreferences {
   const value = input && typeof input === "object" ? (input as Record<string, unknown>) : {};
   return {
-    personalOperations: isPersonalOperations(value.personalOperations) ? value.personalOperations : DEFAULT_PERSONAL_OPERATIONS,
+    // Always detached: callers edit drafts and the global defaults are frozen.
+    personalOperations: clonePersonalOperations(
+      isPersonalOperations(value.personalOperations)
+        ? value.personalOperations
+        : DEFAULT_PERSONAL_OPERATIONS,
+    ),
     theme: isUserTheme(value.theme) ? value.theme : DEFAULT_USER_PREFERENCES.theme,
     accent: isUserAccent(value.accent) ? value.accent : DEFAULT_USER_PREFERENCES.accent,
     density: isUserDensity(value.density) ? value.density : DEFAULT_USER_PREFERENCES.density,

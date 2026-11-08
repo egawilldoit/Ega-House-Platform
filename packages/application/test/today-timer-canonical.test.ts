@@ -88,9 +88,8 @@ class FakeTimerRepository implements TimerSessionRepository {
     void actor;
     return ok(this.sessions.filter((s) => s.endedAt === null));
   }
-  async listRecentSessions(actor: AuthenticatedActor, _input: { limit: number }) {
+  async listSummarySessions(actor: AuthenticatedActor) {
     void actor;
-    void _input;
     return ok(this.sessions);
   }
   async getStartableTask(actor: AuthenticatedActor, _input: { taskId: string }) {
@@ -100,6 +99,10 @@ class FakeTimerRepository implements TimerSessionRepository {
   }
   async findSessionByOperation() {
     return ok(null as TimerSessionRecord | null);
+  }
+  async findSessionById(actor: AuthenticatedActor, input: { sessionId: string }) {
+    void actor;
+    return ok(this.sessions.find((session) => session.id === input.sessionId) ?? null);
   }
   async insertOpenSession(actor: AuthenticatedActor, _input: { taskId: string; startedAtIso: string }) {
     void actor;
