@@ -88,7 +88,7 @@ function makeFakeClient(overrides: Partial<EgaApiClient['timer']> = {}): EgaApiC
       ...overrides,
     },
     notifications: {
-      list: jest.fn(), unreadCount: jest.fn(), markRead: jest.fn(), markOpened: jest.fn(), markAllRead: jest.fn(), registerDevice: jest.fn(), unregisterDevice: jest.fn(), preferences: jest.fn(), updatePreferences: jest.fn(),
+      list: jest.fn(), unreadCount: jest.fn(), markRead: jest.fn(), markOpened: jest.fn(), markAllRead: jest.fn(), registerDevice: jest.fn(), unregisterDevice: jest.fn(), preferences: jest.fn(), updatePreferences: jest.fn(), settings: jest.fn(), updateSettings: jest.fn(),
     },
   };
 }
