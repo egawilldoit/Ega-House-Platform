@@ -1,7 +1,12 @@
 import { Hono } from "hono";
 
 import {
+  isNotificationTargetType,
+  type NotificationTarget,
+} from "@ega/contracts";
+import {
   getNotificationPreferences,
+  getNotificationSettings,
   getUnreadCount,
   listNotifications,
   markAllNotificationsRead,
@@ -10,15 +15,62 @@ import {
   registerNotificationDevice,
   unregisterNotificationDevice,
   updateNotificationPreferences,
+  updateNotificationSettings,
 } from "@ega/application/notifications/service";
 import {
   SupabaseNotificationDeviceRepository,
   SupabaseNotificationPreferenceRepository,
   SupabaseNotificationRepository,
+  SupabaseNotificationSettingsRepository,
 } from "@ega/data-access/notifications";
+import { SupabaseTimeContextRepository } from "@ega/data-access/time-context";
 
 import type { ServerVariables } from "../app";
 import { readJsonBody } from "../app";
+
+type NotificationRecordLike = {
+  targetType: string | null;
+  targetId: string | null;
+};
+
+/**
+ * Maps a persisted semantic target into the shared wire shape. Unknown target
+ * types are dropped rather than passed through; singleton targets keep a null
+ * id instead of a fake one.
+ */
+function toContractTarget(
+  record: NotificationRecordLike,
+): NotificationTarget | null {
+  if (!record.targetType || !isNotificationTargetType(record.targetType)) return null;
+  if (record.targetType === "review" || record.targetType === "today") {
+    return { type: record.targetType, id: null };
+  }
+  if (!record.targetId) return null;
+  return { type: record.targetType, id: record.targetId };
+}
+
+function toContractNotification(n: NotificationRecordLike & {
+  id: string;
+  type: string;
+  title: string;
+  body: string | null;
+  readAt: string | null;
+  openedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}) {
+  return {
+    id: n.id,
+    type: n.type,
+    title: n.title,
+    body: n.body,
+    target: toContractTarget(n),
+    readAt: n.readAt,
+    openedAt: n.openedAt,
+    createdAt: n.createdAt,
+    updatedAt: n.updatedAt,
+  };
+}
 
 export function createNotificationsRoutes(): Hono<{ Variables: ServerVariables }> {
   const routes = new Hono<{ Variables: ServerVariables }>();
@@ -41,18 +93,7 @@ export function createNotificationsRoutes(): Hono<{ Variables: ServerVariables }
     if (!result.ok) {
       return c.json({ error: { code: "INTERNAL", message: result.errorMessage } }, 500);
     }
-    // Map to contracts shape
-    const notifications = result.data.notifications.map((n) => ({
-      id: n.id,
-      type: n.type,
-      title: n.title,
-      body: n.body,
-      target: n.targetType && n.targetId ? { type: n.targetType as "task", id: n.targetId } : null,
-      readAt: n.readAt,
-      openedAt: n.openedAt,
-      createdAt: n.createdAt,
-      updatedAt: n.updatedAt,
-    }));
+    const notifications = result.data.notifications.map(toContractNotification);
     return c.json({ ok: true as const, notifications, nextCursor: result.data.nextCursor });
   });
 
@@ -75,21 +116,7 @@ export function createNotificationsRoutes(): Hono<{ Variables: ServerVariables }
       const isNotFound = result.errorMessage.toLowerCase().includes("not found");
       return c.json({ error: { code: isNotFound ? "NOT_FOUND" : "VALIDATION", message: result.errorMessage } }, isNotFound ? 404 : 400);
     }
-    const n = result.data;
-    return c.json({
-      ok: true as const,
-      notification: {
-        id: n.id,
-        type: n.type,
-        title: n.title,
-        body: n.body,
-        target: n.targetType && n.targetId ? { type: n.targetType as "task", id: n.targetId } : null,
-        readAt: n.readAt,
-        openedAt: n.openedAt,
-        createdAt: n.createdAt,
-        updatedAt: n.updatedAt,
-      },
-    });
+    return c.json({ ok: true as const, notification: toContractNotification(result.data) });
   });
 
   routes.patch("/:id/opened", async (c) => {
@@ -101,21 +128,7 @@ export function createNotificationsRoutes(): Hono<{ Variables: ServerVariables }
       const isNotFound = result.errorMessage.toLowerCase().includes("not found");
       return c.json({ error: { code: isNotFound ? "NOT_FOUND" : "VALIDATION", message: result.errorMessage } }, isNotFound ? 404 : 400);
     }
-    const n = result.data;
-    return c.json({
-      ok: true as const,
-      notification: {
-        id: n.id,
-        type: n.type,
-        title: n.title,
-        body: n.body,
-        target: n.targetType && n.targetId ? { type: n.targetType as "task", id: n.targetId } : null,
-        readAt: n.readAt,
-        openedAt: n.openedAt,
-        createdAt: n.createdAt,
-        updatedAt: n.updatedAt,
-      },
-    });
+    return c.json({ ok: true as const, notification: toContractNotification(result.data) });
   });
 
   routes.post("/read-all", async (c) => {
@@ -196,7 +209,6 @@ export function createNotificationsRoutes(): Hono<{ Variables: ServerVariables }
     if (!body) {
       return c.json({ error: { code: "VALIDATION", message: "Request body must be valid JSON." } }, 400);
     }
-    // Accept either single object or { preferences: [...] }? For V1 we accept single object with notificationType
     const notificationType = String(body.notificationType ?? "").trim();
     const pushEnabled = body.pushEnabled as boolean | undefined;
     const emailEnabled = body.emailEnabled as boolean | undefined;
@@ -207,7 +219,7 @@ export function createNotificationsRoutes(): Hono<{ Variables: ServerVariables }
 
     const repo = new SupabaseNotificationPreferenceRepository(client as never);
     const result = await updateNotificationPreferences(actor, repo, {
-      notificationType: notificationType as "task_reminder",
+      notificationType: notificationType as never,
       pushEnabled: typeof pushEnabled === "boolean" ? pushEnabled : undefined,
       emailEnabled: typeof emailEnabled === "boolean" ? emailEnabled : undefined,
     });
@@ -215,6 +227,61 @@ export function createNotificationsRoutes(): Hono<{ Variables: ServerVariables }
       return c.json({ error: { code: "VALIDATION", message: result.errorMessage } }, 400);
     }
     return c.json({ ok: true as const, preference: result.data });
+  });
+
+  routes.get("/settings", async (c) => {
+    const { actor, client } = c.var;
+    const repo = new SupabaseNotificationSettingsRepository(client as never);
+    const result = await getNotificationSettings(actor, repo);
+    if (!result.ok) {
+      return c.json({ error: { code: "INTERNAL", message: result.errorMessage } }, 500);
+    }
+    return c.json({ ok: true as const, settings: result.data });
+  });
+
+  routes.patch("/settings", async (c) => {
+    const { actor, client } = c.var;
+    const body = await readJsonBody(c);
+    if (!body) {
+      return c.json({ error: { code: "VALIDATION", message: "Request body must be valid JSON." } }, 400);
+    }
+
+    const quietHoursEnabled =
+      typeof body.quietHoursEnabled === "boolean" ? body.quietHoursEnabled : undefined;
+    const quietHoursStart =
+      typeof body.quietHoursStart === "string" ? body.quietHoursStart.trim() : undefined;
+    const quietHoursEnd =
+      typeof body.quietHoursEnd === "string" ? body.quietHoursEnd.trim() : undefined;
+
+    if (
+      quietHoursEnabled === undefined &&
+      quietHoursStart === undefined &&
+      quietHoursEnd === undefined
+    ) {
+      return c.json({ error: { code: "VALIDATION", message: "At least one settings field is required." } }, 400);
+    }
+
+    const repo = new SupabaseNotificationSettingsRepository(client as never);
+    const timeContextRepo = new SupabaseTimeContextRepository(client as never);
+    const result = await updateNotificationSettings(actor, repo, timeContextRepo, {
+      quietHoursEnabled,
+      quietHoursStart,
+      quietHoursEnd,
+    });
+    if (!result.ok) {
+      const isValidation = result.code === "validation";
+      const isConflict = result.code === "conflict";
+      return c.json(
+        {
+          error: {
+            code: isValidation ? "VALIDATION" : isConflict ? "CONFLICT" : "INTERNAL",
+            message: result.errorMessage,
+          },
+        },
+        isValidation ? 400 : isConflict ? 409 : 500,
+      );
+    }
+    return c.json({ ok: true as const, settings: result.data });
   });
 
   return routes;

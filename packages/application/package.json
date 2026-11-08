@@ -26,6 +26,7 @@
     "./notifications/ports": "./src/notifications/ports.ts",
     "./notifications/service": "./src/notifications/service.ts",
     "./notifications/delivery": "./src/notifications/delivery.ts",
+    "./notifications/policy": "./src/notifications/policy.ts",
     "./today/read-model": "./src/today/read-model.ts",
     "./today/service": "./src/today/service.ts",
     "./weekly-review/ports": "./src/weekly-review/ports.ts",

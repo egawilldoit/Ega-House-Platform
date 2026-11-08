@@ -13,8 +13,10 @@ import {
   SupabaseNotificationDeviceRepository,
   SupabaseNotificationPreferenceRepository,
   SupabaseNotificationRepository,
+  SupabaseNotificationSettingsRepository,
   SupabaseTaskReminderIntentRepository,
 } from "@ega/data-access/notifications/repository";
+import { SupabaseTimeContextRepository } from "@ega/data-access/time-context";
 import { FcmPushProvider } from "@ega/data-access/notifications/fcm-provider";
 import { ResendEmailProvider, SupabaseEmailResolver } from "@ega/data-access/notifications/email-provider";
 
@@ -29,6 +31,8 @@ export async function POST(request: Request) {
     const deliveryRepo = new SupabaseNotificationDeliveryRepository(supabase);
     const deviceRepo = new SupabaseNotificationDeviceRepository(supabase);
     const preferenceRepo = new SupabaseNotificationPreferenceRepository(supabase);
+    const settingsRepo = new SupabaseNotificationSettingsRepository(supabase);
+    const timeContextRepo = new SupabaseTimeContextRepository(supabase as never);
     const intentRepo = new SupabaseTaskReminderIntentRepository(supabase);
 
     const dueResult = await processDueTaskReminders(null, {
@@ -36,6 +40,8 @@ export async function POST(request: Request) {
       deliveryRepository: deliveryRepo,
       deviceRepository: deviceRepo,
       preferenceRepository: preferenceRepo,
+      settingsRepository: settingsRepo,
+      timeContextRepository: timeContextRepo,
       intentRepository: intentRepo,
       now: new Date(),
       limit: 25,
@@ -63,6 +69,9 @@ export async function POST(request: Request) {
     const deliveryResult = await processPendingNotificationDeliveries({
       deliveryRepository: deliveryRepo,
       deviceRepository: deviceRepo,
+      preferenceRepository: preferenceRepo,
+      settingsRepository: settingsRepo,
+      timeContextRepository: timeContextRepo,
       pushProvider: fcmProvider,
       emailProvider,
       emailResolver,

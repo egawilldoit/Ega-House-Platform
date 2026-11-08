@@ -4,15 +4,15 @@
 -- centimes (22.50 MAD = 2250) so no floating point amount can be persisted.
 -- One row per expense, soft-delete only, optimistic concurrency via `version`.
 --
--- Migration sequencing: the known remote
--- feat/mcp-platform-hardening-expansion branch carries 0079-0087 at journal
--- `when` 1787880000042..50. This migration is 0088 at `when`
--- 1787880000051, after those entries. Drizzle applies a journal entry only
--- when its `when` is greater than the last applied migration's `created_at`,
--- so if THIS migration lands first, that branch must renumber to 0089+ and
--- raise its journal `when` values above 1787880000051 before merging. If the
--- MCP branch lands first, 0088 applies normally. No historical migration is
--- edited by this file.
+-- Migration sequencing: main now has 0079_notification_events_policy at
+-- journal `when` 1787880000029, and this migration is 0088 at `when`
+-- 1787880000051, so it applies after 0079. The known remote
+-- feat/mcp-platform-hardening-expansion branch still carries its own
+-- 0079-0087 at `when` 1787880000042..50; that branch must renumber to 0089+
+-- and raise its journal `when` values above 1787880000051 before merging.
+-- Drizzle applies an entry only when its `when` is greater than the last
+-- applied migration's `created_at`. No historical migration is edited by
+-- this file.
 --
 -- Owner isolation:
 --   * `owner_user_id` defaults to the verified `auth.uid()`.
