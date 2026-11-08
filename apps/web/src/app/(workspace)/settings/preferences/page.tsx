@@ -13,6 +13,7 @@ import {
 } from "@/app/(workspace)/settings/_lib/settings-auth-guard";
 import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
 import { isAuthServiceError } from "@/lib/services/auth-service";
+import { getJobSearchReferenceOptions } from "@/lib/services/job-search-reference-options";
 import { getWebTimeContext } from "@/lib/services/time-context-service";
 import { getWebUserPreferencesState } from "@/lib/services/user-preferences-service";
 
@@ -36,9 +37,10 @@ export default async function WorkspacePreferencesPage({
   // snapshot so same-baseline accounts in one tab cannot share a draft.
   const account = await requireSettingsPageUser(PREFERENCES_PATH);
 
-  const [{ success, error }, state] = await Promise.all([
+  const [{ success, error }, state, referenceOptions] = await Promise.all([
     searchParams,
     getWebUserPreferencesState(),
+    getJobSearchReferenceOptions(),
   ]);
 
   // The schedule can still be edited when the account time context is
@@ -81,8 +83,16 @@ export default async function WorkspacePreferencesPage({
           </div>
         ) : null}
 
+        {referenceOptions.errorMessage ? (
+          <div role="status" className="feedback-block">
+            {referenceOptions.errorMessage} Your saved job-search reference is kept.
+          </div>
+        ) : null}
+
         <PersonalOperationsForm
           initial={preferences.personalOperations}
+          initialReference={preferences.jobSearchReference}
+          referenceOptions={referenceOptions.data}
           disabled={Boolean(state.errorMessage)}
           timeContext={
             timeContext

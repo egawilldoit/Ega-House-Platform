@@ -8,8 +8,17 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { sanitizeSupabaseError } from "../supabase/errors";
 
+const PREFERENCES_SELECT =
+  "theme, accent, density, reduced_motion, launch_page, task_layout, task_open_mode, personal_operations, job_search_reference";
+// Pre-0089 deployment: the reference column does not exist yet. Reads retry
+// without it and normalize the reference to null; writes still fail closed
+// until the migration is applied.
+const PREFERENCES_SELECT_WITHOUT_REFERENCE =
+  "theme, accent, density, reduced_motion, launch_page, task_layout, task_open_mode, personal_operations";
+
 type UserPreferencesRow = {
   personal_operations?: unknown;
+  job_search_reference?: unknown;
   theme: string | null;
   accent: string | null;
   density: string | null;
@@ -32,6 +41,15 @@ function isMissingPreferencesTable(error: unknown): boolean {
   );
 }
 
+function isMissingJobSearchReferenceColumn(error: unknown): boolean {
+  const candidate = error as { code?: unknown; message?: unknown } | null;
+  return (
+    (candidate?.code === "42703" || candidate?.code === "PGRST204")
+    && typeof candidate.message === "string"
+    && /job_search_reference/i.test(candidate.message)
+  );
+}
+
 function isMissingScheduleColumn(error: unknown): boolean {
   const candidate = error as { code?: unknown; message?: unknown } | null;
   return (candidate?.code === "42703" || candidate?.code === "PGRST204")
@@ -42,6 +60,7 @@ function isMissingScheduleColumn(error: unknown): boolean {
 function toPreferences(row: UserPreferencesRow): UserPreferences {
   return normalizeUserPreferences({
     personalOperations: row.personal_operations,
+    jobSearchReference: row.job_search_reference,
     theme: row.theme ?? undefined,
     accent: row.accent ?? undefined,
     density: row.density ?? undefined,
@@ -63,13 +82,17 @@ export class SupabaseUserPreferencesRepository implements UserPreferencesReposit
   constructor(private readonly supabase: SupabaseClient) {}
 
   async get(actor: AuthenticatedActor): Promise<RepositoryResult<UserPreferences | null>> {
-    let { data, error } = await this.supabase
-      .from("user_preferences")
-      .select(
-        "theme, accent, density, reduced_motion, launch_page, task_layout, task_open_mode, personal_operations",
-      )
-      .eq("user_id", actor.userId)
-      .maybeSingle();
+    const load = (select: string) =>
+      this.supabase
+        .from("user_preferences")
+        .select(select)
+        .eq("user_id", actor.userId)
+        .maybeSingle();
+
+    let { data, error } = await load(PREFERENCES_SELECT);
+    if (error && isMissingJobSearchReferenceColumn(error)) {
+      ({ data, error } = await load(PREFERENCES_SELECT_WITHOUT_REFERENCE));
+    }
 
     if (error && isMissingScheduleColumn(error)) {
       ({ data, error } = await this.supabase
@@ -90,7 +113,7 @@ export class SupabaseUserPreferencesRepository implements UserPreferencesReposit
       return { ok: true, value: null };
     }
 
-    return { ok: true, value: toPreferences(data as UserPreferencesRow) };
+    return { ok: true, value: toPreferences(data as unknown as UserPreferencesRow) };
   }
 
   async patch(

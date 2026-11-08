@@ -12,7 +12,10 @@ import {
   type FormEvent,
 } from "react";
 
-import { getPersonalOperationsDayPlan } from "@ega/domain/preferences";
+import {
+  getPersonalOperationsDayPlan,
+  type JobSearchReference,
+} from "@ega/domain/preferences";
 import { getLocalDateInTimezone, getLocalDayWindow } from "@ega/domain/time-context";
 
 import { DailyTargets } from "./daily-targets";
@@ -47,6 +50,18 @@ export type PersonalOperationsAction = (
   formData: FormData,
 ) => Promise<PersonalOperationsActionState>;
 
+export type JobSearchReferenceOptions = {
+  tasks: Array<{ id: string; title: string; archivedAt: string | null }>;
+};
+
+function referencesEqual(
+  left: JobSearchReference | null,
+  right: JobSearchReference | null,
+): boolean {
+  if (left === null || right === null) return left === right;
+  return left.kind === right.kind && left.id === right.id;
+}
+
 const INITIAL_STATE: PersonalOperationsActionState = { message: "", ok: false };
 
 function subscribeToMinute(onChange: () => void) {
@@ -73,12 +88,16 @@ type TargetKey = "work" | "jobSearch";
 
 export function PersonalOperationsForm({
   initial,
+  initialReference = null,
+  referenceOptions = { tasks: [] },
   disabled,
   timeContext = null,
   accountScope = null,
   action,
 }: {
   initial: Schedule;
+  initialReference?: JobSearchReference | null;
+  referenceOptions?: JobSearchReferenceOptions;
   disabled: boolean;
   timeContext?: PersonalOperationsTimeContext | null;
   accountScope?: string | null;
@@ -86,6 +105,8 @@ export function PersonalOperationsForm({
 }) {
   const [draft, setDraft] = useState<Schedule>(initial);
   const [baseline, setBaseline] = useState<Schedule>(initial);
+  const [reference, setReference] = useState<JobSearchReference | null>(initialReference);
+  const [referenceBaseline, setReferenceBaseline] = useState<JobSearchReference | null>(initialReference);
   const [localDate, setLocalDate] = useState(timeContext?.localDate ?? null);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [restoredNotice, setRestoredNotice] = useState(false);
@@ -141,7 +162,7 @@ export function PersonalOperationsForm({
     [action],
   );
   const [state, submitAction, pending] = useActionState(submit, INITIAL_STATE);
-  const submittedRef = useRef<Schedule | null>(null);
+  const submittedRef = useRef<{ schedule: Schedule; reference: JobSearchReference | null } | null>(null);
   const [ignoredState, setIgnoredState] =
     useState<PersonalOperationsActionState | null>(null);
   const inFlightRef = useRef(false);
@@ -151,7 +172,24 @@ export function PersonalOperationsForm({
   const errorRef = useRef<HTMLSpanElement>(null);
   const visibleState = ignoredState === state ? INITIAL_STATE : state;
 
-  const dirty = !schedulesEqual(baseline, draft);
+  const scheduleDirty = !schedulesEqual(baseline, draft);
+  const referenceDirty = !referencesEqual(referenceBaseline, reference);
+  const dirty = scheduleDirty || referenceDirty;
+  const referenceValue = reference ? `task:${reference.id}` : "";
+  const referenceInOptions =
+    reference === null
+    || referenceOptions.tasks.some((task) => task.id === reference.id);
+  function setReferenceValue(value: string) {
+    if (!value) {
+      setReference(null);
+      return;
+    }
+    const separator = value.indexOf(":");
+    const kind = value.slice(0, separator);
+    const id = value.slice(separator + 1);
+    if (kind !== "task" || !id) return;
+    setReference({ kind: "task", id });
+  }
   const conflicts = useMemo(
     () => getGuidanceConflicts(draft.guidance),
     [draft.guidance],
@@ -181,7 +219,8 @@ export function PersonalOperationsForm({
     const submitted = submittedRef.current;
     submittedRef.current = null;
     if (state.ok) {
-      setBaseline(submitted);
+      setBaseline(submitted.schedule);
+      setReferenceBaseline(submitted.reference);
       setRestoredNotice(false);
       clearScheduleDraft(getSessionStorage(), draftKey);
       hadDirtyRef.current = false;
@@ -365,7 +404,7 @@ export function PersonalOperationsForm({
     }
     inFlightRef.current = true;
     setIgnoredState(null);
-    submittedRef.current = draft;
+    submittedRef.current = { schedule: draft, reference };
   }
 
   let status = "All schedule changes saved.";
@@ -405,6 +444,7 @@ export function PersonalOperationsForm({
       tabIndex={-1}
     >
       <input type="hidden" name="schedule" value={JSON.stringify(draft)} />
+      <input type="hidden" name="jobSearchReferenceDirty" value={referenceDirty ? "true" : "false"} />
       <fieldset
         disabled={disabled || pending}
         className={styles.formShim}
@@ -454,6 +494,44 @@ export function PersonalOperationsForm({
             )}
 
             <DailyTargets targets={draft.targets} onTargetChange={updateTarget} />
+
+            <section className={styles.panel} aria-label="Job-search work reference">
+              <div className={styles.panelBody}>
+                <label className={styles.fieldLabel} htmlFor="job-search-reference">
+                  Job-search work reference
+                </label>
+                <select
+                  id="job-search-reference"
+                  name="jobSearchReference"
+                  value={referenceValue}
+                  onChange={(event) => setReferenceValue(event.target.value)}
+                >
+                  <option value="">No job-search task</option>
+                  {referenceOptions.tasks.length > 0 ? (
+                    <optgroup label="Tasks">
+                      {referenceOptions.tasks.map((task) => (
+                        <option key={task.id} value={`task:${task.id}`}>
+                          {task.title}
+                          {task.archivedAt ? " (archived)" : ""}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ) : null}
+                  {!referenceInOptions && reference ? (
+                    <optgroup label="Current selection">
+                      <option value={`task:${reference.id}`}>
+                        Task {reference.id} (not in the current list)
+                      </option>
+                    </optgroup>
+                  ) : null}
+                </select>
+                <p className={styles.panelDescription}>
+                  Job-search time is classified by this exact task id, never by
+                  title, and stays inside your work total. Changing the task
+                  reclassifies historical totals.
+                </p>
+              </div>
+            </section>
           </div>
 
           <ScheduleCheck
@@ -495,6 +573,7 @@ export function PersonalOperationsForm({
               onClick={() => {
                 setIgnoredState(state);
                 setDraft(baseline);
+                setReference(referenceBaseline);
                 setRestoredNotice(false);
                 clearScheduleDraft(getSessionStorage(), draftKey);
                 hadDirtyRef.current = false;

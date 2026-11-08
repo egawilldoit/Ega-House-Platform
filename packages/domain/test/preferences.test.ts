@@ -33,6 +33,7 @@ test("the supported values match the shipped CSS and views", () => {
 test("defaults preserve the pre-preferences workspace behaviour", () => {
   assert.deepEqual(DEFAULT_USER_PREFERENCES, {
     personalOperations: DEFAULT_USER_PREFERENCES.personalOperations,
+    jobSearchReference: null,
     theme: "system",
     accent: "neutral",
     density: "comfortable",
