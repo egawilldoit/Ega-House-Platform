@@ -20,6 +20,7 @@ import { TodayIntelligencePanel } from "@/components/today/today-intelligence-pa
 import { TodayKpiRow } from "@/components/today/today-kpi-row";
 import { TodayLanePanel } from "@/components/today/today-lane-panel";
 import { TodayOperatorPlan } from "@/components/today/today-operator-plan";
+import { MorningStartupPanel } from "@/components/today/morning-startup-panel";
 import { TodaySection } from "@/components/today/today-section";
 import { TodayTaskCard } from "@/components/today/today-task-card";
 import { TodayHeaderActions } from "@/components/today/today-header-actions";
@@ -34,6 +35,8 @@ import { formatDisplayDate } from "@/lib/presentation-format";
 import { isTaskCompletedStatus } from "@/lib/task-domain";
 import { getCurrentUser } from "@/lib/services/auth-service";
 import { getOperatorSnapshotData } from "@/lib/services/operator-service";
+import { getMorningStartupData } from "@/lib/services/morning-startup-service";
+import { parseStartupRetryIds } from "@/lib/morning-startup";
 import { getActiveTimerSession } from "@/lib/services/timer-service";
 import { getTaskDrawerDetail } from "@/lib/services/task-service";
 import { listTaskSubtasks } from "@/lib/services/subtask-service";
@@ -101,6 +104,8 @@ export default async function TodayPage({
     taskUpdateError?: string;
     taskUpdateSuccess?: string;
     taskUpdateTaskId?: string;
+    startup?: string;
+    startupRetry?: string | string[];
   }>;
 }) {
   const resolvedSearchParams = await searchParams;
@@ -112,6 +117,8 @@ export default async function TodayPage({
   const taskUpdateError = resolvedSearchParams.taskUpdateError?.slice(0, 180) ?? null;
   const taskUpdateSuccess = resolvedSearchParams.taskUpdateSuccess?.slice(0, 180) ?? null;
   const taskUpdateTaskId = resolvedSearchParams.taskUpdateTaskId?.slice(0, 80) ?? null;
+  const startupSkipped = resolvedSearchParams.startup === "skipped";
+  const startupRetryIds = parseStartupRetryIds(resolvedSearchParams.startupRetry);
 
   const [todayResult, healthResult, frictionResult, user, proposalResult, shellMetrics] =
     await Promise.all([
@@ -150,6 +157,13 @@ export default async function TodayPage({
   }
 
   const snapshot = todayResult.data;
+
+  // Concise after-Fajr startup panel. Its yesterday read is bounded and
+  // failure-tolerant; a failed read becomes an inline note, never a blank Today.
+  const morningStartup = await getMorningStartupData(snapshot, {
+    skipped: startupSkipped,
+    retryIds: startupRetryIds,
+  });
 
   // Bounded active-session read, only when the snapshot says a session ran. It
   // supplies startedAt for the live elapsed display; Today never computes timer
@@ -358,6 +372,8 @@ export default async function TodayPage({
       <div className="workspace-main-rail-grid">
         {/* Left / Main Column: Focus & Execution */}
         <div className="flex flex-col gap-4">
+          <MorningStartupPanel model={morningStartup} />
+
           <StartHerePanel
             task={todayData.startHere}
             returnTo={returnTo}
