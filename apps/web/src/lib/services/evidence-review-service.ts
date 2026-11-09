@@ -84,13 +84,16 @@ export async function getWebEvidenceReview(options: {
         let searchTarget = 0;
         let jobSearchConfigured = true;
         for (const monday of weeks) {
-          const midWeekIso = new Date(Date.parse(`${monday}T00:00:00Z`) + 3 * dayMs).toISOString();
+          // Last instant of this calendar week in the owner timezone, so the
+          // whole week is counted (a mid-week nowIso would clip Fri–Sun).
+          const weekWindow = getWeekWindow(tz, monday);
+          const nowIso = new Date(Date.parse(weekWindow.weekEndExclusiveUtcIso) - 1).toISOString();
           const progress = calculateWorkTargetProgress({
             sessions: sessionsResult.data,
             personalOperations: preferencesState.preferences.personalOperations,
             jobSearchReference: preferencesState.preferences.jobSearchReference,
             timezone: tz,
-            nowIso: midWeekIso,
+            nowIso,
           });
           jobSearchConfigured = progress.jobSearchConfigured;
           for (const day of progress.days) {
