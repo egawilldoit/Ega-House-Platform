@@ -118,13 +118,18 @@ export class SupabaseDailyCheckinRepository implements DailyCheckinRepository {
     startLocalDate: string,
     endLocalDate: string,
   ) {
-    const { data, error } = await this.supabase
-      .from(TABLE)
-      .select(COLUMNS)
-      .eq("owner_user_id", actor.userId)
-      .gte("local_date", startLocalDate)
-      .lte("local_date", endLocalDate)
-      .order("local_date", { ascending: true });
+    const load = (columns: string) =>
+      this.supabase
+        .from(TABLE)
+        .select(columns)
+        .eq("owner_user_id", actor.userId)
+        .gte("local_date", startLocalDate)
+        .lte("local_date", endLocalDate)
+        .order("local_date", { ascending: true });
+    let { data, error } = await load(COLUMNS);
+    if (error && isMissingRoutineColumn(error)) {
+      ({ data, error } = await load(COLUMNS_WITHOUT_ROUTINE));
+    }
     if (error) {
       return { ok: false as const, error: sanitizeSupabaseError(error) };
     }

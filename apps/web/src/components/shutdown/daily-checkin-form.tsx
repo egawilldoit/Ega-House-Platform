@@ -218,7 +218,6 @@ export function DailyCheckinForm({
           <label className="inline-flex min-h-11 items-center gap-2">
             <input
               type="checkbox"
-              name="routine.runCompleted"
               data-routine-field="runCompleted"
               aria-label="Run completed"
               checked={runDone === true}
@@ -232,7 +231,6 @@ export function DailyCheckinForm({
           <label className="inline-flex min-h-11 items-center gap-2">
             <input
               type="checkbox"
-              name="routine.runSkipped"
               data-routine-field="runSkipped"
               aria-label="Run skipped"
               checked={runSkipped === true}
@@ -243,6 +241,10 @@ export function DailyCheckinForm({
             />
             Run skipped
           </label>
+          {/* Explicit tristate values: unchecked boxes serialize nothing, so
+              hidden inputs carry true/false/null deterministically. */}
+          <input type="hidden" name="routine.runCompleted" value={runDone === null ? "" : String(runDone)} />
+          <input type="hidden" name="routine.runSkipped" value={runSkipped === null ? "" : String(runSkipped)} />
         </div>
       </fieldset>
 
