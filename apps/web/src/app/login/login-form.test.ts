@@ -146,6 +146,10 @@ const authSpecSource = readFileSync(
   resolve(process.cwd(), "tests/auth-session.e2e.spec.ts"),
   "utf8",
 );
+const authHelperSource = readFileSync(
+  resolve(process.cwd(), "tests/pwa-fixtures.ts"),
+  "utf8",
+);
 
 test("login form exposes exactly one password input labelled exactly 'Password'", () => {
   const passwordInputs = loginFormSource.match(/type=\{showPassword \? "text" : "password"\}/g) ?? [];
@@ -158,6 +162,7 @@ test("reveal toggle accessible name contains 'password' (why exact match is requ
 });
 
 test("auth-session E2E uses an exact password label match", () => {
-  assert.match(authSpecSource, /getByLabel\("Password", \{ exact: true \}\)/);
-  assert.doesNotMatch(authSpecSource, /getByLabel\("Password"\)\./);
+  assert.match(authSpecSource, /await signInPwaOwner\(page, owners\.ownerA,/);
+  assert.match(authHelperSource, /getByLabel\("Password", \{ exact: true \}\)/);
+  assert.doesNotMatch(authHelperSource, /getByLabel\("Password"\)\./);
 });

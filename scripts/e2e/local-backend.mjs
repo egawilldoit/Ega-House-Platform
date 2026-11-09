@@ -65,7 +65,9 @@ async function start() {
   await mkdir(stateDirectory, { mode: 0o700 }); // Existing state requires an explicit stop; never take it over.
   const runId = `ega-e2e-${randomBytes(6).toString("hex")}`;
   await mkdir(new URL("supabase/", stateDirectory));
+  // Keep CLI state removable by this user even when Docker requires sudo.
   await mkdir(new URL("supabase/.temp/", stateDirectory));
+  await mkdir(new URL("supabase/.branches/", stateDirectory));
   const template = await readFile(new URL("supabase.toml", import.meta.url), "utf8");
   await writeFile(new URL("supabase/config.toml", stateDirectory), template.replace("REPLACED_BY_RUN_ID", runId));
   try {
