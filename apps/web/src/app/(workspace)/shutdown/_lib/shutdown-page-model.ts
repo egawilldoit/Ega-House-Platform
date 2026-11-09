@@ -1,4 +1,5 @@
 import { getShutdownData } from "@/lib/services/shutdown-service";
+import { getWebDailyCheckin } from "@/lib/services/checkin-service";
 import { getCurrentUser } from "@/lib/services/auth-service";
 import { getWebTimeContext } from "@/lib/services/time-context-service";
 
@@ -18,7 +19,13 @@ export async function getShutdownPageModel(searchParams: ShutdownSearchParams) {
     timezone: timeContext?.timezone,
     ownerUserId: user?.id,
   });
-  return { actionError, actionSuccess, shutdownResult };
+  const checkinResult = timeContext?.localDate
+    ? await getWebDailyCheckin({ localDate: timeContext.localDate }).catch(() => ({
+        checkin: null as null,
+        errorMessage: null as string | null,
+      }))
+    : { checkin: null as null, errorMessage: null as string | null };
+  return { actionError, actionSuccess, shutdownResult, checkinResult };
 }
 
 export type ShutdownPageModel = Awaited<ReturnType<typeof getShutdownPageModel>>;

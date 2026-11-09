@@ -575,6 +575,13 @@
       "when": 1787880000052,
       "tag": "0089_job_search_reference",
       "breakpoints": true
+    },
+    {
+      "idx": 103,
+      "version": "7",
+      "when": 1787880000053,
+      "tag": "0090_daily_checkins",
+      "breakpoints": true
     }
   ]
 }

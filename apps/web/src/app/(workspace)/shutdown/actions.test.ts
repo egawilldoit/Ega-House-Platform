@@ -3,7 +3,9 @@ import test from "node:test";
 import { vi } from "vitest";
 import { queueTaskForTomorrow } from "@/lib/services/shutdown-service";
 
-import { getShutdownReturnPath, carryForwardTaskToTomorrowAction } from "./actions";
+import { saveWebDailyCheckin } from "@/lib/services/checkin-service";
+
+import { getShutdownReturnPath, carryForwardTaskToTomorrowAction, saveDailyCheckinAction } from "./actions";
 
 vi.mock("next/cache", () => ({
   revalidatePath: () => {},
@@ -25,7 +27,15 @@ vi.mock("@/lib/services/shutdown-service", () => ({
 }));
 
 vi.mock("@/lib/services/time-context-service", () => ({
-  getWebTimeContext: vi.fn(async () => ({ localDate: "2026-04-21" })),
+  getWebTimeContext: vi.fn(async () => ({ localDate: "2026-04-21", timezone: "Africa/Casablanca" })),
+}));
+
+vi.mock("@/lib/services/checkin-service", () => ({
+  saveWebDailyCheckin: vi.fn(async () => ({
+    checkin: null,
+    overtimeAdvisory: null,
+    errorMessage: null,
+  })),
 }));
 
 test("shutdown actions keep return paths scoped to /shutdown", async () => {
@@ -45,6 +55,52 @@ async function captureRedirect(run: () => Promise<void>) {
     return match ? match[1] : message;
   }
 }
+
+test("daily check-in action saves bounded fields and surfaces the advisory", async () => {
+  vi.mocked(saveWebDailyCheckin).mockResolvedValueOnce({
+    checkin: null,
+    overtimeAdvisory: "This week already has 3 overtime evenings.",
+    errorMessage: null,
+  });
+  const formData = new FormData();
+  formData.set("localDate", "2026-04-21");
+  formData.set("outcomes", "Shipped the planner");
+  formData.set("personalMinutes", "30");
+  formData.set("overtimeMinutes", "45");
+  formData.set("overtimeReason", "Release");
+
+  const url = await captureRedirect(async () => {
+    await saveDailyCheckinAction(formData);
+  });
+  assert.ok(url.includes("actionSuccess=Check-in+saved"));
+  assert.ok(url.includes("3+overtime+evenings"));
+  const input = vi.mocked(saveWebDailyCheckin).mock.lastCall?.[0];
+  assert.equal(input?.localDate, "2026-04-21");
+  assert.equal(input?.timezone, "Africa/Casablanca");
+  assert.equal(input?.patch.personalMinutes, 30);
+  assert.equal(input?.patch.overtimeMinutes, 45);
+});
+
+test("daily check-in action rejects non-integer minutes and surfaces service errors", async () => {
+  const bad = new FormData();
+  bad.set("personalMinutes", "1.5");
+  const badUrl = await captureRedirect(async () => {
+    await saveDailyCheckinAction(bad);
+  });
+  assert.ok(badUrl.includes("actionError="));
+  assert.ok(badUrl.includes("whole+minutes"));
+
+  vi.mocked(saveWebDailyCheckin).mockResolvedValueOnce({
+    checkin: null,
+    overtimeAdvisory: null,
+    errorMessage: "Overtime needs a short reason.",
+  });
+  const formData = new FormData();
+  const url = await captureRedirect(async () => {
+    await saveDailyCheckinAction(formData);
+  });
+  assert.ok(url.includes("actionError=Overtime+needs+a+short+reason"));
+});
 
 test("carry intent success message names the task and target date", async () => {
   const formData = new FormData();
