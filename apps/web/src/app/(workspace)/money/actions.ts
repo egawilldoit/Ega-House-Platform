@@ -74,7 +74,10 @@ export async function createExpenseAction(
       error: result.errorMessage,
     };
   }
+  // The quick sheet also lives on Today, whose money card derives from this
+  // ledger; revalidate both surfaces so neither shows a stale total.
   revalidatePath("/money");
+  revalidatePath("/today");
   return {
     ok: true,
     expense: result.data.expense,
