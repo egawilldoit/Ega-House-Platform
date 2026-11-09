@@ -42,6 +42,10 @@ export function CategoryCapsForm({ caps, action, returnTo }: CategoryCapsFormPro
     for (const category of EXPENSE_CATEGORY_VALUES) {
       const raw = values[category].trim();
       if (raw === "") continue;
+      // Explicit zero is a valid cap (empty means unset); the shared amount
+      // parser requires a positive amount for expenses, so the zero check is
+      // caps-specific, mirroring the server action.
+      if (raw === "0") continue;
       const parsed = parseMadAmountToMinor(raw);
       if (!parsed.ok) {
         setError(`${humanize(category)}: ${parsed.error}`);
