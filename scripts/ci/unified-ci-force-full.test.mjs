@@ -212,6 +212,10 @@ test("web keeps only build and browser contracts; typecheck and tests moved out"
   assert.doesNotMatch(typecheckSection, /npm run build/);
 });
 
+test("web pins a supported Playwright runner instead of the moving Ubuntu alias", () => {
+  assert.match(jobSection("web"), /^    runs-on: ubuntu-24\.04$/m);
+});
+
 test("web runs real disposable journeys and verifies reports before unconditional cleanup", () => {
   const webSection = jobSection("web");
   const start = webSection.indexOf("run: node scripts/e2e/local-backend.mjs start");

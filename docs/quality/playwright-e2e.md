@@ -96,7 +96,9 @@ Production-build execution and repeated hosted timing remain separate evidence.
 
 ## CI and limits
 
-The existing required `web` job creates the stack, builds with its environment,
+The required `web` job pins Ubuntu 24.04, which the installed Playwright supports;
+the moving `ubuntu-latest` alias can select an unsupported browser platform.
+The job creates the stack, builds with its environment,
 runs smoke and the existing workspace shell contract, runs authenticated
 journeys, verifies both reports in separate `!cancelled()` steps even after
 browser failures, and tears down with `always()`. Browser steps clear old reports
