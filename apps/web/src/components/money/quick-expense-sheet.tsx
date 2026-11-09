@@ -107,16 +107,6 @@ export function QuickExpenseSheet({ ownerKey, submitExpense, onCreated }: QuickE
     submittingRef.current = isSubmitting;
   }, [isSubmitting, ownerScope]);
 
-  // Prefill the remembered amount for the selected category (e.g. 22 MAD for
-  // coffee) only while the amount field is untouched.
-  useEffect(() => {
-    if (!open || !category) return;
-    const remembered = readRememberedAmount(ownerKey, category);
-    if (remembered && !amountInput) {
-      setAmountInput(remembered);
-    }
-  }, [open, category, ownerKey, amountInput]);
-
   function openSheet() {
     const activeElement = document.activeElement;
     lastFocusedElementRef.current =
@@ -126,6 +116,12 @@ export function QuickExpenseSheet({ ownerKey, submitExpense, onCreated }: QuickE
     captureRequestScope();
     setFormError(null);
     setSuccess(false);
+    // Prefill the remembered amount for the selected category (e.g. 22 MAD
+    // for coffee) only into an untouched amount field.
+    if (category && !amountInput) {
+      const remembered = readRememberedAmount(ownerKey, category);
+      if (remembered) setAmountInput(remembered);
+    }
     setOpen(true);
   }
 
@@ -164,7 +160,11 @@ export function QuickExpenseSheet({ ownerKey, submitExpense, onCreated }: QuickE
       paymentMethod,
     });
     if (!validation.ok) {
-      const { occurredAtInput: _occurred, ...fieldErrors } = validation.fieldErrors;
+      // The occurred-at error key has no visible field in quick entry (time
+      // is always "now"); only surface errors for rendered fields.
+      const fieldErrors = Object.fromEntries(
+        Object.entries(validation.fieldErrors).filter(([key]) => key !== "occurredAtInput"),
+      );
       setFieldErrors(fieldErrors);
       return;
     }
