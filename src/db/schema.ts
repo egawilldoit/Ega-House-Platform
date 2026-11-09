@@ -1390,3 +1390,47 @@ export const personalExpenses = pgTable(
     ),
   ],
 );
+
+/**
+ * Canonical daily check-in (PO-05, issue #345). One qualitative record per
+ * owner/local date; timer hours and task completion remain in their canonical
+ * stores and are derived at read time, never copied here.
+ */
+export const dailyCheckins = pgTable(
+  "daily_checkins",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    ownerUserId: uuid("owner_user_id").default(sql`auth.uid()`).notNull(),
+    localDate: date("local_date").notNull(),
+    timezone: varchar("timezone", { length: 64 }).notNull(),
+    outcomes: varchar("outcomes", { length: 500 }),
+    personalMinutes: integer("personal_minutes"),
+    notes: varchar("notes", { length: 1000 }),
+    overtimeMinutes: integer("overtime_minutes"),
+    overtimeReason: varchar("overtime_reason", { length: 300 }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("daily_checkins_owner_date_unique").on(
+      table.ownerUserId,
+      table.localDate,
+    ),
+    index("daily_checkins_owner_date_idx").on(
+      table.ownerUserId,
+      table.localDate.desc(),
+    ),
+    check(
+      "daily_checkins_personal_minutes_check",
+      sql`${table.personalMinutes} is null or (${table.personalMinutes} >= 0 and ${table.personalMinutes} <= 1440)`,
+    ),
+    check(
+      "daily_checkins_overtime_minutes_check",
+      sql`${table.overtimeMinutes} is null or (${table.overtimeMinutes} >= 0 and ${table.overtimeMinutes} <= 1440)`,
+    ),
+    check(
+      "daily_checkins_overtime_reason_check",
+      sql`${table.overtimeMinutes} is null or ${table.overtimeMinutes} = 0 or (${table.overtimeReason} is not null and length(btrim(${table.overtimeReason})) > 0)`,
+    ),
+  ],
+);

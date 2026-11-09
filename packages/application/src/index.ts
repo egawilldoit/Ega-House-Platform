@@ -47,6 +47,8 @@ export * from "./preferences/user-preferences";
 export * from "./work-targets/progress";
 export * from "./expenses/ports";
 export * from "./expenses/service";
+export * from "./checkins/ports";
+export * from "./checkins/service";
 export * from "./weekly-review/ports";
 export * from "./weekly-review/read-model";
 export * from "./weekly-review/draft";
