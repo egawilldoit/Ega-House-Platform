@@ -11,6 +11,8 @@ import { CategoryCapsForm } from "./_components/category-caps-form";
 import { saveCategoryCapsAction } from "./actions";
 import { getWebUserPreferencesState } from "@/lib/services/user-preferences-service";
 import { getLocalDateInTimezone } from "@ega/domain";
+import { getExpenseSummary } from "@ega/application";
+import type { ExpenseCategory } from "@ega/domain/expenses";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Money", description: "Your personal expense ledger." };
@@ -36,34 +38,89 @@ export default async function MoneyPage({ searchParams }: Props) {
   // Monthly caps are advisory progress targets in owner preferences.
   const prefsState = await getWebUserPreferencesState().catch(() => null);
   const caps = prefsState?.preferences.categoryCaps ?? {};
-  let capsNote: string | null = null;
-  const spentByCategory: Record<string, number> = {};
-  try {
-    const localToday = getLocalDateInTimezone(new Date(), timezone);
-    const monthListed = await listExpenses(
-      createAuthenticatedActor(user.id),
-      new SupabaseExpenseRepository(client),
-      { from: `${localToday.slice(0, 7)}-01`, to: localToday, limit: "100" },
-      { timezone },
-    );
-    if (monthListed.ok) {
-      if (monthListed.data.pagination.hasMore) {
-        capsNote = "Cap progress is partial (over 100 expenses this month).";
-      }
-      for (const expense of monthListed.data.expenses) {
-        spentByCategory[expense.category] = (spentByCategory[expense.category] ?? 0) + expense.amountMinor;
-      }
-    } else {
-      capsNote = "Cap progress unavailable right now.";
-    }
-  } catch {
-    capsNote = "Cap progress unavailable right now.";
-  }
+  // Actual spending summaries from the canonical ledger (PO-09), computed
+  // server-side in bounded pages. Failures render as unavailable, never zero.
+  const localToday = getLocalDateInTimezone(new Date(), timezone);
+  const summaryResult = await getExpenseSummary(
+    createAuthenticatedActor(user.id),
+    new SupabaseExpenseRepository(client),
+    { localDate: localToday, timezone },
+  ).catch(() => null);
+  const summary = summaryResult?.ok ? summaryResult.data : null;
+  const spentByCategory = summary?.monthToDate.totalsByCategory ?? {};
+  const capsNote = summary
+    ? summary.monthToDate.truncated
+      ? "Cap progress is a lower bound (over 10,000 expenses this month)."
+      : null
+    : "Spending summaries unavailable right now.";
   const cappedCategories = Object.entries(caps).filter(
     ([, cap]) => typeof cap === "number",
-  ) as Array<[string, number]>;
+  ) as Array<[ExpenseCategory, number]>;
   return <main className="mx-auto w-full max-w-5xl px-4 py-6 sm:px-6">
     <WorkspacePageHeader title="Money" description="Your personal expense ledger." />
+
+    <section aria-labelledby="money-summary-heading" className="mt-6 rounded-lg border border-ega-border p-5">
+      <h2 id="money-summary-heading" className="text-[length:var(--text-section)] font-semibold tracking-[var(--tracking-tight)]">
+        Recorded spending
+      </h2>
+      {summary ? (
+        <>
+          <dl className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <div>
+              <dt className="text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">Today</dt>
+              <dd className="text-[length:var(--text-body)] font-medium">
+                {new Intl.NumberFormat("fr-MA", { style: "currency", currency: "MAD", minimumFractionDigits: 2 }).format(summary.day.totalMinor / 100)}
+                <span className="block text-[length:var(--text-meta)] font-normal text-[color:var(--ega-text-secondary)]">{summary.day.recordCount} recorded</span>
+              </dd>
+            </div>
+            <div>
+              <dt className="text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">This week</dt>
+              <dd className="text-[length:var(--text-body)] font-medium">
+                {new Intl.NumberFormat("fr-MA", { style: "currency", currency: "MAD", minimumFractionDigits: 2 }).format(summary.weekToDate.totalMinor / 100)}
+                <span className="block text-[length:var(--text-meta)] font-normal text-[color:var(--ega-text-secondary)]">{summary.weekToDate.recordCount} recorded</span>
+              </dd>
+            </div>
+            <div>
+              <dt className="text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">This month</dt>
+              <dd className="text-[length:var(--text-body)] font-medium">
+                {new Intl.NumberFormat("fr-MA", { style: "currency", currency: "MAD", minimumFractionDigits: 2 }).format(summary.monthToDate.totalMinor / 100)}
+                <span className="block text-[length:var(--text-meta)] font-normal text-[color:var(--ega-text-secondary)]">{summary.monthToDate.recordCount} recorded{summary.monthToDate.truncated ? " (lower bound)" : ""}</span>
+              </dd>
+            </div>
+            <div>
+              <dt className="text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">Coffee this month</dt>
+              <dd className="text-[length:var(--text-body)] font-medium">
+                {new Intl.NumberFormat("fr-MA", { style: "currency", currency: "MAD", minimumFractionDigits: 2 }).format(summary.coffee.totalMinor / 100)}
+                <span className="block text-[length:var(--text-meta)] font-normal text-[color:var(--ega-text-secondary)]">{summary.coffee.recordCount} recorded</span>
+              </dd>
+            </div>
+          </dl>
+          {summary.monthToDate.recordCount === 0 ? (
+            <p className="mt-3 text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
+              Nothing recorded this month yet. Totals show recorded MAD only — they do not claim you spent nothing.
+            </p>
+          ) : null}
+          {Object.keys(summary.monthToDate.totalsByCategory).length > 0 ? (
+            <ul className="mt-3 flex flex-col gap-1.5">
+              {Object.entries(summary.monthToDate.totalsByCategory)
+                .sort((a, b) => (b[1] ?? 0) - (a[1] ?? 0))
+                .map(([category, minor]) => (
+                  <li key={category} className="flex flex-wrap items-baseline gap-x-3 text-[length:var(--text-body)]">
+                    <span className="font-medium">{category.replaceAll("_", " ")}</span>
+                    <span>
+                      {new Intl.NumberFormat("fr-MA", { style: "currency", currency: "MAD", minimumFractionDigits: 2 }).format((minor ?? 0) / 100)}
+                    </span>
+                  </li>
+                ))}
+            </ul>
+          ) : null}
+        </>
+      ) : (
+        <p className="mt-3 text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
+          Spending summaries unavailable right now. Your ledger below is unaffected.
+        </p>
+      )}
+    </section>
 
     <section aria-labelledby="money-caps-heading" className="mt-6 rounded-lg border border-ega-border p-5">
       <h2 id="money-caps-heading" className="text-[length:var(--text-section)] font-semibold tracking-[var(--tracking-tight)]">
