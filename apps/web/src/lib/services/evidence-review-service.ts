@@ -16,6 +16,7 @@ import {
 import type { ExecutionEvidenceWindow } from "@/lib/services/execution-evidence-service";
 import { getWebUserPreferencesState } from "@/lib/services/user-preferences-service";
 import { getWebTimeContext } from "@/lib/services/time-context-service";
+import { getWeekWindow } from "@ega/domain/time-context";
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
@@ -65,31 +66,50 @@ export async function getWebEvidenceReview(options: {
           window,
         });
         if (sessionsResult.errorMessage || !sessionsResult.data) return null;
-        const progress = calculateWorkTargetProgress({
-          sessions: sessionsResult.data,
-          personalOperations: preferencesState.preferences.personalOperations,
-          jobSearchReference: preferencesState.preferences.jobSearchReference,
-          timezone: tz,
-          nowIso: new Date(endMs + dayMs).toISOString(),
-        });
-        // Sum the daily entries inside the requested range.
+        // calculateWorkTargetProgress computes one calendar week per call, so
+        // aggregate per week covering the range (up to 35 days = 6 weeks).
+        const firstMonday = getWeekWindow(tz, start).weekStart;
+        const weeks: string[] = [];
+        for (let monday = firstMonday; monday <= end; ) {
+          weeks.push(monday);
+          const next = new Date(Date.parse(`${monday}T00:00:00Z`) + 7 * dayMs)
+            .toISOString()
+            .slice(0, 10);
+          monday = next;
+          if (weeks.length > 7) break;
+        }
         let trackedSeconds = 0;
         let jobSearchSeconds = 0;
         let workTarget = 0;
         let searchTarget = 0;
-        for (const day of progress.days) {
-          if (day.date < start || day.date > end) continue;
-          trackedSeconds += day.actualWorkMinutes * 60;
-          jobSearchSeconds += day.actualJobSearchMinutes * 60;
-          workTarget += day.targetWorkMinutes;
-          searchTarget += day.targetJobSearchMinutes;
+        let jobSearchConfigured = true;
+        for (const monday of weeks) {
+          const midWeekIso = new Date(Date.parse(`${monday}T00:00:00Z`) + 3 * dayMs).toISOString();
+          const progress = calculateWorkTargetProgress({
+            sessions: sessionsResult.data,
+            personalOperations: preferencesState.preferences.personalOperations,
+            jobSearchReference: preferencesState.preferences.jobSearchReference,
+            timezone: tz,
+            nowIso: midWeekIso,
+          });
+          jobSearchConfigured = progress.jobSearchConfigured;
+          for (const day of progress.days) {
+            if (day.date < start || day.date > end) continue;
+            trackedSeconds += day.actualWorkMinutes * 60;
+            jobSearchSeconds += day.actualJobSearchMinutes * 60;
+            workTarget += day.targetWorkMinutes;
+            searchTarget += day.targetJobSearchMinutes;
+          }
         }
+        // Search can never exceed the total: different reads could disagree
+        // by rounding, so cap the subset to the tracked total.
+        jobSearchSeconds = Math.min(jobSearchSeconds, trackedSeconds);
         return {
           trackedSeconds,
           jobSearchSeconds,
           workTargetMinutes: workTarget,
           jobSearchTargetMinutes: searchTarget,
-          jobSearchConfigured: progress.jobSearchConfigured,
+          jobSearchConfigured,
         };
       } catch {
         return null;
