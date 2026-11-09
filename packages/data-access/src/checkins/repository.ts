@@ -135,7 +135,7 @@ export class SupabaseDailyCheckinRepository implements DailyCheckinRepository {
     }
     return {
       ok: true as const,
-      value: ((data ?? []) as DailyCheckinRow[]).map(toCheckin),
+      value: ((data ?? []) as unknown as DailyCheckinRow[]).map(toCheckin),
     };
   }
 

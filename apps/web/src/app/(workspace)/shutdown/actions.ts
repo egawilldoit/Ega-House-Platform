@@ -70,8 +70,8 @@ function parseRoutineField(raw: FormDataEntryValue | null): number | null {
 function parseRoutinePatch(formData: FormData) {
   const routine: {
     runMinutes?: number | null;
-    runCompleted?: boolean;
-    runSkipped?: boolean;
+    runCompleted?: boolean | null;
+    runSkipped?: boolean | null;
     chessMinutes?: number | null;
     sleepHours?: number | null;
     leisureMinutes?: number | null;
