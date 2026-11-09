@@ -12,6 +12,21 @@ import {
  * (owner, local_date); partial saves preserve fields the caller omitted.
  */
 
+/**
+ * Optional bounded routine metrics (PO-10, issue #351). Every field is
+ * nullable: null = unknown/unrecorded (never a failed habit or zero),
+ * an explicit value — including 0 — is a recorded fact. Run minutes never
+ * create timer sessions and leisure/chores never count as work time.
+ */
+export type RoutineMetrics = Readonly<{
+  runMinutes: number | null;
+  runCompleted: boolean | null;
+  runSkipped: boolean | null;
+  chessMinutes: number | null;
+  sleepHours: number | null;
+  leisureMinutes: number | null;
+}>;
+
 export type DailyCheckin = Readonly<{
   localDate: string;
   timezone: string;
@@ -20,6 +35,7 @@ export type DailyCheckin = Readonly<{
   notes: string | null;
   overtimeMinutes: number | null;
   overtimeReason: string | null;
+  routine: RoutineMetrics | null;
   createdAt: string;
   updatedAt: string;
 }>;
@@ -31,7 +47,112 @@ export type DailyCheckinPatch = Readonly<{
   notes?: string | null;
   overtimeMinutes?: number | null;
   overtimeReason?: string | null;
+  routine?: Partial<RoutineMetrics> | null;
 }>;
+
+export const EMPTY_ROUTINE_METRICS: RoutineMetrics = Object.freeze({
+  runMinutes: null,
+  runCompleted: null,
+  runSkipped: null,
+  chessMinutes: null,
+  sleepHours: null,
+  leisureMinutes: null,
+});
+
+/** Nominal run sessions per week for the 14-day experiment. */
+export const ROUTINE_WEEKLY_RUN_TARGET = 3;
+
+const ROUTINE_KEYS = [
+  "runMinutes",
+  "runCompleted",
+  "runSkipped",
+  "chessMinutes",
+  "sleepHours",
+  "leisureMinutes",
+] as const;
+
+/** Parses a candidate routine object; unknown keys and bad types rejected. */
+export function parseRoutineMetrics(
+  raw: unknown,
+):
+  | Readonly<{ ok: true; value: Partial<RoutineMetrics> }>
+  | Readonly<{ ok: false; field: string; message: string }> {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return { ok: false, field: "routine", message: "Routine values are not readable." };
+  }
+  const value = raw as Record<string, unknown>;
+  for (const key of Object.keys(value)) {
+    if (!(ROUTINE_KEYS as readonly string[]).includes(key)) {
+      return { ok: false, field: "routine", message: "Routine has an unknown field." };
+    }
+  }
+  const parsed: { [K in (typeof ROUTINE_KEYS)[number]]?: RoutineMetrics[K] } = {};
+  for (const key of ROUTINE_KEYS) {
+    if (!(key in value) || value[key] === undefined) continue;
+    const fieldValue = value[key];
+    if (fieldValue === null) {
+      parsed[key] = null;
+      continue;
+    }
+    if (key === "runCompleted" || key === "runSkipped") {
+      if (typeof fieldValue !== "boolean") {
+        return { ok: false, field: `routine.${key}`, message: "Use true or false." };
+      }
+      parsed[key] = fieldValue;
+      continue;
+    }
+    if (typeof fieldValue !== "number" || fieldValue < 0) {
+      return { ok: false, field: `routine.${key}`, message: "Use values of zero or more." };
+    }
+    if (key === "sleepHours") {
+      // Sleep may use half hours; anything finer is not recorded.
+      if (fieldValue > 24 || !Number.isInteger(fieldValue * 2)) {
+        return { ok: false, field: "routine.sleepHours", message: "Sleep is 0 to 24 hours in half-hour steps." };
+      }
+    } else {
+      if (!Number.isInteger(fieldValue)) {
+        return { ok: false, field: `routine.${key}`, message: "Use whole minutes." };
+      }
+      if (fieldValue > DAILY_CHECKIN_MINUTES_MAX) {
+        return { ok: false, field: `routine.${key}`, message: `Use at most ${DAILY_CHECKIN_MINUTES_MAX} minutes.` };
+      }
+    }
+    parsed[key] = fieldValue;
+  }
+  return { ok: true, value: parsed };
+}
+
+/** Field-wise merge of a routine patch onto the stored routine. */
+export function mergeRoutineMetrics(
+  existing: RoutineMetrics | null,
+  patch: Partial<RoutineMetrics> | null,
+): RoutineMetrics | null {
+  if (patch === null) return null;
+  if (Object.keys(patch).length === 0) return existing;
+  return { ...EMPTY_ROUTINE_METRICS, ...(existing ?? {}), ...patch };
+}
+
+/**
+ * Weekly run derivation from daily records: counts explicit completions
+ * (never minutes, never timer sessions). Skips and unknowns are excluded
+ * from both the count and any inferred failure state.
+ */
+export function countWeeklyRunSessions(
+  records: Array<{ localDate: string; routine: RoutineMetrics | null }>,
+  weekStartLocalDate: string,
+  weekEndLocalDate: string,
+): Readonly<{ completedSessions: number; totalRunMinutes: number }> {
+  let completedSessions = 0;
+  let totalRunMinutes = 0;
+  for (const record of records) {
+    if (record.localDate < weekStartLocalDate || record.localDate > weekEndLocalDate) continue;
+    if (record.routine?.runCompleted !== true) continue;
+    completedSessions += 1;
+    const minutes = record.routine.runMinutes;
+    if (minutes !== null && minutes !== undefined) totalRunMinutes += minutes;
+  }
+  return { completedSessions, totalRunMinutes };
+}
 
 export const DAILY_CHECKIN_MINUTES_MIN = 0;
 export const DAILY_CHECKIN_MINUTES_MAX = 1440;
@@ -94,6 +215,7 @@ export function parseDailyCheckinPatch(input: unknown): DailyCheckinParseResult 
     notes?: string | null;
     overtimeMinutes?: number | null;
     overtimeReason?: string | null;
+    routine?: Partial<RoutineMetrics> | null;
   } = {};
 
   if ("outcomes" in value && value.outcomes !== undefined) {
@@ -120,6 +242,15 @@ export function parseDailyCheckinPatch(input: unknown): DailyCheckinParseResult 
     const parsed = parseOptionalText(value.overtimeReason, "overtimeReason", DAILY_CHECKIN_OVERTIME_REASON_MAX_LENGTH);
     if (!parsed.ok) return parsed;
     patch.overtimeReason = parsed.value;
+  }
+  if ("routine" in value && value.routine !== undefined) {
+    if (value.routine === null) {
+      patch.routine = null;
+    } else {
+      const parsed = parseRoutineMetrics(value.routine);
+      if (!parsed.ok) return parsed;
+      patch.routine = parsed.value;
+    }
   }
 
   return { ok: true, value: patch };
@@ -183,6 +314,10 @@ export function mergeDailyCheckinPatch(
       patch.overtimeMinutes === undefined ? (existing?.overtimeMinutes ?? null) : patch.overtimeMinutes,
     overtimeReason:
       patch.overtimeReason === undefined ? (existing?.overtimeReason ?? null) : patch.overtimeReason,
+    routine:
+      patch.routine === undefined
+        ? (existing?.routine ?? null)
+        : mergeRoutineMetrics(existing?.routine ?? null, patch.routine),
     createdAt: existing?.createdAt ?? nowIso,
     updatedAt: nowIso,
   };

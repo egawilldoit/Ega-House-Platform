@@ -55,6 +55,50 @@ function parseOptionalMinutes(raw: FormDataEntryValue | null): number | null | "
   return Number.isInteger(parsed) ? parsed : "invalid";
 }
 
+function parseRoutineField(raw: FormDataEntryValue | null): number | null {
+  const text = String(raw ?? "").trim();
+  if (text === "") return null;
+  const parsed = Number(text);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+
+/**
+ * Routine metrics (PO-10, issue #351) ride as `routine.<field>` form keys.
+ * Only keys actually present are patched, so unknown fields stay unknown
+ * instead of being silently overwritten with null by a partial form.
+ */
+function parseRoutinePatch(formData: FormData) {
+  const routine: {
+    runMinutes?: number | null;
+    runCompleted?: boolean | null;
+    runSkipped?: boolean | null;
+    chessMinutes?: number | null;
+    sleepHours?: number | null;
+    leisureMinutes?: number | null;
+  } = {};
+  const fields = ["runMinutes", "chessMinutes", "sleepHours", "leisureMinutes"] as const;
+  for (const target of fields) {
+    const key = `routine.${target}`;
+    if (formData.has(key)) routine[target] = parseRoutineField(formData.get(key));
+  }
+  // Hidden inputs serialize the tristate: "true"/"false" explicitly, "" for
+  // unknown. (Unchecked checkboxes alone would serialize nothing and could
+  // never clear a previously stored value.)
+  const parseTristate = (key: string): boolean | null | undefined => {
+    const raw = formData.get(key);
+    if (raw === null) return undefined;
+    if (raw === "true") return true;
+    if (raw === "false") return false;
+    if (raw === "") return null;
+    return undefined;
+  };
+  const runCompleted = parseTristate("routine.runCompleted");
+  const runSkipped = parseTristate("routine.runSkipped");
+  if (runCompleted !== undefined) routine.runCompleted = runCompleted;
+  if (runSkipped !== undefined) routine.runSkipped = runSkipped;
+  return routine;
+}
+
 export async function saveDailyCheckinAction(formData: FormData) {
   const returnPath = await getShutdownReturnPath(formData.get("returnTo"));
   const timeContext = await getWebTimeContext().catch(() => null);
@@ -76,12 +120,14 @@ export async function saveDailyCheckinAction(formData: FormData) {
     notes: string | null;
     overtimeMinutes: number | null;
     overtimeReason: string | null;
+    routine: Record<string, number | null | boolean>;
   } = {
     outcomes: String(formData.get("outcomes") ?? ""),
     personalMinutes: personalMinutes ?? null,
     notes: String(formData.get("notes") ?? ""),
     overtimeMinutes: overtimeMinutes ?? null,
     overtimeReason: String(formData.get("overtimeReason") ?? ""),
+    routine: parseRoutinePatch(formData),
   };
 
   const result = await saveWebDailyCheckin({ localDate, timezone, patch });
