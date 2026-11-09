@@ -166,6 +166,7 @@ describe("registerMcpReadTools", () => {
       "goals.read", "goals.create", "goals.update",
       "tasks.read", "tasks.create", "tasks.update",
       "today.read", "today.update", "timer.read", "timer.create", "timer.update",
+      "personal_ops.read", "personal_ops.write",
     ], true));
 
     registerMcpToolsForPrincipal(
