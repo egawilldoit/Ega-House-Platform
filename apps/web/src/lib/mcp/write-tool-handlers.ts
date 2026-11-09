@@ -41,6 +41,7 @@ import {
 } from "@/lib/mcp/write/projects";
 import { createTaskMcpWriteHandlers } from "@/lib/mcp/write/tasks";
 import { createMcpTimerModuleHandlers } from "@/lib/mcp/write/timer";
+import { createMcpPersonalOpsWriteHandlers } from "@/lib/mcp/write/personal-ops";
 import {
   McpToolAuthorizationError,
   requireMcpPermission,
@@ -229,6 +230,7 @@ export function createMcpWriteToolHandlers(
 
   const taskHandlers = createTaskMcpWriteHandlers(moduleDeps);
   const timerHandlers = createMcpTimerModuleHandlers(moduleDeps, writesEnabled);
+  const personalOpsHandlers = createMcpPersonalOpsWriteHandlers(moduleDeps);
 
   return {
     // Projects
@@ -677,6 +679,57 @@ export function createMcpWriteToolHandlers(
         const client = dependencies.createUserClient(authInfo!.token);
         return await withExclusiveMutation(client, "ega_stop_timer", input.operationId, { sessionId: input.sessionId }, () =>
           timerHandlers.stopTimer(authInfo, { sessionId: input.sessionId }),
+        );
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+
+    // Personal Operations (PO-13): explicit personal_ops.write grant only.
+    async createPersonalOpsExpense(
+      authInfo: AuthInfo | undefined,
+      input: {
+        occurredAt: string;
+        amountMinor: number;
+        category: string;
+        needVsWant: "need" | "want";
+        note?: string | null;
+        merchant?: string | null;
+        paymentMethod?: string | null;
+        idempotencyKey: string;
+        operationId: string;
+      },
+    ): Promise<CallToolResult> {
+      try {
+        assertWritesEnabled(writesEnabled);
+        requireMcpPermission(authInfo, "personal_ops.write");
+        const client = dependencies.createUserClient(authInfo!.token);
+        return await withExclusiveMutation(client, "ega_create_personal_ops_expense", input.operationId, {
+          occurredAt: input.occurredAt,
+          amountMinor: input.amountMinor,
+          category: input.category,
+          idempotencyKey: input.idempotencyKey,
+        }, () =>
+          personalOpsHandlers.createPersonalOpsExpense(authInfo, input, input.operationId),
+        );
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+
+    async savePersonalOpsCheckin(
+      authInfo: AuthInfo | undefined,
+      input: { localDate: string; timezone: string; patch: Record<string, unknown>; operationId: string },
+    ): Promise<CallToolResult> {
+      try {
+        assertWritesEnabled(writesEnabled);
+        requireMcpPermission(authInfo, "personal_ops.write");
+        const client = dependencies.createUserClient(authInfo!.token);
+        return await withExclusiveMutation(client, "ega_save_personal_ops_checkin", input.operationId, {
+          localDate: input.localDate,
+          patch: input.patch,
+        }, () =>
+          personalOpsHandlers.savePersonalOpsCheckin(authInfo, input, input.operationId),
         );
       } catch (error) {
         return errorResult(error);

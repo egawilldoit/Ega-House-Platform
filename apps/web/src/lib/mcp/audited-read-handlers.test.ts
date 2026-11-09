@@ -48,6 +48,9 @@ function createBaseHandlers() {
     getTask: vi.fn().mockResolvedValue(successResult()),
     getTodayPlan: vi.fn().mockResolvedValue(successResult(0)),
     listTimerSessions: vi.fn().mockResolvedValue(successResult(0)),
+    personalOpsSummary: vi.fn().mockResolvedValue(successResult(0)),
+    personalOpsExpensesList: vi.fn().mockResolvedValue(successResult(0)),
+    personalOpsCheckinGet: vi.fn().mockResolvedValue(successResult(0)),
   };
 }
 

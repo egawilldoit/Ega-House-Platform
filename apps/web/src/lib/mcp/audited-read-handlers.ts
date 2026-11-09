@@ -293,5 +293,44 @@ export function createAuditedMcpReadHandlers(
         () => handlers.listTimerSessions(authInfo, input),
       );
     },
+
+    personalOpsSummary(
+      authInfo: AuthInfo | undefined,
+      input: Parameters<BaseReadHandlers["personalOpsSummary"]>[1],
+      context?: ProtocolContext,
+    ): Promise<CallToolResult> {
+      return execute(
+        "ega_personal_ops_summary",
+        authInfo,
+        context,
+        () => handlers.personalOpsSummary(authInfo, input),
+      );
+    },
+
+    personalOpsExpensesList(
+      authInfo: AuthInfo | undefined,
+      input: Parameters<BaseReadHandlers["personalOpsExpensesList"]>[1],
+      context?: ProtocolContext,
+    ): Promise<CallToolResult> {
+      return execute(
+        "ega_personal_ops_expenses_list",
+        authInfo,
+        context,
+        () => handlers.personalOpsExpensesList(authInfo, input),
+      );
+    },
+
+    personalOpsCheckinGet(
+      authInfo: AuthInfo | undefined,
+      input: Parameters<BaseReadHandlers["personalOpsCheckinGet"]>[1],
+      context?: ProtocolContext,
+    ): Promise<CallToolResult> {
+      return execute(
+        "ega_personal_ops_checkin_get",
+        authInfo,
+        context,
+        () => handlers.personalOpsCheckinGet(authInfo, input),
+      );
+    },
   };
 }
