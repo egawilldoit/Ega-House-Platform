@@ -53,3 +53,15 @@ test("notification actions use the application-backed service and canonical task
   assert.match(service, /SupabaseNotificationRepository/);
   assert.match(service, /listNotifications/);
 });
+
+test("notifications page exposes category preferences, quiet hours and badge sync", () => {
+  assert.match(page, /NotificationPreferencesPanel/);
+  assert.match(page, /NotificationBadgeSync/);
+  assert.match(page, /getWebNotificationPreferences/);
+  assert.match(page, /getWebNotificationSettings/);
+  assert.match(actions, /saveNotificationPreferenceAction/);
+  assert.match(actions, /saveNotificationSettingsAction/);
+  assert.match(actions, /isNotificationType\(notificationType\)/);
+  assert.match(service, /updateWebNotificationPreferences/);
+  assert.match(service, /updateWebNotificationSettings/);
+});

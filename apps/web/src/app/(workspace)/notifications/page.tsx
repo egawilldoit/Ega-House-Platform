@@ -16,7 +16,13 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
-import { getWebNotifications } from "@/lib/services/notification-service";
+import {
+  getWebNotifications,
+  getWebNotificationPreferences,
+  getWebNotificationSettings,
+} from "@/lib/services/notification-service";
+import { NotificationPreferencesPanel } from "./notification-preferences-panel";
+import { NotificationBadgeSync } from "./notification-badge-sync";
 import { getNotificationTargetHref } from "@/lib/notification-target";
 import { getWebTimeContext } from "@/lib/services/time-context-service";
 import { getLocalDateInTimezone } from "@ega/domain/time-context";
@@ -163,6 +169,12 @@ export default async function NotificationsPage({ searchParams }: NotificationsP
   const { notifications, unreadCount, nextCursor } = result.data;
   const timeContext = await getWebTimeContext().catch(() => null);
   const groups = buildNotificationGroups(notifications, timeContext?.timezone);
+  // Category preferences and quiet hours (PO-19); failures only hide the
+  // controls, never the inbox above.
+  const [prefsResult, settingsResult] = await Promise.all([
+    getWebNotificationPreferences().catch(() => ({ data: [] as never[], errorMessage: null })),
+    getWebNotificationSettings().catch(() => ({ data: null, errorMessage: null })),
+  ]);
 
   return (
     <>
@@ -236,6 +248,30 @@ export default async function NotificationsPage({ searchParams }: NotificationsP
           />
         )}
       </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Preferences</CardTitle>
+          <CardDescription>
+            Choose which notification categories reach each channel and when quiet hours apply.
+          </CardDescription>
+        </CardHeader>
+        <div className="px-[18px] py-4">
+          {prefsResult.data ? (
+            <NotificationPreferencesPanel
+              preferences={prefsResult.data}
+              settings={settingsResult.data}
+              timezone={timeContext?.timezone ?? null}
+            />
+          ) : (
+            <p className="text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
+              {prefsResult.errorMessage ?? "Notification preferences unavailable right now."}
+            </p>
+          )}
+        </div>
+      </Card>
+
+      <NotificationBadgeSync unreadCount={unreadCount} />
     </>
   );
 }

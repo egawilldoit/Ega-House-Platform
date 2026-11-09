@@ -7,7 +7,10 @@ import {
   markAllWebNotificationsRead,
   markWebNotificationOpened,
   markWebNotificationRead,
+  updateWebNotificationPreferences,
+  updateWebNotificationSettings,
 } from "@/lib/services/notification-service";
+import { isNotificationType } from "@ega/contracts";
 import { getNotificationTargetHref } from "@/lib/notification-target";
 
 function notificationIdFrom(formData: FormData) {
@@ -95,6 +98,36 @@ export async function markNotificationsReadAction(formData: FormData): Promise<n
       updated === 1 ? "Notification marked read." : `${updated} notifications marked read.`,
     ),
   );
+}
+
+export async function saveNotificationPreferenceAction(formData: FormData): Promise<never> {
+  const notificationType = String(formData.get("notificationType") ?? "").trim();
+  if (!isNotificationType(notificationType)) {
+    redirect(feedbackRedirect("error", "Unsupported notification type."));
+  }
+  const result = await updateWebNotificationPreferences({
+    notificationType,
+    pushEnabled: formData.get("pushEnabled") === "on",
+    emailEnabled: formData.get("emailEnabled") === "on",
+  });
+  if (result.errorMessage) {
+    redirect(feedbackRedirect("error", result.errorMessage));
+  }
+  revalidatePath("/notifications");
+  redirect(feedbackRedirect("notice", "Notification preferences saved."));
+}
+
+export async function saveNotificationSettingsAction(formData: FormData): Promise<never> {
+  const result = await updateWebNotificationSettings({
+    quietHoursEnabled: formData.get("quietHoursEnabled") === "on",
+    quietHoursStart: String(formData.get("quietHoursStart") ?? "").trim() || undefined,
+    quietHoursEnd: String(formData.get("quietHoursEnd") ?? "").trim() || undefined,
+  });
+  if (result.errorMessage) {
+    redirect(feedbackRedirect("error", result.errorMessage));
+  }
+  revalidatePath("/notifications");
+  redirect(feedbackRedirect("notice", "Notification settings saved."));
 }
 
 export async function markAllNotificationsReadAction(formData: FormData): Promise<never> {
