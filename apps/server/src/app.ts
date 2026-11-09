@@ -17,6 +17,7 @@ import {
 import { getSupabaseEnv } from "./env";
 import { createAuthRoutes } from "./routes/auth";
 import { createExpensesRoutes } from "./routes/expenses";
+import { createCheckinsRoutes } from "./routes/checkins";
 import { createFrictionRoutes } from "./routes/friction";
 import { createGoalsRoutes } from "./routes/goals";
 import { createHealthRoutes } from "./routes/health";
@@ -147,6 +148,7 @@ export function createApp(dependencies: ServerDependencies): Hono<{ Variables: S
   app.route("/api/friction", createFrictionRoutes(dependencies));
   app.route("/api/time-context", createTimeContextRoutes(dependencies));
   app.route("/api/expenses", createExpensesRoutes(dependencies));
+  app.route("/api/checkins", createCheckinsRoutes(dependencies));
   app.route("/api/notifications", createNotificationsRoutes());
   app.route("/api/review", createWeeklyReviewRoutes(dependencies));
   app.route("/api/auth", createAuthRoutes(dependencies));

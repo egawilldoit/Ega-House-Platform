@@ -218,6 +218,10 @@ function makeFakeClient(): EgaApiClient {
       update: jest.fn(),
       remove: jest.fn(),
     },
+    checkins: {
+      get: jest.fn(),
+      save: jest.fn(),
+    },
   };
 }
 

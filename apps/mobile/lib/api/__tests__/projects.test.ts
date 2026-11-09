@@ -110,6 +110,7 @@ function makeWave2Apis() {
     expenses: {
       list: jest.fn(), create: jest.fn(), get: jest.fn(), update: jest.fn(), remove: jest.fn(),
     },
+    checkins: { get: jest.fn(), save: jest.fn() },
   };
 }
 

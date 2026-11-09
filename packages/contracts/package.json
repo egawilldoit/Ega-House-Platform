@@ -21,7 +21,8 @@
     "./projects": "./src/projects.ts",
     "./goals": "./src/goals.ts",
     "./task-comments": "./src/task-comments.ts",
-    "./expenses": "./src/expenses.ts"
+    "./expenses": "./src/expenses.ts",
+    "./checkins": "./src/checkins.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",

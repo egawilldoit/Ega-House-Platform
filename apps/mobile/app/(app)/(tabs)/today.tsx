@@ -17,6 +17,7 @@ import { Button } from '@/components/mobile/ui/Button';
 import { FeedbackBanner } from '@/components/mobile/ui/FeedbackBanner';
 import { SkeletonCard } from '@/components/mobile/ui/Skeleton';
 import { DailyMomentum } from '@/features/today/components/DailyMomentum';
+import { TodayQuickActions } from '@/features/today/quick-actions';
 import { TodaySectionEmpty, TodaySectionHeader } from '@/features/today/components/TodaySection';
 import { TodayTaskCard } from '@/features/today/components/TodayTaskCard';
 import { HealthCoachSnapshot } from '@/features/health/components/HealthCoachSnapshot';
@@ -576,6 +577,8 @@ export default function TodayScreen() {
               response={healthQuery.data ?? null}
               errorMessage={healthQuery.isError ? (healthQuery.error instanceof Error ? healthQuery.error.message : "Unable to load workload snapshot.") : null}
             />
+
+            <TodayQuickActions localDate={today.date} timezone={today.timezone ?? 'UTC'} />
 
             {actionError ? (
               <FeedbackBanner message={actionError} tone="danger" style={styles.feedback} />
