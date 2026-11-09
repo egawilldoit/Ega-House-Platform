@@ -397,7 +397,8 @@ jobs:
   web:
     needs: [changes]
     if: needs.changes.outputs.web == 'true' || needs.changes.outputs.force_full == 'true'
-    runs-on: ubuntu-latest
+    # Keep the browser OS within the installed Playwright support matrix.
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
       - name: Checkout exact head
