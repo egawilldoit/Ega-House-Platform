@@ -53,6 +53,27 @@ export async function getWebDailyCheckin(options: {
   }
 }
 
+export async function listWebDailyCheckins(
+  startLocalDate: string,
+  endLocalDate: string,
+): Promise<{ checkins: DailyCheckin[]; errorMessage: string | null }> {
+  const supabase = await createClient();
+  try {
+    const user = await getCurrentUser();
+    if (!user) return { checkins: [], errorMessage: "Sign in to load check-ins." };
+    const repository = new SupabaseDailyCheckinRepository(supabase);
+    const result = await repository.listBetween(
+      createAuthenticatedActor(user.id),
+      startLocalDate,
+      endLocalDate,
+    );
+    if (!result.ok) return { checkins: [], errorMessage: "Weekly check-ins unavailable." };
+    return { checkins: result.value, errorMessage: null };
+  } catch {
+    return { checkins: [], errorMessage: "Weekly check-ins unavailable." };
+  }
+}
+
 export async function saveWebDailyCheckin(options: {
   localDate: string;
   timezone: string;
