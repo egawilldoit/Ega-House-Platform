@@ -9,46 +9,35 @@ import type { RepositoryResult } from "../src/shared/result";
 const ACTOR = createAuthenticatedActor("owner-expenses-summary");
 
 class FakeRepository implements Partial<ExpenseRepository> {
-  summaries: Array<{ window: ExpenseSummaryWindow; value: ExpenseSummary }> = [];
+  /** Per-call queues: summarize is called in day → week → month order. */
+  queue: ExpenseSummary[] = [];
   fail = false;
 
-  async summarize(_actor: unknown, window: ExpenseSummaryWindow): Promise<RepositoryResult<ExpenseSummary>> {
+  async summarize(_actor: unknown, _window: ExpenseSummaryWindow): Promise<RepositoryResult<ExpenseSummary>> {
     if (this.fail) return { ok: false, error: { code: "unknown" } };
-    const found = this.summaries.find(
-      (entry) => entry.window.startUtcIso === window.startUtcIso
-        && entry.window.endUtcExclusiveIso === window.endUtcExclusiveIso,
-    );
-    return { ok: true, value: found?.value ?? { totalsByCategory: {}, countsByCategory: {}, recordCount: 0, truncated: false } };
-  }
-
-  static ok(value: ExpenseSummary): ExpenseSummary {
-    return value;
+    return { ok: true, value: this.queue.shift() ?? { totalsByCategory: {}, countsByCategory: {}, recordCount: 0, truncated: false } };
   }
 }
 
-function seed(repo: FakeRepository, startUtcIso: string, endUtcExclusiveIso: string, value: ExpenseSummary) {
-  repo.summaries.push({ window: { startUtcIso, endUtcExclusiveIso }, value });
+function seed(repo: FakeRepository, value: ExpenseSummary) {
+  repo.queue.push(value);
 }
-
-const DAY = { startUtcIso: "2026-11-07T23:00:00.000Z", endUtcExclusiveIso: "2026-11-08T23:00:00.000Z" };
-const WEEK = { startUtcIso: "2026-11-01T23:00:00.000Z", endUtcExclusiveIso: "2026-11-08T23:00:00.000Z" };
-const MONTH = { startUtcIso: "2026-10-31T23:00:00.000Z", endUtcExclusiveIso: "2026-11-08T23:00:00.000Z" };
 
 test("summary sums integer centimes per owner-local day/week/month with coffee split", async () => {
   const repo = new FakeRepository();
-  seed(repo, DAY.startUtcIso, DAY.endUtcExclusiveIso, {
+  seed(repo, {
     totalsByCategory: { coffee: 4400, groceries: 1000 },
     countsByCategory: { coffee: 2, groceries: 1 },
     recordCount: 3,
     truncated: false,
   });
-  seed(repo, WEEK.startUtcIso, WEEK.endUtcExclusiveIso, {
+  seed(repo, {
     totalsByCategory: { coffee: 4400, groceries: 6000 },
     countsByCategory: { coffee: 2, groceries: 3 },
     recordCount: 5,
     truncated: false,
   });
-  seed(repo, MONTH.startUtcIso, MONTH.endUtcExclusiveIso, {
+  seed(repo, {
     totalsByCategory: { coffee: 6600, groceries: 9000, transport: 500 },
     countsByCategory: { coffee: 3, groceries: 4, transport: 1 },
     recordCount: 8,
@@ -95,6 +84,7 @@ test("repository failure is surfaced, never a zero-shaped success", async () => 
 
 test("invalid identity is rejected before any read", async () => {
   const repo = new FakeRepository();
+  repo.queue.push({ totalsByCategory: {}, countsByCategory: {}, recordCount: 99, truncated: false });
   assert.equal(
     (await getExpenseSummary(ACTOR, repo as unknown as ExpenseRepository, { localDate: "2026-11-40", timezone: "Africa/Casablanca" })).ok,
     false,
@@ -103,5 +93,6 @@ test("invalid identity is rejected before any read", async () => {
     (await getExpenseSummary(ACTOR, repo as unknown as ExpenseRepository, { localDate: "2026-11-08", timezone: "Not/AZone" })).ok,
     false,
   );
-  assert.equal(repo.summaries.length, 0);
+  // The queued summary was never consumed: validation ran before any read.
+  assert.equal(repo.queue.length, 1);
 });
