@@ -20,6 +20,29 @@ export type OperatorSignals = Readonly<{
   weeklyObjective: unknown | null;
 }>;
 
+/**
+ * Net work vs target for the snapshot day, derived from canonical timer
+ * sessions (never a second ledger). `jobSearchSeconds` is a subset of
+ * `trackedSeconds`, already included in it. Null (not zero) means the source
+ * was unavailable and callers must say so honestly.
+ */
+export type OperatorWorkToday = Readonly<{
+  trackedSeconds: number;
+  workTargetMinutes: number;
+  jobSearchSeconds: number;
+  jobSearchTargetMinutes: number;
+  jobSearchConfigured: boolean;
+  derivedFrom: "canonical-sessions";
+}>;
+
+/** Optional injected work loader (web/Hono composition). */
+export type OperatorWorkProvider = (
+  actor: AuthenticatedActor,
+  localDate: string,
+  timezone: string,
+  trackedTodaySeconds: number,
+) => Promise<OperatorWorkToday | null>;
+
 export type OperatorSnapshot = Readonly<{
   date: string;
   timezone: string;
@@ -47,6 +70,7 @@ export type OperatorSnapshot = Readonly<{
   summary: TodayPlan["summary"];
   activeTimer: TodayActiveTimer | null;
   signals: OperatorSignals;
+  work: OperatorWorkToday | null;
 }>;
 
 // Re-export base Today types for consumers that want the underlying plan
@@ -149,6 +173,7 @@ export type BuildOperatorSnapshotInput = Readonly<{
   timeContextId?: string;
   dayWindow?: Readonly<{ startUtcIso: string; endUtcIso: string }>;
   signals?: Partial<OperatorSignals>;
+  work?: OperatorWorkToday | null;
 }>;
 
 export function buildOperatorSnapshot(input: BuildOperatorSnapshotInput): OperatorSnapshot {
@@ -211,6 +236,7 @@ export function buildOperatorSnapshot(input: BuildOperatorSnapshotInput): Operat
     summary: plan.summary,
     activeTimer: plan.activeTimer,
     signals,
+    work: input.work ?? null,
   };
 }
 
@@ -228,12 +254,12 @@ export type OperatorSignalProviders = Readonly<{
 export async function getOperatorSnapshot(
   actor: AuthenticatedActor,
   todayPort: TodayReadPort,
-  timeContextRepoOrInput: TimeContextRepository | Readonly<{ date?: unknown; now?: Date; signals?: OperatorSignalProviders; requestedTimezone?: unknown; timezone?: unknown }> = {},
-  maybeInput: Readonly<{ date?: unknown; now?: Date; signals?: OperatorSignalProviders; requestedTimezone?: unknown; timezone?: unknown }> = {},
+  timeContextRepoOrInput: TimeContextRepository | Readonly<{ date?: unknown; now?: Date; signals?: OperatorSignalProviders; workProgress?: OperatorWorkProvider; requestedTimezone?: unknown; timezone?: unknown }> = {},
+  maybeInput: Readonly<{ date?: unknown; now?: Date; signals?: OperatorSignalProviders; workProgress?: OperatorWorkProvider; requestedTimezone?: unknown; timezone?: unknown }> = {},
 ): Promise<ApplicationResult<OperatorSnapshot>> {
   // Support both signatures: (actor, port, repo, input) and legacy (actor, port, input)
   let timeContextRepo: TimeContextRepository | null = null;
-  let input: Readonly<{ date?: unknown; now?: Date; signals?: OperatorSignalProviders; requestedTimezone?: unknown; timezone?: unknown }> = {};
+  let input: Readonly<{ date?: unknown; now?: Date; signals?: OperatorSignalProviders; workProgress?: OperatorWorkProvider; requestedTimezone?: unknown; timezone?: unknown }> = {};
   if (
     timeContextRepoOrInput &&
     typeof (timeContextRepoOrInput as TimeContextRepository).getTimezone === "function"
@@ -241,7 +267,7 @@ export async function getOperatorSnapshot(
     timeContextRepo = timeContextRepoOrInput as TimeContextRepository;
     input = maybeInput;
   } else {
-    input = (timeContextRepoOrInput as Readonly<{ date?: unknown; now?: Date; signals?: OperatorSignalProviders; requestedTimezone?: unknown; timezone?: unknown }>) ?? {};
+    input = (timeContextRepoOrInput as Readonly<{ date?: unknown; now?: Date; signals?: OperatorSignalProviders; workProgress?: OperatorWorkProvider; requestedTimezone?: unknown; timezone?: unknown }>) ?? {};
   }
 
   const now = input.now ?? new Date();
@@ -354,12 +380,24 @@ export async function getOperatorSnapshot(
     resolveSignal(input.signals?.weeklyObjective),
   ]);
 
+  // Optional work projection — absent providers and failures yield null
+  // (unavailable), never zero, so callers can render an honest state.
+  let work: OperatorWorkToday | null = null;
+  if (input.workProgress) {
+    try {
+      work = (await input.workProgress(actor, localDate, timezone, plan.summary.trackedTodaySeconds)) ?? null;
+    } catch {
+      work = null;
+    }
+  }
+
   const snapshot = buildOperatorSnapshot({
     plan,
     timezone,
     timeContextId,
     dayWindow,
     signals: { health, friction, inbox, weeklyObjective },
+    work,
   });
 
   return applicationSuccess(snapshot);
