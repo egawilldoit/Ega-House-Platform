@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   KeyboardSensor,
   PointerSensor,
@@ -67,6 +67,7 @@ export function resolveKanbanDropTarget(
   activeTaskId: string,
   overId: UniqueIdentifier,
   pointerIsBelowOverItem: boolean,
+  keyboard = false,
 ): KanbanDropTarget | null {
   const overKey = String(overId);
   if (overKey.startsWith(KANBAN_COLUMN_END_PREFIX)) {
@@ -85,7 +86,12 @@ export function resolveKanbanDropTarget(
   );
   const overIndex = withoutActive.findIndex((task) => task.id === overKey);
   if (overIndex === -1) return null;
-  return { status, index: pointerIsBelowOverItem ? overIndex + 1 : overIndex };
+  const column = tasksByStatus[status];
+  const activeIndex = column.findIndex((task) => task.id === activeTaskId);
+  const insertAfter = keyboard
+    ? activeIndex !== -1 && activeIndex < column.findIndex((task) => task.id === overKey)
+    : pointerIsBelowOverItem;
+  return { status, index: insertAfter ? overIndex + 1 : overIndex };
 }
 
 export function buildKanbanMoveRequest(
@@ -197,6 +203,7 @@ export function useKanbanDnd(input: {
   const { tasksByStatus, columnLabels, enabled, onMove } = input;
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<KanbanDropTarget | null>(null);
+  const keyboardDrag = useRef(false);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -251,6 +258,7 @@ export function useKanbanDnd(input: {
           String(active.id),
           over.id,
           false,
+          keyboardDrag.current,
         );
         return target
           ? `Over ${columnLabels[target.status]} at position ${target.index + 1}.`
@@ -263,6 +271,7 @@ export function useKanbanDnd(input: {
           String(active.id),
           over.id,
           false,
+          keyboardDrag.current,
         );
         return target
           ? `Dropped in ${columnLabels[target.status]} at position ${target.index + 1}.`
@@ -277,6 +286,7 @@ export function useKanbanDnd(input: {
 
   function handleDragStart(event: DragStartEvent) {
     if (!enabled) return;
+    keyboardDrag.current = event.activatorEvent.type === "keydown";
     setActiveTaskId(String(event.active.id));
   }
 
@@ -291,6 +301,7 @@ export function useKanbanDnd(input: {
         String(event.active.id),
         event.over.id,
         isBelowOverItem(event),
+        keyboardDrag.current,
       ),
     );
   }
@@ -304,6 +315,7 @@ export function useKanbanDnd(input: {
       String(event.active.id),
       event.over.id,
       isBelowOverItem(event),
+      keyboardDrag.current,
     );
     if (!target) return;
     const request = buildKanbanMoveRequest(

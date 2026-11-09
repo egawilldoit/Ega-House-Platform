@@ -255,7 +255,7 @@ export function DailyCheckinForm({
       ) : null}
 
       <div>
-        <PendingSubmitButton pendingLabel="Saving…">Save check-in</PendingSubmitButton>
+        <PendingSubmitButton type="submit" pendingLabel="Saving…">Save check-in</PendingSubmitButton>
       </div>
     </form>
   );

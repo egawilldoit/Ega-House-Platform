@@ -13,8 +13,8 @@ if (!path) throw new Error("Usage: node scripts/ci/assert-playwright-smoke.mjs <
 let report;
 try {
   report = JSON.parse(readFileSync(path, "utf8"));
-} catch (error) {
-  console.error("SMOKE_UNVERIFIED: JSON report missing or unreadable:", error.message);
+} catch {
+  console.error("SMOKE_UNVERIFIED: JSON report missing or unreadable");
   process.exit(1);
 }
 
@@ -42,7 +42,8 @@ const allCorrect = record.every(({ spec, t }) =>
   spec.ok === true && t.projectName === "chromium-smoke" &&
   t.expectedStatus === "passed" && t.status === "expected" &&
   Array.isArray(t.results) && t.results.length === 1 &&
-  t.results[0].status === "passed" && t.results[0].retry === 0
+  t.results[0].status === "passed" && t.results[0].retry === 0 &&
+  (t.results[0].errors?.length ?? 0) === 0
 );
 const pass = Boolean(
   suitesValid && statsValid && Array.isArray(report.errors) && report.errors.length === 0 &&

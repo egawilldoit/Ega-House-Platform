@@ -35,6 +35,20 @@ afterEach(() => {
 });
 
 describe("DailyCheckinForm", () => {
+  it("submits the check-in when the save button is clicked", async () => {
+    await act(async () => {
+      root.render(
+        <DailyCheckinForm checkin={null} defaultLocalDate="2026-02-16" action={vi.fn(async () => {})} returnTo="/shutdown" />,
+      );
+    });
+    const submitted = vi.fn((event: Event) => event.preventDefault());
+    container.querySelector("form")!.addEventListener("submit", submitted);
+    const save = [...container.querySelectorAll("button")].find(button => button.textContent === "Save check-in");
+    expect(save).toBeDefined();
+    await act(async () => save!.click());
+    expect(submitted).toHaveBeenCalledOnce();
+  });
+
   it("prefills the saved check-in and submits bounded qualitative fields only", async () => {
     const action = vi.fn(async () => {});
     await act(async () => {

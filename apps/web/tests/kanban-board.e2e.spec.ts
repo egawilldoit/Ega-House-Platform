@@ -1,63 +1,52 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./disposable-fixtures";
 
-import { hasPwaAuthCredentials, signInPwaOwner, getPwaOwners } from "./pwa-fixtures";
+import { signInPwaOwner, getPwaOwners } from "./pwa-fixtures";
 
-/**
- * EGA-785 board acceptance.
- *
- * These need an authenticated owner (`E2E_AUTH_EMAIL` / `E2E_AUTH_PASSWORD`)
- * because the board is a protected route and the mutation is owner-scoped.
- * Without credentials the test skips explicitly instead of reporting a green
- * login redirect as proof.
- */
 test.describe("kanban drag and manual order", () => {
-  test.skip(
-    !hasPwaAuthCredentials(),
-    "Requires E2E_AUTH_EMAIL and E2E_AUTH_PASSWORD for an authenticated owner.",
-  );
 
   test("drag To Do → In Progress persists after reload at desktop and phone", async ({
     page,
-  }, testInfo) => {
+  }) => {
+    const { ownerA } = getPwaOwners();
+    await signInPwaOwner(page, ownerA, "/tasks?layout=kanban&boardOrder=manual&view=active");
     for (const viewport of [
       { width: 1440, height: 900 },
       { width: 390, height: 844 },
     ] as const) {
       await page.setViewportSize(viewport);
-      const { ownerA } = getPwaOwners();
-      await signInPwaOwner(
-        page,
-        ownerA,
-        "/tasks?layout=kanban&boardOrder=manual&view=active",
-      );
+      await page.goto("/tasks?layout=kanban&boardOrder=manual&view=active");
 
       const title = `EGA-785 drag ${viewport.width} ${Date.now()}`;
       await page.getByTestId("tasks-new-task").click();
-      await page.getByLabel("Command").fill(title);
-      await page.getByLabel("Status").selectOption("todo");
+      await page.getByLabel("Command", { exact: true }).fill(title);
+      await page.getByLabel("Status", { exact: true }).selectOption("todo");
       await page.getByRole("button", { name: /Create task/i }).click();
       await expect(page.getByText(title)).toBeVisible({ timeout: 15_000 });
 
       const todoColumn = page.getByTestId("kanban-column-todo");
-      const card = todoColumn.getByText(title).locator("xpath=ancestor::article[1]");
-      const handle = card.getByRole("button", { name: /^Drag / });
+      const handle = todoColumn.getByRole("button", { name: `Drag ${title}`, exact: true });
       const target = page.getByTestId("kanban-column-end-in_progress");
 
+      await handle.scrollIntoViewIfNeeded();
       const source = await handle.boundingBox();
-      const destination = await target.boundingBox();
-      expect(source).not.toBeNull();
-      expect(destination).not.toBeNull();
-      if (!source || !destination) return;
+      if (!source) throw new Error("Drag source is missing.");
 
       await page.mouse.move(source.x + source.width / 2, source.y + source.height / 2);
       await page.mouse.down();
       await page.mouse.move(source.x + source.width / 2 + 12, source.y + 12, { steps: 4 });
+      await target.scrollIntoViewIfNeeded();
+      const destination = await target.boundingBox();
+      if (!destination) throw new Error("Drag destination is missing.");
       await page.mouse.move(
         destination.x + destination.width / 2,
         destination.y + destination.height / 2,
         { steps: 16 },
       );
+      const persistedMove = page.waitForResponse(response =>
+        response.request().method() === "POST" && new URL(response.url()).pathname === "/tasks" && Boolean(response.request().headers()["next-action"]),
+      );
       await page.mouse.up();
+      expect((await persistedMove).ok()).toBe(true);
 
       await expect(
         page.getByTestId("kanban-column-in_progress").getByText(title),
@@ -71,10 +60,7 @@ test.describe("kanban drag and manual order", () => {
         page.getByTestId("kanban-column-todo").getByText(title),
       ).toHaveCount(0);
 
-      await testInfo.attach(`kanban-drag-${viewport.width}`, {
-        body: await page.screenshot({ fullPage: true }),
-        contentType: "image/png",
-      });
+
     }
   });
 
@@ -87,27 +73,33 @@ test.describe("kanban drag and manual order", () => {
     const second = `EGA-785 keyboard B ${stamp}`;
     for (const title of [first, second]) {
       await page.getByTestId("tasks-new-task").click();
-      await page.getByLabel("Command").fill(title);
-      await page.getByLabel("Status").selectOption("todo");
+      await page.getByLabel("Command", { exact: true }).fill(title);
+      await page.getByLabel("Status", { exact: true }).selectOption("todo");
       await page.getByRole("button", { name: /Create task/i }).click();
       await expect(page.getByText(title)).toBeVisible({ timeout: 15_000 });
     }
 
     const todoColumn = page.getByTestId("kanban-column-todo");
-    const firstCard = todoColumn.getByText(first).locator("xpath=ancestor::article[1]");
-    const secondCard = todoColumn.getByText(second).locator("xpath=ancestor::article[1]");
+    const handle = todoColumn.getByRole("button", { name: `Drag ${first}`, exact: true });
+    const firstCard = handle.locator("xpath=ancestor::article[1]");
+    const secondCard = todoColumn.getByRole("button", { name: `Drag ${second}`, exact: true }).locator("xpath=ancestor::article[1]");
     const initialFirstBox = await firstCard.boundingBox();
     const initialSecondBox = await secondCard.boundingBox();
     expect(initialFirstBox).not.toBeNull();
     expect(initialSecondBox).not.toBeNull();
-    if (!initialFirstBox || !initialSecondBox) return;
+    if (!initialFirstBox || !initialSecondBox) throw new Error("Initial task cards are missing.");
 
-    const handle = firstCard.getByRole("button", { name: /^Drag / });
     await handle.focus();
     await page.keyboard.press("Space");
+    await expect(handle).toHaveAttribute("aria-pressed", "true");
     await page.keyboard.press(initialFirstBox.y < initialSecondBox.y ? "ArrowDown" : "ArrowUp");
+    await expect(page.getByRole("status").filter({ hasText: /Over Todo at position/ })).toHaveCount(1);
+    const persistedOrder = page.waitForResponse(response =>
+      response.request().method() === "POST" && new URL(response.url()).pathname === "/tasks" && Boolean(response.request().headers()["next-action"]),
+    );
     await page.keyboard.press("Space");
-    await expect(page.getByRole("status").filter({ hasText: /Dropped|Moved/ })).toBeVisible({
+    expect((await persistedOrder).ok()).toBe(true);
+    await expect(page.getByRole("status").filter({ hasText: /Dropped in Todo/ })).toHaveCount(1, {
       timeout: 15_000,
     });
 
@@ -124,7 +116,7 @@ test.describe("kanban drag and manual order", () => {
       .boundingBox();
     expect(reloadedFirst).not.toBeNull();
     expect(reloadedSecond).not.toBeNull();
-    if (!reloadedFirst || !reloadedSecond) return;
-    expect(reloadedFirst.y > reloadedSecond.y).toBe(true);
+    if (!reloadedFirst || !reloadedSecond) throw new Error("Reloaded task cards are missing.");
+    expect(reloadedFirst.y > reloadedSecond.y).toBe(initialFirstBox.y < initialSecondBox.y);
   });
 });
