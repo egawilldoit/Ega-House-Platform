@@ -27,7 +27,10 @@ function createIdempotencyKey(): string {
 
 export function useTodayQuickActions(localDate: string, timezone: string) {
   const queryClient = useQueryClient();
-  const [expenseKey] = useState(createIdempotencyKey);
+  // One stable key per logical purchase; rotated only after a successful
+  // save so retries/timeouts deduplicate instead of duplicating, and the
+  // next purchase gets a fresh key.
+  const [expenseKey, setExpenseKey] = useState(createIdempotencyKey);
   const [report, setReport] = useState<string | null>(null);
 
   const checkinQuery = useQuery({
@@ -49,9 +52,12 @@ export function useTodayQuickActions(localDate: string, timezone: string) {
     onSuccess: (response) => {
       setReport(
         response.replayed
-          ? 'Expense already recorded (retry deduplicated).'
+          ? 'Expense already recorded (retry deduplicated) — the next save is a new purchase.'
           : 'Expense recorded.',
       );
+      // Rotate only after success: a second purchase must never replay the
+      // first record, while failures keep the key for safe retries.
+      setExpenseKey(createIdempotencyKey());
       queryClient.invalidateQueries({ queryKey: todayQueryKeys.all }).catch(() => undefined);
     },
     onError: (error) => {
