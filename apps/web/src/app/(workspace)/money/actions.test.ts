@@ -41,6 +41,18 @@ test("money actions derive the actor from the verified session and never accept 
   assert.doesNotMatch(actionsSource, /getSupabaseServiceClient/);
 });
 
+test("category caps save through one validated preference patch without blocking creation", () => {
+  assert.match(actionsSource, /saveCategoryCapsAction/);
+  assert.match(actionsSource, /updateWebUserPreferences\(\{ categoryCaps/);
+  assert.match(actionsSource, /parseMadAmountToMinor/);
+  assert.match(actionsSource, /EXPENSE_CATEGORY_VALUES/);
+  // Caps are advisory only: the create path must not consult categoryCaps.
+  const createBody = actionsSource.slice(actionsSource.indexOf("createExpenseAction"), actionsSource.indexOf("updateExpenseAction"));
+  assert.doesNotMatch(createBody, /categoryCaps/);
+  assert.match(pageSource, /CategoryCapsForm/);
+  assert.match(pageSource, /Monthly category caps/);
+});
+
 test("money actions map application codes onto the component conflict contract", () => {
   assert.equal(mapApplicationCode("conflict"), "CONFLICT");
   assert.equal(mapApplicationCode("validation"), "VALIDATION");

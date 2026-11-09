@@ -9,16 +9,20 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { sanitizeSupabaseError } from "../supabase/errors";
 
 const PREFERENCES_SELECT =
-  "theme, accent, density, reduced_motion, launch_page, task_layout, task_open_mode, personal_operations, job_search_reference";
+  "theme, accent, density, reduced_motion, launch_page, task_layout, task_open_mode, personal_operations, job_search_reference, category_caps";
 // Pre-0089 deployment: the reference column does not exist yet. Reads retry
 // without it and normalize the reference to null; writes still fail closed
-// until the migration is applied.
-const PREFERENCES_SELECT_WITHOUT_REFERENCE =
+// until the migration is applied. Pre-0091 deployments likewise lack
+// category_caps; caps normalize to {} (no caps) on such reads.
+const PREFERENCES_SELECT_WITHOUT_CAPS =
+  "theme, accent, density, reduced_motion, launch_page, task_layout, task_open_mode, personal_operations, job_search_reference";
+const PREFERENCES_SELECT_WITHOUT_CAPS_REFERENCE =
   "theme, accent, density, reduced_motion, launch_page, task_layout, task_open_mode, personal_operations";
 
 type UserPreferencesRow = {
   personal_operations?: unknown;
   job_search_reference?: unknown;
+  category_caps?: unknown;
   theme: string | null;
   accent: string | null;
   density: string | null;
@@ -38,6 +42,15 @@ function isMissingPreferencesTable(error: unknown): boolean {
     || code === "PGRST205"
     || (!/personal_operations/i.test(message) && /user_preferences/.test(message)
       && /does not exist|schema cache|could not find/i.test(message))
+  );
+}
+
+function isMissingCategoryCapsColumn(error: unknown): boolean {
+  const candidate = error as { code?: unknown; message?: unknown } | null;
+  return (
+    (candidate?.code === "42703" || candidate?.code === "PGRST204")
+    && typeof candidate.message === "string"
+    && /category_caps/i.test(candidate.message)
   );
 }
 
@@ -61,6 +74,7 @@ function toPreferences(row: UserPreferencesRow): UserPreferences {
   return normalizeUserPreferences({
     personalOperations: row.personal_operations,
     jobSearchReference: row.job_search_reference,
+    categoryCaps: row.category_caps,
     theme: row.theme ?? undefined,
     accent: row.accent ?? undefined,
     density: row.density ?? undefined,
@@ -90,8 +104,11 @@ export class SupabaseUserPreferencesRepository implements UserPreferencesReposit
         .maybeSingle();
 
     let { data, error } = await load(PREFERENCES_SELECT);
+    if (error && isMissingCategoryCapsColumn(error)) {
+      ({ data, error } = await load(PREFERENCES_SELECT_WITHOUT_CAPS));
+    }
     if (error && isMissingJobSearchReferenceColumn(error)) {
-      ({ data, error } = await load(PREFERENCES_SELECT_WITHOUT_REFERENCE));
+      ({ data, error } = await load(PREFERENCES_SELECT_WITHOUT_CAPS_REFERENCE));
     }
 
     if (error && isMissingScheduleColumn(error)) {
