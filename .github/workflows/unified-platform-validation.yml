@@ -110,6 +110,7 @@ jobs:
               - 'packages/**'
               - 'apps/server/**'
               - 'scripts/ci/**'
+              - 'scripts/e2e/**'
               - 'package.json'
               - 'package-lock.json'
               - '.npmrc'
@@ -396,7 +397,8 @@ jobs:
   web:
     needs: [changes]
     if: needs.changes.outputs.web == 'true' || needs.changes.outputs.force_full == 'true'
-    runs-on: ubuntu-latest
+    # Keep the browser OS within the installed Playwright support matrix.
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
       - name: Checkout exact head
@@ -412,12 +414,37 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - if: runner.os == 'Linux'
         run: node scripts/ci/verify-platform-optionals.mjs
+      - name: Set up disposable Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: 2.118.0
+      - name: Start disposable authenticated backend
+        run: node scripts/e2e/local-backend.mjs start
       - name: Web production build
-        run: npm run build
+        run: node scripts/e2e/with-env.mjs npm run build
       - name: Install Playwright Chromium
         run: npm exec --workspace @ega/web -- playwright install --with-deps chromium
+      - name: Validate smoke report guard
+        run: node --test scripts/ci/assert-playwright-smoke.test.mjs scripts/e2e/local-env.test.mjs scripts/e2e/assert-disposable-report.test.mjs
+      - name: Public browser smoke
+        run: |
+          rm -f apps/web/test-results/smoke-results.json
+          npm exec --workspace @ega/web -- playwright test --config playwright.smoke.config.ts
+      - name: Verify public smoke report
+        if: ${{ !cancelled() }}
+        run: node scripts/ci/assert-playwright-smoke.mjs apps/web/test-results/smoke-results.json
       - name: Workspace shell browser contracts
         run: npm run test:visual --workspace @ega/web -- --grep "workspace shell contract"
+      - name: Authenticated persistence journeys
+        run: |
+          rm -f apps/web/test-results/disposable-results.json
+          npm exec --workspace @ega/web -- playwright test --config playwright.disposable.config.ts
+      - name: Verify authenticated journey report
+        if: ${{ !cancelled() }}
+        run: node scripts/e2e/assert-disposable-report.mjs
+      - name: Remove disposable backend and credentials
+        if: always() && hashFiles('.e2e-local/supabase/config.toml') != ''
+        run: node scripts/e2e/local-backend.mjs stop
 
   web-typecheck:
     needs: [changes]

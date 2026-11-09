@@ -4,6 +4,7 @@ const webkitEnabled = process.env.PWA_E2E_WEBKIT === "1";
 
 export default defineConfig({
   testDir: "./tests",
+  testIgnore: ["**/auth-session.e2e.spec.ts", "**/kanban-board.e2e.spec.ts", "**/pwa-personal-operations.e2e.spec.ts", "**/pwa-morning-startup.e2e.spec.ts", "**/disposable-journeys.e2e.spec.ts", "**/notification-settings.e2e.spec.ts", "**/smoke-public.e2e.spec.ts"],
   fullyParallel: false,
   retries: 0,
   reporter: "list",

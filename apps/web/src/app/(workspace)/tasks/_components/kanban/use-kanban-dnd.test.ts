@@ -67,6 +67,17 @@ test("a move request carries visible neighbours, ranks and the card version", ()
   });
 });
 
+test("keyboard drops move past the adjacent card in either direction", () => {
+  const board = buildBoard();
+  const downward = resolveKanbanDropTarget(board, "t1", "t2", false, true);
+  assert.deepEqual(downward, { status: "todo", index: 1 });
+  assert.equal(buildKanbanMoveRequest(board, "t1", downward!)?.beforeTaskId, "t2");
+  assert.deepEqual(
+    resolveKanbanDropTarget(board, "t2", "t1", false, true),
+    { status: "todo", index: 0 },
+  );
+});
+
 test("dropping a card back onto the same neighbours is not a write", () => {
   const board = buildBoard();
   // Dropping on the card itself has no target; dropping at the same index

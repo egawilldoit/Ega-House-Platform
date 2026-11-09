@@ -55,3 +55,6 @@ graphify-out/
 
 # playwright runtime artifact (regenerated every run; never commit)
 **/test-results/.last-run.json
+/.e2e-local/
+**/test-results/
+**/playwright-report/

@@ -197,7 +197,7 @@ test("validateShardContract: extra, missing, and duplicate shards fail", () => {
 
 test("web keeps only build and browser contracts; typecheck and tests moved out", () => {
   const webSection = jobSection("web");
-  assert.match(webSection, /- name: Web production build\n        run: npm run build/);
+  assert.match(webSection, /- name: Web production build\n        run: node scripts\/e2e\/with-env\.mjs npm run build/);
   assert.match(webSection, /- name: Install Playwright Chromium/);
   assert.match(webSection, /- name: Workspace shell browser contracts/);
   assert.doesNotMatch(webSection, /npm test/);
@@ -210,6 +210,35 @@ test("web keeps only build and browser contracts; typecheck and tests moved out"
   assert.doesNotMatch(typecheckSection, /npm test/);
   assert.doesNotMatch(typecheckSection, /continue-on-error/);
   assert.doesNotMatch(typecheckSection, /npm run build/);
+});
+
+test("web pins a supported Playwright runner instead of the moving Ubuntu alias", () => {
+  assert.match(jobSection("web"), /^    runs-on: ubuntu-24\.04$/m);
+});
+
+test("web runs real disposable journeys and verifies reports before unconditional cleanup", () => {
+  const webSection = jobSection("web");
+  const start = webSection.indexOf("run: node scripts/e2e/local-backend.mjs start");
+  const build = webSection.indexOf("run: node scripts/e2e/with-env.mjs npm run build");
+  const journeys = webSection.indexOf("playwright test --config playwright.disposable.config.ts");
+  const verified = webSection.indexOf("node scripts/e2e/assert-disposable-report.mjs");
+  const cleanup = webSection.indexOf("run: node scripts/e2e/local-backend.mjs stop");
+  assert.ok(start >= 0 && start < build && build < journeys && journeys < verified && verified < cleanup);
+  assert.match(webSection, /- name: Remove disposable backend and credentials\n        if: always\(\)/);
+  assert.doesNotMatch(webSection, /continue-on-error|secrets\.|upload-artifact/);
+  assert.match(jobSection("changes"), /'scripts\/e2e\/\*\*'/);
+});
+
+test("browser report verification runs independently after failures and stale reports are cleared", () => {
+  const section = jobSection("web");
+  for (const [profile, name, verifier] of [
+    ["smoke", "public smoke", "scripts/ci/assert-playwright-smoke.mjs apps/web/test-results/smoke-results.json"],
+    ["disposable", "authenticated journey", "scripts/e2e/assert-disposable-report.mjs"],
+  ]) {
+    assert.ok(section.includes(`rm -f apps/web/test-results/${profile}-results.json\n          npm exec --workspace @ega/web -- playwright test --config playwright.${profile}.config.ts`));
+    assert.ok(section.includes(`- name: Verify ${name} report\n        if: \${{ !cancelled() }}\n        run: node ${verifier}`));
+  }
+  assert.doesNotMatch(section, /continue-on-error/);
 });
 
 test("lint-report only runs on demand or in force-full mode", () => {
