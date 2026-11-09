@@ -42,6 +42,9 @@ function createHandlers() {
     getTask: vi.fn().mockResolvedValue({ content: [] }),
     getTodayPlan: vi.fn().mockResolvedValue({ content: [] }),
     listTimerSessions: vi.fn().mockResolvedValue({ content: [] }),
+    personalOpsSummary: vi.fn().mockResolvedValue({ content: [] }),
+    personalOpsExpensesList: vi.fn().mockResolvedValue({ content: [] }),
+    personalOpsCheckinGet: vi.fn().mockResolvedValue({ content: [] }),
   };
 }
 
@@ -50,7 +53,7 @@ function getInputSchema(registration: Registration): z.ZodTypeAny {
 }
 
 describe("registerMcpReadTools", () => {
-  it("registers exactly the seven read tools", () => {
+  it("registers exactly the read tools including personal operations", () => {
     const fake = createFakeServer();
 
     registerMcpReadTools(fake.server, createHandlers());
@@ -62,6 +65,9 @@ describe("registerMcpReadTools", () => {
       "ega_list_tasks",
       "ega_get_task",
       "ega_get_today_plan",
+      "ega_personal_ops_summary",
+      "ega_personal_ops_expenses_list",
+      "ega_personal_ops_checkin_get",
       "ega_list_timer_sessions",
     ]);
   });
@@ -160,6 +166,7 @@ describe("registerMcpReadTools", () => {
       "goals.read", "goals.create", "goals.update",
       "tasks.read", "tasks.create", "tasks.update",
       "today.read", "today.update", "timer.read", "timer.create", "timer.update",
+      "personal_ops.read", "personal_ops.write",
     ], true));
 
     registerMcpToolsForPrincipal(
