@@ -17,6 +17,33 @@ import {
 } from "@/lib/money/expense-action-codes";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentUser } from "@/lib/services/auth-service";
+import { EXPENSE_CATEGORY_VALUES, type ExpenseCategory } from "@ega/domain/expenses";
+import { parseMadAmountToMinor } from "@/lib/money/money-amount";
+import { updateWebUserPreferences } from "@/lib/services/user-preferences-service";
+
+/**
+ * Optional per-category monthly caps (PO-08, issue #349). Caps map is saved
+ * atomically as one validated preference patch; expense creation is never
+ * blocked by a cap.
+ */
+export async function saveCategoryCapsAction(formData: FormData) {
+  const caps: Partial<Record<ExpenseCategory, number>> = {};
+  for (const category of EXPENSE_CATEGORY_VALUES) {
+    const raw = String(formData.get(`cap:${category}`) ?? "").trim();
+    if (raw === "") continue;
+    const parsed = parseMadAmountToMinor(raw);
+    if (!parsed.ok) {
+      return { ok: false as const, error: `${category}: ${parsed.error}` };
+    }
+    caps[category] = parsed.value;
+  }
+  const result = await updateWebUserPreferences({ categoryCaps: caps });
+  if (result.errorMessage) {
+    return { ok: false as const, error: result.errorMessage };
+  }
+  revalidatePath("/money");
+  return { ok: true as const, error: null };
+}
 
 /**
  * Authenticated Money mutations (PO-06B integration).

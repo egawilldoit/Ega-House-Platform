@@ -10,6 +10,7 @@ import {
   type PersonalOperationsDayPlan,
   type PersonalOperationsDayPlanResult,
 } from "./personal-operations";
+import { EXPENSE_CATEGORY_VALUES, type ExpenseCategory } from "./expenses";
 
 export {
   DAYS,
@@ -81,9 +82,20 @@ export function isJobSearchReference(value: unknown): value is JobSearchReferenc
   );
 }
 
+/**
+ * Optional per-category monthly spending caps in MAD centimes (PO-08,
+ * issue #349). Caps are advisory progress targets, never spending blocks.
+ * An absent category means no cap; an explicit `0` means a zero cap.
+ */
+export type UserCategoryCaps = Readonly<Partial<Record<ExpenseCategory, number>>>;
+
+/** PostgreSQL int4 upper bound for a monthly cap. */
+export const CATEGORY_CAP_MAX_MINOR = 2_147_483_647;
+
 export type UserPreferences = Readonly<{
   personalOperations: PersonalOperations;
   jobSearchReference: JobSearchReference | null;
+  categoryCaps: UserCategoryCaps;
   theme: UserTheme;
   accent: UserAccent;
   density: UserDensity;
@@ -94,6 +106,19 @@ export type UserPreferences = Readonly<{
   taskOpenMode: UserTaskOpenMode;
 }>;
 
+/** True when the value is a plain record whose keys are expense categories. */
+export function isUserCategoryCaps(value: unknown): value is UserCategoryCaps {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  return Object.entries(value as Record<string, unknown>).every(
+    ([category, cap]) =>
+      (EXPENSE_CATEGORY_VALUES as readonly string[]).includes(category)
+      && typeof cap === "number"
+      && Number.isInteger(cap)
+      && cap >= 0
+      && cap <= CATEGORY_CAP_MAX_MINOR,
+  );
+}
+
 /**
  * Defaults reproduce the workspace as it behaved before preferences existed:
  * System theme, neutral accent, comfortable density, no extra motion
@@ -102,6 +127,7 @@ export type UserPreferences = Readonly<{
 export const DEFAULT_USER_PREFERENCES: UserPreferences = Object.freeze({
   personalOperations: DEFAULT_PERSONAL_OPERATIONS,
   jobSearchReference: null,
+  categoryCaps: Object.freeze({}),
   theme: "system",
   accent: "neutral",
   density: "comfortable",
@@ -170,6 +196,7 @@ export function normalizeUserPreferences(input: unknown): UserPreferences {
         : DEFAULT_PERSONAL_OPERATIONS,
     ),
     jobSearchReference: isJobSearchReference(value.jobSearchReference) ? value.jobSearchReference : null,
+    categoryCaps: isUserCategoryCaps(value.categoryCaps) ? { ...value.categoryCaps } : {},
     theme: isUserTheme(value.theme) ? value.theme : DEFAULT_USER_PREFERENCES.theme,
     accent: isUserAccent(value.accent) ? value.accent : DEFAULT_USER_PREFERENCES.accent,
     density: isUserDensity(value.density) ? value.density : DEFAULT_USER_PREFERENCES.density,
@@ -200,6 +227,7 @@ export type UserPreferencesPatchParseResult =
 const PATCH_FIELDS = [
   "personalOperations",
   "jobSearchReference",
+  "categoryCaps",
   "theme",
   "accent",
   "density",
@@ -224,7 +252,7 @@ export function parseUserPreferencesPatch(input: unknown): UserPreferencesPatchP
   const patch: UserPreferencesPatch = {};
 
   for (const field of PATCH_FIELDS) {
-    if (!(field in value) || value[field] === undefined || (value[field] === null && field !== "personalOperations" && field !== "jobSearchReference")) continue;
+    if (!(field in value) || value[field] === undefined || (value[field] === null && field !== "personalOperations" && field !== "jobSearchReference" && field !== "categoryCaps")) continue;
     const raw = value[field];
 
     switch (field) {
@@ -241,6 +269,18 @@ export function parseUserPreferencesPatch(input: unknown): UserPreferencesPatchP
           return { ok: false, field, message: "Choose a valid task for job search." };
         }
         patch.jobSearchReference = raw;
+        break;
+      case "categoryCaps":
+        // Null clears every cap; otherwise the whole map replaces the stored
+        // one atomically, so a stale tab cannot erase a cap concurrently set.
+        if (raw === null) {
+          patch.categoryCaps = {};
+          break;
+        }
+        if (!isUserCategoryCaps(raw)) {
+          return { ok: false, field, message: "Caps are whole MAD centimes per category." };
+        }
+        patch.categoryCaps = { ...(raw as UserCategoryCaps) };
         break;
       case "reducedMotion":
         if (typeof raw !== "boolean") {

@@ -34,6 +34,7 @@ test("defaults preserve the pre-preferences workspace behaviour", () => {
   assert.deepEqual(DEFAULT_USER_PREFERENCES, {
     personalOperations: DEFAULT_USER_PREFERENCES.personalOperations,
     jobSearchReference: null,
+    categoryCaps: {},
     theme: "system",
     accent: "neutral",
     density: "comfortable",
@@ -272,4 +273,36 @@ test("rejects malformed personal operations without partial acceptance", () => {
     assert.equal(parseUserPreferencesPatch({ theme: "dark", personalOperations: candidate }).ok, false);
   }
   assert.equal(parseUserPreferencesPatch(null).ok, false);
+});
+
+test("categoryCaps default to empty and normalize valid maps", () => {
+  assert.deepEqual(DEFAULT_USER_PREFERENCES.categoryCaps, {});
+  assert.deepEqual(normalizeUserPreferences({}).categoryCaps, {});
+  assert.deepEqual(normalizeUserPreferences({ categoryCaps: null }).categoryCaps, {});
+  assert.deepEqual(normalizeUserPreferences({ categoryCaps: { coffee: 2200, other: 0 } }).categoryCaps, { coffee: 2200, other: 0 });
+  // Unknown categories and non-integer/out-of-range values invalidate the map.
+  assert.deepEqual(normalizeUserPreferences({ categoryCaps: { crypto: 100 } }).categoryCaps, {});
+  assert.deepEqual(normalizeUserPreferences({ categoryCaps: { coffee: 1.5 } }).categoryCaps, {});
+  assert.deepEqual(normalizeUserPreferences({ categoryCaps: { coffee: -5 } }).categoryCaps, {});
+  assert.deepEqual(normalizeUserPreferences({ categoryCaps: { coffee: 2147483648 } }).categoryCaps, {});
+});
+
+test("categoryCaps patch replaces the whole map atomically and null clears", () => {
+  const set = parseUserPreferencesPatch({ categoryCaps: { coffee: 2200 } });
+  assert.equal(set.ok, true);
+  if (!set.ok) return;
+  assert.deepEqual(set.value.categoryCaps, { coffee: 2200 });
+
+  const cleared = parseUserPreferencesPatch({ categoryCaps: null });
+  assert.equal(cleared.ok, true);
+  if (!cleared.ok) return;
+  assert.deepEqual(cleared.value.categoryCaps, {});
+
+  assert.equal(parseUserPreferencesPatch({ categoryCaps: { coffee: -1 } }).ok, false);
+  assert.equal(parseUserPreferencesPatch({ categoryCaps: { quantum: 100 } }).ok, false);
+  // Absent key leaves caps untouched (patch semantics).
+  const untouched = parseUserPreferencesPatch({ theme: "dark" });
+  assert.equal(untouched.ok, true);
+  if (!untouched.ok) return;
+  assert.equal("categoryCaps" in untouched.value, false);
 });
