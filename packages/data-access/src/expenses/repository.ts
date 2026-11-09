@@ -5,6 +5,8 @@ import type {
   ExpenseIdempotencyReceipt,
   ExpenseListRecordQuery,
   ExpenseRepository,
+  ExpenseSummary,
+  ExpenseSummaryWindow,
   ExpenseUpdateRecordInput,
   RepositoryFailure,
   RepositoryResult,
@@ -272,6 +274,52 @@ export class SupabaseExpenseRepository implements ExpenseRepository {
     const row = current.data as ExpenseVersionRow;
     if (row.deleted_at !== null) return { ok: false, error: { code: "notFound" } };
     return { ok: false, error: { code: "conflict" } };
+  }
+
+  /**
+   * Bounded server-side summary: pages of at most 1000 compact rows
+   * (category + amount only) up to a hard cap of 10000 rows. Reaching the
+   * cap reports `truncated` so callers show a lower bound, never a fake
+   * complete total.
+   */
+  async summarize(
+    actor: AuthenticatedActor,
+    window: ExpenseSummaryWindow,
+  ): Promise<RepositoryResult<ExpenseSummary>> {
+    const PAGE_SIZE = 1000;
+    const MAX_ROWS = 10000;
+    const totals: Partial<Record<ExpenseCategory, number>> = {};
+    const counts: Partial<Record<ExpenseCategory, number>> = {};
+    let recordCount = 0;
+    let truncated = false;
+
+    for (let offset = 0; offset < MAX_ROWS; offset += PAGE_SIZE) {
+      const { data, error } = await this.supabase
+        .from(TABLE)
+        .select("category, amount_minor")
+        .eq("owner_user_id", actor.userId)
+        .is("deleted_at", null)
+        .gte("occurred_at", window.startUtcIso)
+        .lt("occurred_at", window.endUtcExclusiveIso)
+        .order("occurred_at", { ascending: false })
+        .order("id", { ascending: false })
+        .range(offset, offset + PAGE_SIZE - 1);
+      if (error) return { ok: false, error: expenseFailure(error) };
+      const rows = (data ?? []) as Array<{ category: string; amount_minor: number }>;
+      for (const row of rows) {
+        const category = row.category as ExpenseCategory;
+        totals[category] = (totals[category] ?? 0) + row.amount_minor;
+        counts[category] = (counts[category] ?? 0) + 1;
+        recordCount += 1;
+      }
+      if (rows.length < PAGE_SIZE) break;
+      if (recordCount >= MAX_ROWS) {
+        truncated = true;
+        break;
+      }
+    }
+
+    return { ok: true, value: { totalsByCategory: totals, countsByCategory: counts, recordCount, truncated } };
   }
 
   async softDelete(
