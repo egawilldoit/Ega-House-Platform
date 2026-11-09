@@ -416,6 +416,12 @@ jobs:
         run: npm run build
       - name: Install Playwright Chromium
         run: npm exec --workspace @ega/web -- playwright install --with-deps chromium
+      - name: Validate smoke report guard
+        run: node --test scripts/ci/assert-playwright-smoke.test.mjs
+      - name: Public browser smoke
+        run: |
+          npm exec --workspace @ega/web -- playwright test --config playwright.smoke.config.ts
+          node scripts/ci/assert-playwright-smoke.mjs apps/web/test-results/smoke-results.json
       - name: Workspace shell browser contracts
         run: npm run test:visual --workspace @ega/web -- --grep "workspace shell contract"
 
