@@ -39,8 +39,31 @@ function createDependencies(): McpReadToolDependencies {
       ok: true,
       data: { id: "task-1", title: "Ship MCP reads" },
     }),
+    personalOpsSummary: vi.fn().mockResolvedValue({
+      date: "2026-11-08",
+      timezone: "Africa/Casablanca",
+      trackedTodaySeconds: 3600,
+      trackedTodayLabel: "1h 0m",
+    }),
+    personalOpsExpensesList: vi.fn().mockResolvedValue({
+      expenses: [{ id: "expense-1", amountMinor: 2200, category: "coffee" }],
+      pagination: { limit: 25, offset: 0, hasMore: false },
+    }),
+    personalOpsCheckinGet: vi.fn().mockResolvedValue({
+      localDate: "2026-11-08",
+      checkin: null,
+    }),
   };
 }
+
+const PERSONAL_OPS_PRINCIPAL: McpPrincipal = {
+  ownerUserId: "00000000-0000-0000-0000-000000000001",
+  oauthClientId: "hermes-client",
+  grantId: "10000000-0000-0000-0000-000000000001",
+  permissionProfile: "personal_operations",
+  permissionsVersion: 1,
+  permissions: ["today.read", "timer.read", "personal_ops.read"],
+};
 
 function readStructuredContent(result: { structuredContent?: unknown }) {
   return result.structuredContent;
@@ -202,6 +225,59 @@ describe("MCP read tool handlers", () => {
         code: "DEPENDENCY_UNAVAILABLE",
         message: "EGA House data is temporarily unavailable.",
       },
+    });
+  });
+});
+
+describe("personal operations read tools", () => {
+  it("denies summary/expense/check-in reads without the explicit grant", async () => {
+    const dependencies = createDependencies();
+    const handlers = createMcpReadToolHandlers(dependencies, false);
+    const readOnlyAuth = createMcpAuthInfo("test-bearer", PRINCIPAL);
+
+    const summary = await handlers.personalOpsSummary(readOnlyAuth, {});
+    expect(readStructuredContent(summary)).toMatchObject({
+      ok: false,
+      error: { code: "PERMISSION_DENIED" },
+    });
+
+    const anonymous = await handlers.personalOpsExpensesList(undefined, {});
+    expect(readStructuredContent(anonymous)).toMatchObject({
+      ok: false,
+      error: { code: "UNAUTHENTICATED" },
+    });
+
+    expect(dependencies.personalOpsSummary).not.toHaveBeenCalled();
+  });
+
+  it("serves bounded reads through the injected canonical readers", async () => {
+    const dependencies = createDependencies();
+    const handlers = createMcpReadToolHandlers(dependencies, false);
+    const authInfo = createMcpAuthInfo("test-bearer", PERSONAL_OPS_PRINCIPAL);
+
+    const summary = await handlers.personalOpsSummary(authInfo, {
+      date: "2026-11-08",
+      timezone: "Africa/Casablanca",
+    });
+    expect(readStructuredContent(summary)).toMatchObject({
+      ok: true,
+      summary: { trackedTodaySeconds: 3600 },
+    });
+
+    const expenses = await handlers.personalOpsExpensesList(authInfo, { limit: 25 });
+    expect(readStructuredContent(expenses)).toMatchObject({
+      ok: true,
+      expenses: [{ id: "expense-1", amountMinor: 2200 }],
+    });
+
+    const checkin = await handlers.personalOpsCheckinGet(authInfo, {
+      localDate: "2026-11-08",
+      timezone: "Africa/Casablanca",
+    });
+    expect(readStructuredContent(checkin)).toEqual({
+      ok: true,
+      localDate: "2026-11-08",
+      checkin: null,
     });
   });
 });

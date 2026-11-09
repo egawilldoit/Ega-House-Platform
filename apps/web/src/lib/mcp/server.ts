@@ -56,6 +56,21 @@ export type McpReadToolHandlers = {
     input: { limit?: number; includeClosed?: boolean },
     context?: McpProtocolContext,
   ) => Promise<CallToolResult>;
+  personalOpsSummary: (
+    authInfo: AuthInfo | undefined,
+    input: { date?: string; timezone?: string },
+    context?: McpProtocolContext,
+  ) => Promise<CallToolResult>;
+  personalOpsExpensesList: (
+    authInfo: AuthInfo | undefined,
+    input: { from?: string; to?: string; timezone?: string; limit?: number },
+    context?: McpProtocolContext,
+  ) => Promise<CallToolResult>;
+  personalOpsCheckinGet: (
+    authInfo: AuthInfo | undefined,
+    input: { localDate: string; timezone: string },
+    context?: McpProtocolContext,
+  ) => Promise<CallToolResult>;
 };
 
 export type McpWriteToolHandlers = {
@@ -170,6 +185,26 @@ export type McpWriteToolHandlers = {
     input: { taskId: string; operationId: string },
     context?: McpProtocolContext,
   ) => Promise<CallToolResult>;
+  createPersonalOpsExpense: (
+    authInfo: AuthInfo | undefined,
+    input: {
+      occurredAt: string;
+      amountMinor: number;
+      category: string;
+      needVsWant: "need" | "want";
+      note?: string | null;
+      merchant?: string | null;
+      paymentMethod?: string | null;
+      idempotencyKey: string;
+      operationId: string;
+    },
+    context?: McpProtocolContext,
+  ) => Promise<CallToolResult>;
+  savePersonalOpsCheckin: (
+    authInfo: AuthInfo | undefined,
+    input: { localDate: string; timezone: string; patch: Record<string, unknown>; operationId: string },
+    context?: McpProtocolContext,
+  ) => Promise<CallToolResult>;
   stopTimer: (
     authInfo: AuthInfo | undefined,
     input: { sessionId: string; operationId: string },
@@ -279,6 +314,31 @@ const timerSessionsInputSchema = z.object({
   limit: limitSchema,
   includeClosed: z.boolean().default(false),
 }).strict();
+
+const personalOpsSummaryInputSchema = z.object({
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  timezone: z.string().optional(),
+}).strict();
+
+const personalOpsExpensesInputSchema = z.object({
+  from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  timezone: z.string().optional(),
+  limit: limitSchema,
+}).strict();
+
+const personalOpsCheckinInputSchema = z.object({
+  localDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  timezone: z.string(),
+}).strict();
+
+const personalOpsSummaryOutputSchema = z.object({
+  ok: z.literal(true),
+}).passthrough();
+
+const personalOpsListOutputSchema = z.object({
+  ok: z.literal(true),
+}).passthrough();
 
 const capabilitiesOutputSchema = z.object({
   ok: z.literal(true),
@@ -450,6 +510,25 @@ const startTimerInputSchema = z.object({
   operationId: z.string().uuid(),
 }).strict();
 
+const personalOpsExpenseInputSchema = z.object({
+  occurredAt: z.string(),
+  amountMinor: z.number().int().positive(),
+  category: z.string(),
+  needVsWant: z.enum(["need", "want"]),
+  note: nullableStringSchema,
+  merchant: nullableStringSchema,
+  paymentMethod: nullableStringSchema,
+  idempotencyKey: z.string().min(1),
+  operationId: z.string().uuid(),
+}).strict();
+
+const personalOpsCheckinSaveInputSchema = z.object({
+  localDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  timezone: z.string(),
+  patch: z.record(z.string(), z.unknown()),
+  operationId: z.string().uuid(),
+}).strict();
+
 const stopTimerInputSchema = z.object({
   sessionId: uuidSchema,
   operationId: z.string().uuid(),
@@ -588,6 +667,54 @@ const READ_TOOL_REGISTRATIONS: readonly ReadToolRegistration[] = [
         },
         async (input, ctx) =>
           handlers.getTodayPlan(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
+      ),
+  },
+  {
+    name: "ega_personal_ops_summary",
+    register: (server, handlers) =>
+      server.registerTool(
+        "ega_personal_ops_summary",
+        {
+          title: "Personal operations summary",
+          description: "Work tracking, today spending and check-in presence for the authenticated user. Requires the explicit personal_ops.read grant.",
+          inputSchema: personalOpsSummaryInputSchema,
+          outputSchema: personalOpsSummaryOutputSchema,
+          annotations: READ_ONLY_ANNOTATIONS,
+        },
+        async (input, ctx) =>
+          handlers.personalOpsSummary(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
+      ),
+  },
+  {
+    name: "ega_personal_ops_expenses_list",
+    register: (server, handlers) =>
+      server.registerTool(
+        "ega_personal_ops_expenses_list",
+        {
+          title: "List personal expenses",
+          description: "Bounded owner expense list in MAD centimes. Requires the explicit personal_ops.read grant.",
+          inputSchema: personalOpsExpensesInputSchema,
+          outputSchema: personalOpsListOutputSchema,
+          annotations: READ_ONLY_ANNOTATIONS,
+        },
+        async (input, ctx) =>
+          handlers.personalOpsExpensesList(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
+      ),
+  },
+  {
+    name: "ega_personal_ops_checkin_get",
+    register: (server, handlers) =>
+      server.registerTool(
+        "ega_personal_ops_checkin_get",
+        {
+          title: "Get daily check-in",
+          description: "Read one owner/local-date daily check-in. Requires the explicit personal_ops.read grant.",
+          inputSchema: personalOpsCheckinInputSchema,
+          outputSchema: personalOpsListOutputSchema,
+          annotations: READ_ONLY_ANNOTATIONS,
+        },
+        async (input, ctx) =>
+          handlers.personalOpsCheckinGet(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
       ),
   },
   {
@@ -941,6 +1068,38 @@ const WRITE_TOOL_REGISTRATIONS: readonly WriteToolRegistration[] = [
         },
         async (input, ctx) =>
           handlers.updateTodayTaskStatus(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
+      ),
+  },
+  {
+    name: "ega_create_personal_ops_expense",
+    register: (server, handlers) =>
+      server.registerTool(
+        "ega_create_personal_ops_expense",
+        {
+          title: "Create personal expense",
+          description: "Create one MAD expense in the canonical ledger with an idempotency key. Requires the explicit personal_ops.write grant.",
+          inputSchema: personalOpsExpenseInputSchema,
+          outputSchema: genericWriteOutputSchema,
+          annotations: WRITE_ANNOTATIONS,
+        },
+        async (input, ctx) =>
+          handlers.createPersonalOpsExpense(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
+      ),
+  },
+  {
+    name: "ega_save_personal_ops_checkin",
+    register: (server, handlers) =>
+      server.registerTool(
+        "ega_save_personal_ops_checkin",
+        {
+          title: "Save daily check-in",
+          description: "Save or merge one owner/local-date daily check-in. Requires the explicit personal_ops.write grant.",
+          inputSchema: personalOpsCheckinSaveInputSchema,
+          outputSchema: genericWriteOutputSchema,
+          annotations: WRITE_ANNOTATIONS,
+        },
+        async (input, ctx) =>
+          handlers.savePersonalOpsCheckin(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
       ),
   },
   {

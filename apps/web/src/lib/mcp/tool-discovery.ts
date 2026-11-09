@@ -22,6 +22,14 @@ const ALL_TOOLS: readonly McpToolDefinition[] = [
   { name: "ega_list_tasks", requiredPermission: "tasks.read" },
   { name: "ega_get_today_plan", requiredPermission: "today.read" },
   { name: "ega_list_timer_sessions", requiredPermission: "timer.read" },
+  // Personal Operations reads (PO-13): explicit grants only, no inherit from
+  // legacy profiles.
+  { name: "ega_personal_ops_summary", requiredPermission: "personal_ops.read" },
+  { name: "ega_personal_ops_expenses_list", requiredPermission: "personal_ops.read" },
+  { name: "ega_personal_ops_checkin_get", requiredPermission: "personal_ops.read" },
+  // Personal Operations writes: explicit writer grant, never auto-upgraded.
+  { name: "ega_create_personal_ops_expense", requiredPermission: "personal_ops.write", writesEnabledRequired: true },
+  { name: "ega_save_personal_ops_checkin", requiredPermission: "personal_ops.write", writesEnabledRequired: true },
   // Project writes
   { name: "ega_create_project", requiredPermission: "projects.create", writesEnabledRequired: true },
   { name: "ega_update_project_status", requiredPermission: "projects.update", writesEnabledRequired: true },

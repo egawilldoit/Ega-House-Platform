@@ -41,6 +41,22 @@ export type McpReadToolDependencies = {
   ) => ReturnType<typeof getTaskReadModel>;
   getTodayPlan?: (client: SupabaseClient<McpDatabase>, ownerUserId: string, date: string) => Promise<unknown>;
   listTimerSessions?: (client: SupabaseClient<McpDatabase>, ownerUserId: string, limit: number) => Promise<unknown>;
+  personalOpsSummary?: (
+    client: SupabaseClient<McpDatabase>,
+    ownerUserId: string,
+    context: { date?: string; timezone?: string },
+  ) => Promise<unknown>;
+  personalOpsExpensesList?: (
+    client: SupabaseClient<McpDatabase>,
+    ownerUserId: string,
+    query: { from?: string; to?: string; timezone?: string; limit?: number },
+  ) => Promise<unknown>;
+  personalOpsCheckinGet?: (
+    client: SupabaseClient<McpDatabase>,
+    ownerUserId: string,
+    localDate: string,
+    timezone: string,
+  ) => Promise<unknown>;
 };
 
 const DEFAULT_DEPENDENCIES: McpReadToolDependencies = {
@@ -309,5 +325,125 @@ export function createMcpReadToolHandlers(
         return errorResult(error);
       }
     },
+
+    // Personal Operations read tools (PO-13, issue #358). Each tool is
+    // fenced by the explicit personal_ops.read grant; old profiles and
+    // tokens without that grant are denied without automatic upgrade.
+    async personalOpsSummary(
+      authInfo: AuthInfo | undefined,
+      input: { date?: string; timezone?: string },
+    ): Promise<CallToolResult> {
+      try {
+        const principal = requireMcpPermission(authInfo, "personal_ops.read");
+        const client = createClient(dependencies, authInfo!);
+        const summary = await (dependencies.personalOpsSummary ?? defaultPersonalOpsSummary)(
+          client,
+          principal.ownerUserId,
+          input ?? {},
+        );
+        return resultFromPayload({ ok: true, summary });
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+
+    async personalOpsExpensesList(
+      authInfo: AuthInfo | undefined,
+      input: { from?: string; to?: string; timezone?: string; limit?: number },
+    ): Promise<CallToolResult> {
+      try {
+        const principal = requireMcpPermission(authInfo, "personal_ops.read");
+        const client = createClient(dependencies, authInfo!);
+        const data = await (dependencies.personalOpsExpensesList ?? defaultPersonalOpsExpensesList)(
+          client,
+          principal.ownerUserId,
+          input ?? {},
+        );
+        return resultFromPayload({ ok: true, ...((data as Record<string, unknown>) ?? {}) });
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+
+    async personalOpsCheckinGet(
+      authInfo: AuthInfo | undefined,
+      input: { localDate: string; timezone: string },
+    ): Promise<CallToolResult> {
+      try {
+        const principal = requireMcpPermission(authInfo, "personal_ops.read");
+        const client = createClient(dependencies, authInfo!);
+        const data = await (dependencies.personalOpsCheckinGet ?? defaultPersonalOpsCheckinGet)(
+          client,
+          principal.ownerUserId,
+          input.localDate,
+          input.timezone,
+        );
+        return resultFromPayload({ ok: true, ...((data as Record<string, unknown>) ?? {}) });
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
   };
+}
+
+async function defaultPersonalOpsSummary(
+  client: SupabaseClient<McpDatabase>,
+  ownerUserId: string,
+  context: { date?: string; timezone?: string },
+) {
+  const { getOperatorSnapshot } = await import("@ega/application");
+  const { SupabaseTimeContextRepository, SupabaseTodayReadPort } = await import("@ega/data-access");
+  const result = await getOperatorSnapshot(
+    { userId: ownerUserId } as never,
+    new SupabaseTodayReadPort(client as never),
+    new SupabaseTimeContextRepository(client as never),
+    { date: context.date, timezone: context.timezone },
+  );
+  if (!result.ok) throw new Error("Failed to load EGA personal operations summary.");
+  const snapshot = result.data as unknown as {
+    date: string;
+    timezone: string;
+    summary: { trackedTodaySeconds: number; trackedTodayLabel: string };
+  };
+  return {
+    date: snapshot.date,
+    timezone: snapshot.timezone,
+    trackedTodaySeconds: snapshot.summary.trackedTodaySeconds,
+    trackedTodayLabel: snapshot.summary.trackedTodayLabel,
+  };
+}
+
+async function defaultPersonalOpsExpensesList(
+  client: SupabaseClient<McpDatabase>,
+  ownerUserId: string,
+  query: { from?: string; to?: string; timezone?: string; limit?: number },
+) {
+  const { listExpenses } = await import("@ega/application");
+  const { SupabaseExpenseRepository } = await import("@ega/data-access");
+  const result = await listExpenses(
+    { userId: ownerUserId } as never,
+    new SupabaseExpenseRepository(client as never),
+    {
+      from: query.from,
+      to: query.to,
+      limit: String(Math.min(Math.max(query.limit ?? 25, 1), 100)),
+    },
+    { timezone: query.timezone ?? null },
+  );
+  if (!result.ok) throw new Error("Failed to list EGA expenses.");
+  return { expenses: result.data.expenses, pagination: result.data.pagination };
+}
+
+async function defaultPersonalOpsCheckinGet(
+  client: SupabaseClient<McpDatabase>,
+  ownerUserId: string,
+  localDate: string,
+  timezone: string,
+) {
+  const { createDailyCheckinService } = await import("@ega/application");
+  const { SupabaseDailyCheckinRepository } = await import("@ega/data-access");
+  const service = createDailyCheckinService(new SupabaseDailyCheckinRepository(client as never));
+  const result = await service.getDailyCheckin({ userId: ownerUserId } as never, localDate, timezone);
+  if (!result.ok) throw new Error("Failed to load EGA check-in.");
+  return { localDate, checkin: result.data };
 }

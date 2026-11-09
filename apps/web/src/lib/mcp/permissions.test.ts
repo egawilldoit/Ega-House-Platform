@@ -48,3 +48,14 @@ describe("MCP permission profiles", () => {
     expect(getPermissionsForProfile("read_only")).not.toContain("tasks.create");
   });
 });
+
+test("personal operations profiles are explicit and never inherited by old profiles", () => {
+  for (const profile of ["read_only", "task_manager", "workspace_manager"] as const) {
+    expect(getPermissionsForProfile(profile)).not.toContain("personal_ops.read");
+    expect(getPermissionsForProfile(profile)).not.toContain("personal_ops.write");
+  }
+  expect(getPermissionsForProfile("personal_operations")).toContain("personal_ops.read");
+  expect(getPermissionsForProfile("personal_operations")).not.toContain("personal_ops.write");
+  expect(getPermissionsForProfile("personal_operations_writer")).toContain("personal_ops.write");
+  expect(parsePermissionProfile("personal_operations_writer")).toBe("personal_operations_writer");
+});

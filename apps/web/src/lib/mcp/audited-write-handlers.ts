@@ -128,6 +128,8 @@ const DEFAULT_DEPENDENCIES: AuditedWriteHandlerDependencies = {
 
 /** toolName per handler method — single source of truth for audit labels. */
 const HANDLER_TOOL_NAMES: Readonly<Record<keyof McpWriteToolHandlers, string>> = {
+  createPersonalOpsExpense: "ega_create_personal_ops_expense",
+  savePersonalOpsCheckin: "ega_save_personal_ops_checkin",
   createProject: "ega_create_project",
   updateProjectStatus: "ega_update_project_status",
   archiveProject: "ega_archive_project",
