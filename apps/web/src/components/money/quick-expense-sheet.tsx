@@ -86,6 +86,27 @@ export function QuickExpenseSheet({ ownerKey, submitExpense, onCreated }: QuickE
   const submittingRef = useRef(false);
   const lastFocusedElementRef = useRef<HTMLElement | null>(null);
 
+  // Owner isolation: a different verified owner starts with a clean draft,
+  // exactly like ExpenseCreateForm. Render-time adjustment; the idempotency
+  // key rotates in useStableIdempotencyKey on the same owner change.
+  const [ownerScope, setOwnerScope] = useState(ownerKey);
+  if (ownerScope !== ownerKey) {
+    setOwnerScope(ownerKey);
+    setAmountInput("");
+    setCategory("coffee");
+    setNeedVsWant("want");
+    setMerchant("");
+    setNote("");
+    setPaymentMethod("");
+    setFieldErrors({});
+    setFormError(null);
+    setSuccess(false);
+    setIsSubmitting(false);
+  }
+  useEffect(() => {
+    submittingRef.current = isSubmitting;
+  }, [isSubmitting, ownerScope]);
+
   // Prefill the remembered amount for the selected category (e.g. 22 MAD for
   // coffee) only while the amount field is untouched.
   useEffect(() => {
@@ -108,13 +129,20 @@ export function QuickExpenseSheet({ ownerKey, submitExpense, onCreated }: QuickE
     setOpen(true);
   }
 
+  function resetDraft() {
+    setAmountInput("");
+    setCategory("coffee");
+    setNeedVsWant("want");
+    setMerchant("");
+    setNote("");
+    setPaymentMethod("");
+    setFormError(null);
+  }
+
   function closeSheet() {
     setOpen(false);
     if (success) {
-      setAmountInput("");
-      setMerchant("");
-      setNote("");
-      setFormError(null);
+      resetDraft();
       setSuccess(false);
     }
   }
@@ -141,11 +169,13 @@ export function QuickExpenseSheet({ ownerKey, submitExpense, onCreated }: QuickE
       return;
     }
     setFieldErrors({});
+    const isCurrent = captureRequestScope();
     submittingRef.current = true;
     setIsSubmitting(true);
     const values = validation.value;
     try {
       const result = await submitExpense({ ...values, idempotencyKey });
+      if (!isCurrent()) return;
       if (!result.ok) {
         // Keep the same key: a retry (including after a timeout-after-commit)
         // must land on the original record, never a duplicate.
@@ -157,10 +187,13 @@ export function QuickExpenseSheet({ ownerKey, submitExpense, onCreated }: QuickE
       rotateKey();
       onCreated?.(result.expense, result.replayed);
     } catch {
+      if (!isCurrent()) return;
       setFormError("The expense could not be saved right now. Your entries are still here — retry keeps the same purchase.");
     } finally {
-      submittingRef.current = false;
-      setIsSubmitting(false);
+      if (isCurrent()) {
+        submittingRef.current = false;
+        setIsSubmitting(false);
+      }
     }
   }
 
@@ -209,13 +242,14 @@ export function QuickExpenseSheet({ ownerKey, submitExpense, onCreated }: QuickE
               </p>
             </div>
             <DialogPrimitive.Close asChild>
-              <Button type="button" variant="ghost" aria-label="Close quick expense">
+              <Button type="button" variant="ghost" aria-label="Close quick expense" className="min-h-11 min-w-11">
                 <X className="h-5 w-5" aria-hidden="true" />
               </Button>
             </DialogPrimitive.Close>
           </div>
 
           <form onSubmit={handleSubmit} className="mt-4 flex flex-col gap-4" noValidate>
+            <fieldset disabled={isSubmitting} className="flex flex-col gap-4" style={{ border: 0, padding: 0, margin: 0 }}>
             <div className="flex flex-col gap-1.5">
               <label htmlFor="quick-expense-amount" className="form-label">
                 Amount (MAD)
@@ -346,6 +380,8 @@ export function QuickExpenseSheet({ ownerKey, submitExpense, onCreated }: QuickE
               ) : null}
             </div>
 
+            </fieldset>
+
             <div className="flex gap-2">
               <Button type="submit" className="min-h-11" disabled={isSubmitting || success}>
                 {isSubmitting ? "Saving…" : success ? "Saved" : "Save expense"}
@@ -357,7 +393,7 @@ export function QuickExpenseSheet({ ownerKey, submitExpense, onCreated }: QuickE
                   className="min-h-11"
                   onClick={() => {
                     setSuccess(false);
-                    setAmountInput("");
+                    resetDraft();
                     document.getElementById("quick-expense-amount")?.focus();
                   }}
                 >
