@@ -1,9 +1,24 @@
+/**
+ * Neutralize spreadsheet formula injection (PO-15, issue #360). A cell whose
+ * text starts with =, +, -, @ or a control character would be interpreted as
+ * a formula by Sheets/Excel, so it is prefixed with a single quote that
+ * forces text display. The underlying value is otherwise untouched.
+ */
+export function sanitizeCsvFormulaCell(value: string) {
+  const trimmed = value.replace(/^[\t\r\n ]+/, "");
+  if (/^[=+\-@|%]/.test(trimmed) || /[\u0000-\u0008\u000E-\u001F]/.test(value)) {
+    return `'${value}`;
+  }
+  return value;
+}
+
 function escapeCsvCell(value: string) {
-  if (/[",\n\r]/.test(value)) {
-    return `"${value.replaceAll('"', '""')}"`;
+  const safe = sanitizeCsvFormulaCell(value);
+  if (/[",\n\r]/.test(safe)) {
+    return `"${safe.replaceAll('"', '""')}"`;
   }
 
-  return value;
+  return safe;
 }
 
 export function toCsvRow(values: Array<string | number | null | undefined>) {
