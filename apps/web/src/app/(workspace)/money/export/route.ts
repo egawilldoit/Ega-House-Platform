@@ -2,6 +2,8 @@ import { createClient } from "@/lib/supabase/server";
 import { getWebTimeContext } from "@/lib/services/time-context-service";
 import { toCsvDocument } from "@/lib/csv";
 import { captureServerException } from "@/lib/monitoring/capture-server-exception";
+import { createAuthenticatedActor } from "@ega/application";
+import { SupabaseExpenseRepository } from "@ega/data-access";
 import { getLocalDayWindow, isIsoDate } from "@ega/domain/time-context";
 
 export const dynamic = "force-dynamic";
@@ -75,31 +77,27 @@ export async function GET(request: Request) {
     return Response.json({ error: "Unable to resolve the export range." }, { status: 400 });
   }
 
-  const { data, error } = await supabase
-    .from("personal_expenses")
-    .select("occurred_at, amount_minor, category, merchant, note, need_vs_want, payment_method")
-    .eq("owner_user_id", ownerUserId)
-    .is("deleted_at", null)
-    .gte("occurred_at", startUtc)
-    .lt("occurred_at", endUtcExclusive)
-    .order("occurred_at", { ascending: true })
-    .order("created_at", { ascending: true })
-    .limit(10000);
-
-  if (error) {
-    captureServerException(error, { area: "route.expense-export", operation: "load_expenses" });
+  const repository = new SupabaseExpenseRepository(supabase);
+  const listed = await repository.list(createAuthenticatedActor(ownerUserId), {
+    limit: 10000,
+    offset: 0,
+    startUtcIso: startUtc,
+    endUtcExclusiveIso: endUtcExclusive,
+  });
+  if (!listed.ok) {
+    captureServerException(new Error(listed.error.code), { area: "route.expense-export", operation: "load_expenses" });
     return Response.json({ error: "Unable to load expenses right now." }, { status: 500 });
   }
 
   const csv = buildExpenseExportCsv(
-    (data ?? []).map((row) => ({
-      occurredAt: String(row.occurred_at),
-      amountMinor: Number(row.amount_minor),
-      category: String(row.category),
-      merchant: row.merchant == null ? null : String(row.merchant),
-      note: row.note == null ? null : String(row.note),
-      needVsWant: String(row.need_vs_want),
-      paymentMethod: row.payment_method == null ? null : String(row.payment_method),
+    listed.value.map((row) => ({
+      occurredAt: row.occurredAt,
+      amountMinor: row.amountMinor,
+      category: row.category,
+      merchant: row.merchant,
+      note: row.note,
+      needVsWant: row.needVsWant,
+      paymentMethod: row.paymentMethod,
     })),
     timezone,
   );
