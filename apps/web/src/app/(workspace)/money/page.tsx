@@ -7,6 +7,10 @@ import { getCurrentUser } from "@/lib/services/auth-service";
 import { getWebTimeContext } from "@/lib/services/time-context-service";
 import { MoneyCreatePanel } from "./_components/money-create-panel";
 import { MoneyRowActions } from "./_components/money-row-actions";
+import { CategoryCapsForm } from "./_components/category-caps-form";
+import { saveCategoryCapsAction } from "./actions";
+import { getWebUserPreferencesState } from "@/lib/services/user-preferences-service";
+import { getLocalDateInTimezone } from "@ega/domain";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Money", description: "Your personal expense ledger." };
@@ -29,8 +33,77 @@ export default async function MoneyPage({ searchParams }: Props) {
   } catch {
     result = null;
   }
+  // Monthly caps are advisory progress targets in owner preferences.
+  const prefsState = await getWebUserPreferencesState().catch(() => null);
+  const caps = prefsState?.preferences.categoryCaps ?? {};
+  let capsNote: string | null = null;
+  let spentByCategory: Record<string, number> = {};
+  try {
+    const localToday = getLocalDateInTimezone(new Date(), timezone);
+    const monthListed = await listExpenses(
+      createAuthenticatedActor(user.id),
+      new SupabaseExpenseRepository(client),
+      { from: `${localToday.slice(0, 7)}-01`, to: localToday, limit: "100" },
+      { timezone },
+    );
+    if (monthListed.ok) {
+      if (monthListed.data.pagination.hasMore) {
+        capsNote = "Cap progress is partial (over 100 expenses this month).";
+      }
+      for (const expense of monthListed.data.expenses) {
+        spentByCategory[expense.category] = (spentByCategory[expense.category] ?? 0) + expense.amountMinor;
+      }
+    } else {
+      capsNote = "Cap progress unavailable right now.";
+    }
+  } catch {
+    capsNote = "Cap progress unavailable right now.";
+  }
+  const cappedCategories = Object.entries(caps).filter(
+    ([, cap]) => typeof cap === "number",
+  ) as Array<[string, number]>;
   return <main className="mx-auto w-full max-w-5xl px-4 py-6 sm:px-6">
     <WorkspacePageHeader title="Money" description="Your personal expense ledger." />
+
+    <section aria-labelledby="money-caps-heading" className="mt-6 rounded-lg border border-ega-border p-5">
+      <h2 id="money-caps-heading" className="text-[length:var(--text-section)] font-semibold tracking-[var(--tracking-tight)]">
+        Monthly category caps
+      </h2>
+      {cappedCategories.length > 0 ? (
+        <ul className="mt-3 flex flex-col gap-1.5">
+          {cappedCategories.map(([category, cap]) => {
+            const spent = spentByCategory[category] ?? 0;
+            const over = spent > cap;
+            return (
+              <li key={category} className="flex flex-wrap items-baseline gap-x-3 text-[length:var(--text-body)]">
+                <span className="font-medium">{category.replaceAll("_", " ")}</span>
+                <span>
+                  {new Intl.NumberFormat("fr-MA", { style: "currency", currency: "MAD", minimumFractionDigits: 2 }).format(spent / 100)}
+                  {" / "}
+                  {new Intl.NumberFormat("fr-MA", { style: "currency", currency: "MAD", minimumFractionDigits: 2 }).format(cap / 100)}
+                </span>
+                {over ? (
+                  <span className="text-[length:var(--text-meta)] text-[color:var(--ega-danger)]">
+                    Over cap — advisory only, spending stays allowed.
+                  </span>
+                ) : null}
+              </li>
+            );
+          })}
+        </ul>
+      ) : (
+        <p className="mt-2 text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
+          No caps set. Expenses work either way.
+        </p>
+      )}
+      {capsNote ? (
+        <p className="mt-2 text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">{capsNote}</p>
+      ) : null}
+      <div className="mt-4">
+        <CategoryCapsForm caps={caps} action={saveCategoryCapsAction} returnTo="/money" />
+      </div>
+    </section>
+
     <MoneyCreatePanel ownerKey={user.id} />
     {(!result || !result.ok) ? <section role="alert" className="mt-6 rounded-lg border border-ega-border p-5">
       <p>Expenses could not be loaded.</p><a className="underline" href={`/money?offset=${offset}`}>Retry</a>

@@ -114,6 +114,7 @@ test("get reads the owner row scoped by verified user_id", async () => {
     assert.deepEqual(result.value, {
       personalOperations: DEFAULT_USER_PREFERENCES.personalOperations,
       jobSearchReference: null,
+      categoryCaps: {},
       theme: "dark",
       accent: "violet",
       density: "compact",
@@ -352,4 +353,49 @@ test("owner isolation: another actor produces a different scoped query", async (
   await repo(fake).get(createAuthenticatedActor("owner-other"));
 
   assert.ok(fake.calls[0]?.steps.some((step) => step.includes("eq:user_id=owner-other")));
+});
+
+test("get maps category caps and retries without the column before 0091 is applied", async () => {
+  const withCaps = new FakePreferencesSupabase([{
+    data: { ...STORED_ROW, category_caps: { coffee: 2200, other: 0 } },
+    error: null,
+  }]);
+  const capped = await repo(withCaps).get(ACTOR);
+  assert.equal(capped.ok, true);
+  if (!capped.ok || !capped.value) return;
+  assert.deepEqual(capped.value.categoryCaps, { coffee: 2200, other: 0 });
+
+  const legacy = new FakePreferencesSupabase([
+    {
+      data: null,
+      error: {
+        code: "42703",
+        message: 'column "category_caps" does not exist',
+      },
+    },
+    { data: STORED_ROW, error: null },
+  ]);
+  const fallen = await repo(legacy).get(ACTOR);
+  assert.equal(fallen.ok, true);
+  if (!fallen.ok || !fallen.value) return;
+  assert.deepEqual(fallen.value.categoryCaps, {});
+  assert.equal(fallen.value.theme, "dark");
+  assert.equal(legacy.calls.length, 2);
+  const firstSelect = legacy.calls[0]?.steps.find((step) => step.startsWith("select:")) ?? "";
+  const secondSelect = legacy.calls[1]?.steps.find((step) => step.startsWith("select:")) ?? "";
+  assert.ok(firstSelect.includes("category_caps"));
+  assert.ok(!secondSelect.includes("category_caps"));
+});
+
+test("patch sends the caps map atomically and only that key", async () => {
+  const fake = new FakePreferencesSupabase([{ data: STORED_ROW, error: null }]);
+  const result = await repo(fake).patch(ACTOR, {
+    categoryCaps: { coffee: 2200 },
+  });
+  assert.equal(result.ok, true);
+  assert.equal(fake.rpcCalls[0]?.name, "patch_user_preferences");
+  const args = JSON.stringify(fake.rpcCalls[0]?.args);
+  assert.ok(args.includes('"categoryCaps":{"coffee":2200}'));
+  assert.ok(!args.includes('"theme"'));
+  assert.ok(!args.includes('"personalOperations"'));
 });
