@@ -80,7 +80,7 @@ async function loadTodayCards(snapshot: Awaited<ReturnType<typeof getOperatorSna
           { from: snapshot.date, to: snapshot.date, limit: "100" },
           { timezone: snapshot.timezone },
         );
-        if (!listed.ok) return moneyUnavailable;
+        if (!listed.ok || listed.data.pagination.hasMore) return moneyUnavailable;
         const total = listed.data.expenses.reduce((sum, e) => sum + e.amountMinor, 0);
         return { available: true, totalMinor: total };
       } catch {
@@ -89,7 +89,7 @@ async function loadTodayCards(snapshot: Awaited<ReturnType<typeof getOperatorSna
     })(),
     (async () => {
       try {
-        const loaded = await getWebDailyCheckin({ localDate: snapshot.date });
+        const loaded = await getWebDailyCheckin({ localDate: snapshot.date, timezone: snapshot.timezone });
         if (loaded.errorMessage) return routineUnavailable;
         return { available: true, saved: loaded.checkin !== null };
       } catch {

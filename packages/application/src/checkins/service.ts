@@ -45,8 +45,9 @@ export function createDailyCheckinService(repository: DailyCheckinRepository) {
     async getDailyCheckin(
       actor: AuthenticatedActor,
       localDate: string,
+      timezone: string = "UTC",
     ): Promise<ApplicationResult<DailyCheckin | null>> {
-      const identity = parseDailyCheckinIdentity({ localDate, timezone: "UTC" });
+      const identity = parseDailyCheckinIdentity({ localDate, timezone });
       if (!identity.ok) {
         return applicationFailure(identity.message, "validation");
       }
