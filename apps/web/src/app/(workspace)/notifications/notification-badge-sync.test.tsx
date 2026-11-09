@@ -18,8 +18,8 @@ beforeEach(() => {
 afterEach(() => {
   act(() => root.unmount());
   container.remove();
-  Reflect.deleteProperty(window.navigator as Record<string, unknown>, "setAppBadge");
-  Reflect.deleteProperty(window.navigator as Record<string, unknown>, "clearAppBadge");
+  Reflect.deleteProperty(window.navigator as unknown as Record<string, unknown>, "setAppBadge");
+  Reflect.deleteProperty(window.navigator as unknown as Record<string, unknown>, "clearAppBadge");
 });
 
 describe("NotificationBadgeSync", () => {
@@ -41,7 +41,7 @@ describe("NotificationBadgeSync", () => {
     expect(clearAppBadge).toHaveBeenCalledTimes(1);
 
     // Re-render without any badge API must be a safe no-op.
-    Reflect.deleteProperty(window.navigator as Record<string, unknown>, "clearAppBadge");
+    Reflect.deleteProperty(window.navigator as unknown as Record<string, unknown>, "clearAppBadge");
     await act(async () => {
       root.render(<NotificationBadgeSync unreadCount={2} />);
     });
