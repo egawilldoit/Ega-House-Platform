@@ -64,6 +64,7 @@ function installMatchMedia(initialDark: boolean): MatchMediaFixture {
 const BASE_PREFERENCES: UserPreferences = {
   personalOperations: DEFAULT_USER_PREFERENCES.personalOperations,
   jobSearchReference: null,
+  categoryCaps: {},
   theme: "system",
   accent: "neutral",
   density: "comfortable",
