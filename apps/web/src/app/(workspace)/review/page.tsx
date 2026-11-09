@@ -5,6 +5,8 @@ import { getHealthSnapshotData } from "@/lib/services/health-snapshot-service";
 import { getReviewPageModel } from "./_lib/review-page-model";
 import { ExportCsvButton } from "@/components/ui/export-csv-button";
 import { ReviewPageView } from "./_components/ReviewPageView";
+import { EvidenceReviewPanel } from "./_components/evidence-review-panel";
+import { getWebEvidenceReview } from "@/lib/services/evidence-review-service";
 
 export const metadata: Metadata = {
   title: "Review",
@@ -17,7 +19,7 @@ export default async function ReviewPage({
   searchParams: Promise<{ draft?: string; weekOf?: string }>;
 }) {
   const resolvedSearchParams = await searchParams;
-  const [model, health, friction] = await Promise.all([
+  const [model, health, friction, evidence] = await Promise.all([
     getReviewPageModel(resolvedSearchParams),
     getHealthSnapshotData().catch(() => ({
       errorMessage: "Health evidence is unavailable.",
@@ -28,6 +30,8 @@ export default async function ReviewPage({
       errorMessage: "Friction evidence is unavailable.",
       data: null,
     })),
+    // Two-week evidence review (PO-12): failure only skips the panel.
+    getWebEvidenceReview({}).catch(() => ({ data: null as null, errorMessage: null as string | null })),
   ]);
 
   return (
@@ -42,6 +46,7 @@ export default async function ReviewPage({
         }
       />
       <ReviewPageView model={model} health={health} friction={friction} />
+      {evidence.data ? <EvidenceReviewPanel data={evidence.data} /> : null}
     </>
   );
 }
