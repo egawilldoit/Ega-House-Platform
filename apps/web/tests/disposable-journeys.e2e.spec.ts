@@ -103,8 +103,16 @@ test("Money survives reload, exports only the owner, then edits and deletes", as
   expect(updated.data?.amount_minor).toBe(1575);
   await row.getByRole("button", { name: "Delete", exact: true }).click();
   await page.getByRole("dialog", { name: "Delete expense", exact: true }).getByRole("button", { name: "Confirm delete E2E owner A coffee", exact: true }).click();
+  await expect.poll(async () => {
+    const deleted = await a.from("personal_expenses").select("deleted_at").eq("id", expense.id).single();
+    expect(deleted.error).toBeNull();
+    return deleted.data?.deleted_at;
+  }).toBeTruthy();
+  const emptyLedger = page.getByText("No expenses yet.", { exact: true });
+  await expect(emptyLedger).toBeVisible();
   await expect(row).toHaveCount(0);
   await page.reload();
+  await expect(emptyLedger).toBeVisible();
   await expect(row).toHaveCount(0);
   const deleted = await a.from("personal_expenses").select("deleted_at").eq("id", expense.id).single();
   expect(deleted.error).toBeNull();
