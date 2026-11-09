@@ -17,6 +17,15 @@ export type OperatorScheduleDto = Readonly<{
   flexible: MobileTodayTaskItem[];
 }>;
 
+export type OperatorWorkDto = Readonly<{
+  trackedSeconds: number;
+  workTargetMinutes: number;
+  jobSearchSeconds: number;
+  jobSearchTargetMinutes: number;
+  jobSearchConfigured: boolean;
+  derivedFrom: "canonical-sessions";
+}>;
+
 export type OperatorSnapshotDto = Readonly<{
   ok: true;
   date: string;
@@ -39,6 +48,8 @@ export type OperatorSnapshotDto = Readonly<{
   summary: MobileTodaySummary;
   activeTimer: Readonly<{ sessionId: string; taskId: string }> | null;
   signals: OperatorSignalsDto;
+  /** Null when the work source is unavailable — callers must not render zero. */
+  work: OperatorWorkDto | null;
 }>;
 
 export type GetOperatorSnapshotResponse = OperatorSnapshotDto;

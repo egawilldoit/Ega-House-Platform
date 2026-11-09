@@ -41,6 +41,7 @@ const EMPTY_TODAY_RESPONSE: OperatorSnapshotDto = {
   },
   activeTimer: null,
   signals: { health: null, friction: null, inbox: null, weeklyObjective: null },
+  work: null,
 };
 
 function makeFakeClient(): EgaApiClient {

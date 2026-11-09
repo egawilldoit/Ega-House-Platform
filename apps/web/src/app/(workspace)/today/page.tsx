@@ -36,6 +36,11 @@ import { isTaskCompletedStatus } from "@/lib/task-domain";
 import { getCurrentUser } from "@/lib/services/auth-service";
 import { getOperatorSnapshotData } from "@/lib/services/operator-service";
 import { getMorningStartupData } from "@/lib/services/morning-startup-service";
+import { getWebDailyCheckin } from "@/lib/services/checkin-service";
+import { createAuthenticatedActor, listExpenses } from "@ega/application";
+import { SupabaseExpenseRepository } from "@ega/data-access";
+import { createClient } from "@/lib/supabase/server";
+import { TodayWorkCard } from "@/components/today/today-work-card";
 import { parseStartupRetryIds } from "@/lib/morning-startup";
 import { getActiveTimerSession } from "@/lib/services/timer-service";
 import { getTaskDrawerDetail } from "@/lib/services/task-service";
@@ -58,6 +63,42 @@ export const metadata: Metadata = {
   title: "Today",
   description: "Focus on what matters today. Make progress, one step at a time.",
 };
+
+async function loadTodayCards(snapshot: Awaited<ReturnType<typeof getOperatorSnapshotData>>["data"]) {
+  const moneyUnavailable = { available: false, totalMinor: null as number | null };
+  const routineUnavailable = { available: false, saved: false };
+  if (!snapshot) return { money: moneyUnavailable, routine: routineUnavailable };
+  const [moneyResult, routineResult] = await Promise.all([
+    (async () => {
+      try {
+        const user = await getCurrentUser();
+        if (!user) return moneyUnavailable;
+        const client = await createClient();
+        const listed = await listExpenses(
+          createAuthenticatedActor(user.id),
+          new SupabaseExpenseRepository(client),
+          { from: snapshot.date, to: snapshot.date, limit: "100" },
+          { timezone: snapshot.timezone },
+        );
+        if (!listed.ok) return moneyUnavailable;
+        const total = listed.data.expenses.reduce((sum, e) => sum + e.amountMinor, 0);
+        return { available: true, totalMinor: total };
+      } catch {
+        return moneyUnavailable;
+      }
+    })(),
+    (async () => {
+      try {
+        const loaded = await getWebDailyCheckin({ localDate: snapshot.date });
+        if (loaded.errorMessage) return routineUnavailable;
+        return { available: true, saved: loaded.checkin !== null };
+      } catch {
+        return routineUnavailable;
+      }
+    })(),
+  ]);
+  return { money: moneyResult, routine: routineResult };
+}
 
 function PlannerErrorState({ actionError }: { actionError: string | null }) {
   return (
@@ -164,6 +205,13 @@ export default async function TodayPage({
     skipped: startupSkipped,
     retryIds: startupRetryIds,
   });
+
+  // Unified Today cards (PO-01): Money and routine draw from their actual
+  // sources. Each load is independently failure-tolerant and maps to an
+  // honest unavailable state instead of a fabricated zero.
+  const todayCards = await loadTodayCards(snapshot);
+  const todayMoney = todayCards.money;
+  const todayRoutine = todayCards.routine;
 
   // Bounded active-session read, only when the snapshot says a session ran. It
   // supplies startedAt for the live elapsed display; Today never computes timer
@@ -373,6 +421,8 @@ export default async function TodayPage({
         {/* Left / Main Column: Focus & Execution */}
         <div className="flex flex-col gap-4">
           <MorningStartupPanel model={morningStartup} />
+
+          <TodayWorkCard work={snapshot.work} money={todayMoney} routine={todayRoutine} />
 
           <StartHerePanel
             task={todayData.startHere}
