@@ -364,7 +364,7 @@ export default async function TodayPage({
       <WorkspacePageHeader
         title="Today"
         description={`${formatDisplayDate(todayData.date, "detail")} · Focus on what matters today. Make progress, one step at a time.`}
-        actions={<TodayHeaderActions />}
+        actions={<TodayHeaderActions ownerKey={user?.id ?? ""} />}
       />
       <OwnerScopedRealtimeRefresh
         ownerUserId={user?.id ?? null}
