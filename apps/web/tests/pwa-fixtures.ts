@@ -3,9 +3,7 @@ import { randomUUID } from "node:crypto";
 import postgres from "postgres";
 import type { Page } from "@playwright/test";
 
-const protocol = process.env.E2E_AUTH_PROTOCOL ?? "https";
-const platformRootDomain = process.env.E2E_AUTH_PLATFORM_DOMAIN ?? "egawilldoit.online";
-const loginHost = process.env.E2E_AUTH_LOGIN_HOST ?? `www.${platformRootDomain}`;
+import { readLocalEnvironment } from "../../../scripts/e2e/local-env.cjs";
 
 export type PwaOwner = Readonly<{ email: string; password: string }>;
 
@@ -20,10 +18,12 @@ const SEED_IDEMPOTENCY_PREFIX = "e2e-pwa-";
 const MAX_SEED_COUNT = 100;
 
 export function hasPwaAuthCredentials(): boolean {
-  return Boolean(process.env.E2E_AUTH_EMAIL && process.env.E2E_AUTH_PASSWORD);
+  try { readLocalEnvironment(); return Boolean(process.env.E2E_AUTH_EMAIL && process.env.E2E_AUTH_PASSWORD); } catch { return false; }
 }
 
 export function getPwaOwners(): { ownerA: PwaOwner; ownerB: PwaOwner | null } {
+  readLocalEnvironment();
+  if (!process.env.E2E_AUTH_EMAIL || !process.env.E2E_AUTH_PASSWORD) throw new Error("Use the disposable test fixture to provision owners.");
   const ownerA: PwaOwner = {
     email: process.env.E2E_AUTH_EMAIL ?? "",
     password: process.env.E2E_AUTH_PASSWORD ?? "",
@@ -38,12 +38,15 @@ export function getPwaOwners(): { ownerA: PwaOwner; ownerB: PwaOwner | null } {
   return { ownerA, ownerB };
 }
 
-export async function signInPwaOwner(page: Page, owner: PwaOwner, next?: string): Promise<void> {
+export async function signInPwaOwner(page: Page, owner: PwaOwner, next = "/today"): Promise<void> {
+  const env = readLocalEnvironment();
+  if (!owner.email.startsWith(`${env.E2E_RUN_ID}-`) || !owner.email.endsWith("@example.test")) throw new Error("Only run-scoped disposable owners may sign in.");
+  if (!next.startsWith("/") || next.startsWith("//")) throw new Error("Use a relative workspace destination.");
   const suffix = next ? `?next=${encodeURIComponent(next)}` : "";
-  await page.goto(`${protocol}://${loginHost}/login${suffix}`);
+  await page.goto(`${env.E2E_AUTH_BASE_URL}/login${suffix}`);
   await page.getByLabel("Email").fill(owner.email);
   await page.getByLabel("Password", { exact: true }).fill(owner.password);
-  await page.getByRole("button", { name: "Sign in" }).click();
+  await page.getByRole("button", { name: "Enter workspace", exact: true }).click();
   try {
     await page.waitForURL((url) => !url.pathname.startsWith("/login"), { timeout: 30_000 });
   } catch (waitError) {
@@ -81,7 +84,9 @@ export async function setUnreadNotificationsForOwner(owner: PwaOwner, count: num
   if (!process.env.E2E_SEED_DATABASE_URL) {
     throw new Error("E2E_SEED_DATABASE_URL is required to seed notification fixtures.");
   }
-  const sql = postgres(process.env.E2E_SEED_DATABASE_URL, { max: 1 });
+  const env = readLocalEnvironment();
+  if (process.env.E2E_SEED_DATABASE_URL !== env.DATABASE_URL || !owner.email.startsWith(`${env.E2E_RUN_ID}-`)) throw new Error("Unsafe notification fixture target.");
+  const sql = postgres(env.DATABASE_URL, { max: 1 });
   try {
     const ownerId = await resolveOwnerId(sql, owner);
     await sql.begin(async (tx) => {
@@ -120,7 +125,9 @@ export async function clearSeededNotificationsForOwner(owner: PwaOwner): Promise
   if (!process.env.E2E_SEED_DATABASE_URL) {
     return;
   }
-  const sql = postgres(process.env.E2E_SEED_DATABASE_URL, { max: 1 });
+  const env = readLocalEnvironment();
+  if (process.env.E2E_SEED_DATABASE_URL !== env.DATABASE_URL || !owner.email.startsWith(`${env.E2E_RUN_ID}-`)) throw new Error("Unsafe notification fixture target.");
+  const sql = postgres(env.DATABASE_URL, { max: 1 });
   try {
     const ownerId = await resolveOwnerId(sql, owner);
     await sql`

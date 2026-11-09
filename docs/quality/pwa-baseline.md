@@ -1,5 +1,11 @@
 # PWA Mobile — W00 Baseline and Verification Harness
 
+> Historical W00 evidence below. The authenticated configuration and commands
+> were replaced in PR #390: use [the disposable E2E runbook](playwright-e2e.md).
+> `test:pwa:auth` now requires a fresh local Supabase stack and generated owners;
+> it does not accept staging/production credentials. The old external-host
+> matrix and its measurements are not current authenticated acceptance evidence.
+
 Evidence revision: local `main` `3e3449ecfadcd4f10dcaed1260006da9c179745d` (2026-09-22).
 Branch: `feat/mobile-pwa-w00-baseline` (cut from that revision). Source-grounded
 baseline plus an executable harness; authenticated/device measurements are gated

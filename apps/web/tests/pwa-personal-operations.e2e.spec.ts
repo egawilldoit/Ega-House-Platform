@@ -1,9 +1,10 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./disposable-fixtures";
 
-import { getPwaOwners, hasPwaAuthCredentials, signInPwaOwner } from "./pwa-fixtures";
+import { getPwaOwners, signInPwaOwner } from "./pwa-fixtures";
 
 test("owner edits, reloads and pauses a personal schedule through the redesigned UI", async ({ page }) => {
-  test.skip(!hasPwaAuthCredentials() || process.env.PO02_DISPOSABLE_ENV !== "1", "Requires explicitly authorized disposable environment and test owner");
+  // This journey includes several persisted writes, reloads and a fresh sign-in.
+  test.setTimeout(180_000);
   const { ownerA } = getPwaOwners();
   await signInPwaOwner(page, ownerA, "/settings/preferences");
 
@@ -37,7 +38,7 @@ test("owner edits, reloads and pauses a personal schedule through the redesigned
   await expect(page.getByText("2,820 minutes per week")).toBeVisible();
 
   await page.goto("/settings/appearance");
-  await page.getByText("Dark", { exact: true }).click();
+  await page.getByRole("form", { name: "Appearance settings" }).getByText("Dark", { exact: true }).click();
   await expect(page.locator('input[name="theme"][value="dark"]')).toBeChecked();
   await page.getByRole("button", { name: "Save appearance" }).click();
   await expect(
@@ -89,7 +90,6 @@ test("owner edits, reloads and pauses a personal schedule through the redesigned
 });
 
 test("dirty schedule survives browser Back/Forward and clears after Discard", async ({ page }) => {
-  test.skip(!hasPwaAuthCredentials() || process.env.PO02_DISPOSABLE_ENV !== "1", "Requires explicitly authorized disposable environment and test owner");
   const { ownerA } = getPwaOwners();
   await signInPwaOwner(page, ownerA, "/settings/appearance");
   await page.getByRole("link", { name: "Preferences", exact: true }).click();
@@ -121,7 +121,6 @@ test("dirty schedule survives browser Back/Forward and clears after Discard", as
 });
 
 test("confirmed anchor leave discards the draft and reaches the destination once", async ({ page }) => {
-  test.skip(!hasPwaAuthCredentials() || process.env.PO02_DISPOSABLE_ENV !== "1", "Requires explicitly authorized disposable environment and test owner");
   const { ownerA } = getPwaOwners();
   await signInPwaOwner(page, ownerA, "/settings/appearance");
   await page.getByRole("link", { name: "Preferences", exact: true }).click();
@@ -147,7 +146,6 @@ test("confirmed anchor leave discards the draft and reaches the destination once
 
 
 test("server rejects overlapping guidance without persisting the edited target", async ({ page }) => {
-  test.skip(!hasPwaAuthCredentials() || process.env.PO02_DISPOSABLE_ENV !== "1", "Requires explicitly authorized disposable environment and test owner");
   const { ownerA } = getPwaOwners();
   await signInPwaOwner(page, ownerA, "/settings/preferences");
   const monday = page.getByLabel("Monday work minutes");
@@ -162,14 +160,13 @@ test("server rejects overlapping guidance without persisting the edited target",
     element.value = JSON.stringify(schedule);
   });
   await page.getByRole("button", { name: "Save changes" }).click();
-  await expect(page.getByRole("alert")).toContainText(/overlap/i);
+  await expect(page.getByRole("region", { name: "Schedule save status" }).getByRole("alert")).toContainText(/overlap/i);
   await expect(monday).toHaveValue(edited);
   await page.reload();
   await expect(monday).toHaveValue(original);
 });
 
 test("reduced motion and keyboard editing save and restore the schedule", async ({ page }) => {
-  test.skip(!hasPwaAuthCredentials() || process.env.PO02_DISPOSABLE_ENV !== "1", "Requires explicitly authorized disposable environment and test owner");
   await page.emulateMedia({ reducedMotion: "reduce" });
   expect(await page.evaluate(() => matchMedia("(prefers-reduced-motion: reduce)").matches)).toBe(true);
   const { ownerA } = getPwaOwners();
