@@ -37,7 +37,7 @@ export default async function MoneyPage({ searchParams }: Props) {
   const prefsState = await getWebUserPreferencesState().catch(() => null);
   const caps = prefsState?.preferences.categoryCaps ?? {};
   let capsNote: string | null = null;
-  let spentByCategory: Record<string, number> = {};
+  const spentByCategory: Record<string, number> = {};
   try {
     const localToday = getLocalDateInTimezone(new Date(), timezone);
     const monthListed = await listExpenses(

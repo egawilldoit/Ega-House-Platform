@@ -14,8 +14,6 @@ const PREFERENCES_SELECT =
 // without it and normalize the reference to null; writes still fail closed
 // until the migration is applied. Pre-0091 deployments likewise lack
 // category_caps; caps normalize to {} (no caps) on such reads.
-const PREFERENCES_SELECT_WITHOUT_REFERENCE =
-  "theme, accent, density, reduced_motion, launch_page, task_layout, task_open_mode, personal_operations, category_caps";
 const PREFERENCES_SELECT_WITHOUT_CAPS =
   "theme, accent, density, reduced_motion, launch_page, task_layout, task_open_mode, personal_operations, job_search_reference";
 const PREFERENCES_SELECT_WITHOUT_CAPS_REFERENCE =
