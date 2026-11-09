@@ -10,4 +10,5 @@ export * from "./time-context";
 export * from "./personal-operations";
 export * from "./preferences";
 export * from "./expenses";
+export * from "./checkins";
 export * from "./attachments";

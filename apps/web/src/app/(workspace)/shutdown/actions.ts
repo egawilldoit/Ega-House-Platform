@@ -1,5 +1,6 @@
 "use server";
 
+import { saveWebDailyCheckin } from "@/lib/services/checkin-service";
 import {
   queueTaskForTomorrow,
   saveShutdownReflectionNote,
@@ -45,6 +46,55 @@ export async function carryForwardTaskToTomorrowAction(formData: FormData) {
       )}`;
 
   redirectWithWorkspaceFeedback(returnPath, { successMessage });
+}
+
+function parseOptionalMinutes(raw: FormDataEntryValue | null): number | null | "invalid" {
+  const text = String(raw ?? "").trim();
+  if (text === "") return null;
+  const parsed = Number(text);
+  return Number.isInteger(parsed) ? parsed : "invalid";
+}
+
+export async function saveDailyCheckinAction(formData: FormData) {
+  const returnPath = await getShutdownReturnPath(formData.get("returnTo"));
+  const timeContext = await getWebTimeContext().catch(() => null);
+  const timezone = timeContext?.timezone ?? "";
+  const localDateInput = String(formData.get("localDate") ?? "").trim();
+  const localDate = localDateInput || timeContext?.localDate || "";
+
+  const personalMinutes = parseOptionalMinutes(formData.get("personalMinutes"));
+  const overtimeMinutes = parseOptionalMinutes(formData.get("overtimeMinutes"));
+  if (personalMinutes === "invalid" || overtimeMinutes === "invalid") {
+    redirectWithWorkspaceFeedback(returnPath, {
+      errorMessage: "Use whole minutes for personal time and overtime.",
+    });
+  }
+
+  const patch: {
+    outcomes: string | null;
+    personalMinutes: number | null;
+    notes: string | null;
+    overtimeMinutes: number | null;
+    overtimeReason: string | null;
+  } = {
+    outcomes: String(formData.get("outcomes") ?? ""),
+    personalMinutes: personalMinutes ?? null,
+    notes: String(formData.get("notes") ?? ""),
+    overtimeMinutes: overtimeMinutes ?? null,
+    overtimeReason: String(formData.get("overtimeReason") ?? ""),
+  };
+
+  const result = await saveWebDailyCheckin({ localDate, timezone, patch });
+  if (result.errorMessage) {
+    redirectWithWorkspaceFeedback(returnPath, { errorMessage: result.errorMessage });
+  }
+
+  revalidateWorkspaceFor("shutdown", { returnTo: returnPath });
+  redirectWithWorkspaceFeedback(returnPath, {
+    successMessage: result.overtimeAdvisory
+      ? `Check-in saved. ${result.overtimeAdvisory}`
+      : "Check-in saved for your day.",
+  });
 }
 
 export async function saveShutdownReflectionNoteAction(formData: FormData) {

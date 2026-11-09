@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { formatDisplayDate } from "@/lib/presentation-format";
+import { DailyCheckinForm } from "@/components/shutdown/daily-checkin-form";
 import { ShutdownReflectionForm } from "@/components/shutdown/shutdown-reflection-form";
 import { ShutdownTaskList } from "@/components/shutdown/shutdown-task-list";
 import { Badge } from "@/components/ui/badge";
@@ -9,11 +10,15 @@ import { DashboardSection } from "@/components/ui/dashboard-section";
 import { CompactStat } from "@/components/ui/metric";
 import { formatTaskDueDate } from "@/lib/task-due-date";
 import { formatIsoDate } from "@/lib/review-week";
-import { carryForwardTaskToTomorrowAction, saveShutdownReflectionNoteAction } from "../actions";
+import {
+  carryForwardTaskToTomorrowAction,
+  saveDailyCheckinAction,
+  saveShutdownReflectionNoteAction,
+} from "../actions";
 import type { ShutdownPageModel } from "../_lib/shutdown-page-model";
 
 export function ShutdownPageView({ model }: { model: ShutdownPageModel }) {
-  const { actionError, actionSuccess, shutdownResult } = model;
+  const { actionError, actionSuccess, shutdownResult, checkinResult } = model;
   if (shutdownResult.errorMessage || !shutdownResult.data) return null;
   const data = shutdownResult.data;
 
@@ -91,6 +96,29 @@ export function ShutdownPageView({ model }: { model: ShutdownPageModel }) {
         description="Capture the win, the friction, and the first move for tomorrow."
       >
         <div className="workspace-main-rail-grid">
+          <Card>
+            <CardHeader>
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <CardTitle>Daily check-in</CardTitle>
+                  <CardDescription>
+                    Two minutes: what closed out, personal time, and overtime with a reason.
+                    Completed tasks and timer totals stay derived from their own sources.
+                  </CardDescription>
+                </div>
+                <Badge tone="muted">Optional</Badge>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <DailyCheckinForm
+                checkin={checkinResult.checkin}
+                defaultLocalDate={data.date}
+                action={saveDailyCheckinAction}
+                returnTo="/shutdown"
+              />
+            </CardContent>
+          </Card>
+
           <Card>
             <CardHeader>
               <div className="flex flex-wrap items-start justify-between gap-3">
