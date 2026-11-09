@@ -27,6 +27,7 @@ async function buildService(options?: {
 
 export async function getWebDailyCheckin(options: {
   localDate: string;
+  timezone?: string;
   supabase?: SupabaseServerClient;
   getCurrentUser?: () => Promise<{ id: string } | null>;
 }): Promise<{ checkin: DailyCheckin | null; errorMessage: string | null }> {
@@ -38,6 +39,7 @@ export async function getWebDailyCheckin(options: {
     const result = await built.service.getDailyCheckin(
       createAuthenticatedActor(built.userId),
       options.localDate,
+      options.timezone ?? "UTC",
     );
     if (!result.ok) {
       return { checkin: null, errorMessage: result.errorMessage };

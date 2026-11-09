@@ -65,6 +65,7 @@ const TODAY_PAYLOAD: MobileTodayResponse = {
     inbox: null,
     weeklyObjective: null,
   },
+  work: null,
 };
 
 type TodayQueryResult = ReturnType<typeof useTodayWorkspaceQuery>;

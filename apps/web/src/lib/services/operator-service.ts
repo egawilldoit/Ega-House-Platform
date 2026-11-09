@@ -3,6 +3,7 @@ import { SupabaseTimeContextRepository, SupabaseTodayReadPort } from "@ega/data-
 import { createClient } from "@/lib/supabase/server";
 import { getRequestTimeContextRepository } from "@/lib/request-time-context";
 import { requireAuthenticatedUser } from "@/lib/services/auth-service";
+import { getWorkTargetProgress } from "@/lib/services/work-target-progress-service";
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
@@ -31,7 +32,43 @@ export async function getOperatorSnapshotData(options?: {
     ? new SupabaseTimeContextRepository(supabase as never)
     : await getRequestTimeContextRepository();
 
-  const result = await getOperatorSnapshot(actor, port, timeContextRepo, { now, requestedTimezone: options?.requestedTimezone });
+  // Work projection from the canonical session-backed progress (PO-01/PO-04).
+  // A read failure yields null (unavailable), never a fabricated zero.
+  const workProgress = async (
+    actor: { userId: string },
+    localDate: string,
+    _timezone: string,
+    trackedTodaySeconds: number,
+  ) => {
+    // Thread the verified actor instead of re-authenticating inside the loader.
+    const progress = await getWorkTargetProgress({
+      now,
+      dependencies: { getCurrentUser: async () => ({ id: actor.userId }) },
+    });
+    if (!progress.data) return null;
+    const today = progress.data.today;
+    if (today.date !== localDate) return null;
+    // Job search is a subset of the tracked total: cap it so two different
+    // read paths can never render a subset larger than the total.
+    const jobSearchSeconds = Math.min(
+      Math.round(today.actualJobSearchMinutes * 60),
+      trackedTodaySeconds,
+    );
+    return {
+      trackedSeconds: trackedTodaySeconds,
+      workTargetMinutes: today.targetWorkMinutes,
+      jobSearchSeconds,
+      jobSearchTargetMinutes: today.targetJobSearchMinutes,
+      jobSearchConfigured: today.jobSearchConfigured,
+      derivedFrom: "canonical-sessions" as const,
+    };
+  };
+
+  const result = await getOperatorSnapshot(actor, port, timeContextRepo, {
+    now,
+    requestedTimezone: options?.requestedTimezone,
+    workProgress,
+  });
   if (!result.ok) {
     return { data: null, errorMessage: result.errorMessage };
   }

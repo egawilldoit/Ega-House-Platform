@@ -84,6 +84,7 @@ function snapshot(overrides: Partial<OperatorSnapshot> = {}): OperatorSnapshot {
     },
     activeTimer: null,
     signals: { health: null, friction: null, inbox: null, weeklyObjective: null },
+    work: null,
     ...overrides,
   };
 }
