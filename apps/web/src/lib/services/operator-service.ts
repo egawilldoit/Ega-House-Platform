@@ -35,19 +35,29 @@ export async function getOperatorSnapshotData(options?: {
   // Work projection from the canonical session-backed progress (PO-01/PO-04).
   // A read failure yields null (unavailable), never a fabricated zero.
   const workProgress = async (
-    _actor: unknown,
+    actor: { userId: string },
     localDate: string,
     _timezone: string,
     trackedTodaySeconds: number,
   ) => {
-    const progress = await getWorkTargetProgress({ now });
+    // Thread the verified actor instead of re-authenticating inside the loader.
+    const progress = await getWorkTargetProgress({
+      now,
+      dependencies: { getCurrentUser: async () => ({ id: actor.userId }) },
+    });
     if (!progress.data) return null;
     const today = progress.data.today;
     if (today.date !== localDate) return null;
+    // Job search is a subset of the tracked total: cap it so two different
+    // read paths can never render a subset larger than the total.
+    const jobSearchSeconds = Math.min(
+      Math.round(today.actualJobSearchMinutes * 60),
+      trackedTodaySeconds,
+    );
     return {
       trackedSeconds: trackedTodaySeconds,
       workTargetMinutes: today.targetWorkMinutes,
-      jobSearchSeconds: Math.round(today.actualJobSearchMinutes * 60),
+      jobSearchSeconds,
       jobSearchTargetMinutes: today.targetJobSearchMinutes,
       jobSearchConfigured: today.jobSearchConfigured,
       derivedFrom: "canonical-sessions" as const,
