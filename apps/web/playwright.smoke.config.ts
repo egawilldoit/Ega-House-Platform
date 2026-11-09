@@ -3,6 +3,7 @@ import base from "./playwright.config";
 
 export default defineConfig({
   ...base,
+  testIgnore: [],
   testMatch: /smoke-public\.e2e\.spec\.ts$/,
   projects: [{ name: "chromium-smoke", use: { viewport: { width: 1280, height: 800 } } }],
   workers: 1,
