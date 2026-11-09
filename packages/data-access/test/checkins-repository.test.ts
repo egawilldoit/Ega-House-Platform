@@ -122,6 +122,7 @@ test("save upserts by owner/date and returns the stored record", async () => {
     notes: null,
     overtimeMinutes: 30,
     overtimeReason: "Release window",
+    routine: null,
     createdAt: ROW.created_at,
     updatedAt: ROW.updated_at,
   });
@@ -144,6 +145,7 @@ test("save failure is a failure, never success-shaped", async () => {
     notes: null,
     overtimeMinutes: null,
     overtimeReason: null,
+    routine: null,
     createdAt: ROW.created_at,
     updatedAt: ROW.updated_at,
   });
@@ -158,4 +160,44 @@ test("listBetween bounds the range and returns ascending rows", async () => {
   assert.ok(fake.calls[0]?.steps.includes("gte:local_date=2026-02-16"));
   assert.ok(fake.calls[0]?.steps.includes("lte:local_date=2026-02-22"));
   assert.ok(fake.calls[0]?.steps.includes("order:local_date:true"));
+});
+
+test("get maps routine metrics and retries without the column before 0092 is applied", async () => {
+  const withRoutine = new FakeSupabase([{ data: { ...ROW, routine: { runMinutes: 30, runCompleted: true, sleepHours: 7.5 } }, error: null }]);
+  const loaded = await repo(withRoutine).get(ACTOR, "2026-02-16");
+  assert.equal(loaded.ok, true);
+  if (!loaded.ok || !loaded.value) return;
+  assert.deepEqual(loaded.value.routine, {
+    runMinutes: 30, runCompleted: true, runSkipped: null,
+    chessMinutes: null, sleepHours: 7.5, leisureMinutes: null,
+  });
+
+  const legacy = new FakeSupabase([
+    { data: null, error: { code: "42703", message: 'column "routine" does not exist' } },
+    { data: ROW, error: null },
+  ]);
+  const fallen = await repo(legacy).get(ACTOR, "2026-02-16");
+  assert.equal(fallen.ok, true);
+  if (!fallen.ok || !fallen.value) return;
+  assert.equal(fallen.value.routine, null);
+  assert.equal(legacy.calls.length, 2);
+});
+
+test("save writes routine metrics only when present", async () => {
+  const fake = new FakeSupabase([{ data: ROW, error: null }]);
+  const result = await repo(fake).save(ACTOR, {
+    localDate: "2026-02-16",
+    timezone: "Africa/Casablanca",
+    outcomes: null,
+    personalMinutes: null,
+    notes: null,
+    overtimeMinutes: null,
+    overtimeReason: null,
+    routine: { runMinutes: 30, runCompleted: true, runSkipped: null, chessMinutes: null, sleepHours: null, leisureMinutes: null },
+    createdAt: ROW.created_at,
+    updatedAt: ROW.updated_at,
+  });
+  assert.equal(result.ok, true);
+  const step = fake.calls[0]?.steps.find((entry) => entry.startsWith("upsert:"));
+  assert.ok(step?.includes('"routine":{"runMinutes":30'));
 });

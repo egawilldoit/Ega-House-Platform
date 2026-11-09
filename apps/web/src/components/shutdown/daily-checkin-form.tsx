@@ -35,6 +35,13 @@ export function DailyCheckinForm({
     checkin?.overtimeMinutes == null ? "" : String(checkin.overtimeMinutes),
   );
   const [overtimeReason, setOvertimeReason] = useState(checkin?.overtimeReason ?? "");
+  const routine = checkin?.routine ?? null;
+  const [runMinutes, setRunMinutes] = useState(routine?.runMinutes == null ? "" : String(routine.runMinutes));
+  const [chessMinutes, setChessMinutes] = useState(routine?.chessMinutes == null ? "" : String(routine.chessMinutes));
+  const [sleepHours, setSleepHours] = useState(routine?.sleepHours == null ? "" : String(routine.sleepHours));
+  const [leisureMinutes, setLeisureMinutes] = useState(routine?.leisureMinutes == null ? "" : String(routine.leisureMinutes));
+  const [runDone, setRunDone] = useState<boolean | null>(routine?.runCompleted ?? null);
+  const [runSkipped, setRunSkipped] = useState<boolean | null>(routine?.runSkipped ?? null);
 
   return (
     <form action={action} className="flex flex-col gap-3">
@@ -131,6 +138,113 @@ export function DailyCheckinForm({
           />
         </div>
       </div>
+
+      <fieldset className="flex flex-col gap-3">
+        <legend className="form-label">Routine (optional)</legend>
+        <p className="text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
+          Leave a field blank for unknown. Blank is not zero, and a run never adds to work hours.
+        </p>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="checkin-run-minutes" className="form-label">
+              Run (minutes)
+            </label>
+            <Input
+              id="checkin-run-minutes"
+              name="routine.runMinutes"
+              data-routine-field="runMinutes"
+              type="number"
+              inputMode="numeric"
+              min={0}
+              max={1440}
+              step={1}
+              value={runMinutes}
+              onChange={(event) => setRunMinutes(event.target.value)}
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="checkin-chess-minutes" className="form-label">
+              Chess (minutes)
+            </label>
+            <Input
+              id="checkin-chess-minutes"
+              name="routine.chessMinutes"
+              data-routine-field="chessMinutes"
+              type="number"
+              inputMode="numeric"
+              min={0}
+              max={1440}
+              step={1}
+              value={chessMinutes}
+              onChange={(event) => setChessMinutes(event.target.value)}
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="checkin-sleep-hours" className="form-label">
+              Sleep (hours)
+            </label>
+            <Input
+              id="checkin-sleep-hours"
+              name="routine.sleepHours"
+              data-routine-field="sleepHours"
+              type="number"
+              inputMode="decimal"
+              min={0}
+              max={24}
+              step={0.5}
+              value={sleepHours}
+              onChange={(event) => setSleepHours(event.target.value)}
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="checkin-leisure-minutes" className="form-label">
+              Leisure (minutes)
+            </label>
+            <Input
+              id="checkin-leisure-minutes"
+              name="routine.leisureMinutes"
+              data-routine-field="leisureMinutes"
+              type="number"
+              inputMode="numeric"
+              min={0}
+              max={1440}
+              step={1}
+              value={leisureMinutes}
+              onChange={(event) => setLeisureMinutes(event.target.value)}
+            />
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+          <label className="inline-flex min-h-11 items-center gap-2">
+            <input
+              type="checkbox"
+              name="routine.runCompleted"
+              data-routine-field="runCompleted"
+              aria-label="Run completed"
+              checked={runDone === true}
+              onChange={(event) => {
+                setRunDone(event.target.checked);
+                if (event.target.checked) setRunSkipped(false);
+              }}
+            />
+            Run completed
+          </label>
+          <label className="inline-flex min-h-11 items-center gap-2">
+            <input
+              type="checkbox"
+              name="routine.runSkipped"
+              data-routine-field="runSkipped"
+              aria-label="Run skipped"
+              checked={runSkipped === true}
+              onChange={(event) => {
+                setRunSkipped(event.target.checked);
+                if (event.target.checked) setRunDone(false);
+              }}
+            />
+            Run skipped
+          </label>
+        </div>
+      </fieldset>
 
       {checkin ? (
         <p className="text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">

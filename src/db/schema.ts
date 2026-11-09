@@ -1410,6 +1410,7 @@ export const dailyCheckins = pgTable(
     notes: varchar("notes", { length: 1000 }),
     overtimeMinutes: integer("overtime_minutes"),
     overtimeReason: varchar("overtime_reason", { length: 300 }),
+    routine: jsonb("routine"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   },
@@ -1433,6 +1434,10 @@ export const dailyCheckins = pgTable(
     check(
       "daily_checkins_overtime_reason_check",
       sql`${table.overtimeMinutes} is null or ${table.overtimeMinutes} = 0 or (${table.overtimeReason} is not null and length(btrim(${table.overtimeReason})) > 0)`,
+    ),
+    check(
+      "daily_checkins_routine_check",
+      sql`public.valid_routine_metrics(${table.routine})`,
     ),
   ],
 );
