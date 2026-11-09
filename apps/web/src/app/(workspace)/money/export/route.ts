@@ -60,7 +60,7 @@ export async function GET(request: Request) {
   }
   const ownerUserId = authData.user.id;
 
-  let timezone = "UTC";
+  let timezone: string;
   try {
     timezone = (await getWebTimeContext()).timezone;
   } catch {
