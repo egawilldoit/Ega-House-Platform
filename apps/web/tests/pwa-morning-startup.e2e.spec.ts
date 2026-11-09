@@ -1,4 +1,5 @@
 import { expect, test, ownerClient } from "./disposable-fixtures";
+import type { Request } from "@playwright/test";
 
 import { getPwaOwners, signInPwaOwner } from "./pwa-fixtures";
 
@@ -81,4 +82,104 @@ test("owner starts the day with known outcomes, recovers a timer and saves its o
   expect(sessions.data).toHaveLength(1);
   expect(sessions.data?.[0].id).toBe(active.data?.id);
   expect(sessions.data?.[0].ended_at).toBeTruthy();
+});
+
+test("two timer clients reconcile a competing start and safely retry an old stop", async ({ page, context, owners }) => {
+  const client = await ownerClient(owners.ownerA);
+  const project = await client.from("projects").select("id").single();
+  expect(project.error).toBeNull();
+  if (!project.data) throw new Error("Fixture project is missing.");
+  const task = await client.from("tasks").insert({ project_id: project.data.id, owner_user_id: owners.ownerA.id, title: "E2E timer concurrency", status: "todo" }).select("id").single();
+  expect(task.error).toBeNull();
+  if (!task.data) throw new Error("Fixture task is missing.");
+  await signInPwaOwner(page, owners.ownerA, "/timer");
+  const other = await context.newPage();
+  let releaseStart = () => {};
+  const startGate = new Promise<void>(resolve => { releaseStart = resolve; });
+  try {
+    await other.goto("/timer");
+    await page.getByLabel("Select task", { exact: true }).selectOption(task.data.id);
+    await other.getByLabel("Select task", { exact: true }).selectOption(task.data.id);
+    // Submit from an idle second client, then let the first commit before the
+    // delayed request arrives. This deterministically exercises stale-client recovery.
+    await other.route("**/timer", async route => {
+      if (route.request().method() === "POST") await startGate;
+      await route.continue();
+    });
+    const competing = other.waitForRequest(request => request.method() === "POST" && new URL(request.url()).pathname === "/timer");
+    await other.getByRole("button", { name: "Start session", exact: true }).click();
+    await competing;
+    await page.getByRole("button", { name: "Start session", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Stop session", exact: true })).toBeVisible();
+    releaseStart();
+    await expect(other.getByRole("alert").filter({ hasText: "A timer is already running. Stop it first." })).toBeVisible();
+    await expect(other.getByRole("button", { name: "Stop session", exact: true })).toBeVisible();
+    await other.unroute("**/timer");
+    const first = await client.from("task_sessions").select("id").is("ended_at", null).single();
+    expect(first.error).toBeNull();
+    if (!first.data) throw new Error("Winning timer session is missing.");
+    const firstId = first.data.id;
+    await other.reload();
+    await expect(other.locator('input[name="sessionId"]').first()).toHaveValue(firstId);
+
+    let stoppedRequest: Request | undefined;
+    let stopResponseLost = () => {};
+    const lostResponse = new Promise<void>(resolve => { stopResponseLost = resolve; });
+    await page.route("**/timer", async route => {
+      if (route.request().method() !== "POST") { await route.continue(); return; }
+      stoppedRequest = route.request();
+      await route.fetch(); // The real stop commits; only its response is lost.
+      await route.abort("connectionreset");
+      stopResponseLost();
+    });
+    await page.getByRole("button", { name: "Stop session", exact: true }).click();
+    await expect.poll(async () => {
+      const result = await client.from("task_sessions").select("ended_at").eq("id", firstId).single();
+      return result.data?.ended_at;
+    }).toBeTruthy();
+    await lostResponse;
+    await page.unroute("**/timer");
+    if (!stoppedRequest) throw new Error("The real stop action was not captured.");
+    const stopUrl = stoppedRequest.url();
+    const headers = await stoppedRequest.allHeaders();
+    delete headers["content-length"];
+    const data = stoppedRequest.postDataBuffer();
+    if (!data) throw new Error("The real stop action has no body.");
+    const finalized = await client.from("task_sessions").select("id,started_at,ended_at,duration_seconds").eq("id", firstId).single();
+    expect(finalized.error).toBeNull();
+    expect(finalized.data?.ended_at).toBeTruthy();
+    // Replay the exact browser action, including its original session id. Never
+    // print this request: its headers carry the disposable owner's cookies.
+    async function retryOldStop() {
+      const response = await context.request.post(stopUrl, { headers, data, maxRedirects: 0 }).catch(() => {
+        throw new Error("Old stop replay failed; authenticated request details withheld.");
+      });
+      expect(response.ok()).toBe(true);
+      const redirect = response.headers()["x-action-redirect"]?.split(";")[0];
+      if (!redirect || !redirect.startsWith("/timer?")) throw new Error("Stop action did not return timer feedback.");
+      await other.goto(redirect);
+      await expect(other.getByRole("status").filter({ hasText: "Timer was already stopped." })).toBeVisible();
+      const unchanged = await client.from("task_sessions").select("id,started_at,ended_at,duration_seconds").eq("id", firstId).single();
+      expect(unchanged.error).toBeNull();
+      expect(unchanged.data).toEqual(finalized.data);
+    }
+    await retryOldStop();
+    await page.reload();
+    await expect(page.getByRole("button", { name: "Stop session", exact: true })).toHaveCount(0);
+    await page.getByLabel("Select task", { exact: true }).selectOption(task.data.id);
+    await page.getByRole("button", { name: "Start session", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Stop session", exact: true })).toBeVisible();
+    const second = await client.from("task_sessions").select("id,ended_at").is("ended_at", null).single();
+    expect(second.error).toBeNull();
+    expect(second.data?.id).not.toBe(firstId);
+    await retryOldStop();
+    await other.reload();
+    const active = await client.from("task_sessions").select("id,ended_at").is("ended_at", null);
+    expect(active.error).toBeNull();
+    expect(active.data).toEqual([second.data]);
+    await expect(other.locator('input[name="sessionId"]').first()).toHaveValue(second.data?.id ?? "missing");
+  } finally {
+    releaseStart();
+    await other.close();
+  }
 });

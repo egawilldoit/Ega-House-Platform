@@ -5,7 +5,7 @@ const env = readLocalEnvironment();
 
 export default defineConfig({
   testDir: "./tests",
-  testMatch: ["auth-session.e2e.spec.ts", "disposable-journeys.e2e.spec.ts", "kanban-board.e2e.spec.ts", "pwa-personal-operations.e2e.spec.ts", "pwa-morning-startup.e2e.spec.ts"],
+  testMatch: ["auth-session.e2e.spec.ts", "disposable-journeys.e2e.spec.ts", "notification-settings.e2e.spec.ts", "kanban-board.e2e.spec.ts", "pwa-personal-operations.e2e.spec.ts", "pwa-morning-startup.e2e.spec.ts"],
   workers: 1,
   fullyParallel: false,
   retries: 0,

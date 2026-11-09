@@ -225,6 +225,18 @@ test("web runs real disposable journeys and verifies reports before unconditiona
   assert.match(jobSection("changes"), /'scripts\/e2e\/\*\*'/);
 });
 
+test("browser report verification runs independently after failures and stale reports are cleared", () => {
+  const section = jobSection("web");
+  for (const [profile, name, verifier] of [
+    ["smoke", "public smoke", "scripts/ci/assert-playwright-smoke.mjs apps/web/test-results/smoke-results.json"],
+    ["disposable", "authenticated journey", "scripts/e2e/assert-disposable-report.mjs"],
+  ]) {
+    assert.ok(section.includes(`rm -f apps/web/test-results/${profile}-results.json\n          npm exec --workspace @ega/web -- playwright test --config playwright.${profile}.config.ts`));
+    assert.ok(section.includes(`- name: Verify ${name} report\n        if: \${{ !cancelled() }}\n        run: node ${verifier}`));
+  }
+  assert.doesNotMatch(section, /continue-on-error/);
+});
+
 test("lint-report only runs on demand or in force-full mode", () => {
   const section = jobSection("lint-report");
   assert.match(section, /if: needs\.changes\.outputs\.force_full == 'true' \|\| github\.event_name == 'workflow_dispatch'/);
