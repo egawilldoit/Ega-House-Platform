@@ -132,6 +132,52 @@ test("Operator snapshot includes sections, focus, activeTimer, tracked time, blo
   }]);
 });
 
+test("Operator snapshot carries work as null without a provider, provider value with one", async () => {
+  const port = new FakeTodayPort([task({ id: "planned-1" })], [], [], { activeTimer: null, trackedTodaySeconds: 5400 });
+
+  const without = await getOperatorSnapshot(createAuthenticatedActor("user-1"), port, { date: TODAY, now: new Date("2026-08-10T12:00:00") });
+  assert.equal(without.ok, true);
+  if (!without.ok) return;
+  assert.equal(without.data.work, null);
+
+  const withWork = await getOperatorSnapshot(createAuthenticatedActor("user-1"), port, {
+    date: TODAY,
+    now: new Date("2026-08-10T12:00:00"),
+    workProgress: async (_actor, localDate, timezone, trackedSeconds) => {
+      assert.equal(localDate, TODAY);
+      assert.equal(timezone, "UTC");
+      assert.equal(trackedSeconds, 5400);
+      return {
+        trackedSeconds,
+        workTargetMinutes: 480,
+        jobSearchSeconds: 1800,
+        jobSearchTargetMinutes: 90,
+        jobSearchConfigured: true,
+        derivedFrom: "canonical-sessions" as const,
+      };
+    },
+  });
+  assert.equal(withWork.ok, true);
+  if (!withWork.ok) return;
+  assert.equal(withWork.data.work?.trackedSeconds, 5400);
+  assert.equal(withWork.data.work?.workTargetMinutes, 480);
+  assert.equal(withWork.data.work?.jobSearchSeconds, 1800);
+});
+
+test("Operator snapshot maps a throwing work provider to null, never zero", async () => {
+  const port = new FakeTodayPort([task({ id: "planned-1" })], [], [], { activeTimer: null, trackedTodaySeconds: 0 });
+  const result = await getOperatorSnapshot(createAuthenticatedActor("user-1"), port, {
+    date: TODAY,
+    now: new Date("2026-08-10T12:00:00"),
+    workProgress: async () => {
+      throw new Error("source down");
+    },
+  });
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.data.work, null);
+});
+
 test("Operator snapshot loads when optional signal providers are absent or throw", async () => {
   const port = new FakeTodayPort([task({ id: "a", plannedForDate: TODAY })]);
   // absent providers -> null signals, still ok

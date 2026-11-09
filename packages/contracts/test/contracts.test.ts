@@ -252,6 +252,7 @@ test("Today response uses the complete Operator snapshot contract", () => {
     },
     activeTimer: null,
     signals: { health: null, friction: null, inbox: null, weeklyObjective: null },
+    work: null,
   };
 
   assert.equal(today.timezone, "UTC");
