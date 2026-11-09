@@ -400,3 +400,52 @@ test("soft delete returns notFound for missing rows", async () => {
   assert.equal(result.ok, false);
   if (!result.ok) assert.equal(result.error.code, "notFound");
 });
+
+test("summarize aggregates integer centimes by category for the half-open window", async () => {
+  const fake = new FakeSupabase([
+    { data: [
+      { category: "coffee", amount_minor: 2200 },
+      { category: "coffee", amount_minor: 2200 },
+      { category: "groceries", amount_minor: 1000 },
+    ], error: null },
+  ]);
+  const result = await repository(fake).summarize(ACTOR, {
+    startUtcIso: "2026-11-07T23:00:00.000Z",
+    endUtcExclusiveIso: "2026-11-08T23:00:00.000Z",
+  });
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.deepEqual(result.value.totalsByCategory, { coffee: 4400, groceries: 1000 });
+  assert.deepEqual(result.value.countsByCategory, { coffee: 2, groceries: 1 });
+  assert.equal(result.value.recordCount, 3);
+  assert.equal(result.value.truncated, false);
+  assert.ok(fake.calls[0]?.steps.some((step) => step.includes("eq:owner_user_id=owner-expenses")));
+  assert.ok(fake.calls[0]?.steps.some((step) => step.includes("gte:occurred_at=")));
+  assert.ok(fake.calls[0]?.steps.some((step) => step.includes("lt:occurred_at=")));
+  assert.ok(fake.calls[0]?.steps.some((step) => step === "is:deleted_at=null"));
+});
+
+test("summarize flags truncation at the row cap instead of a fake total", async () => {
+  const fullPage = Array.from({ length: 1000 }, () => ({ category: "coffee", amount_minor: 100 }));
+  const pages = Array.from({ length: 10 }, () => ({ data: fullPage, error: null }));
+  pages.push({ data: [{ category: "coffee", amount_minor: 100 }], error: null });
+  const fake = new FakeSupabase(pages);
+  const result = await repository(fake).summarize(ACTOR, {
+    startUtcIso: "2026-11-07T23:00:00.000Z",
+    endUtcExclusiveIso: "2026-11-08T23:00:00.000Z",
+  });
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.value.truncated, true);
+  assert.equal(result.value.recordCount, 10000);
+  assert.equal(result.value.totalsByCategory.coffee, 10000 * 100);
+});
+
+test("summarize failure is a failure, never a zero-shaped success", async () => {
+  const fake = new FakeSupabase([{ data: null, error: { code: "42501", message: "denied" } }]);
+  const result = await repository(fake).summarize(ACTOR, {
+    startUtcIso: "2026-11-07T23:00:00.000Z",
+    endUtcExclusiveIso: "2026-11-08T23:00:00.000Z",
+  });
+  assert.equal(result.ok, false);
+});

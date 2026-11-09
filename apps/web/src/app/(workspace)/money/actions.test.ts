@@ -91,6 +91,9 @@ function makeRepository() {
   }
 
   const repository: ExpenseRepository = {
+    async summarize() {
+      return { ok: true as const, value: { totalsByCategory: {}, countsByCategory: {}, recordCount: 0, truncated: false } };
+    },
     async findByIdempotencyKey(actor, idempotencyKey) {
       const receipt = byKey.get(`${actor.userId}::${idempotencyKey}`) ?? null;
       return { ok: true as const, value: receipt };

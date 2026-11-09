@@ -1,4 +1,5 @@
 import type {
+  ExpenseCategory,
   ExpenseCreateValues,
   ExpenseUpdateChanges,
   PersonalExpense,
@@ -47,6 +48,24 @@ export type ExpenseDeleteOutcome = Readonly<{
   alreadyDeleted: boolean;
 }>;
 
+/** Half-open UTC period for summaries (owner-local bounds resolved by caller). */
+export type ExpenseSummaryWindow = Readonly<{
+  startUtcIso: string;
+  endUtcExclusiveIso: string;
+}>;
+
+/**
+ * Integer-centime aggregates over non-deleted rows in one half-open period.
+ * `truncated` is true when the row cap was hit; totals are then a lower
+ * bound and callers must say so instead of presenting them as complete.
+ */
+export type ExpenseSummary = Readonly<{
+  totalsByCategory: Partial<Record<ExpenseCategory, number>>;
+  countsByCategory: Partial<Record<ExpenseCategory, number>>;
+  recordCount: number;
+  truncated: boolean;
+}>;
+
 export type ExpenseRepository = {
   findByIdempotencyKey(
     actor: AuthenticatedActor,
@@ -74,4 +93,8 @@ export type ExpenseRepository = {
     id: string,
     nowIso: string,
   ): Promise<RepositoryResult<ExpenseDeleteOutcome>>;
+  summarize(
+    actor: AuthenticatedActor,
+    window: ExpenseSummaryWindow,
+  ): Promise<RepositoryResult<ExpenseSummary>>;
 };

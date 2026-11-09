@@ -126,6 +126,9 @@ function makeRepository(state: Partial<FakeState> = {}) {
       calls.update.push(input);
       return state.updateResult ?? { ok: true, value: expense({ version: 2 }) };
     },
+    async summarize() {
+      return { ok: true as const, value: { totalsByCategory: {}, countsByCategory: {}, recordCount: 0, truncated: false } };
+    },
     async softDelete(_actor, id, nowIso) {
       calls.delete.push({ id, nowIso });
       return (
