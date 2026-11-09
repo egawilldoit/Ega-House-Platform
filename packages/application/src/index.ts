@@ -51,6 +51,7 @@ export * from "./expenses/summary";
 export * from "./checkins/ports";
 export * from "./checkins/service";
 export * from "./weekly-review/ports";
+export * from "./weekly-review/evidence-review";
 export * from "./weekly-review/read-model";
 export * from "./weekly-review/draft";
 export * from "./weekly-review/comparison";
