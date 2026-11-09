@@ -18,7 +18,7 @@ import {
 import type { ShutdownPageModel } from "../_lib/shutdown-page-model";
 
 export function ShutdownPageView({ model }: { model: ShutdownPageModel }) {
-  const { actionError, actionSuccess, shutdownResult, checkinResult } = model;
+  const { actionError, actionSuccess, shutdownResult, checkinResult, weeklyRun } = model;
   if (shutdownResult.errorMessage || !shutdownResult.data) return null;
   const data = shutdownResult.data;
 
@@ -116,6 +116,11 @@ export function ShutdownPageView({ model }: { model: ShutdownPageModel }) {
                 action={saveDailyCheckinAction}
                 returnTo="/shutdown"
               />
+              {weeklyRun ? (
+                <p className="mt-3 text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
+                  Runs this week: {weeklyRun.completedSessions}/{weeklyRun.target} ({weeklyRun.totalRunMinutes}m recorded). Unknown, skipped and unrecorded days are not counted as failures.
+                </p>
+              ) : null}
             </CardContent>
           </Card>
 

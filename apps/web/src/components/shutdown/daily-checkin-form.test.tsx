@@ -14,6 +14,7 @@ const CHECKIN: DailyCheckin = {
   notes: null,
   overtimeMinutes: 30,
   overtimeReason: "Release window",
+  routine: null,
   createdAt: "2026-02-16T20:00:00.000Z",
   updatedAt: "2026-02-16T20:00:00.000Z",
 };
