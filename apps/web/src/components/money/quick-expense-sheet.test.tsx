@@ -57,9 +57,10 @@ afterEach(() => {
 
 async function renderSheet(
   submitExpense: (input: QuickExpenseSubmitInput) => Promise<QuickExpenseSubmitResult>,
+  ownerKey = "owner-1",
 ) {
   await act(async () => {
-    root.render(<QuickExpenseSheet ownerKey="owner-1" submitExpense={submitExpense} />);
+    root.render(<QuickExpenseSheet ownerKey={ownerKey} submitExpense={submitExpense} />);
   });
   const trigger = container.querySelector<HTMLButtonElement>(
     'button:not([aria-label="Close quick expense"])',
@@ -141,6 +142,50 @@ describe("QuickExpenseSheet", () => {
     const retried = submitExpense.mock.calls[1]![0] as QuickExpenseSubmitInput;
     expect(retried.idempotencyKey).toBe(first.idempotencyKey);
     expect(retried.amountMinor).toBe(2250);
+  });
+
+  it("ignores a double submit while one attempt is in flight", async () => {
+    let release!: (value: QuickExpenseSubmitResult) => void;
+    const gate = new Promise<QuickExpenseSubmitResult>((resolve) => {
+      release = resolve;
+    });
+    const submitExpense = vi.fn((_input: QuickExpenseSubmitInput) => gate);
+    await renderSheet(submitExpense);
+
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+      setter.call(amountInput(), "22");
+      amountInput().dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    const form = document.querySelector("form")!;
+    await act(async () => {
+      form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    });
+    await act(async () => {
+      form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    });
+    expect(submitExpense).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      release({ ok: true as const, expense: EXPENSE, replayed: false });
+    });
+    expect(document.body.textContent).toContain("Expense saved.");
+  });
+
+  it("clears the draft when the owner changes", async () => {
+    const submitExpense = okSubmit();
+    await renderSheet(submitExpense, "owner-a");
+
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+      setter.call(amountInput(), "45");
+      amountInput().dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    expect(amountInput().value).toBe("45");
+
+    await act(async () => {
+      root.render(<QuickExpenseSheet ownerKey="owner-b" submitExpense={submitExpense} />);
+    });
+    expect(amountInput().value).not.toBe("45");
   });
 
   it("rejects invalid amounts inline without calling submit", async () => {

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Plus, Timer } from "lucide-react";
 
 import { QuickExpenseSheet } from "@/components/money/quick-expense-sheet";
@@ -15,9 +16,14 @@ import { QUICK_TASK_EVENT } from "@/lib/workspace-events";
  * PO-06 create action behind the amount-first sheet (PO-07).
  */
 export function TodayHeaderActions({ ownerKey }: { ownerKey: string }) {
+  const router = useRouter();
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <QuickExpenseSheet ownerKey={ownerKey} submitExpense={createExpenseAction} />
+      <QuickExpenseSheet
+        ownerKey={ownerKey}
+        submitExpense={createExpenseAction}
+        onCreated={() => router.refresh()}
+      />
       <Link
         href="/timer"
         className="btn-instrument btn-instrument-muted flex h-8 items-center gap-1.5 px-3 text-sm"
