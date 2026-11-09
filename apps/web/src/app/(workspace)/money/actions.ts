@@ -31,6 +31,12 @@ export async function saveCategoryCapsAction(formData: FormData) {
   for (const category of EXPENSE_CATEGORY_VALUES) {
     const raw = String(formData.get(`cap:${category}`) ?? "").trim();
     if (raw === "") continue;
+    // An explicit zero cap is valid for caps (empty means unset), even though
+    // the shared expense-amount parser requires a positive amount there.
+    if (raw === "0") {
+      caps[category] = 0;
+      continue;
+    }
     const parsed = parseMadAmountToMinor(raw);
     if (!parsed.ok) {
       return { ok: false as const, error: `${category}: ${parsed.error}` };
