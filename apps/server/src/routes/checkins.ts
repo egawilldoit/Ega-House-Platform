@@ -1,4 +1,4 @@
-import { Hono, type Context } from "hono";
+import { Hono } from "hono";
 
 import {
   createDailyCheckinService,
@@ -12,8 +12,6 @@ import { SupabaseDailyCheckinRepository } from "@ega/data-access";
 
 import type { ServerDependencies, ServerVariables } from "../app";
 import { readJsonBody } from "../app";
-
-type CheckinContext = Context<{ Variables: ServerVariables }>;
 
 /**
  * Authenticated daily check-in transport (PO-15, issue #360). One canonical
