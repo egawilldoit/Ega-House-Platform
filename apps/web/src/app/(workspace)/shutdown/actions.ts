@@ -81,10 +81,21 @@ function parseRoutinePatch(formData: FormData) {
     const key = `routine.${target}`;
     if (formData.has(key)) routine[target] = parseRoutineField(formData.get(key));
   }
-  const runCompleted = formData.get("routine.runCompleted");
-  const runSkipped = formData.get("routine.runSkipped");
-  if (runCompleted === "on") routine.runCompleted = true;
-  if (runSkipped === "on") routine.runSkipped = true;
+  // Hidden inputs serialize the tristate: "true"/"false" explicitly, "" for
+  // unknown. (Unchecked checkboxes alone would serialize nothing and could
+  // never clear a previously stored value.)
+  const parseTristate = (key: string): boolean | null | undefined => {
+    const raw = formData.get(key);
+    if (raw === null) return undefined;
+    if (raw === "true") return true;
+    if (raw === "false") return false;
+    if (raw === "") return null;
+    return undefined;
+  };
+  const runCompleted = parseTristate("routine.runCompleted");
+  const runSkipped = parseTristate("routine.runSkipped");
+  if (runCompleted !== undefined) routine.runCompleted = runCompleted;
+  if (runSkipped !== undefined) routine.runSkipped = runSkipped;
   return routine;
 }
 
