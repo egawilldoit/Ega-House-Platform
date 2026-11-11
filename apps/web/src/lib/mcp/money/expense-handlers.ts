@@ -10,6 +10,7 @@ import {
   resolveEffectiveTimezone,
   updateExpense,
   type ExpenseRepository,
+  type MoneyPeriodRepository,
   type TimeContextRepository,
 } from "@ega/application";
 import {
@@ -49,6 +50,10 @@ export type McpMoneyExpenseDependencies = {
   timeContextRepositoryFactory?: (
     client: SupabaseClient<McpDatabase>,
   ) => TimeContextRepository;
+  /** Tracking-period gate shared with web/Hono/personal-ops creation. */
+  periodRepositoryFactory?: (
+    client: SupabaseClient<McpDatabase>,
+  ) => Pick<MoneyPeriodRepository, "findTracking" | "list">;
 };
 
 export type McpMoneyLedgerQuery = Readonly<{
@@ -91,12 +96,14 @@ export type McpMoneyDeleteInput = Readonly<{
 }>;
 
 const DEFAULTS: Pick<McpMoneyExpenseDependencies,
-  "repositoryFactory" | "timeContextRepositoryFactory"
+  "repositoryFactory" | "timeContextRepositoryFactory" | "periodRepositoryFactory"
 > = {
   repositoryFactory: (client) =>
     new SupabaseExpenseRepository(client as never),
   timeContextRepositoryFactory: (client) =>
     new SupabaseTimeContextRepository(client as never),
+  periodRepositoryFactory: (client) =>
+    new SupabaseMoneyPeriodRepository(client as never),
 };
 
 function resultFromPayload(payload: Record<string, unknown>): CallToolResult {
@@ -173,6 +180,9 @@ export function createMcpMoneyExpenseHandlers(
   const timeContextRepositoryFactory =
     dependencies.timeContextRepositoryFactory
     ?? DEFAULTS.timeContextRepositoryFactory!;
+  const periodRepositoryFactory =
+    dependencies.periodRepositoryFactory
+    ?? DEFAULTS.periodRepositoryFactory!;
 
   function clientOf(authInfo: AuthInfo | undefined, permission: "personal_ops.read" | "personal_ops.write") {
     const principal = requireMcpPermission(authInfo, permission);
@@ -342,7 +352,7 @@ export function createMcpMoneyExpenseHandlers(
           },
           // Same tracking-period gate as web/Hono/personal-ops: an MCP writer
           // cannot record a routine purchase outside the active period.
-          { periods: new SupabaseMoneyPeriodRepository(client as never) },
+          { periods: periodRepositoryFactory(client) },
         );
         if (!result.ok) {
           return mapFailure(result.code, result.errorMessage);
@@ -410,6 +420,7 @@ export function createMcpMoneyExpenseHandlers(
               ? { paymentMethod: input.paymentMethod }
               : {}),
           },
+          { periods: periodRepositoryFactory(client) },
         );
         if (!result.ok) {
           return mapFailure(result.code, result.errorMessage);

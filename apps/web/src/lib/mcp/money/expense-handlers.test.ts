@@ -221,6 +221,16 @@ function createHandlers(repository: ExpenseRepository = createRepository()) {
           return { ok: true as const, value: "Africa/Casablanca" };
         },
       }) as never,
+    // No active period in these unit fixtures: the guard is a no-op.
+    periodRepositoryFactory: () =>
+      ({
+        async findTracking() {
+          return { ok: true as const, value: null };
+        },
+        async list() {
+          return { ok: true as const, value: [] };
+        },
+      }) as never,
   });
 }
 

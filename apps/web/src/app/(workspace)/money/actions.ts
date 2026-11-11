@@ -169,6 +169,7 @@ export async function updateExpenseAction(
         ? { paymentMethod: patch.paymentMethod }
         : {}),
     },
+    { periods: new SupabaseMoneyPeriodRepository(client) },
   );
   if (!result.ok) {
     return {
