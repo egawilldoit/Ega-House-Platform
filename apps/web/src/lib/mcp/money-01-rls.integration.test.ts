@@ -142,6 +142,9 @@ describe.skipIf(!connectionString)("MONEY-01 finance grant RLS", () => {
 
         const asUser = async (ownerId: string, clientId: string | null) => {
           await tx`set local role authenticated`;
+          // Supabase's auth.uid() reads either the individual claim setting or
+          // the JSON claims; the disposable proof shim reads the former.
+          await tx`select set_config('request.jwt.claim.sub', ${ownerId}, true)`;
           await tx`select set_config('request.jwt.claims', ${claims(ownerId, clientId)}, true)`;
         };
 
@@ -153,9 +156,12 @@ describe.skipIf(!connectionString)("MONEY-01 finance grant RLS", () => {
           await tx.unsafe("savepoint expected_denial");
           try {
             await statement();
-          } catch {
+          } catch (error) {
+            const code = (error as { code?: string }).code;
             await tx.unsafe("rollback to savepoint expected_denial");
-            return true;
+            // Only an authorization denial proves the boundary. A unique or
+            // constraint failure would otherwise masquerade as RLS.
+            return code === "42501";
           }
           await tx.unsafe("release savepoint expected_denial");
           return false;
@@ -227,16 +233,26 @@ describe.skipIf(!connectionString)("MONEY-01 finance grant RLS", () => {
           select id from public.personal_expenses where id = ${expenseId}`;
         state.directRead = directRows.length;
 
-        // An invalid profile/permission union is rejected by the constraint.
+        // An invalid profile/permission union is rejected by the CHECK
+        // constraint (23514), not by RLS.
         await tx`reset role`;
-        state.invalidUnionRejected = await expectDenied(() => tx`
-          insert into public.mcp_authorization_grants
-            (owner_user_id, oauth_client_id, resource_uri, status,
-             permission_profile, permissions)
-          values
-            (${owner}, ${`bad-${randomUUID()}`}, ${RESOURCE}, 'active',
-             'workspace_money_reader',
-             ${tx.json([...readPermissions, "personal_ops.write"])})`);
+        await tx.unsafe("savepoint invalid_union");
+        try {
+          await tx`
+            insert into public.mcp_authorization_grants
+              (owner_user_id, oauth_client_id, resource_uri, status,
+               permission_profile, permissions)
+            values
+              (${owner}, ${`bad-${randomUUID()}`}, ${RESOURCE}, 'active',
+               'workspace_money_reader',
+               ${tx.json([...readPermissions, "personal_ops.write"])})`;
+          state.invalidUnionRejected = false;
+        } catch (error) {
+          state.invalidUnionRejected =
+            (error as { code?: string }).code === "23514";
+        } finally {
+          await tx.unsafe("rollback to savepoint invalid_union");
+        }
 
         throw new RollbackProof();
       });
