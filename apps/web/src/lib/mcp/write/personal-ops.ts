@@ -9,6 +9,7 @@ import {
 import {
   SupabaseDailyCheckinRepository,
   SupabaseExpenseRepository,
+  SupabaseMoneyPeriodRepository,
 } from "@ega/data-access";
 import { EXPENSE_CATEGORY_VALUES } from "@ega/domain/expenses";
 
@@ -121,6 +122,7 @@ export function createMcpPersonalOpsWriteHandlers(
             paymentMethod: (input.paymentMethod as never) ?? null,
             idempotencyKey: input.idempotencyKey,
           },
+          { periods: new SupabaseMoneyPeriodRepository(client as never) },
         );
         if (!result.ok) {
           return result.code === "conflict"

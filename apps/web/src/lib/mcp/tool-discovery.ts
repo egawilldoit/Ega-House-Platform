@@ -30,6 +30,8 @@ const ALL_TOOLS: readonly McpToolDefinition[] = [
   // Canonical Money reads (MONEY-02). Compatibility names above stay listed.
   { name: "ega_money_get", requiredPermission: "personal_ops.read" },
   { name: "ega_money_ledger_list", requiredPermission: "personal_ops.read" },
+  // Money period context (MONEY-03): explicit finance read grant only.
+  { name: "ega_money_state", requiredPermission: "personal_ops.read" },
   // Personal Operations writes: explicit writer grant, never auto-upgraded.
   { name: "ega_create_personal_ops_expense", requiredPermission: "personal_ops.write", writesEnabledRequired: true },
   { name: "ega_save_personal_ops_checkin", requiredPermission: "personal_ops.write", writesEnabledRequired: true },
@@ -37,6 +39,8 @@ const ALL_TOOLS: readonly McpToolDefinition[] = [
   { name: "ega_money_create_expense", requiredPermission: "personal_ops.write", writesEnabledRequired: true },
   { name: "ega_money_update_expense", requiredPermission: "personal_ops.write", writesEnabledRequired: true },
   { name: "ega_money_delete_expense", requiredPermission: "personal_ops.write", writesEnabledRequired: true },
+  // Money settings (MONEY-03).
+  { name: "ega_money_update_settings", requiredPermission: "personal_ops.write", writesEnabledRequired: true },
   // Project writes
   { name: "ega_create_project", requiredPermission: "projects.create", writesEnabledRequired: true },
   { name: "ega_update_project_status", requiredPermission: "projects.update", writesEnabledRequired: true },

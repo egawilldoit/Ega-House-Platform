@@ -145,6 +145,7 @@ test("export refuses explicitly above its bounded row budget instead of truncati
   assert.equal(result.ok, false);
   if (result.ok) return;
   assert.equal(result.code, "validation");
+  assert.equal(result.reason, "export_too_large");
   assert.match(result.errorMessage, /more than 600 expenses/);
 });
 

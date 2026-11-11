@@ -1,6 +1,15 @@
 import { redirect } from "next/navigation";
-import { createAuthenticatedActor, listExpenses } from "@ega/application";
-import { SupabaseExpenseRepository } from "@ega/data-access";
+import {
+  createAuthenticatedActor,
+  getMoneyState,
+  listExpenses,
+  type MoneyState,
+} from "@ega/application";
+import {
+  SupabaseExpenseRepository,
+  SupabaseMoneyPeriodRepository,
+} from "@ega/data-access";
+import { MONEY_DEFAULT_TIMEZONE } from "@ega/domain/money";
 import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
 import { RefreshOnFocus } from "@/components/refresh-on-focus";
 import { createClient } from "@/lib/supabase/server";
@@ -8,8 +17,13 @@ import { getCurrentUser } from "@/lib/services/auth-service";
 import { getWebTimeContext } from "@/lib/services/time-context-service";
 import { MoneyCreatePanel } from "./_components/money-create-panel";
 import { MoneyRowActions } from "./_components/money-row-actions";
+import { MoneyPeriodPanel } from "./_components/money-period-panel";
 import { CategoryCapsForm } from "./_components/category-caps-form";
-import { saveCategoryCapsAction } from "./actions";
+import {
+  createMoneyPeriodAction,
+  saveCategoryCapsAction,
+  updateMoneySettingsAction,
+} from "./actions";
 import { getWebUserPreferencesState } from "@/lib/services/user-preferences-service";
 import { getLocalDateInTimezone } from "@ega/domain";
 import { getExpenseSummary } from "@ega/application";
@@ -18,7 +32,7 @@ import type { ExpenseCategory } from "@ega/domain/expenses";
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Money", description: "Your personal expense ledger." };
 
-type Props = { searchParams: Promise<{ offset?: string }> };
+type Props = { searchParams: Promise<{ offset?: string; periodId?: string }> };
 
 export default async function MoneyPage({ searchParams }: Props) {
   const user = await getCurrentUser();
@@ -26,27 +40,49 @@ export default async function MoneyPage({ searchParams }: Props) {
   const params = await searchParams;
   const parsedOffset = /^\d+$/.test(params.offset ?? "") ? Number(params.offset) : 0;
   const offset = Number.isSafeInteger(parsedOffset) ? Math.min(parsedOffset, 100_000) : 0;
+  const selectedPeriodId =
+    typeof params.periodId === "string" && params.periodId.trim()
+      ? params.periodId.trim()
+      : null;
   const client = await createClient();
   let result;
-  let timezone = "UTC";
+  let moneyState: MoneyState | null = null;
+  let timezone: string = MONEY_DEFAULT_TIMEZONE;
+  let timeContextFailed = false;
   try {
     const time = await getWebTimeContext();
-    timezone = time.timezone;
-    result = await listExpenses(createAuthenticatedActor(user.id), new SupabaseExpenseRepository(client), { limit: "25", offset: String(offset) }, { timezone: time.timezone });
+    timezone = time.persistedTimezone ?? MONEY_DEFAULT_TIMEZONE;
+    const actor = createAuthenticatedActor(user.id);
+    result = await listExpenses(actor, new SupabaseExpenseRepository(client), { limit: "25", offset: String(offset) }, { timezone });
+    // The period state is the shared owner context. A failed read renders as
+    // unavailable rather than as an empty/invented period.
+    const stateResult = await getMoneyState(
+      actor,
+      new SupabaseMoneyPeriodRepository(client),
+      { periodId: selectedPeriodId ?? undefined },
+      { now: new Date(), timezone: time.persistedTimezone },
+    );
+    moneyState = stateResult.ok ? stateResult.data : null;
   } catch {
     result = null;
+    moneyState = null;
+    timeContextFailed = true;
   }
   // Monthly caps are advisory progress targets in owner preferences.
   const prefsState = await getWebUserPreferencesState().catch(() => null);
   const caps = prefsState?.preferences.categoryCaps ?? {};
   // Actual spending summaries from the canonical ledger (PO-09), computed
   // server-side in bounded pages. Failures render as unavailable, never zero.
+  // A time-context outage makes the cutoff ambiguous; report the summary as
+  // unavailable rather than presenting a default-timezone total as Today.
   const localToday = getLocalDateInTimezone(new Date(), timezone);
-  const summaryResult = await getExpenseSummary(
-    createAuthenticatedActor(user.id),
-    new SupabaseExpenseRepository(client),
-    { localDate: localToday, timezone },
-  ).catch(() => null);
+  const summaryResult = timeContextFailed
+    ? null
+    : await getExpenseSummary(
+        createAuthenticatedActor(user.id),
+        new SupabaseExpenseRepository(client),
+        { localDate: localToday, timezone },
+      ).catch(() => null);
   const summary = summaryResult?.ok ? summaryResult.data : null;
   const spentByCategory = summary?.monthToDate.totalsByCategory ?? {};
   const capsNote = summary
@@ -60,6 +96,35 @@ export default async function MoneyPage({ searchParams }: Props) {
   return <main className="mx-auto w-full max-w-5xl px-4 py-6 sm:px-6">
     <WorkspacePageHeader title="Money" description="Your personal expense ledger." />
 
+    {moneyState ? (
+      <MoneyPeriodPanel
+        localToday={moneyState.localToday}
+        timezone={moneyState.timezone}
+        period={moneyState.period}
+        opening={moneyState.opening}
+        cash={moneyState.cash}
+        history={moneyState.history}
+        legacyReviewRequired={
+          moneyState.legacy.available && moneyState.legacy.reviewRequired
+        }
+        selectedPeriodId={selectedPeriodId}
+        createAction={createMoneyPeriodAction}
+        updateAction={updateMoneySettingsAction}
+      />
+    ) : (
+      <section role="alert" className="mt-6 rounded-lg border border-ega-border p-5">
+        <h2 className="text-[length:var(--text-section)] font-semibold">
+          Tracking period unavailable
+        </h2>
+        <p className="mt-2 text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
+          Money state could not be loaded. Your ledger below is unaffected.
+        </p>
+        <a className="mt-2 inline-block underline" href="/money">
+          Retry
+        </a>
+      </section>
+    )}
+
     <section aria-labelledby="money-summary-heading" className="mt-6 rounded-lg border border-ega-border p-5">
       <h2 id="money-summary-heading" className="text-[length:var(--text-section)] font-semibold tracking-[var(--tracking-tight)]">
         Recorded spending
@@ -71,14 +136,14 @@ export default async function MoneyPage({ searchParams }: Props) {
               <dt className="text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">Today</dt>
               <dd className="text-[length:var(--text-body)] font-medium">
                 {new Intl.NumberFormat("fr-MA", { style: "currency", currency: "MAD", minimumFractionDigits: 2 }).format(summary.day.totalMinor / 100)}
-                <span className="block text-[length:var(--text-meta)] font-normal text-[color:var(--ega-text-secondary)]">{summary.day.recordCount} recorded</span>
+                <span className="block text-[length:var(--text-meta)] font-normal text-[color:var(--ega-text-secondary)]">{summary.day.recordCount} recorded{summary.day.truncated ? " (lower bound)" : ""}</span>
               </dd>
             </div>
             <div>
               <dt className="text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">This week</dt>
               <dd className="text-[length:var(--text-body)] font-medium">
                 {new Intl.NumberFormat("fr-MA", { style: "currency", currency: "MAD", minimumFractionDigits: 2 }).format(summary.weekToDate.totalMinor / 100)}
-                <span className="block text-[length:var(--text-meta)] font-normal text-[color:var(--ega-text-secondary)]">{summary.weekToDate.recordCount} recorded</span>
+                <span className="block text-[length:var(--text-meta)] font-normal text-[color:var(--ega-text-secondary)]">{summary.weekToDate.recordCount} recorded{summary.weekToDate.truncated ? " (lower bound)" : ""}</span>
               </dd>
             </div>
             <div>
