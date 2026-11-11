@@ -3,15 +3,16 @@ import { resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
+// Normalize line endings: the checkout may use CRLF on Windows while CI uses LF.
 const migration = readFileSync(
   resolve(process.cwd(), "..", "..", "drizzle/0096_money_04_movements.sql"),
   "utf8",
-);
+).replaceAll("\r\n", "\n");
 
 const previousMigration = readFileSync(
   resolve(process.cwd(), "..", "..", "drizzle/0095_money_03_periods.sql"),
   "utf8",
-);
+).replaceAll("\r\n", "\n");
 
 const journal = JSON.parse(
   readFileSync(

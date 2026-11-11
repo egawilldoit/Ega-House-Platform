@@ -19,7 +19,8 @@ export type ExpenseDto = Readonly<{
   id: string;
   kind: "expense";
   direction: "out";
-  occurredAt: string;
+  /** Null for a date-only booking; `bookingDate` is always known. */
+  occurredAt: string | null;
   bookingDate: string;
   amountMinor: number;
   currency: ExpenseCurrency;

@@ -406,6 +406,8 @@ export async function updateMoneySettingsAction(
 
 export type CreateMovementActionInput = {
   kind: Exclude<MoneyMovementDto["kind"], "opening">;
+  /** Required for reconciliation_adjustment; derived otherwise. */
+  direction?: MoneyMovementDto["direction"];
   amountMinor: number;
   category?: MoneyMovementDto["category"];
   needVsWant?: MoneyMovementDto["needVsWant"];
@@ -437,6 +439,7 @@ export async function createMovementAction(
     new SupabaseMoneyRepository(client),
     {
       kind: input.kind,
+      direction: input.direction,
       amountMinor: input.amountMinor,
       category: input.category ?? null,
       needVsWant: input.needVsWant ?? null,
