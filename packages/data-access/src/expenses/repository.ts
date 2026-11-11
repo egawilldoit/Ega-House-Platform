@@ -343,6 +343,7 @@ export class SupabaseExpenseRepository implements ExpenseRepository {
       .from(TABLE)
       .select("id", { count: "exact", head: true })
       .eq("owner_user_id", actor.userId)
+      .eq("kind", "expense")
       .is("deleted_at", null)
       .gte("occurred_at", window.startUtcIso)
       .lt("occurred_at", window.endUtcExclusiveIso);

@@ -110,6 +110,47 @@ export type CreateExpenseOptions = Readonly<{
   periods?: Pick<MoneyPeriodRepository, "findTracking" | "list">;
 }>;
 
+/**
+ * One tracking-period gate for routine writes, shared by create and by any
+ * update that moves the booking instant. Ended/rolled-over periods accept
+ * entries only through the explicit historical correction path.
+ */
+async function routineEntryGuard(
+  actor: AuthenticatedActor,
+  periods: NonNullable<CreateExpenseOptions["periods"]>,
+  occurredAt: string,
+): Promise<ApplicationResult<never> | null> {
+  const tracking = await periods.findTracking(actor);
+  if (!tracking.ok) {
+    return failureFor(
+      tracking.error.code,
+      "Unable to check the tracking period right now.",
+    );
+  }
+  if (tracking.value) {
+    const bookingDate = getLocalDateInTimezone(
+      new Date(occurredAt),
+      tracking.value.timezone,
+    );
+    const guardMessage = routineEntryGuardFailure(tracking.value, bookingDate);
+    return guardMessage ? applicationFailure(guardMessage, "validation") : null;
+  }
+  const existing = await periods.list(actor, 1);
+  if (!existing.ok) {
+    return failureFor(
+      existing.error.code,
+      "Unable to check Money periods right now.",
+    );
+  }
+  if (existing.value.length > 0) {
+    return applicationFailure(
+      "There is no tracking period. Ended or rolled-over periods accept entries only through the explicit historical correction path.",
+      "validation",
+    );
+  }
+  return null;
+}
+
 export async function createExpense(
   actor: AuthenticatedActor,
   repository: ExpenseRepository,
@@ -133,35 +174,12 @@ export async function createExpense(
   if (existing.value) return replayOutcome(existing.value, createFingerprint);
 
   if (options.periods) {
-    const tracking = await options.periods.findTracking(actor);
-    if (!tracking.ok) {
-      return failureFor(
-        tracking.error.code,
-        "Unable to check the tracking period right now.",
-      );
-    }
-    if (tracking.value) {
-      const bookingDate = getLocalDateInTimezone(
-        new Date(values.occurredAt),
-        tracking.value.timezone,
-      );
-      const guardMessage = routineEntryGuardFailure(tracking.value, bookingDate);
-      if (guardMessage) return applicationFailure(guardMessage, "validation");
-    } else {
-      const existing = await options.periods.list(actor, 1);
-      if (!existing.ok) {
-        return failureFor(
-          existing.error.code,
-          "Unable to check Money periods right now.",
-        );
-      }
-      if (existing.value.length > 0) {
-        return applicationFailure(
-          "There is no tracking period. Ended or rolled-over periods accept entries only through the explicit historical correction path.",
-          "validation",
-        );
-      }
-    }
+    const guard = await routineEntryGuard(
+      actor,
+      options.periods,
+      values.occurredAt,
+    );
+    if (guard) return guard;
   }
 
   const created = await repository.create(actor, { values, createFingerprint });
@@ -242,7 +260,7 @@ export async function updateExpense(
   repository: ExpenseRepository,
   id: unknown,
   input: unknown,
-  options: Readonly<{ now?: Date }> = {},
+  options: Readonly<{ now?: Date; periods?: CreateExpenseOptions["periods"] }> = {},
 ): Promise<ApplicationResult<PersonalExpense>> {
   const validId = validateId(id);
   if (!validId) return applicationFailure(NOT_FOUND, "notFound");
@@ -254,6 +272,17 @@ export async function updateExpense(
 
   const { expectedVersion, ...changes } = parsed.value;
   const now = options.now ?? new Date();
+
+  // Moving a purchase to another day must obey the same tracking-period gate
+  // as creating it; otherwise MCP/web/Hono edits could escape the period.
+  if (options.periods && changes.occurredAt !== undefined) {
+    const guard = await routineEntryGuard(
+      actor,
+      options.periods,
+      changes.occurredAt,
+    );
+    if (guard) return guard;
+  }
 
   return fromRepository(
     await repository.update(actor, validId, {

@@ -1,6 +1,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-import type { ExpenseRepository, TimeContextRepository } from "@ega/application";
+import type {
+  ExpenseRepository,
+  MoneyPeriodRepository,
+  TimeContextRepository,
+} from "@ega/application";
 
 import type { McpDatabase } from "@/lib/mcp/mcp-database.types";
 
@@ -27,6 +31,9 @@ export type McpMoneyDependencies = {
   timeContextRepositoryFactory?: (
     client: SupabaseClient<McpDatabase>,
   ) => TimeContextRepository;
+  periodRepositoryFactory?: (
+    client: SupabaseClient<McpDatabase>,
+  ) => Pick<MoneyPeriodRepository, "findTracking" | "list">;
   now?: () => Date;
 };
 

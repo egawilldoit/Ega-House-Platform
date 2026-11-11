@@ -175,7 +175,10 @@ export function createExpensesRoutes(
       new SupabaseExpenseRepository(client),
       c.req.param("id"),
       body,
-      { now: dependencies.now?.() ?? new Date() },
+      {
+        now: dependencies.now?.() ?? new Date(),
+        periods: new SupabaseMoneyPeriodRepository(client),
+      },
     );
     if (!result.ok) {
       return errorResponse(c, result.code, result.errorMessage);

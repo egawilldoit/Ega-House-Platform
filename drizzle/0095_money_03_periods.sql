@@ -530,6 +530,19 @@ BEGIN
     RAISE EXCEPTION 'Authentication is required.' USING ERRCODE = '42501';
   END IF;
 
+  -- Overlap is rejected at the atomic boundary too (not only in the
+  -- application), so two periods can never count the same booking days.
+  IF EXISTS (
+    SELECT 1
+    FROM public.money_periods AS existing
+    WHERE existing."owner_user_id" = v_owner
+      AND daterange(existing."start_date", existing."end_date", '[]')
+          && daterange(p_start_date, p_end_date, '[]')
+  ) THEN
+    RAISE EXCEPTION 'A Money period already overlaps those dates.'
+      USING ERRCODE = '23505';
+  END IF;
+
   INSERT INTO public.money_periods (
     "id", "owner_user_id", "start_date", "end_date", "currency", "timezone",
     "active_date", "lifecycle", "initialization", "opening_movement_id",
@@ -606,6 +619,11 @@ BEGIN
   FROM public.money_periods
   WHERE "id" = p_period_id AND "owner_user_id" = v_owner
   FOR UPDATE;
+
+  IF p_expected_version IS NULL THEN
+    RAISE EXCEPTION 'An expected period version is required.'
+      USING ERRCODE = '23514';
+  END IF;
 
   IF NOT FOUND OR v_period."version" <> p_expected_version THEN
     RETURN;
