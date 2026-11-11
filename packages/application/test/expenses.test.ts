@@ -29,7 +29,10 @@ const ID = "00000000-0000-4000-8000-000000000001";
 function expense(overrides: Partial<PersonalExpense> = {}): PersonalExpense {
   return {
     id: ID,
+    kind: "expense",
+    direction: "out",
     occurredAt: "2026-11-07T08:30:00.000Z",
+    bookingDate: "2026-11-07",
     amountMinor: 2250,
     currency: "MAD",
     category: "coffee",
@@ -37,6 +40,9 @@ function expense(overrides: Partial<PersonalExpense> = {}): PersonalExpense {
     merchant: "Cafe Atlas",
     needVsWant: "want",
     paymentMethod: "card",
+    purpose: null,
+    countsInDaily: true,
+    periodId: null,
     idempotencyKey: "key-1",
     version: 1,
     deletedAt: null,
@@ -59,6 +65,7 @@ const CREATE_BODY = {
 
 const ORIGINAL_VALUES: ExpenseCreateValues = {
   occurredAt: "2026-11-07T08:30:00.000Z",
+  bookingDate: "2026-11-07",
   amountMinor: 2250,
   category: "coffee",
   note: "morning coffee",

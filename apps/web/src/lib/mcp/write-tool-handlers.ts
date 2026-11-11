@@ -42,6 +42,7 @@ import {
 import { createTaskMcpWriteHandlers } from "@/lib/mcp/write/tasks";
 import { createMcpTimerModuleHandlers } from "@/lib/mcp/write/timer";
 import { createMcpPersonalOpsWriteHandlers } from "@/lib/mcp/write/personal-ops";
+import { createMcpMoneyHandlers } from "@/lib/mcp/money/handlers";
 import {
   McpToolAuthorizationError,
   requireMcpPermission,
@@ -247,6 +248,7 @@ export function createMcpWriteToolHandlers(
   const taskHandlers = createTaskMcpWriteHandlers(moduleDeps);
   const timerHandlers = createMcpTimerModuleHandlers(moduleDeps, writesEnabled);
   const personalOpsHandlers = createMcpPersonalOpsWriteHandlers(moduleDeps);
+  const moneyHandlers = createMcpMoneyHandlers(moduleDeps);
 
   return {
     // Projects
@@ -753,6 +755,132 @@ export function createMcpWriteToolHandlers(
           patch: input.patch,
         }, () =>
           personalOpsHandlers.savePersonalOpsCheckin(authInfo, input, input.operationId),
+        );
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+
+    // MONEY-04: one canonical ledger for income/savings/adjustment movements.
+    async createMoneyMovement(
+      authInfo: AuthInfo | undefined,
+      input: {
+        kind: string;
+        direction?: "in" | "out";
+        amountMinor: number;
+        category?: string | null;
+        note?: string | null;
+        merchant?: string | null;
+        needVsWant?: "need" | "want" | null;
+        paymentMethod?: string | null;
+        purpose?: "fixed" | "flexible" | "emergency" | null;
+        countsInDaily?: boolean;
+        bookingDate?: string;
+        occurredAt?: string | null;
+        idempotencyKey: string;
+        operationId: string;
+      },
+    ): Promise<CallToolResult> {
+      try {
+        assertWritesEnabled(writesEnabled);
+        requireMcpPermission(authInfo, "personal_ops.write");
+        const client = dependencies.createUserClient(authInfo!.token);
+        // The outer receipt binds every semantic field, including the daily
+        // inclusion flag and the date-only occurrence state, so a changed
+        // request cannot replay an earlier movement.
+        return await withExclusiveMutation(client, "ega_money_create_movement", input.operationId, {
+          kind: input.kind,
+          direction: input.direction ?? null,
+          amountMinor: input.amountMinor,
+          category: input.category ?? null,
+          note: canonicalReceiptText(input.note),
+          merchant: canonicalReceiptText(input.merchant),
+          needVsWant: input.needVsWant ?? null,
+          paymentMethod: input.paymentMethod ?? null,
+          purpose: input.purpose ?? null,
+          countsInDaily: input.countsInDaily ?? null,
+          bookingDate: input.bookingDate ?? null,
+          occurredAt:
+            input.occurredAt == null ? null : canonicalReceiptInstant(input.occurredAt),
+          idempotencyKey: input.idempotencyKey,
+        }, () =>
+          moneyHandlers.createMoneyMovement(
+            authInfo,
+            {
+              ...input,
+              kind: input.kind as never,
+              category: input.category ?? null,
+              needVsWant: input.needVsWant ?? null,
+              purpose: input.purpose ?? null,
+              ...(input.countsInDaily !== undefined
+                ? { countsInDaily: input.countsInDaily }
+                : {}),
+              ...(input.bookingDate !== undefined ? { bookingDate: input.bookingDate } : {}),
+              occurredAt: input.occurredAt ?? null,
+            },
+            input.operationId,
+          ),
+        );
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+
+    async updateMoneyMovement(
+      authInfo: AuthInfo | undefined,
+      input: {
+        movementId: string;
+        version: number;
+        bookingDate?: string;
+        occurredAt?: string | null;
+        amountMinor?: number;
+        category?: string;
+        note?: string | null;
+        merchant?: string | null;
+        needVsWant?: "need" | "want";
+        paymentMethod?: string | null;
+        purpose?: "fixed" | "flexible" | "emergency" | null;
+        countsInDaily?: boolean;
+        operationId: string;
+      },
+    ): Promise<CallToolResult> {
+      try {
+        assertWritesEnabled(writesEnabled);
+        requireMcpPermission(authInfo, "personal_ops.write");
+        const client = dependencies.createUserClient(authInfo!.token);
+        // Bind presence, not just value: omitting a field means "unchanged",
+        // while an explicit null clears it. The two must not share a receipt.
+        const semanticInput: Record<string, unknown> = {
+          movementId: input.movementId,
+          expectedVersion: input.version,
+        };
+        if (input.bookingDate !== undefined) semanticInput.bookingDate = input.bookingDate;
+        if (input.occurredAt !== undefined) {
+          semanticInput.occurredAt =
+            input.occurredAt === null ? null : canonicalReceiptInstant(input.occurredAt);
+        }
+        if (input.amountMinor !== undefined) semanticInput.amountMinor = input.amountMinor;
+        if (input.category !== undefined) semanticInput.category = input.category;
+        if (input.note !== undefined) semanticInput.note = canonicalReceiptText(input.note);
+        if (input.merchant !== undefined) semanticInput.merchant = canonicalReceiptText(input.merchant);
+        if (input.needVsWant !== undefined) semanticInput.needVsWant = input.needVsWant;
+        if (input.paymentMethod !== undefined) semanticInput.paymentMethod = input.paymentMethod;
+        if (input.purpose !== undefined) semanticInput.purpose = input.purpose;
+        if (input.countsInDaily !== undefined) semanticInput.countsInDaily = input.countsInDaily;
+        return await withExclusiveMutation(client, "ega_money_update_movement", input.operationId, semanticInput, () =>
+          moneyHandlers.updateMoneyMovement(
+            authInfo,
+            {
+              ...input,
+              category: input.category,
+              note: input.note,
+              merchant: input.merchant,
+              needVsWant: input.needVsWant,
+              paymentMethod: input.paymentMethod,
+              purpose: input.purpose,
+            },
+            input.operationId,
+          ),
         );
       } catch (error) {
         return errorResult(error);

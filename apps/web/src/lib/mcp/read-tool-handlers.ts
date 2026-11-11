@@ -25,6 +25,7 @@ import {
   SupabaseTimerSessionRepository,
   SupabaseTodayReadPort,
 } from "@ega/data-access";
+import { createMcpMoneyHandlers } from "@/lib/mcp/money/handlers";
 import {
   McpToolAuthorizationError,
   requireMcpPermission,
@@ -175,6 +176,10 @@ export function createMcpReadToolHandlers(
   dependencies: McpReadToolDependencies = DEFAULT_DEPENDENCIES,
   writesEnabled = false,
 ) {
+  const moneyHandlers = createMcpMoneyHandlers({
+    createUserClient: (accessToken) => dependencies.createUserClient(accessToken),
+  });
+
   return {
     async getCapabilities(
       authInfo: AuthInfo | undefined,
@@ -397,6 +402,27 @@ export function createMcpReadToolHandlers(
       } catch (error) {
         return errorResult(error);
       }
+    },
+
+    async moneyState(
+      authInfo: AuthInfo | undefined,
+      input: { cutoff?: string; timezone?: string },
+    ): Promise<CallToolResult> {
+      return moneyHandlers.moneyState(authInfo, input ?? {});
+    },
+
+    async moneyLedgerList(
+      authInfo: AuthInfo | undefined,
+      input: {
+        from?: string;
+        to?: string;
+        cutoff?: string;
+        timezone?: string;
+        kind?: string;
+        limit?: number;
+      },
+    ): Promise<CallToolResult> {
+      return moneyHandlers.moneyLedgerList(authInfo, input ?? {});
     },
   };
 }

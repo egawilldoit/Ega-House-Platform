@@ -27,9 +27,14 @@ const ALL_TOOLS: readonly McpToolDefinition[] = [
   { name: "ega_personal_ops_summary", requiredPermission: "personal_ops.read" },
   { name: "ega_personal_ops_expenses_list", requiredPermission: "personal_ops.read" },
   { name: "ega_personal_ops_checkin_get", requiredPermission: "personal_ops.read" },
+  // MONEY-04 ledger reads (also explicit personal_ops.read grant).
+  { name: "ega_money_state", requiredPermission: "personal_ops.read" },
+  { name: "ega_money_ledger_list", requiredPermission: "personal_ops.read" },
   // Personal Operations writes: explicit writer grant, never auto-upgraded.
   { name: "ega_create_personal_ops_expense", requiredPermission: "personal_ops.write", writesEnabledRequired: true },
   { name: "ega_save_personal_ops_checkin", requiredPermission: "personal_ops.write", writesEnabledRequired: true },
+  { name: "ega_money_create_movement", requiredPermission: "personal_ops.write", writesEnabledRequired: true },
+  { name: "ega_money_update_movement", requiredPermission: "personal_ops.write", writesEnabledRequired: true },
   // Project writes
   { name: "ega_create_project", requiredPermission: "projects.create", writesEnabledRequired: true },
   { name: "ega_update_project_status", requiredPermission: "projects.update", writesEnabledRequired: true },

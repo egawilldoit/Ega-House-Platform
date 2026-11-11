@@ -342,10 +342,10 @@ async function main() {
       ["occurred_at", "timestamp with time zone", null, "NO", null],
       ["amount_minor", "integer", null, "NO", null],
       ["currency", "character varying", 3, "NO", /'MAD'/],
-      ["category", "character varying", 32, "NO", null],
+      ["category", "character varying", 32, "YES", null],
       ["note", "character varying", 500, "YES", null],
       ["merchant", "character varying", 120, "YES", null],
-      ["need_vs_want", "character varying", 8, "NO", null],
+      ["need_vs_want", "character varying", 8, "YES", null],
       ["payment_method", "character varying", 32, "YES", null],
       ["idempotency_key", "character varying", 128, "NO", null],
       ["create_fingerprint", "character varying", 64, "NO", null],
@@ -353,6 +353,12 @@ async function main() {
       ["deleted_at", "timestamp with time zone", null, "YES", null],
       ["created_at", "timestamp with time zone", null, "NO", /now\(\)/],
       ["updated_at", "timestamp with time zone", null, "NO", /now\(\)/],
+      ["kind", "character varying", 32, "NO", /'expense'/],
+      ["direction", "character varying", 3, "NO", /'out'/],
+      ["purpose", "character varying", 16, "YES", null],
+      ["counts_in_daily", "boolean", null, "NO", null],
+      ["booking_date", "date", null, "NO", null],
+      ["period_id", "uuid", null, "YES", null],
     ];
     assert(columns.length === expectedColumns.length, "expected column count");
     for (const [name, dataType, maxLength, nullable, defaultPattern] of expectedColumns) {
@@ -390,6 +396,10 @@ async function main() {
       "personal_expenses_create_fingerprint_check",
       "personal_expenses_note_check",
       "personal_expenses_merchant_check",
+      "personal_expenses_kind_check",
+      "personal_expenses_direction_check",
+      "personal_expenses_purpose_check",
+      "personal_expenses_kind_shape_check",
     ]) {
       assert(checkNames.includes(checkName), `${checkName} must exist`);
     }
@@ -408,6 +418,10 @@ async function main() {
       indexNames.includes("personal_expenses_owner_occurred_at_idx"),
       "owner/time index must exist",
     );
+    assert(
+      indexNames.includes("personal_expenses_owner_booking_date_idx"),
+      "owner/booking-date index must exist",
+    );
     const triggers = await sql.unsafe(
       `SELECT tgname FROM pg_trigger
        WHERE tgrelid = 'public.personal_expenses'::regclass AND NOT tgisinternal`,
@@ -415,6 +429,10 @@ async function main() {
     assert(
       triggers.some((entry) => entry.tgname === "personal_expenses_update_guard"),
       "personal_expenses must expose the mutation guard trigger",
+    );
+    assert(
+      triggers.some((entry) => entry.tgname === "personal_expenses_fill_movement_fields"),
+      "personal_expenses must fill legacy movement defaults on insert",
     );
 
     const [privileges] = await sql.unsafe(
@@ -431,12 +449,15 @@ async function main() {
 
     const mutableColumns = [
       "occurred_at",
+      "booking_date",
       "amount_minor",
       "category",
       "note",
       "merchant",
       "need_vs_want",
       "payment_method",
+      "purpose",
+      "counts_in_daily",
       "version",
       "deleted_at",
       "updated_at",
@@ -452,6 +473,9 @@ async function main() {
       "id",
       "owner_user_id",
       "currency",
+      "kind",
+      "direction",
+      "period_id",
       "idempotency_key",
       "create_fingerprint",
       "created_at",

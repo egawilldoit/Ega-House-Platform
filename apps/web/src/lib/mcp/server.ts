@@ -71,6 +71,23 @@ export type McpReadToolHandlers = {
     input: { localDate: string; timezone: string },
     context?: McpProtocolContext,
   ) => Promise<CallToolResult>;
+  moneyState: (
+    authInfo: AuthInfo | undefined,
+    input: { cutoff?: string; timezone?: string },
+    context?: McpProtocolContext,
+  ) => Promise<CallToolResult>;
+  moneyLedgerList: (
+    authInfo: AuthInfo | undefined,
+    input: {
+      from?: string;
+      to?: string;
+      cutoff?: string;
+      timezone?: string;
+      kind?: string;
+      limit?: number;
+    },
+    context?: McpProtocolContext,
+  ) => Promise<CallToolResult>;
 };
 
 export type McpWriteToolHandlers = {
@@ -203,6 +220,45 @@ export type McpWriteToolHandlers = {
   savePersonalOpsCheckin: (
     authInfo: AuthInfo | undefined,
     input: { localDate: string; timezone: string; patch: Record<string, unknown>; operationId: string },
+    context?: McpProtocolContext,
+  ) => Promise<CallToolResult>;
+  createMoneyMovement: (
+    authInfo: AuthInfo | undefined,
+    input: {
+      kind: string;
+      direction?: "in" | "out";
+      amountMinor: number;
+      category?: string | null;
+      note?: string | null;
+      merchant?: string | null;
+      needVsWant?: "need" | "want" | null;
+      paymentMethod?: string | null;
+      purpose?: "fixed" | "flexible" | "emergency" | null;
+      countsInDaily?: boolean;
+      bookingDate?: string;
+      occurredAt?: string | null;
+      idempotencyKey: string;
+      operationId: string;
+    },
+    context?: McpProtocolContext,
+  ) => Promise<CallToolResult>;
+  updateMoneyMovement: (
+    authInfo: AuthInfo | undefined,
+    input: {
+      movementId: string;
+      version: number;
+      bookingDate?: string;
+      occurredAt?: string | null;
+      amountMinor?: number;
+      category?: string;
+      note?: string | null;
+      merchant?: string | null;
+      needVsWant?: "need" | "want";
+      paymentMethod?: string | null;
+      purpose?: "fixed" | "flexible" | "emergency" | null;
+      countsInDaily?: boolean;
+      operationId: string;
+    },
     context?: McpProtocolContext,
   ) => Promise<CallToolResult>;
   stopTimer: (
@@ -529,6 +585,55 @@ const personalOpsCheckinSaveInputSchema = z.object({
   operationId: z.string().uuid(),
 }).strict();
 
+const moneyDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+
+const moneyStateInputSchema = z.object({
+  cutoff: moneyDateSchema.optional(),
+  timezone: z.string().optional(),
+}).strict();
+
+const moneyLedgerListInputSchema = z.object({
+  from: moneyDateSchema.optional(),
+  to: moneyDateSchema.optional(),
+  cutoff: moneyDateSchema.optional(),
+  timezone: z.string().optional(),
+  kind: z.enum(["expense", "income", "opening", "savings_transfer", "reconciliation_adjustment"]).optional(),
+  limit: limitSchema,
+}).strict();
+
+const moneyCreateMovementInputSchema = z.object({
+  kind: z.enum(["expense", "income", "savings_transfer", "reconciliation_adjustment"]),
+  direction: z.enum(["in", "out"]).optional(),
+  amountMinor: z.number().int().positive(),
+  category: nullableStringSchema.optional(),
+  note: nullableStringSchema.optional(),
+  merchant: nullableStringSchema.optional(),
+  needVsWant: z.enum(["need", "want"]).nullable().optional(),
+  paymentMethod: nullableStringSchema.optional(),
+  purpose: z.enum(["fixed", "flexible", "emergency"]).nullable().optional(),
+  countsInDaily: z.boolean().optional(),
+  bookingDate: moneyDateSchema.optional(),
+  occurredAt: z.string().nullable().optional(),
+  idempotencyKey: z.string().min(1),
+  operationId: z.string().uuid(),
+}).strict();
+
+const moneyUpdateMovementInputSchema = z.object({
+  movementId: uuidSchema,
+  version: z.number().int().positive(),
+  bookingDate: moneyDateSchema.optional(),
+  occurredAt: z.string().nullable().optional(),
+  amountMinor: z.number().int().positive().optional(),
+  category: z.string().optional(),
+  note: nullableStringSchema.optional(),
+  merchant: nullableStringSchema.optional(),
+  needVsWant: z.enum(["need", "want"]).optional(),
+  paymentMethod: nullableStringSchema.optional(),
+  purpose: z.enum(["fixed", "flexible", "emergency"]).nullable().optional(),
+  countsInDaily: z.boolean().optional(),
+  operationId: z.string().uuid(),
+}).strict();
+
 const stopTimerInputSchema = z.object({
   sessionId: uuidSchema,
   operationId: z.string().uuid(),
@@ -717,6 +822,40 @@ const READ_TOOL_REGISTRATIONS: readonly ReadToolRegistration[] = [
         },
         async (input, ctx) =>
           handlers.personalOpsCheckinGet(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
+      ),
+  },
+  {
+    name: "ega_money_state",
+    register: (server, handlers) =>
+      server.registerTool(
+        "ega_money_state",
+        {
+          title: "Money cash state",
+          description:
+            "Owner cash state at an explicit cutoff in integer MAD centimes: recorded cash = opening + posted inflows - posted outflows, plus expense total, daily-included spending, funded savings, selected period, provenance and completeness. completeness.confirmed=false means the balance is not confirmed (missing/unknown opening or incomplete history), never that cash is zero. Requires the explicit personal_ops.read grant.",
+          inputSchema: moneyStateInputSchema,
+          outputSchema: personalOpsSummaryOutputSchema,
+          annotations: READ_ONLY_ANNOTATIONS,
+        },
+        async (input, ctx) =>
+          handlers.moneyState(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
+      ),
+  },
+  {
+    name: "ega_money_ledger_list",
+    register: (server, handlers) =>
+      server.registerTool(
+        "ega_money_ledger_list",
+        {
+          title: "List money movements",
+          description:
+            "List owner money movements in integer MAD centimes, newest booking date first. Kinds are expense, income, opening, savings_transfer and reconciliation_adjustment; non-expense rows have null category/needVsWant. from/to/cutoff are inclusive booking dates (never UTC assumptions); occurredAt is null when only the day is known. Requires the explicit personal_ops.read grant.",
+          inputSchema: moneyLedgerListInputSchema,
+          outputSchema: personalOpsListOutputSchema,
+          annotations: READ_ONLY_ANNOTATIONS,
+        },
+        async (input, ctx) =>
+          handlers.moneyLedgerList(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
       ),
   },
   {
@@ -1103,6 +1242,40 @@ const WRITE_TOOL_REGISTRATIONS: readonly WriteToolRegistration[] = [
         },
         async (input, ctx) =>
           handlers.savePersonalOpsCheckin(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
+      ),
+  },
+  {
+    name: "ega_money_create_movement",
+    register: (server, handlers) =>
+      server.registerTool(
+        "ega_money_create_movement",
+        {
+          title: "Create money movement",
+          description:
+            "Record one money movement in the canonical ledger: received income, a savings transfer out of tracked spendable cash, a reconciliation adjustment, or an expense. amountMinor is positive integer MAD centimes (11.00 MAD = 1100); direction is derived from kind except for reconciliation_adjustment. bookingDate is the owner-local booking day; omit occurredAt when only the day is known. countsInDaily defaults true for expenses and false for other kinds; an explicit value persists. Unreceived income must not be posted. idempotencyKey identifies this movement: the same key and same full payload replays the original row; changing any field conflicts. Requires the explicit personal_ops.write grant.",
+          inputSchema: moneyCreateMovementInputSchema,
+          outputSchema: genericWriteOutputSchema,
+          annotations: WRITE_ANNOTATIONS,
+        },
+        async (input, ctx) =>
+          handlers.createMoneyMovement(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
+      ),
+  },
+  {
+    name: "ega_money_update_movement",
+    register: (server, handlers) =>
+      server.registerTool(
+        "ega_money_update_movement",
+        {
+          title: "Correct money movement",
+          description:
+            "Correct one owned money movement with optimistic concurrency: `version` must be the current positive version and must match the stored row. Kind and direction are immutable; category, need/want and purpose apply only to expenses. A corrected savings transfer or income restates recorded cash exactly once. Include countsInDaily to change the durable daily-inclusion flag. Requires the explicit personal_ops.write grant.",
+          inputSchema: moneyUpdateMovementInputSchema,
+          outputSchema: genericWriteOutputSchema,
+          annotations: WRITE_ANNOTATIONS,
+        },
+        async (input, ctx) =>
+          handlers.updateMoneyMovement(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
       ),
   },
   {

@@ -1,11 +1,13 @@
 import { redirect } from "next/navigation";
-import { createAuthenticatedActor, listExpenses } from "@ega/application";
-import { SupabaseExpenseRepository } from "@ega/data-access";
+import { createAuthenticatedActor, getMoneyState, listExpenses, listMovements } from "@ega/application";
+import { SupabaseExpenseRepository, SupabaseMoneyRepository } from "@ega/data-access";
 import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentUser } from "@/lib/services/auth-service";
 import { getWebTimeContext } from "@/lib/services/time-context-service";
 import { MoneyCreatePanel } from "./_components/money-create-panel";
+import { MoneyMovementPanel } from "./_components/money-movement-panel";
+import { MoneyMovementActions } from "./_components/money-movement-actions";
 import { MoneyRowActions } from "./_components/money-row-actions";
 import { CategoryCapsForm } from "./_components/category-caps-form";
 import { saveCategoryCapsAction } from "./actions";
@@ -16,6 +18,14 @@ import type { ExpenseCategory } from "@ega/domain/expenses";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Money", description: "Your personal expense ledger." };
+
+function formatMad(minor: number): string {
+  return new Intl.NumberFormat("fr-MA", { style: "currency", currency: "MAD", minimumFractionDigits: 2 }).format(minor / 100);
+}
+
+function movementKindLabel(kind: string): string {
+  return kind.replaceAll("_", " ");
+}
 
 type Props = { searchParams: Promise<{ offset?: string }> };
 
@@ -47,6 +57,23 @@ export default async function MoneyPage({ searchParams }: Props) {
     { localDate: localToday, timezone },
   ).catch(() => null);
   const summary = summaryResult?.ok ? summaryResult.data : null;
+  // MONEY-04: recorded cash and the canonical movement ledger. Failures render
+  // as unavailable, never as a confirmed zero balance.
+  const moneyRepository = new SupabaseMoneyRepository(client);
+  const stateResult = await getMoneyState(
+    createAuthenticatedActor(user.id),
+    moneyRepository,
+    {},
+    { timezone },
+  ).catch(() => null);
+  const moneyState = stateResult?.ok ? stateResult.data.state : null;
+  const movementsResult = await listMovements(
+    createAuthenticatedActor(user.id),
+    moneyRepository,
+    { limit: "25", offset: String(offset) },
+    { timezone },
+  ).catch(() => null);
+  const movements = movementsResult?.ok ? movementsResult.data.movements : null;
   const spentByCategory = summary?.monthToDate.totalsByCategory ?? {};
   const capsNote = summary
     ? summary.monthToDate.truncated
@@ -58,6 +85,55 @@ export default async function MoneyPage({ searchParams }: Props) {
   ) as Array<[ExpenseCategory, number]>;
   return <main className="mx-auto w-full max-w-5xl px-4 py-6 sm:px-6">
     <WorkspacePageHeader title="Money" description="Your personal expense ledger." />
+
+    <section aria-labelledby="money-cash-heading" className="mt-6 rounded-lg border border-ega-border p-5">
+      <h2 id="money-cash-heading" className="text-[length:var(--text-section)] font-semibold tracking-[var(--tracking-tight)]">
+        Recorded cash
+      </h2>
+      {moneyState ? (
+        <>
+          <dl className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <div>
+              <dt className="text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">Recorded cash at cutoff</dt>
+              <dd className="text-[length:var(--text-body)] font-medium">{formatMad(moneyState.recordedCashMinor)}</dd>
+            </div>
+            <div>
+              <dt className="text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">Expense spending</dt>
+              <dd className="text-[length:var(--text-body)] font-medium">{formatMad(moneyState.expenseTotalMinor)}</dd>
+            </div>
+            <div>
+              <dt className="text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">Daily included spending</dt>
+              <dd className="text-[length:var(--text-body)] font-medium">{formatMad(moneyState.dailyIncludedSpendMinor)}</dd>
+            </div>
+            <div>
+              <dt className="text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">Funded savings</dt>
+              <dd className="text-[length:var(--text-body)] font-medium">{formatMad(moneyState.savingsFundedMinor)}</dd>
+            </div>
+          </dl>
+          <p className="mt-3 text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
+            Cutoff {moneyState.cutoff} · opening {formatMad(moneyState.openingMinor)} · inflows {formatMad(moneyState.inflowsMinor)} · outflows {formatMad(moneyState.outflowsMinor)} · {moneyState.counts.movements} movement(s).
+          </p>
+          <p className="mt-2 text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
+            Spendable-cash boundary: {moneyState.boundary.savingsTransfer}. {moneyState.boundary.internalTransfer}.
+          </p>
+          <p className="mt-2 text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
+            {moneyState.completeness.confirmed
+              ? `Balance status: confirmed by the ${moneyState.period.lifecycle ?? "tracking"} period opening and complete history.`
+              : `Balance status: incomplete (${moneyState.completeness.reasons.join(", ")}). Treat recorded cash as the model so far, not a confirmed balance.`}
+            {moneyState.period.available && moneyState.period.id ? ` Period ${moneyState.period.startDate} to ${moneyState.period.endDate}.` : moneyState.period.available ? " No period is configured yet." : " Period table is not deployed yet."}
+          </p>
+          {moneyState.period.provenance ? (
+            <p className="mt-1 text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
+              Opening provenance: {String((moneyState.period.provenance as Record<string, unknown>).source ?? "recorded")}.
+            </p>
+          ) : null}
+        </>
+      ) : (
+        <p className="mt-3 text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
+          Recorded cash is unavailable right now. Your ledger below is unaffected.
+        </p>
+      )}
+    </section>
 
     <section aria-labelledby="money-summary-heading" className="mt-6 rounded-lg border border-ega-border p-5">
       <h2 id="money-summary-heading" className="text-[length:var(--text-section)] font-semibold tracking-[var(--tracking-tight)]">
@@ -162,6 +238,7 @@ export default async function MoneyPage({ searchParams }: Props) {
     </section>
 
     <MoneyCreatePanel ownerKey={user.id} />
+    <MoneyMovementPanel ownerKey={user.id} defaultBookingDate={localToday} />
     {(!result || !result.ok) ? <section role="alert" className="mt-6 rounded-lg border border-ega-border p-5">
       <p>Expenses could not be loaded.</p><a className="underline" href={`/money?offset=${offset}`}>Retry</a>
     </section> : result.data.expenses.length === 0 ? <section className="mt-6 rounded-lg border border-ega-border p-5"><p className="text-ega-text-secondary">{offset === 0 ? "No expenses yet." : "No expenses on this page."}</p>{offset > 0 && <a className="underline" href={`/money?offset=${Math.max(0, offset - 25)}`}>Previous page</a>}</section> : <>
@@ -172,5 +249,65 @@ export default async function MoneyPage({ searchParams }: Props) {
       </div>
       <nav aria-label="Expense pages" className="mt-4 flex justify-between"><span>{offset > 0 && <a className="underline" href={`/money?offset=${Math.max(0, offset - 25)}`}>Previous</a>}</span><span>{result.data.pagination.hasMore && <a className="underline" href={`/money?offset=${offset + 25}`}>Next</a>}</span></nav>
     </>}
+
+    <section aria-labelledby="money-ledger-heading" className="mt-6 rounded-lg border border-ega-border p-5">
+      <h2 id="money-ledger-heading" className="text-[length:var(--text-section)] font-semibold tracking-[var(--tracking-tight)]">
+        Movement ledger
+      </h2>
+      {movements === null ? (
+        <p className="mt-3 text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
+          Movements are unavailable right now.
+        </p>
+      ) : movements.length === 0 ? (
+        <p className="mt-3 text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
+          No movements recorded yet. Opening cash appears here once a period is initialized.
+        </p>
+      ) : (
+        <div className="mt-3 overflow-x-auto">
+          <table className="w-full min-w-[44rem] text-left text-sm">
+            <caption className="sr-only">Money movements</caption>
+            <thead>
+              <tr>
+                <th scope="col" className="p-3">Booking date</th>
+                <th scope="col" className="p-3">Kind</th>
+                <th scope="col" className="p-3">Detail</th>
+                <th scope="col" className="p-3">Daily spending</th>
+                <th scope="col" className="p-3 text-right">Cash effect</th>
+                <th scope="col" className="p-3 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {movements.map((movement) => {
+                const cashEffect = movement.kind === "opening"
+                  ? movement.amountMinor
+                  : movement.direction === "in" ? movement.amountMinor : -movement.amountMinor;
+                return (
+                  <tr key={movement.id} className="border-t border-ega-border">
+                    <td className="p-3">{movement.bookingDate}{movement.occurredAt ? "" : " (time unknown)"}</td>
+                    <td className="p-3">{movementKindLabel(movement.kind)}</td>
+                    <td className="p-3">
+                      {movement.merchant ?? "—"}
+                      {movement.note ? <p className="mt-1 text-xs text-ega-text-secondary">{movement.note}</p> : null}
+                      {movement.category ? <p className="mt-1 text-xs text-ega-text-secondary">{movement.category.replaceAll("_", " ")}</p> : null}
+                    </td>
+                    <td className="p-3">{movement.countsInDaily ? "Included" : "Excluded"}</td>
+                    <td className={`p-3 text-right tabular-nums ${cashEffect < 0 ? "text-[color:var(--ega-danger)]" : ""}`}>
+                      {formatMad(cashEffect)}
+                    </td>
+                    <td className="p-3 text-right"><MoneyMovementActions movement={movement} /></td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {movementsResult?.ok ? (
+        <nav aria-label="Movement pages" className="mt-4 flex justify-between">
+          <span>{offset > 0 && <a className="underline" href={`/money?offset=${Math.max(0, offset - 25)}`}>Previous</a>}</span>
+          <span>{movementsResult.data.pagination.hasMore && <a className="underline" href={`/money?offset=${offset + 25}`}>Next</a>}</span>
+        </nav>
+      ) : null}
+    </section>
   </main>;
 }
