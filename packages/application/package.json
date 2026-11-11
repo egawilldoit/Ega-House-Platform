@@ -54,6 +54,9 @@
     "./preferences": "./src/preferences/user-preferences.ts",
     "./expenses/ports": "./src/expenses/ports.ts",
     "./expenses/service": "./src/expenses/service.ts",
+    "./money/ports": "./src/money/ports.ts",
+    "./money/periods": "./src/money/periods.ts",
+    "./money/summary": "./src/money/summary.ts",
     "./health/workload-snapshot": "./src/health/workload-snapshot.ts",
     "./health/recommendations": "./src/health/recommendations.ts"
   },

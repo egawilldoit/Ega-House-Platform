@@ -20,6 +20,7 @@ import {
   type TokenProvider,
 } from "./http";
 import { createInboxApi, type InboxApi } from "./inbox";
+import { createMoneyApi, type MoneyApi } from "./money";
 import { createNotificationsApi, type NotificationsApi } from "./notifications";
 import { createProjectsApi, type ProjectsApi } from "./projects";
 import { createOperatorApi, type OperatorApi } from "./operator";
@@ -63,6 +64,7 @@ export type EgaApiClient = {
   timeContext: TimeContextApi;
   notifications: NotificationsApi;
   expenses: ExpensesApi;
+  money: MoneyApi;
   checkins: CheckinsApi;
   auth: AuthApi;
 };
@@ -96,6 +98,7 @@ export function createEgaApiClient(options: EgaApiClientOptions): EgaApiClient {
     timeContext: createTimeContextApi(http),
     notifications: createNotificationsApi(http),
     expenses: createExpensesApi(http),
+    money: createMoneyApi(http),
     checkins: createCheckinsApi(http),
     auth: createAuthApi(http),
   };

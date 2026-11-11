@@ -17,7 +17,11 @@ import type {
   ListExpensesResponse,
   UpdateExpenseResponse,
 } from "@ega/contracts/expenses";
-import { SupabaseExpenseRepository, SupabaseTimeContextRepository } from "@ega/data-access";
+import {
+  SupabaseExpenseRepository,
+  SupabaseMoneyPeriodRepository,
+  SupabaseTimeContextRepository,
+} from "@ega/data-access";
 import { isValidIANATimeZone } from "@ega/domain";
 
 import type { ServerDependencies, ServerVariables } from "../app";
@@ -130,6 +134,7 @@ export function createExpensesRoutes(
       actor,
       new SupabaseExpenseRepository(client),
       body,
+      { periods: new SupabaseMoneyPeriodRepository(client) },
     );
     if (!result.ok) {
       return errorResponse(c, result.code, result.errorMessage);
