@@ -9,6 +9,8 @@ Refresh repository and hosted state at execution time.
 
 Deliver the entire Money Tracker operating workflow inside EGA House, accessible
 both manually in the Money app and directly through authenticated MCP tools.
+Manual app scope is the responsive web Money workspace; preserve existing native
+mobile expense entry, but a new native Money screen is not required.
 The user should be able to return, open Money, connect ChatGPT and use the system.
 The example “I spent 11 on coffee today @egahousemcp” is one required interaction.
 It is not the finish boundary.
@@ -38,6 +40,8 @@ required migrations. See the scoped authorization in [AGENTS.md](../../AGENTS.md
 This includes releasing the scoped changes through the existing main-only
 deployment path and configuring required Money/MCP feature switches. It does not
 authorize unrelated infrastructure changes or changing the user's OAuth consent.
+This authority ends on the completed MONEY-14 handback or user revocation, not on
+an intermediate PR, tool wait, temporary blocker or context compaction.
 
 The delivery agent must:
 
@@ -52,6 +56,8 @@ The delivery agent must:
    setup, test and integration problems without repeatedly asking permission.
 4. Obtain independent review of substantive changes. If delegates are used, use
    only DeepSeek V4.1 Flash through OpenCode Go. No silent model substitution.
+   Review must be performed by a separate reviewer session, not a self-review
+   relabeled as independent. Record reviewed revision and dispositions.
 5. Open a scoped PR to `main`, fix review blockers, observe required checks at the
    current head, assess integration with current `main`, then merge the verified
    head. Preserve branch protection and required review. Do not enable permanent
@@ -158,8 +164,16 @@ Opening cash is represented once. For a report cutoff:
 
 `recorded cash = opening cash + posted inflows through cutoff - posted outflows through cutoff`
 
-Pending income is not cash. Scheduled future bills are obligations, not cash
-movements. A date filter must state its cutoff; a lagging active-day report must
+The sole opening owner is one canonical ledger movement of kind `opening` per
+owner/period, introduced in MONEY-03. Period state references that row and its
+provenance, never a second independently editable opening amount. The inflow and
+outflow terms above exclude the opening itself. Known zero has an opening row;
+unknown opening has none. A source-verified opening and a modeled carry-forward
+opening have different provenance and reconciliation status.
+
+Only received income is posted. An unreceived-income request must clarify receipt
+or decline posting; no pending-income subsystem is required. Scheduled future bills
+are obligations, not cash movements. A date filter must state its cutoff; a lagging active-day report must
 not quietly include future-dated records. A current-cash view and active-day view
 may differ and must say why. Balance is a recorded model, not bank reconciliation.
 
@@ -188,6 +202,8 @@ Coffee spending and counted visits derive from canonical expense records plus
 explicit visit metadata. One counted visit never creates another outflow. Two
 items in one visit need not count twice. An explicit coffee-as-groceries override
 remains groceries and is excluded from the counted coffee allowance by default.
+Coffee allocation consumption uses amounts linked to counted visits; category
+coffee totals remain a separately labeled projection, as in the handoff.
 
 Bills and subscriptions are two views of the same obligation occurrences. Only a
 posted payment moves cash. A status-only historical annotation must be identified
@@ -195,14 +211,24 @@ as such; it must never masquerade as a new payment or silently remove a reserve.
 Paying an occurrence links exactly one canonical payment, atomically. Unpaying or
 correcting that payment must restore coherent obligation state.
 
-Day close writes a CLOSED note, stores an evidence snapshot and advances active
-date once in the same transaction. Later corrections remain allowed; show revised
-live totals beside the original close. A close does not transfer savings, change
+Day close writes a CLOSED note and stores an evidence snapshot. On a nonfinal day
+it advances active date once in the same transaction. On the final day it retains
+the end date and enters `ended`/rollover-required state. Later corrections remain
+allowed; show revised live totals beside the original close. A close does not transfer savings, change
 targets, erase entries or automatically carry unused daily allowance forward.
 
 Rollover is explicit. Preserve old periods; create one new opening, copied policy
 as requested and fresh dated obligation occurrences. Carryover defaults off.
 Generate week windows from dates rather than hardcoded workbook cell ranges.
+Historical correction after rollover must reconcile derived successor cash via
+the provenance-linked adjustment rule in MONEY-10; frozen close/opening snapshots
+must never silently drift or acquire an independently editable duplicate amount.
+
+Every movement has a durable `countsInDaily` flag. Daily included spending is the
+sum of expense outflows whose flag is true, independent of category and reserve
+funding. Emergency purchases default true as the handoff explicitly requires;
+fixed bill payments default false. This daily comparison is not another cash
+deduction. It must never be subtracted again from current safe funds.
 
 ### Retry, authorization and honest results
 
@@ -262,8 +288,18 @@ grant/RLS migration; existing expense application and repository; Money refresh.
 - [ ] Consent can issue the existing personal-operations reader and writer profiles
   with exact supported permissions; DB constraints, schema and runtime agree.
   Existing grants are preserved and never silently upgraded.
+- [ ] Preserve the one-grant-per-owner/client identity. Offer explicitly consented
+  combined workspace-plus-money reader/writer profiles so one ChatGPT connection
+  can retain its task/workspace capabilities while accessing Money. Combined
+  permissions are the exact advertised union, recorded in constraints, runtime
+  and consent; existing workspace grants never gain finance by implication.
 - [ ] Writes-disabled consent and tool discovery behave consistently. A finance
   reader can read but cannot create; unrelated profiles cannot access money.
+  Audit every write-capable profile, including `task_manager`, `workspace_manager`,
+  personal-operations writer and combined profiles. With writes disabled, posted
+  consent selections cannot issue a retained write grant: refuse them or offer an
+  explicitly labeled compatible read-only choice. Crafted requests obey the same
+  decision-service rule; hiding options alone is insufficient.
 - [ ] Finance SELECT/INSERT policies permit the matching active OAuth grant and
   retain direct-user behavior. Missing/revoked grants, wrong client/resource and
   cross-owner requests remain denied. Empty RLS results are not used to disguise
@@ -331,8 +367,15 @@ versioned settings operations. Use concrete modules, not a generic workflow engi
 - [ ] Durable period state has owner, inclusive date range, currency, timezone
   context, active date, version and initialization/provenance state. Invalid or
   overlapping active periods are rejected with a defined historical-read path.
-- [ ] Opening cash is stored once in the canonical model with provenance and
-  correction history. An opening of zero is distinct from an unknown opening.
+- [ ] Lifecycle is `tracking`, `ended` or `rolled_over`. Initialization is
+  `uninitialized` without an opening, `initialized` with a modeled opening, or
+  `reconciled` with recorded verified source/cutoff evidence. These labels never
+  claim a bank check without evidence. Only a tracking period accepts routine new
+  entries; ended/rolled-over periods use explicit historical correction paths.
+- [ ] This issue introduces the single ledger `opening` kind, unique per owner and
+  period, with provenance and correction history. Known zero is allowed for this
+  kind; normal expenses remain positive. The period stores its opening reference,
+  not a duplicate amount. An opening of zero is distinct from an unknown opening.
   Expense-only accounts display cash as unknown until initialized/reconciled.
 - [ ] Web setup/settings and MCP expose the same create/read/update rules, including
   explicit state/version preconditions. Changing active date does not change the
@@ -360,16 +403,26 @@ affected Hono/api-client consumers and weekly-review summaries.
 **Acceptance criteria:**
 
 - [ ] Journal kind/direction distinguishes expenses, received income, opening and
-  actual savings transfers. New nonexpense kinds have valid typed fields without
+  actual savings transfers, extending MONEY-03's existing opening kind rather
+  than creating another opening owner. New kinds have valid typed fields without
   fictional expense categories or need/want classifications.
+- [ ] `countsInDaily` is persisted and carried through shared DTOs, HTTP, web and
+  MCP create/update/read contracts, normalized fingerprints and mutation receipts.
+  Ordinary expenses, including emergency, default true; opening, received income,
+  savings transfers and reconciliation adjustments default false. Fixed-payment
+  defaults are defined in MONEY-07. Explicit owner overrides remain durable.
+- [ ] Existing expenses backfill true unless verified source evidence supplies a
+  different flag. Import preserves Ledger J exactly. Report migrated defaults as
+  defaults, not recovered historical facts. An excluded 11.00 expense still lowers
+  cash and increases expense totals by 11.00, with daily included spending 0.00.
 - [ ] Manual and MCP create/read/update/correction paths share parsing, owner scope,
   stable create identity and optimistic concurrency. Date-only booking retains
   uncertainty about occurrence time; timestamped clients remain supported.
 - [ ] Existing expense lists/summary queries deliberately filter or project kinds;
   income, opening and savings transfers do not inflate expense, caps or coffee.
 - [ ] Opening 500.00 + received income 200.00 - coffee 11.00 gives recorded cash
-  689.00 MAD and expense spending 11.00 MAD at the same cutoff. Pending income has
-  no effect. The ledger can display an explained running balance after backdating.
+  689.00 MAD and expense spending 11.00 MAD at the same cutoff. Unreceived income
+  creates no posted movement. Running balances remain explained after backdating.
 - [ ] The tracked spendable-cash boundary is recorded. A real savings transfer out
   reduces cash once and increases actual funded savings once. A target edit does
   neither. Corrections restore the same invariants.
@@ -390,8 +443,8 @@ MCP allocation/category/visit operations and affected expense callers.
 
 **Acceptance criteria:**
 
-- [ ] Publish one explicit mapping for handoff Start, Food, Daily usage, Coffee,
-  Bill, Income, Saving, Personal care, Work/tools, Fun, Emergency and Other.
+- [ ] Publish one explicit mapping for handoff Start, Transport, Food, Daily usage,
+  Coffee, Bill, Income, Saving, Personal care, Work/tools, Fun, Emergency and Other.
   Movement kinds own nonexpense meanings; preserved reporting detail prevents
   silently collapsing every unsupported category into indistinguishable “other”.
 - [ ] Existing category values remain compatible. Required taxonomy additions or
@@ -409,6 +462,8 @@ MCP allocation/category/visit operations and affected expense callers.
   increases groceries spending and leaves counted coffee usage unchanged.
 - [ ] Coffee weekly windows derive from owner-local dates and period boundaries;
   counts, spend, remaining allocation and limit overshoot are distinct values.
+  Allocation consumption follows counted-visit amounts; uncounted category-coffee
+  purchases remain visible in separately labeled category spending.
 
 **Required proof:** Normal visit, multi-line visit, explicit override, category edit
 and partial-week allocation through shared reads and both editing surfaces.
@@ -426,11 +481,17 @@ Money bills/subscriptions views/forms; MCP obligation discovery and management.
 - [ ] One durable occurrence owns amount, due date, period, kind (bill/subscription),
   description, version and explicit lifecycle. Recurring templates are separate
   from generated occurrences and do not themselves post cash movements.
+- [ ] Templates supply classification defaults; each occurrence snapshots its own
+  need/want (unknown allowed until payment), purpose (fixed/flexible/emergency) and
+  `countsInDaily`. Payment input overrides occurrence snapshot, which overrides
+  kind defaults. An unknown required expense classification is requested, never
+  fabricated. Editing a template does not rewrite occurrence classification.
 - [ ] Bills and subscription views project the same occurrence ID/payment state;
   they never maintain two independent paid flags for one obligation.
 - [ ] Web and MCP can create, list, inspect, edit and cancel/waive an occurrence
   explicitly. Scheduling or cancellation has no cash movement. Cancellation and
-  waiver effects on outstanding commitments are visible and reversible as defined.
+  waiver follow the lifecycle table below, with versioned transitions and effective
+  dates retained for historical and start-of-day reconstruction.
 - [ ] A paid state requires a valid owner-safe linked payment, except explicitly
   flagged reconciled historical evidence handled by import. A bare status change
   cannot silently manufacture cash history or claim a payment.
@@ -438,6 +499,17 @@ Money bills/subscriptions views/forms; MCP obligation discovery and management.
   cutoff. Editing a recurring template does not rewrite previous occurrences.
 - [ ] The initial supported payment rule is one full payment per occurrence;
   partial/overpayment is rejected clearly rather than falsely marked fully paid.
+
+| Occurrence state | Outstanding reserve | Cash effect and allowed transition |
+| --- | --- | --- |
+| `pending` | Full amount | None until payment; due/overdue are date-derived views |
+| `paid` | Zero | Linked ledger payment only; undo through atomic correction to pending |
+| `waived` | Zero | Owner explicitly forgoes obligation; no payment; reopen to pending restores reserve |
+| `cancelled` | Zero | Owner explicitly removes obligation; no payment; reopen to pending restores reserve |
+
+Paid occurrences cannot be waived/cancelled while silently retaining or deleting
+the payment link. Resolve the linked payment through MONEY-07 first. Historical
+import annotations preserve source evidence and disclose missing payment history.
 
 **Required proof:** Same occurrence in both views, date/amount edit, recurrence
 identity, owner isolation and no cash effect from schedule/status-only actions.
@@ -461,6 +533,8 @@ mutation. Do not try to simulate atomicity with two independent client writes.
 - [ ] Fixed payments normally exclude flexible daily spending, but still reduce
   cash and total expense spending. Need/want is retained independently from fixed
   purpose using the configured obligation classification or explicit input.
+  Persist the resolved `countsInDaily` on the payment, default false for fixed
+  purpose; an explicit payment override wins. A fixed subscription can be a want.
 - [ ] Paying X reduces cash by X and outstanding reserve by X once. Bills and
   subscription views agree immediately after refresh.
 - [ ] Correcting/deleting a linked payment uses an explicit shared correction path;
@@ -498,15 +572,43 @@ aggregates, policy contracts, Money reserve/reference cards and MCP analytics.
 - [ ] If B15 remains unavailable, ship a documented application method: reconstruct
   safe funds at the start of the selected active day, divide by remaining inclusive
   days, floor the nonnegative allowance to centimes, then subtract that day's
-  flexible spend once. Current safe funds are still shown separately. Identify
-  this method in responses and do not claim exact workbook formula parity.
+  `countsInDaily=true` expense outflows once. Show current safe funds separately.
+  Identify this method and do not claim exact workbook formula parity.
+- [ ] The fallback uses the following versioned inputs for selected date `d`:
+  `C0 = opening + signed nonopening movements booked before d`;
+  `U0 = outstanding commitments at the day-start lifecycle cutoff`;
+  `S0 = max(0, day-start savings target - net savings funded before d)`;
+  `E0 = max(0, day-start emergency target - qualifying emergency usage before d)`;
+  `F0 = C0 - U0 - S0 - E0`;
+  `N = max(0, periodEnd - d + 1)` in calendar days;
+  `referenceMinor = floor(max(0, F0Minor) / N)` when N is positive;
+  `dailyRemaining = reference - daily included expense outflows`.
+  Keep negative F0 visible. The initial period baseline includes the recorded
+  opening, configured targets and initial obligation snapshot, even when setup
+  happens during its first day. Unknown historical inputs produce an unavailable
+  baseline, not a zero or an invented lifecycle history.
+- [ ] Policy revisions and obligation transitions have effective dates and retained
+  versions sufficient to reproduce the baseline. Same-day income immediately
+  improves current cash/safe funds but enters the default reference next day.
+  Midday target changes affect current reserves immediately; the day-start
+  reference remains fixed unless the owner explicitly rebases it, recording a new
+  baseline/version. Current bill payments and savings funding release their
+  matched reserves once. Closing snapshots the chosen baseline and inputs.
 - [ ] A start-of-day flexible pool of 100.00 over 10 days gives reference 10.00;
   spending 11.00 gives daily remaining -1.00, not a second reduction of the reference
-  by the same 11.00. State how same-day income and policy edits affect the chosen
-  method; snapshot the method and inputs when closing.
+  by the same 11.00. Historical corrections show restated day-start inputs beside
+  the original at-close baseline where they differ.
+- [ ] With start-of-day cash 689, bills 100, savings protection 200, emergency 50
+  and 10 days, reference is 33.90. An emergency expense of 50 with daily flag true
+  leaves cash 639, emergency protection 0 and current safe funds 339; daily included
+  spend is 50 and daily remaining -16.10. This overshoot is a daily comparison,
+  never a second cash deduction. Excluding that row explicitly changes daily spend
+  only. A fixed payment with flag false leaves daily included spend unchanged.
 - [ ] Cutoff/date, denominator, rounding, carryover-off rule and incomplete/unknown
   inputs are explicit. Zero remaining days yields a defined no-days-left result,
   never divide-by-zero or a fabricated daily allowance.
+  Ended/rolled-over periods expose historical daily results but no new-day spend
+  allowance, even though their last tracking date remains the inclusive end date.
 
 **Required proof:** Hand-calculated synthetic values above plus emergency use,
 funding reversal, lagging date and incomplete-data responses from both surfaces.
@@ -528,17 +630,23 @@ unrelated routine `daily_checkins` row as the money-close owner.
   unrecorded purchase, and already committed items remain explicitly recoverable.
 - [ ] One transaction stores owner/period/date, CLOSED note, category/flexible totals,
   cash/reference/reserve snapshot, algorithm/policy version and close identity,
-  then advances active date exactly one calendar day. It never advances on failure.
+  then advances active date one calendar day only for a nonfinal day. The final-day
+  transaction retains `activeDate = period.endDate`, marks it the last tracked date
+  and changes lifecycle to `ended`/rollover-required. No state changes on failure.
 - [ ] Replay/concurrent close returns the same close or a stale-state conflict;
   active date cannot advance twice. A lagging active date is not replaced by today.
 - [ ] Closing the last period day leaves an explicit period-ended/rollover-needed
   state; it does not silently create a new period. A distinct-date close request
   validates context and cannot silently skip unclosed active days.
+  Further routine purchases require rollover or explicit historical correction;
+  no invalid active date outside the period is stored.
 - [ ] The next day displays its existing entries if any, otherwise zero recorded
   spending. Close does not alter savings, budgets or carryover policy.
 - [ ] Historical corrections remain possible through normal versioned operations.
   Original close evidence is retained; revised live totals and a changed-since-close
   indicator are visible in web and MCP.
+  After rollover the MONEY-10 correction rule also applies; a generic edit cannot
+  bypass downstream cash reconciliation.
 
 **Required proof:** Final purchase failure, atomic close rollback, duplicate close,
 last-day boundary and later corrected expense with original snapshot retained.
@@ -556,6 +664,12 @@ obligation persistence, contracts, Money period selector/rollover UI and MCP too
 - [ ] Explicit rollover validates source version, chosen new dates and unresolved
   items. It returns an actionable choice for unpaid bills/unknown closing cash;
   it does not invent a reconciled balance or silently drop obligations.
+- [ ] A closing reconciliation compares linked paid obligations to payments,
+  counted visits to ledger amounts, close snapshots to restated totals, and
+  forecast savings to actual transfers. If a verified cash snapshot is supplied,
+  compare modeled closing cash to it. A bank connection is not required.
+  Differences are resolved or explicitly accepted with provenance before rollover;
+  modeled/unreconciled carry-forward remains labeled as such. Unknown is not zero.
 - [ ] Exactly one new period and opening are created atomically. Carry-forward
   cash is one opening, never both an opening and duplicated income. A supplied
   reconciled opening difference is recorded with provenance.
@@ -564,7 +678,27 @@ obligation persistence, contracts, Money period selector/rollover UI and MCP too
   occurrences have unique source/period identities and correct new due dates.
 - [ ] Retrying/concurrent rollover cannot create duplicate periods, openings or
   occurrences. Failures preserve the original source period state.
-- [ ] Old ledger, closes, settings and reports remain selectable and unchanged.
+- [ ] Source lifecycle becomes `rolled_over` with one successor link. The new
+  tracking period starts at its chosen start date; initialization/provenance follows
+  MONEY-03. The successor opening is a frozen snapshot of the accepted source
+  closing balance or an independently verified balance, with its cutoff recorded.
+- [ ] A later correction to a pre-cutoff source movement preserves frozen close
+  and opening snapshots. In one owner-safe compound operation, post the net cash
+  delta as a provenance-linked `reconciliation_adjustment` in each affected derived
+  successor. It is neither income nor expense and defaults `countsInDaily=false`.
+  Deltas propagate through derived carry-forward periods and stop at an
+  independently verified opening covering that cutoff; disclose the historical
+  variance there without altering that verified snapshot. Post-cutoff corrections
+  do not bridge a balance that never included them.
+- [ ] Bridge identity includes source correction/version and destination period;
+  retries never duplicate it. Repeated edits apply only the incremental delta.
+  A downstream version conflict rolls back the compound correction and reports
+  the required retry; never return corrected success with inconsistent cash.
+  Example: carried opening 689 stays 689; changing a prior expense from 11 to 21
+  restates source closing to 679 and posts a -10 successor bridge, making successor
+  cash 679 before new spending. All affected close snapshots remain retained.
+- [ ] Old ledger, closes, settings and reports remain selectable. Original evidence
+  remains unchanged; explicit corrections produce clearly labeled restated views.
   Carryover allowance stays off unless explicitly configured; period cash opening
   is not confused with daily allowance carryover.
 - [ ] Partial periods, month length and local date boundaries produce valid dates
@@ -594,7 +728,7 @@ weekly-review consumers. Avoid copying arithmetic into charts or handlers.
   owner/period/cutoff. Charts, exports and headline cards use matching filters.
 - [ ] Forecast closing cash, savings feasibility and coffee projection state model,
   actual coverage, elapsed/remaining days, assumptions and policy version. Sparse
-  history warns or declines projection; pending income is never confirmed cash.
+  history warns or declines projection; unreceived income is never confirmed cash.
 - [ ] Actual funded savings and target/forecast are visually and semantically
   separate. A forecast is never described as money already saved or bank-verified.
 - [ ] Empty, uninitialized, partial and dependency-error states are usable and
@@ -801,6 +935,130 @@ delivery report; never include credentials or private source exports.
 
 On resumption, re-read this contract and ledger, fetch current `main`, inspect
 open work/PRs and verify migrations/deployments before creating new effects. The
-standing authorization remains scoped and valid unless the user changes it.
+standing authorization remains scoped and valid until completed MONEY-14 handback
+or user revocation, as recorded in AGENTS.md.
 Continue to the full completion boundary; do not ask whether to proceed after
 each issue.
+
+## 9. Sanitized handoff reference
+
+Source: the user-supplied `MONEY_TRACKER_OPERATING_HANDOFF.md`, attachment reference
+`file_85cdbfc8-6b46-4bc7-b66c-9cc63b9edba8`, reviewed against the source baseline
+above. This appendix preserves the operating contract without workbook IDs,
+credentials, balances or transaction rows. Source statements about verified
+spreadsheet formulas are handoff evidence, not a fresh hosted verification.
+MONEY-13 must still obtain actual data and inspect current workbook metadata.
+
+### Source inputs and calculated views
+
+| Workbook tab | App responsibility |
+| --- | --- |
+| Ledger | Canonical dated money movements; one cash effect per movement |
+| Fixed Bills | Obligation occurrences, due amounts and linked payments |
+| Subscriptions | Subscription view of those same occurrences |
+| Coffee | Counted visit metadata linked to canonical expense amounts |
+| Settings | Period, opening provenance, active date, protection and limits |
+| Budget Plan | Editable policy allocations plus derived consumption/remaining |
+| Daily Tracker | Daily included spending, reference, remaining and close notes |
+| Dashboard | Shared operating analytics |
+| Visual Dashboard | Charts/alerts from the same analytics |
+| Category Analysis | Category totals and drilldowns |
+| Flexible Analysis | Included spend, need/want, trends and labeled forecasts |
+| Savings | Target, actual funding, emergency protection and forecast gap |
+| Monthly History | Preserved periods, settings, closes and reconciliation |
+
+The 13 tab names describe responsibilities, not 13 new database tables or routes.
+Observed worksheet row bounds are not product record limits. The old August
+template must remain untouched; a workbook copy has its own identity and metadata.
+
+### Ledger A:J mapping
+
+| Source column | Durable meaning in EGA House |
+| --- | --- |
+| A Date | Owner-local booking date; retain genuine timestamp only when known |
+| B Category | Mapped category/reporting classification, preserving explicit overrides |
+| C Description | Actual user-described purchase/payment, not a generated merchant |
+| D Money In | Received inflow or the unique opening; never pending income |
+| E Money Out | One outflow, typed as expense or actual savings transfer |
+| F Balance | Derived running cash; never imported as an extra cash movement |
+| G Need/Want | Need/want plus independent fixed/emergency purpose or movement kind |
+| H Payment Method | Cash, Card, Bank map to cash, card, bank_transfer; Unknown maps to null |
+| I Notes | Owner notes, clarification, explicit override and retained source evidence |
+| J Counts in Daily? | Durable boolean controlling included daily outflow totals |
+
+Opening rows cannot also become income. A source row containing both in and out,
+or conflicting opening evidence, requires explicit reconciliation instead of a
+silent guessed interpretation. Import retains original source classifications
+without forcing `Fixed`, `Income`, `Saving` or `Emergency` into need/want.
+
+### Required category and intent mapping
+
+| Source label | Canonical meaning / reporting requirement |
+| --- | --- |
+| Start | Opening movement, no expense consumption, daily false |
+| Income | Received income movement, daily false |
+| Saving | Actual savings transfer movement when supported by source, daily false |
+| Transport | Existing transport expense category |
+| Food | Groceries by default; eating_out only when the source establishes it |
+| Coffee | Coffee expense plus explicitly counted visit metadata |
+| Bill | Bills or subscriptions from known obligation kind, fixed purpose by default |
+| Daily usage | Household/consumables, retaining a distinct daily_usage reporting group |
+| Personal care | Distinct personal_care reporting group |
+| Work/tools | Distinct work_tools reporting group |
+| Fun | Distinct fun reporting group |
+| Emergency | Distinct emergency reporting group/purpose; daily true by default |
+| Other | Other expense, preserving description and known need/want |
+
+MONEY-05 may extend the category enum or use a typed reporting dimension, but must
+implement these distinguishable groups across forms, contracts and reports.
+Preserve the existing categories `coffee`, `groceries`, `eating_out`, `transport`,
+`bills`, `subscriptions`, `household`, `health`, `other` and supported clients.
+Compatibility projections must not erase the new reporting detail. No routine
+purchase reclassifies old entries or edits budget allocations automatically.
+
+An explicitly requested coffee-as-groceries test stays groceries with its factual
+description, need/want and override note, and does not create a counted visit.
+An emergency source label establishes emergency purpose, not an invented need/want;
+retain unknown need/want unless the user/source establishes it.
+
+### Formula and operating dependencies to preserve or replace explicitly
+
+| Handoff reference | Meaning and implementation requirement |
+| --- | --- |
+| Settings B5 / B6 | Inclusive period end / manually controlled active tracking date |
+| Settings B9 / B15 | Emergency target / daily carryover cap; carryover defaults off |
+| Dashboard B4 | Last populated ledger running balance; replace row-order dependence with canonical dated cash and explicit cutoff |
+| Dashboard B10 | Outstanding bills from Fixed Bills B12, not another outflow |
+| Dashboard B11 | `B4 - B6 - B10`: cash after savings protection and unpaid bills |
+| Dashboard B12 / B13 | Emergency target / `max(0, endDate - activeDate + 1)` |
+| Dashboard B15 | Daily reference; exact formula missing from supplied handoff, use MONEY-08's declared fallback if unavailable |
+| Dashboard B16 / B18 | Active-date outflows with J Yes / reference minus that included spend |
+| Dashboard B20 / B23 | Counted coffee spend / all outflows with J Yes |
+| Coffee G2 / G3 / G5 | Sum of counted visit amounts / visit count / labeled pace forecast |
+| Budget Plan C17 / C18 / C19 | Food consumption / counted coffee spend / Other plus Daily usage plus Fun consumption |
+| Budget Plan C22 | Paid-status sum, reconciled to linked payments rather than a separate cash owner |
+| Budget Plan B23 / B25 | Sum of allocations / protected savings plus unused emergency closing target |
+| Daily Tracker D / F | Included day spending / daily reference minus included spending |
+| Daily Tracker I / N | CLOSED narrative / recalculating PAST indicator; app must retain actual close evidence |
+
+Fixed Bills' observed B11 and B12 formulas cover different row ranges. EGA totals
+must aggregate all matching occurrences, not reproduce that omission. Workbook
+coffee and category-coffee totals can differ; expose the reason rather than force
+equality. Early coffee/flexible forecasts need coverage warnings. Subscription
+ratios must use percentage units, never money formatting. Forecast savings never
+prove a transfer. Backdating must recompute cash consistently without relying on
+spreadsheet append order.
+
+## 10. Contract review disposition
+
+Independent read-only review covered documentation commit `119e25a` against the
+baseline above. This revision resolves opening ownership, durable daily inclusion,
+final-day lifecycle, occurrence state/classification, start-of-day inputs,
+post-rollover corrections, combined consent, writes-disabled profiles, bounded
+authorization and source-reference completeness. These are planning corrections;
+they do not establish implementation or runtime acceptance.
+
+The suggested blanket exclusion of reserve-funded emergency spending from daily
+totals was not adopted: the handoff explicitly assigns emergency purchases J Yes.
+MONEY-08 instead separates current safe cash from the daily comparison and gives
+an explicit example, preserving that source rule without a second cash deduction.

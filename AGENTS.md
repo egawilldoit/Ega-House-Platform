@@ -2,7 +2,7 @@
 
 Repository-wide contract; follow higher-priority system/developer instructions
 and explicit user scope. Applicable nested `AGENTS.md` files specialize local
-rules without weakening repository safety. Last instruction review: 2026-09-27
+rules without weakening repository safety. Last instruction review: 2026-11-11
 (repository guidance only; not deployment or harness-discovery proof).
 
 ## Orient and analyze
@@ -164,4 +164,8 @@ merging completed issues. When assigned to execute that plan:
   workflow ready while required migration, deployment or runtime evidence is missing.
 
 This exception records task-specific user authorization. The repository's normal
-approval boundaries remain in effect for other work.
+approval boundaries remain in effect for other work. It expires when MONEY-14 is
+completed and the final completed delivery is handed back, or when the user
+revokes/cancels this assignment. A temporary blocker, tool wait, context compaction
+or intermediate handoff does not end the authorized assignment. Later unrelated
+work does not inherit this permission.
