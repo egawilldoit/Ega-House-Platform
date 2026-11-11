@@ -218,6 +218,7 @@ function makeFakeClient(): EgaApiClient {
       update: jest.fn(),
       remove: jest.fn(),
     },
+    money: { state: jest.fn(), createPeriod: jest.fn(), updateSettings: jest.fn() },
     checkins: {
       get: jest.fn(),
       save: jest.fn(),

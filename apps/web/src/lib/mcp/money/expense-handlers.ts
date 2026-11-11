@@ -476,4 +476,3 @@ export function createMcpMoneyExpenseHandlers(
 }
 
 export type McpMoneyExpenseHandlers = ReturnType<typeof createMcpMoneyExpenseHandlers>;
-

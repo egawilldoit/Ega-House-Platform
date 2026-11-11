@@ -1,7 +1,6 @@
 import {
   EXPENSE_AMOUNT_MINOR_MAX,
   type ExpenseCategory,
-  type ExpenseCurrency,
   type ExpenseNeedVsWant,
   type ExpensePaymentMethod,
 } from "./expenses";
