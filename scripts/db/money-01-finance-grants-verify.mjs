@@ -396,6 +396,16 @@ async function main() {
     );
     assert(checkinWrite.length === 1, "writer grant saves a check-in");
 
+    // The shipped save path is an upsert, so the UPDATE arm must allow the
+    // writer too; an INSERT-only proof would miss a read-permission regression.
+    const checkinUpdate = await writer.run((tx) =>
+      tx.unsafe(
+        `UPDATE public.daily_checkins SET outcomes = 'updated'
+         WHERE local_date = '2026-11-11' RETURNING id`,
+      ),
+    );
+    assert(checkinUpdate.length === 1, "writer grant updates a check-in");
+
     // COMBINED PROFILES ------------------------------------------------------
     const combinedReader = asUser(sql, OWNER_A, {
       clientId: "profile-workspace_money_reader",
@@ -403,7 +413,10 @@ async function main() {
     const combinedReaderRows = await combinedReader.run((tx) =>
       tx.unsafe(`SELECT id FROM public.personal_expenses`),
     );
-    assert(combinedReaderRows.length >= 1, "combined reader reads own money rows");
+    assert(
+      combinedReaderRows.length === 2,
+      "combined reader reads exactly the owner's two money rows",
+    );
     await expectDenied("combined reader insert", () =>
       combinedReader.run((tx) =>
         insertExpense(tx, {
