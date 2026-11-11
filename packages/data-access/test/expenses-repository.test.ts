@@ -394,6 +394,21 @@ test("soft delete stamps deleted_at, bumps version, and repeats idempotently", a
   assert.equal(repeat.calls.length, 1, "repeat delete must not write again");
 });
 
+test("soft delete rejects a stale expected version before writing", async () => {
+  const stale = new FakeSupabase([
+    { data: { version: 2, deleted_at: null }, error: null },
+  ]);
+  const result = await repository(stale).softDelete(
+    ACTOR,
+    ID,
+    "2026-11-07T10:00:00.000Z",
+    1,
+  );
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.equal(result.error.code, "conflict");
+  assert.equal(stale.calls.length, 1, "stale delete must not write");
+});
+
 test("soft delete returns notFound for missing rows", async () => {
   const missing = new FakeSupabase([{ data: null, error: null }]);
   const result = await repository(missing).softDelete(ACTOR, ID, "2026-11-07T10:00:00.000Z");

@@ -166,7 +166,10 @@ export async function updateExpenseAction(
       error: result.errorMessage,
     };
   }
+  // Edits change the same day/week/month/category/coffee projections Today
+  // shows, so both surfaces must revalidate (never a new realtime subsystem).
   revalidatePath("/money");
+  revalidatePath("/today");
   return { ok: true, expense: result.data };
 }
 
@@ -195,6 +198,7 @@ export async function deleteExpenseAction(
     };
   }
   revalidatePath("/money");
+  revalidatePath("/today");
   return { ok: true, alreadyDeleted: result.data.alreadyDeleted };
 }
 

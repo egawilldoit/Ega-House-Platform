@@ -37,7 +37,13 @@ export type CreateExpenseOutcome = Readonly<{
 
 export type ExpenseListOutcome = Readonly<{
   expenses: PersonalExpense[];
-  pagination: Readonly<{ limit: number; offset: number; hasMore: boolean }>;
+  pagination: Readonly<{
+    limit: number;
+    offset: number;
+    hasMore: boolean;
+    /** Offset for the next page, or null when this is the last page. */
+    nextOffset: number | null;
+  }>;
 }>;
 
 /**
@@ -180,6 +186,7 @@ export async function listExpenses(
       limit: query.limit,
       offset: query.offset,
       hasMore,
+      nextOffset: hasMore ? query.offset + query.limit : null,
     },
   });
 }
@@ -216,7 +223,7 @@ export async function deleteExpense(
   actor: AuthenticatedActor,
   repository: ExpenseRepository,
   id: unknown,
-  options: Readonly<{ now?: Date }> = {},
+  options: Readonly<{ now?: Date; expectedVersion?: number }> = {},
 ): Promise<
   ApplicationResult<Readonly<{
     id: string;
@@ -227,11 +234,22 @@ export async function deleteExpense(
   const validId = validateId(id);
   if (!validId) return applicationFailure(NOT_FOUND, "notFound");
 
+  if (
+    options.expectedVersion !== undefined
+    && (!Number.isInteger(options.expectedVersion) || options.expectedVersion < 1)
+  ) {
+    return applicationFailure(
+      "A positive expected version is required.",
+      "validation",
+    );
+  }
+
   const now = options.now ?? new Date();
   const result = await repository.softDelete(
     actor,
     validId,
     now.toISOString(),
+    options.expectedVersion,
   );
   if (!result.ok) {
     return failureFor(result.error.code, "Unable to delete the expense right now.");

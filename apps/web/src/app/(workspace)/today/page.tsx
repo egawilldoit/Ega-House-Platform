@@ -11,6 +11,7 @@ import {
 import { TaskDrawerHost } from "@/components/tasks/drawer/task-drawer-host";
 
 import { OwnerScopedRealtimeRefresh } from "@/components/realtime/owner-scoped-realtime-refresh";
+import { RefreshOnFocus } from "@/components/refresh-on-focus";
 import {
   ActiveTimerPanel,
   FocusQueuePanel,
@@ -37,7 +38,7 @@ import { getCurrentUser } from "@/lib/services/auth-service";
 import { getOperatorSnapshotData } from "@/lib/services/operator-service";
 import { getMorningStartupData } from "@/lib/services/morning-startup-service";
 import { getWebDailyCheckin } from "@/lib/services/checkin-service";
-import { createAuthenticatedActor, listExpenses } from "@ega/application";
+import { createAuthenticatedActor, getExpenseSummary } from "@ega/application";
 import { SupabaseExpenseRepository } from "@ega/data-access";
 import { createClient } from "@/lib/supabase/server";
 import { TodayWorkCard } from "@/components/today/today-work-card";
@@ -65,7 +66,11 @@ export const metadata: Metadata = {
 };
 
 async function loadTodayCards(snapshot: Awaited<ReturnType<typeof getOperatorSnapshotData>>["data"]) {
-  const moneyUnavailable = { available: false, totalMinor: null as number | null };
+  const moneyUnavailable = {
+    available: false as const,
+    totalMinor: null as number | null,
+    truncated: false,
+  };
   const routineUnavailable = { available: false, saved: false };
   if (!snapshot) return { money: moneyUnavailable, routine: routineUnavailable };
   const [moneyResult, routineResult] = await Promise.all([
@@ -74,15 +79,19 @@ async function loadTodayCards(snapshot: Awaited<ReturnType<typeof getOperatorSna
         const user = await getCurrentUser();
         if (!user) return moneyUnavailable;
         const client = await createClient();
-        const listed = await listExpenses(
+        // Same canonical day summary the Money page and personal-ops MCP tool
+        // use, so one cutoff cannot disagree across surfaces.
+        const summary = await getExpenseSummary(
           createAuthenticatedActor(user.id),
           new SupabaseExpenseRepository(client),
-          { from: snapshot.date, to: snapshot.date, limit: "100" },
-          { timezone: snapshot.timezone },
+          { localDate: snapshot.date, timezone: snapshot.timezone },
         );
-        if (!listed.ok || listed.data.pagination.hasMore) return moneyUnavailable;
-        const total = listed.data.expenses.reduce((sum, e) => sum + e.amountMinor, 0);
-        return { available: true, totalMinor: total };
+        if (!summary.ok) return moneyUnavailable;
+        return {
+          available: true,
+          totalMinor: summary.data.day.totalMinor,
+          truncated: summary.data.day.truncated,
+        };
       } catch {
         return moneyUnavailable;
       }
@@ -372,6 +381,9 @@ export default async function TodayPage({
         tables={["tasks", "task_sessions"]}
         reconcileOnVisibility={false}
       />
+      {/* Externally written expenses (e.g. via MCP) appear after focus/reload
+          without adding a realtime subscription for the Money ledger. */}
+      <RefreshOnFocus />
       {/* Reconnect/visibility reconciliation for the rail's Active Timer panel. */}
       <TimerSyncStatus surface="today" ownerUserId={user?.id ?? null} />
 

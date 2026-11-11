@@ -47,7 +47,7 @@ function createDependencies(): McpReadToolDependencies {
     }),
     personalOpsExpensesList: vi.fn().mockResolvedValue({
       expenses: [{ id: "expense-1", amountMinor: 2200, category: "coffee" }],
-      pagination: { limit: 25, offset: 0, hasMore: false },
+      pagination: { limit: 25, offset: 0, hasMore: false, nextOffset: null },
     }),
     personalOpsCheckinGet: vi.fn().mockResolvedValue({
       localDate: "2026-11-08",
