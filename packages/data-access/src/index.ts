@@ -16,3 +16,4 @@ export * from "./checkins/repository";
 export * from "./execution-evidence/repository";
 export * from "./operator/repository";
 export * from "./weekly-review/repository";
+export * from "./money/obligations-repository";

@@ -130,6 +130,12 @@ const DEFAULT_DEPENDENCIES: AuditedWriteHandlerDependencies = {
 const HANDLER_TOOL_NAMES: Readonly<Record<keyof McpWriteToolHandlers, string>> = {
   createPersonalOpsExpense: "ega_create_personal_ops_expense",
   savePersonalOpsCheckin: "ega_save_personal_ops_checkin",
+  createMoneyObligation: "ega_money_create_obligation",
+  updateMoneyObligation: "ega_money_update_obligation",
+  transitionMoneyObligation: "ega_money_transition_obligation",
+  createMoneyObligationTemplate: "ega_money_create_obligation_template",
+  updateMoneyObligationTemplate: "ega_money_update_obligation_template",
+  generateMoneyObligations: "ega_money_generate_obligations",
   createProject: "ega_create_project",
   updateProjectStatus: "ega_update_project_status",
   archiveProject: "ega_archive_project",

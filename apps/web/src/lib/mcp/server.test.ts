@@ -45,6 +45,9 @@ function createHandlers() {
     personalOpsSummary: vi.fn().mockResolvedValue({ content: [] }),
     personalOpsExpensesList: vi.fn().mockResolvedValue({ content: [] }),
     personalOpsCheckinGet: vi.fn().mockResolvedValue({ content: [] }),
+    moneyObligationsList: vi.fn().mockResolvedValue({ content: [] }),
+    moneyObligationGet: vi.fn().mockResolvedValue({ content: [] }),
+    moneyObligationTemplatesList: vi.fn().mockResolvedValue({ content: [] }),
   };
 }
 
@@ -68,6 +71,9 @@ describe("registerMcpReadTools", () => {
       "ega_personal_ops_summary",
       "ega_personal_ops_expenses_list",
       "ega_personal_ops_checkin_get",
+      "ega_money_obligations_list",
+      "ega_money_obligation_get",
+      "ega_money_obligation_templates_list",
       "ega_list_timer_sessions",
     ]);
   });

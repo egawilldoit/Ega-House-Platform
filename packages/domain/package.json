@@ -16,6 +16,8 @@
     "./time-context": "./src/time-context.ts",
     "./preferences": "./src/preferences.ts",
     "./expenses": "./src/expenses.ts",
+    "./money": "./src/money.ts",
+    "./obligations": "./src/obligations.ts",
     "./checkins": "./src/checkins.ts"
   },
   "scripts": {
