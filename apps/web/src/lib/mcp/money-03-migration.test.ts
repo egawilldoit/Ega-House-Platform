@@ -35,9 +35,18 @@ describe("MONEY-03 period migration", () => {
       tag: "0095_money_03_periods",
       breakpoints: true,
     });
-    expect(journal.entries.at(-1)?.tag).toBe("0095_money_03_periods");
-    const previous = journal.entries.at(-2)!;
-    expect(journal.entries.at(-1)!.when).toBeGreaterThan(previous.when);
+    // Later additive Money migrations (MONEY-04 and beyond) may follow 0095;
+    // what matters is that 0095 keeps its reserved position and a strictly
+    // increasing timestamp relative to the previous journal entry.
+    const index = journal.entries.findIndex(
+      (item) => item.tag === "0095_money_03_periods",
+    );
+    expect(index).toBeGreaterThan(0);
+    const previous = journal.entries[index - 1]!;
+    expect(journal.entries[index]!.when).toBeGreaterThan(previous.when);
+    for (const later of journal.entries.slice(index + 1)) {
+      expect(later.when).toBeGreaterThan(journal.entries[index]!.when);
+    }
   });
 
   it("uses statement breakpoints for every new statement", () => {

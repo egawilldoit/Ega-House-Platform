@@ -371,5 +371,31 @@ export function createAuditedMcpReadHandlers(
         () => handlers.moneyState(authInfo, input),
       );
     },
+
+    moneyMovementList(
+      authInfo: AuthInfo | undefined,
+      input: Parameters<BaseReadHandlers["moneyMovementList"]>[1],
+      context?: ProtocolContext,
+    ): Promise<CallToolResult> {
+      return execute(
+        "ega_money_movement_list",
+        authInfo,
+        context,
+        () => handlers.moneyMovementList(authInfo, input),
+      );
+    },
+
+    moneyMovementGet(
+      authInfo: AuthInfo | undefined,
+      input: Parameters<BaseReadHandlers["moneyMovementGet"]>[1],
+      context?: ProtocolContext,
+    ): Promise<CallToolResult> {
+      return execute(
+        "ega_money_movement_get",
+        authInfo,
+        context,
+        () => handlers.moneyMovementGet(authInfo, input),
+      );
+    },
   };
 }

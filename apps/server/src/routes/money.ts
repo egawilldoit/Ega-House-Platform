@@ -3,21 +3,32 @@ import type { Context } from "hono";
 
 import {
   createMoneyPeriod,
+  createMovement,
   getMoneyState,
+  getMovement,
   getTimeContextTimezone,
+  listMovements,
+  resolveTimeContext,
   updateMoneySettings,
+  updateMovement,
   type ApplicationErrorCode,
   type AuthenticatedActor,
 } from "@ega/application";
 import type {
   CreateMoneyPeriodResponse,
+  CreateMovementResponse,
   GetMoneyStateResponse,
+  GetMovementResponse,
+  ListMovementsResponse,
   UpdateMoneySettingsResponse,
+  UpdateMovementResponse,
 } from "@ega/contracts/money";
 import {
   SupabaseMoneyPeriodRepository,
+  SupabaseMoneyRepository,
   SupabaseTimeContextRepository,
 } from "@ega/data-access";
+import { isValidIANATimeZone } from "@ega/domain";
 
 import type { ServerDependencies, ServerVariables } from "../app";
 import { readJsonBody } from "../app";
@@ -46,6 +57,10 @@ function errorResponse(
   return c.json({ error: { code: "INTERNAL", message } }, 500);
 }
 
+function queryValue(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
+}
+
 async function ownerTimezone(
   actor: AuthenticatedActor,
   repository: SupabaseTimeContextRepository,
@@ -58,14 +73,51 @@ async function ownerTimezone(
 }
 
 /**
- * Authenticated Money period transport (MONEY-03). Owner identity comes only
- * from the verified bearer middleware; request bodies and queries can select a
- * period or date, never an owner or currency. RLS remains authoritative.
+ * Authenticated Money transport.
+ *
+ * Period setup/state (MONEY-03) and movement create/read/update (MONEY-04)
+ * share the same canonical application use cases as the web and MCP surfaces.
+ * Owner identity comes only from the verified bearer middleware; request
+ * bodies and queries can select a period or date, never an owner or currency.
+ * RLS remains authoritative.
  */
 export function createMoneyRoutes(
   dependencies: ServerDependencies,
 ): Hono<{ Variables: ServerVariables }> {
   const routes = new Hono<{ Variables: ServerVariables }>();
+
+  async function resolveTimezone(
+    c: MoneyContext,
+    explicit: string | undefined,
+  ): Promise<{ ok: true; timezone: string | null } | { ok: false; response: Response }> {
+    if (explicit) {
+      if (!isValidIANATimeZone(explicit)) {
+        return {
+          ok: false,
+          response: c.json(
+            { error: { code: "VALIDATION", message: "Timezone must be a valid IANA timezone." } },
+            400,
+          ),
+        };
+      }
+      return { ok: true, timezone: explicit };
+    }
+    const timeContext = await resolveTimeContext(
+      c.var.actor,
+      new SupabaseTimeContextRepository(c.var.client),
+      { now: dependencies.now?.() ?? new Date() },
+    );
+    if (!timeContext.ok) {
+      return {
+        ok: false,
+        response: c.json(
+          { error: { code: "INTERNAL", message: timeContext.errorMessage } },
+          500,
+        ),
+      };
+    }
+    return { ok: true, timezone: timeContext.data.timezone };
+  }
 
   routes.get("/state", async (c) => {
     const { actor, client } = c.var;
@@ -168,6 +220,85 @@ export function createMoneyRoutes(
         500,
       );
     }
+  });
+
+  routes.get("/movements", async (c) => {
+    const { actor, client } = c.var;
+    const rawQuery = c.req.query();
+    const resolved = await resolveTimezone(c, queryValue(rawQuery.timezone)?.trim() || undefined);
+    if (!resolved.ok) return resolved.response;
+
+    const result = await listMovements(
+      actor,
+      new SupabaseMoneyRepository(client),
+      rawQuery,
+      { timezone: resolved.timezone, now: dependencies.now?.() ?? new Date() },
+    );
+    if (!result.ok) return errorResponse(c, result.code, result.errorMessage);
+
+    const response: ListMovementsResponse = {
+      ok: true,
+      movements: result.data.movements,
+      pagination: result.data.pagination,
+      cutoff: result.data.cutoff,
+      timezone: result.data.timezone,
+    };
+    return c.json(response);
+  });
+
+  routes.post("/movements", async (c) => {
+    const { actor, client } = c.var;
+    const body = await readJsonBody(c);
+    if (!body) {
+      return c.json({ error: { code: "VALIDATION", message: VALIDATION_MESSAGE } }, 400);
+    }
+    const result = await createMovement(
+      actor,
+      new SupabaseMoneyRepository(client),
+      body,
+      { periods: new SupabaseMoneyPeriodRepository(client) },
+    );
+    if (!result.ok) return errorResponse(c, result.code, result.errorMessage);
+
+    const response: CreateMovementResponse = {
+      ok: true,
+      movement: result.data.movement,
+      replayed: result.data.replayed,
+    };
+    return c.json(response, result.data.replayed ? 200 : 201);
+  });
+
+  routes.get("/movements/:id", async (c) => {
+    const { actor, client } = c.var;
+    const result = await getMovement(
+      actor,
+      new SupabaseMoneyRepository(client),
+      c.req.param("id"),
+    );
+    if (!result.ok) return errorResponse(c, result.code, result.errorMessage);
+    const response: GetMovementResponse = { ok: true, movement: result.data };
+    return c.json(response);
+  });
+
+  routes.patch("/movements/:id", async (c) => {
+    const { actor, client } = c.var;
+    const body = await readJsonBody(c);
+    if (!body) {
+      return c.json({ error: { code: "VALIDATION", message: VALIDATION_MESSAGE } }, 400);
+    }
+    const result = await updateMovement(
+      actor,
+      new SupabaseMoneyRepository(client),
+      c.req.param("id"),
+      body,
+      {
+        periods: new SupabaseMoneyPeriodRepository(client),
+        now: dependencies.now?.() ?? new Date(),
+      },
+    );
+    if (!result.ok) return errorResponse(c, result.code, result.errorMessage);
+    const response: UpdateMovementResponse = { ok: true, movement: result.data };
+    return c.json(response);
   });
 
   return routes;

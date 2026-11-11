@@ -1,15 +1,21 @@
 import { redirect } from "next/navigation";
 import {
   createAuthenticatedActor,
+  getMoneyMovementTotals,
   getMoneyState,
   listExpenses,
+  listMovements,
+  movementEffect,
+  type MoneyMovementTotals,
   type MoneyState,
 } from "@ega/application";
 import {
   SupabaseExpenseRepository,
   SupabaseMoneyPeriodRepository,
+  SupabaseMoneyRepository,
 } from "@ega/data-access";
-import { MONEY_DEFAULT_TIMEZONE } from "@ega/domain/money";
+import { MONEY_DEFAULT_TIMEZONE, MONEY_TRACKED_CASH_BOUNDARY } from "@ega/domain/money";
+import type { MoneyLedgerRow } from "@ega/domain/money";
 import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
 import { RefreshOnFocus } from "@/components/refresh-on-focus";
 import { createClient } from "@/lib/supabase/server";
@@ -18,6 +24,8 @@ import { getWebTimeContext } from "@/lib/services/time-context-service";
 import { MoneyCreatePanel } from "./_components/money-create-panel";
 import { MoneyRowActions } from "./_components/money-row-actions";
 import { MoneyPeriodPanel } from "./_components/money-period-panel";
+import { MoneyMovementPanel } from "./_components/money-movement-panel";
+import { MoneyMovementActions } from "./_components/money-movement-actions";
 import { CategoryCapsForm } from "./_components/category-caps-form";
 import {
   createMoneyPeriodAction,
@@ -31,6 +39,18 @@ import type { ExpenseCategory } from "@ega/domain/expenses";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Money", description: "Your personal expense ledger." };
+
+function formatMad(minor: number): string {
+  return new Intl.NumberFormat("fr-MA", {
+    style: "currency",
+    currency: "MAD",
+    minimumFractionDigits: 2,
+  }).format(minor / 100);
+}
+
+function movementKindLabel(kind: string): string {
+  return kind.replaceAll("_", " ");
+}
 
 type Props = { searchParams: Promise<{ offset?: string; periodId?: string }> };
 
@@ -47,6 +67,9 @@ export default async function MoneyPage({ searchParams }: Props) {
   const client = await createClient();
   let result;
   let moneyState: MoneyState | null = null;
+  let movements: MoneyLedgerRow[] | null = null;
+  let movementTotals: MoneyMovementTotals | null = null;
+  let movementsHasMore = false;
   let timezone: string = MONEY_DEFAULT_TIMEZONE;
   let timeContextFailed = false;
   try {
@@ -63,9 +86,40 @@ export default async function MoneyPage({ searchParams }: Props) {
       { now: new Date(), timezone: time.persistedTimezone },
     );
     moneyState = stateResult.ok ? stateResult.data : null;
+
+    // MONEY-04 movement ledger: the same canonical rows and totals as HTTP/MCP.
+    // Failures render as unavailable, never as a confirmed zero balance.
+    const moneyRepository = new SupabaseMoneyRepository(client);
+    const movementsResult = await listMovements(
+      actor,
+      moneyRepository,
+      { limit: "25", offset: String(offset) },
+      { timezone },
+    ).catch(() => null);
+    movements = movementsResult?.ok ? movementsResult.data.movements : null;
+    movementsHasMore = movementsResult?.ok
+      ? movementsResult.data.pagination.hasMore
+      : false;
+    const cutoff =
+      moneyState?.cash.cutoffDate ??
+      moneyState?.dateResolution.resolvedDate ??
+      getLocalDateInTimezone(new Date(), timezone);
+    const totalsResult = await getMoneyMovementTotals(
+      actor,
+      moneyRepository,
+      { cutoff },
+      {
+        cutoff,
+        startDate: moneyState?.period?.startDate ?? null,
+        timezone,
+      },
+    ).catch(() => null);
+    movementTotals = totalsResult?.ok ? totalsResult.data.totals : null;
   } catch {
     result = null;
     moneyState = null;
+    movements = null;
+    movementTotals = null;
     timeContextFailed = true;
   }
   // Monthly caps are advisory progress targets in owner preferences.
@@ -281,6 +335,7 @@ export default async function MoneyPage({ searchParams }: Props) {
 
     <RefreshOnFocus />
     <MoneyCreatePanel ownerKey={user.id} />
+    <MoneyMovementPanel ownerKey={user.id} defaultBookingDate={localToday} />
     {(!result || !result.ok) ? <section role="alert" className="mt-6 rounded-lg border border-ega-border p-5">
       <p>Expenses could not be loaded.</p><a className="underline" href={`/money?offset=${offset}`}>Retry</a>
     </section> : result.data.expenses.length === 0 ? <section className="mt-6 rounded-lg border border-ega-border p-5"><p className="text-ega-text-secondary">{offset === 0 ? "No expenses yet." : "No expenses on this page."}</p>{offset > 0 && <a className="underline" href={`/money?offset=${Math.max(0, offset - 25)}`}>Previous page</a>}</section> : <>
@@ -291,5 +346,95 @@ export default async function MoneyPage({ searchParams }: Props) {
       </div>
       <nav aria-label="Expense pages" className="mt-4 flex justify-between"><span>{offset > 0 && <a className="underline" href={`/money?offset=${Math.max(0, offset - 25)}`}>Previous</a>}</span><span>{result.data.pagination.hasMore && <a className="underline" href={`/money?offset=${offset + 25}`}>Next</a>}</span></nav>
     </>}
+
+    <section aria-labelledby="money-ledger-heading" className="mt-6 rounded-lg border border-ega-border p-5">
+      <h2 id="money-ledger-heading" className="text-[length:var(--text-section)] font-semibold tracking-[var(--tracking-tight)]">
+        Movement ledger
+      </h2>
+      {movementTotals ? (
+        <>
+          <dl className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
+            <div>
+              <dt className="text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">Expense spending</dt>
+              <dd className="text-[length:var(--text-body)] font-medium">{formatMad(movementTotals.expenseTotalMinor)}</dd>
+            </div>
+            <div>
+              <dt className="text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">Daily included spending</dt>
+              <dd className="text-[length:var(--text-body)] font-medium">{formatMad(movementTotals.dailyIncludedSpendMinor)}</dd>
+            </div>
+            <div>
+              <dt className="text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">Funded savings</dt>
+              <dd className="text-[length:var(--text-body)] font-medium">{formatMad(movementTotals.savingsFundedMinor)}</dd>
+            </div>
+          </dl>
+          <p className="mt-3 text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
+            {movementTotals.truncated
+              ? "Movement totals are a lower bound (over 10,000 movements in the window)."
+              : `${movementTotals.counts.movements} movement(s) in the ledger window.`}
+          </p>
+          <p className="mt-2 text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
+            Tracked cash boundary: {MONEY_TRACKED_CASH_BOUNDARY.spendableCash}. A savings
+            transfer {MONEY_TRACKED_CASH_BOUNDARY.savingsTransfer}; an internal transfer has{" "}
+            {MONEY_TRACKED_CASH_BOUNDARY.internalTransfer}.
+          </p>
+        </>
+      ) : (
+        <p className="mt-3 text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
+          Movement totals are unavailable right now. Your ledger below is unaffected.
+        </p>
+      )}
+      {movements === null ? (
+        <p className="mt-3 text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
+          Movements are unavailable right now.
+        </p>
+      ) : movements.length === 0 ? (
+        <p className="mt-3 text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
+          No movements recorded yet. Opening cash appears here once a period is initialized.
+        </p>
+      ) : (
+        <div className="mt-3 overflow-x-auto">
+          <table className="w-full min-w-[44rem] text-left text-sm">
+            <caption className="sr-only">Money movements</caption>
+            <thead>
+              <tr>
+                <th scope="col" className="p-3">Booking date</th>
+                <th scope="col" className="p-3">Kind</th>
+                <th scope="col" className="p-3">Detail</th>
+                <th scope="col" className="p-3">Daily spending</th>
+                <th scope="col" className="p-3 text-right">Cash effect</th>
+                <th scope="col" className="p-3 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {movements.map((movement) => {
+                const effect = movementEffect(movement);
+                return (
+                  <tr key={movement.id} className="border-t border-ega-border">
+                    <td className="p-3">{movement.bookingDate}{movement.occurredAt ? "" : " (time unknown)"}</td>
+                    <td className="p-3">{movementKindLabel(movement.kind)}</td>
+                    <td className="p-3">
+                      {movement.merchant ?? "—"}
+                      {movement.note ? <p className="mt-1 text-xs text-ega-text-secondary">{movement.note}</p> : null}
+                      {movement.category ? <p className="mt-1 text-xs text-ega-text-secondary">{movement.category.replaceAll("_", " ")}</p> : null}
+                    </td>
+                    <td className="p-3">{movement.countsInDaily ? "Included" : "Excluded"}</td>
+                    <td className={`p-3 text-right tabular-nums ${effect.cashDeltaMinor < 0 ? "text-[color:var(--ega-danger)]" : ""}`}>
+                      {formatMad(effect.cashDeltaMinor)}
+                    </td>
+                    <td className="p-3 text-right"><MoneyMovementActions movement={movement} /></td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {movements !== null ? (
+        <nav aria-label="Movement pages" className="mt-4 flex justify-between">
+          <span>{offset > 0 && <a className="underline" href={`/money?offset=${Math.max(0, offset - 25)}`}>Previous</a>}</span>
+          <span>{movementsHasMore && <a className="underline" href={`/money?offset=${offset + 25}`}>Next</a>}</span>
+        </nav>
+      ) : null}
+    </section>
   </main>;
 }

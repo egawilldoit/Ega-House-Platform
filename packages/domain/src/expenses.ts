@@ -58,10 +58,17 @@ export const EXPENSE_LIST_MAX_WINDOW_DAYS = 366;
 /**
  * Persisted value shape. This is deliberately transport-neutral and contains
  * no Supabase/PostgREST or UI concepts.
+ *
+ * MONEY-04 extends the row additively into the single money ledger: an expense
+ * is one `kind` of movement. Type-only imports keep this module runtime-free of
+ * `money.ts` (which owns the movement kinds and imports these validators).
  */
 export type PersonalExpense = Readonly<{
   id: string;
+  kind: "expense";
+  direction: "out";
   occurredAt: string;
+  bookingDate: string;
   amountMinor: number;
   currency: ExpenseCurrency;
   category: ExpenseCategory;
@@ -69,6 +76,9 @@ export type PersonalExpense = Readonly<{
   merchant: string | null;
   needVsWant: ExpenseNeedVsWant;
   paymentMethod: ExpensePaymentMethod | null;
+  purpose: ExpensePurpose | null;
+  countsInDaily: boolean;
+  periodId: string | null;
   idempotencyKey: string;
   version: number;
   deletedAt: string | null;
@@ -78,6 +88,8 @@ export type PersonalExpense = Readonly<{
 
 export type ExpenseCreateValues = Readonly<{
   occurredAt: string;
+  /** Owner-local booking day carried by the request's calendar date. */
+  bookingDate: string;
   amountMinor: number;
   category: ExpenseCategory;
   note: string | null;
@@ -87,14 +99,19 @@ export type ExpenseCreateValues = Readonly<{
   idempotencyKey: string;
 }>;
 
+export type ExpensePurpose = "fixed" | "flexible" | "emergency";
+
 export type ExpenseUpdateChanges = Readonly<{
   occurredAt?: string;
+  bookingDate?: string;
   amountMinor?: number;
   category?: ExpenseCategory;
   note?: string | null;
   merchant?: string | null;
   needVsWant?: ExpenseNeedVsWant;
   paymentMethod?: ExpensePaymentMethod | null;
+  purpose?: ExpensePurpose | null;
+  countsInDaily?: boolean;
 }>;
 
 export type ExpenseUpdateValues = ExpenseUpdateChanges &
@@ -137,12 +154,15 @@ const CREATE_KEYS = new Set([
 
 const UPDATE_KEYS = new Set([
   "occurredAt",
+  "bookingDate",
   "amountMinor",
   "category",
   "note",
   "merchant",
   "needVsWant",
   "paymentMethod",
+  "purpose",
+  "countsInDaily",
   "version",
 ]);
 
@@ -164,6 +184,10 @@ function findUnknownKey(
     if (!allowed.has(key)) return key;
   }
   return null;
+}
+
+export function isExpensePurpose(value: unknown): value is ExpensePurpose {
+  return value === "fixed" || value === "flexible" || value === "emergency";
 }
 
 export function isExpenseCategory(value: unknown): value is ExpenseCategory {
@@ -193,7 +217,7 @@ export function isExpenseId(value: unknown): value is string {
   return typeof value === "string" && UUID_RE.test(value);
 }
 
-function parseAmountMinor(
+export function parseAmountMinor(
   raw: unknown,
 ): { ok: true; value: number } | ExpenseValidationFailure {
   if (typeof raw !== "number" || !Number.isInteger(raw)) {
@@ -208,9 +232,9 @@ function parseAmountMinor(
   return { ok: true, value: raw };
 }
 
-function parseOccurredAt(
+export function parseOccurredAt(
   raw: unknown,
-): { ok: true; value: string } | ExpenseValidationFailure {
+): { ok: true; value: string; calendarDate: string } | ExpenseValidationFailure {
   if (typeof raw !== "string") {
     return failure("occurredAt", "Date and time are required.");
   }
@@ -240,7 +264,14 @@ function parseOccurredAt(
   if (!Number.isFinite(parsed)) {
     return failure("occurredAt", "Date and time must be an ISO timestamp.");
   }
-  return { ok: true, value: new Date(parsed).toISOString() };
+  return {
+    ok: true,
+    value: new Date(parsed).toISOString(),
+    // The calendar day the caller wrote, before conversion to UTC. This keeps
+    // a 23:30 +01:00 purchase on its owner-local booking day instead of
+    // shifting it to the previous UTC day.
+    calendarDate: `${year}-${month}-${day}`,
+  };
 }
 
 /**
@@ -273,7 +304,7 @@ function findUnsupportedCharacters(
   return null;
 }
 
-function parseBoundedText(
+export function parseBoundedText(
   raw: unknown,
   field: string,
   maxLength: number,
@@ -303,7 +334,7 @@ function parseBoundedText(
   return { ok: true, value: trimmed };
 }
 
-function parseEnum<T extends string>(
+export function parseEnum<T extends string>(
   raw: unknown,
   field: string,
   isValue: (value: unknown) => value is T,
@@ -389,6 +420,7 @@ export function parseCreateExpenseInput(
     ok: true,
     value: {
       occurredAt: occurredAt.value,
+      bookingDate: occurredAt.calendarDate,
       amountMinor: amountMinor.value,
       category: category.value,
       note: note.value,
@@ -427,18 +459,28 @@ export function parseUpdateExpenseInput(
 
   const changes: {
     occurredAt?: string;
+    bookingDate?: string;
     amountMinor?: number;
     category?: ExpenseCategory;
     note?: string | null;
     merchant?: string | null;
     needVsWant?: ExpenseNeedVsWant;
     paymentMethod?: ExpensePaymentMethod | null;
+    purpose?: ExpensePurpose | null;
+    countsInDaily?: boolean;
   } = {};
 
   if (input.occurredAt !== undefined) {
     const parsed = parseOccurredAt(input.occurredAt);
     if (!parsed.ok) return parsed;
     changes.occurredAt = parsed.value;
+  }
+
+  if (input.bookingDate !== undefined) {
+    if (typeof input.bookingDate !== "string" || !isIsoDate(input.bookingDate.trim())) {
+      return failure("bookingDate", "Booking date must be a valid YYYY-MM-DD date.");
+    }
+    changes.bookingDate = input.bookingDate.trim();
   }
 
   if (input.amountMinor !== undefined) {
@@ -502,6 +544,28 @@ export function parseUpdateExpenseInput(
       if (!parsed.ok) return parsed;
       changes.paymentMethod = parsed.value;
     }
+  }
+
+  if (input.purpose !== undefined) {
+    if (input.purpose === null) {
+      changes.purpose = null;
+    } else {
+      const parsed = parseEnum(
+        input.purpose,
+        "purpose",
+        isExpensePurpose,
+        "Choose fixed, flexible or emergency.",
+      );
+      if (!parsed.ok) return parsed;
+      changes.purpose = parsed.value;
+    }
+  }
+
+  if (input.countsInDaily !== undefined) {
+    if (typeof input.countsInDaily !== "boolean") {
+      return failure("countsInDaily", "countsInDaily must be true or false.");
+    }
+    changes.countsInDaily = input.countsInDaily;
   }
 
   if (Object.keys(changes).length === 0) {
@@ -656,6 +720,10 @@ export function parseExpenseListQuery(
  * that later edits may change, and the raw note/merchant are never duplicated
  * in the receipt column. JSON arrays keep a stable field order and epoch
  * milliseconds make equivalent `Z`/offset spellings equal.
+ *
+ * `bookingDate` is intentionally absent: it is derived deterministically from
+ * `occurredAt` for the legacy expense path, and changing this payload would
+ * invalidate every already-stored MONEY-01 idempotency receipt.
  */
 export function canonicalExpenseCreatePayload(values: ExpenseCreateValues): string {
   return JSON.stringify([

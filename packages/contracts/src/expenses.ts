@@ -3,17 +3,24 @@ import type {
   ExpenseCurrency,
   ExpenseNeedVsWant,
   ExpensePaymentMethod,
+  ExpensePurpose,
 } from "@ega/domain/expenses";
 
 /**
  * Wire contracts for the owner-scoped personal expense ledger (PO-06 Slice A,
  * issue #346). Amounts are positive integer centimes of MAD; the currency is
  * fixed and is never selected by a caller.
+ *
+ * MONEY-04 adds the movement fields the same row now carries. Existing
+ * clients that ignore them remain compatible.
  */
 
 export type ExpenseDto = Readonly<{
   id: string;
+  kind: "expense";
+  direction: "out";
   occurredAt: string;
+  bookingDate: string;
   amountMinor: number;
   currency: ExpenseCurrency;
   category: ExpenseCategory;
@@ -21,6 +28,9 @@ export type ExpenseDto = Readonly<{
   merchant: string | null;
   needVsWant: ExpenseNeedVsWant;
   paymentMethod: ExpensePaymentMethod | null;
+  purpose: ExpensePurpose | null;
+  countsInDaily: boolean;
+  periodId: string | null;
   idempotencyKey: string;
   version: number;
   deletedAt: string | null;
@@ -42,12 +52,15 @@ export type CreateExpenseRequest = Readonly<{
 export type UpdateExpenseRequest = Readonly<{
   version: number;
   occurredAt?: string;
+  bookingDate?: string;
   amountMinor?: number;
   category?: ExpenseCategory;
   note?: string | null;
   merchant?: string | null;
   needVsWant?: ExpenseNeedVsWant;
   paymentMethod?: ExpensePaymentMethod | null;
+  purpose?: ExpensePurpose | null;
+  countsInDaily?: boolean;
 }>;
 
 export type ListExpensesQuery = Readonly<{

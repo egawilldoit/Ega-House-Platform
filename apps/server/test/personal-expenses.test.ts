@@ -105,7 +105,10 @@ const EXPENSE_ID = "00000000-0000-4000-8000-000000000001";
 function row(overrides: Record<string, unknown> = {}) {
   return {
     id: EXPENSE_ID,
+    kind: "expense",
+    direction: "out",
     occurred_at: "2026-11-07T08:30:00+00:00",
+    booking_date: "2026-11-07",
     amount_minor: 2250,
     currency: "MAD",
     category: "coffee",
@@ -113,6 +116,9 @@ function row(overrides: Record<string, unknown> = {}) {
     merchant: "Cafe Atlas",
     need_vs_want: "want",
     payment_method: "card",
+    purpose: null,
+    counts_in_daily: true,
+    period_id: null,
     idempotency_key: "key-1",
     create_fingerprint: FINGERPRINT,
     version: 1,
@@ -136,6 +142,7 @@ const BODY = {
 
 const FINGERPRINT = expenseReceiptFingerprint({
   occurredAt: "2026-11-07T08:30:00.000Z",
+  bookingDate: "2026-11-07",
   amountMinor: 2250,
   category: "coffee",
   note: "morning coffee",

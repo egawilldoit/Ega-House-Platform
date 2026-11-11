@@ -13,6 +13,7 @@ import { createExpensesApi, type ExpensesApi } from "./expenses";
 import { createFrictionApi, type FrictionApi } from "./friction";
 import { createGoalsApi, type GoalsApi } from "./goals";
 import { createHealthApi, type HealthApi } from "./health";
+import { createMoneyApi, type MoneyApi } from "./money";
 import {
   HttpClient,
   type AuthErrorHandler,
@@ -20,7 +21,6 @@ import {
   type TokenProvider,
 } from "./http";
 import { createInboxApi, type InboxApi } from "./inbox";
-import { createMoneyApi, type MoneyApi } from "./money";
 import { createNotificationsApi, type NotificationsApi } from "./notifications";
 import { createProjectsApi, type ProjectsApi } from "./projects";
 import { createOperatorApi, type OperatorApi } from "./operator";

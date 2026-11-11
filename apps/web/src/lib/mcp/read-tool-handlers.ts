@@ -431,6 +431,30 @@ export function createMcpReadToolHandlers(
     ): Promise<CallToolResult> {
       return moneyHandlers.moneyState(authInfo, input);
     },
+
+    // MONEY-04 movement reads. These are deliberately separate tools from the
+    // MONEY-02 expense ledger reads so neither surface can silently widen the
+    // other's kind filter.
+    async moneyMovementList(
+      authInfo: AuthInfo | undefined,
+      input: {
+        from?: string;
+        to?: string;
+        cutoff?: string;
+        timezone?: string;
+        kind?: string;
+        limit?: number;
+      },
+    ): Promise<CallToolResult> {
+      return moneyHandlers.moneyMovementList(authInfo, input ?? {});
+    },
+
+    async moneyMovementGet(
+      authInfo: AuthInfo | undefined,
+      input: { movementId: string },
+    ): Promise<CallToolResult> {
+      return moneyHandlers.moneyMovementGet(authInfo, input);
+    },
   };
 }
 
