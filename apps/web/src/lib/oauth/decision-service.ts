@@ -9,7 +9,10 @@ import {
   markMcpGrantFailed,
 } from "@/lib/oauth/grant-admin";
 import type { McpDatabase } from "@/lib/mcp/mcp-database.types";
-import { parsePermissionProfile } from "@/lib/mcp/permissions";
+import {
+  parsePermissionProfile,
+  profileHasWritePermission,
+} from "@/lib/mcp/permissions";
 
 type OAuthMethodResult = Promise<{
   data: unknown;
@@ -94,18 +97,22 @@ export async function processOAuthConsentDecision(
     ? parsePermissionProfile(input.permissionProfile)
     : "read_only" as const;
 
+  // Writes-disabled deployments must not retain a write-capable grant. A
+  // crafted `permission_profile` post is refused here rather than silently
+  // downgraded, so the stored profile always matches what the user saw.
   const writesEnabled = process.env.MCP_WRITES_ENABLED === "true";
-  const effectiveProfile =
-    requestedProfile === "workspace_manager" && !writesEnabled
-      ? "read_only" as const
-      : requestedProfile;
+  if (!writesEnabled && profileHasWritePermission(requestedProfile)) {
+    throw new Error(
+      "Write-capable MCP profiles are disabled on this deployment. Choose a read-only profile.",
+    );
+  }
 
   await activateGrant(admin, {
     ownerUserId: input.ownerUserId,
     oauthClientId: details.clientId,
     clientName: details.clientName,
     resourceUri: input.resourceUri,
-    permissionProfile: effectiveProfile,
+    permissionProfile: requestedProfile,
   });
 
   const approved = await input.oauth.approveAuthorization(input.authorizationId);

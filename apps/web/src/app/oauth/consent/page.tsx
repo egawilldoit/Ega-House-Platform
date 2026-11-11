@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
+import type { McpPermissionProfile } from "@/lib/mcp/permissions";
 import {
   buildConsentLoginPath,
   normalizeAuthorizationDetails,
@@ -18,6 +19,62 @@ export const metadata: Metadata = {
 type ConsentPageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 };
+
+/**
+ * Explicit consent choices. `writes` mirrors the profile's permission union:
+ * a profile with any `.create`/`.update`/`.write` permission is only offered
+ * when MCP writes are enabled. The decision service enforces the same rule for
+ * crafted posts, so hiding an option is not the authorization boundary.
+ */
+const CONSENT_PROFILE_CHOICES: ReadonlyArray<{
+  value: McpPermissionProfile;
+  label: string;
+  description: string;
+  writes: boolean;
+}> = [
+  {
+    value: "read_only",
+    label: "Workspace read-only",
+    description:
+      "List projects, goals, tasks, Today plan and timer sessions. No Money access.",
+    writes: false,
+  },
+  {
+    value: "personal_operations",
+    label: "Money read-only",
+    description:
+      "Read recorded MAD spending, the operating summary and daily check-ins. No writes.",
+    writes: false,
+  },
+  {
+    value: "workspace_money_reader",
+    label: "Workspace + Money read-only",
+    description:
+      "Read workspace items and recorded MAD spending in one connection. No writes.",
+    writes: false,
+  },
+  {
+    value: "workspace_manager",
+    label: "Workspace management",
+    description:
+      "Read plus create/update projects, goals, tasks, Today and timers. No Money access.",
+    writes: true,
+  },
+  {
+    value: "personal_operations_writer",
+    label: "Money management",
+    description:
+      "Record and correct MAD expenses/movements and daily check-ins. Owner-scoped and client-bound.",
+    writes: true,
+  },
+  {
+    value: "workspace_money_writer",
+    label: "Workspace + Money management",
+    description:
+      "Workspace management plus recording and correcting Money. The combined explicit union.",
+    writes: true,
+  },
+];
 
 const SCOPE_DESCRIPTIONS: Record<string, string> = {
   openid: "Confirm your EGA House account identity",
@@ -126,12 +183,12 @@ export default async function OAuthConsentPage({
               EGA House MCP
             </p>
             <h1 className="mt-5 text-[length:var(--text-page)] font-semibold leading-tight lg:text-[length:var(--text-page)]">
-              {writesEnabled ? "Choose workspace access level." : "Approve read-only workspace access."}
+              {writesEnabled ? "Choose workspace and Money access." : "Approve read-only workspace and Money access."}
             </h1>
             <p className="mt-5 max-w-md leading-7 text-[color:var(--ega-on-ink-muted)]">
               {writesEnabled
-                ? "Grant read-only inspection or full workspace management. Workspace management can create and update projects, goals, tasks, Today and timers — still scoped to your account and client."
-                : "The requesting client will be able to inspect your projects, goals, tasks, Today plan, and timer sessions. It cannot create, edit, archive, merge, deploy, or run commands through this authorization."}
+                ? "Grant read-only inspection or explicit management of workspace items and Money. Money management can record expenses/movements, change budgets, pay bills, close days and roll over periods — still scoped to your account and this client."
+                : "The requesting client can inspect your projects, goals, tasks, Today plan, timer sessions and recorded MAD spending. It cannot create, edit or delete records through this authorization."}
             </p>
           </div>
 
@@ -162,40 +219,36 @@ export default async function OAuthConsentPage({
               <h3 className="text-sm font-semibold uppercase tracking-[0.12em] text-[color:var(--ega-text-tertiary)]">
                 EGA House permissions
               </h3>
-              {writesEnabled ? (
-                <fieldset className="mt-3 space-y-3">
-                  <legend className="sr-only">Permission level</legend>
-                  <label className="flex gap-3 rounded-[var(--radius-lg)] border border-[var(--ega-border)] bg-[color:var(--ega-surface)] p-4 has-[input:checked]:border-[var(--ega-ink)]">
-                    <input type="radio" name="permission_profile" value="read_only" defaultChecked className="mt-1" />
+              <fieldset className="mt-3 space-y-3">
+                <legend className="sr-only">Permission level</legend>
+                {CONSENT_PROFILE_CHOICES.filter(
+                  (choice) => writesEnabled || !choice.writes,
+                ).map((choice) => (
+                  <label
+                    key={choice.value}
+                    className="flex gap-3 rounded-[var(--radius-lg)] border border-[var(--ega-border)] bg-[color:var(--ega-surface)] p-4 has-[input:checked]:border-[var(--ega-ink)]"
+                  >
+                    <input
+                      type="radio"
+                      name="permission_profile"
+                      value={choice.value}
+                      defaultChecked={choice.value === "read_only"}
+                      className="mt-1"
+                    />
                     <span>
-                      <span className="font-semibold">Read-only</span>
-                      <span className="mt-1 block text-sm leading-6 text-[color:var(--ega-text-secondary)]">List projects, goals, tasks, Today plan and timer sessions. No writes.</span>
+                      <span className="font-semibold">{choice.label}</span>
+                      <span className="mt-1 block text-sm leading-6 text-[color:var(--ega-text-secondary)]">{choice.description}</span>
                     </span>
                   </label>
-                  <label className="flex gap-3 rounded-[var(--radius-lg)] border border-[var(--ega-border)] bg-[color:var(--ega-surface)] p-4 has-[input:checked]:border-[var(--ega-ink)]">
-                    <input type="radio" name="permission_profile" value="workspace_manager" className="mt-1" />
-                    <span>
-                      <span className="font-semibold">Workspace management</span>
-                      <span className="mt-1 block text-sm leading-6 text-[color:var(--ega-text-secondary)]">Read plus create/update projects, goals, tasks, Today and timers. Still owner-scoped and client-bound.</span>
-                    </span>
-                  </label>
-                </fieldset>
-              ) : (
-                <ul className="mt-3 space-y-3">
-                  {[
-                    ["Projects", "List projects that belong to your account"],
-                    ["Goals", "List goals that belong to your account"],
-                    ["Tasks", "List and filter tasks that belong to your account"],
-                    ["Today plan", "Inspect the plan for your account's current day"],
-                    ["Timer sessions", "Inspect timer sessions that belong to your account"],
-                  ].map(([label, description]) => (
-                    <li key={label} className="rounded-[var(--radius-lg)] border border-[var(--ega-border)] bg-[color:var(--ega-surface-subtle)] p-4">
-                      <p className="font-semibold">Read {label}</p>
-                      <p className="mt-1 text-sm leading-6 text-[color:var(--ega-text-secondary)]">{description}</p>
-                    </li>
-                  ))}
-                </ul>
-              )}
+                ))}
+              </fieldset>
+              {!writesEnabled ? (
+                <p className="mt-3 text-sm leading-6 text-[color:var(--ega-text-secondary)]">
+                  Write access is currently disabled for this deployment. Only
+                  read-only profiles can be issued; a crafted write request is
+                  refused rather than silently downgraded.
+                </p>
+              ) : null}
             </div>
 
             {details.scopes.length > 0 ? (

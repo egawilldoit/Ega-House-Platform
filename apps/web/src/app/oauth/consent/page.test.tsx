@@ -201,7 +201,14 @@ describe("OAuth consent page — permission_profile submission (blocker B8 regre
     const radiosInsideForm = collectElements(form, isPermissionProfileRadio);
     expect(
       radiosInsideForm.map((radio) => String(radio.props.value)).sort(),
-    ).toEqual(["read_only", "workspace_manager"]);
+    ).toEqual([
+      "personal_operations",
+      "personal_operations_writer",
+      "read_only",
+      "workspace_manager",
+      "workspace_money_reader",
+      "workspace_money_writer",
+    ]);
 
     // No permission_profile radio may exist anywhere outside the form subtree.
     expect(collectElements(tree, isPermissionProfileRadio)).toHaveLength(
@@ -261,23 +268,42 @@ describe("OAuth consent page — permission_profile submission (blocker B8 regre
     expect(values.get("decision")).toBe("deny");
   });
 
-  it("hides every permission_profile radio when MCP_WRITES_ENABLED is false", async () => {
+  it("offers only read-only profiles when MCP_WRITES_ENABLED is false", async () => {
     const { tree } = await renderConsentPage(false);
 
-    expect(collectElements(tree, isPermissionProfileRadio)).toHaveLength(0);
-
     const form = findSingleForm(tree);
+    expect(
+      collectElements(form, isPermissionProfileRadio)
+        .map((radio) => String(radio.props.value))
+        .sort(),
+    ).toEqual([
+      "personal_operations",
+      "read_only",
+      "workspace_money_reader",
+    ]);
+
     const values = collectFormValues(form, { name: "decision", value: "deny" });
-    expect(values.has("permission_profile")).toBe(false);
+    expect(values.get("permission_profile")).toBe("read_only");
     expect(values.get("authorization_id")).toBe(authorizationIdParam);
     expect(values.get("decision")).toBe("deny");
   });
 
-  it("describes the full canonical read-only scope when writes are disabled", async () => {
+  it("describes the canonical read-only workspace and Money scope", async () => {
     const { tree } = await renderConsentPage(false);
     const text = collectText(tree);
 
     expect(text).toContain("Today plan");
-    expect(text).toContain("Timer sessions");
+    expect(text).toContain("timer sessions");
+    expect(text).toContain("recorded MAD spending");
+    expect(text).toContain("Write access is currently disabled");
+  });
+
+  it("offers Money reader and writer profiles when writes are enabled", async () => {
+    const { tree } = await renderConsentPage(true);
+    const text = collectText(tree);
+
+    expect(text).toContain("Money read-only");
+    expect(text).toContain("Money management");
+    expect(text).toContain("Workspace + Money management");
   });
 });
