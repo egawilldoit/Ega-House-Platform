@@ -18,6 +18,7 @@ import {
   getTaskReadModel,
   getTodayPlan as getTodayPlanFromApplication,
 } from "@ega/application";
+import { isIsoDate, isValidIANATimeZone } from "@ega/domain/time-context";
 import {
   SupabaseTasksRepository,
   SupabaseTimeContextRepository,
@@ -78,8 +79,17 @@ type ToolErrorCode =
   | "UNAUTHENTICATED"
   | "PERMISSION_DENIED"
   | "NOT_FOUND"
+  | "INVALID_ARGUMENT"
   | "DEPENDENCY_UNAVAILABLE"
   | "INTERNAL_ERROR";
+
+/** A caller-supplied date/timezone/identifier failure, not an outage. */
+export class McpInvalidArgumentError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "McpInvalidArgumentError";
+  }
+}
 
 type ToolErrorPayload = {
   ok: false;
@@ -103,6 +113,11 @@ function errorResult(error: unknown): CallToolResult {
     payload = {
       ok: false,
       error: { code: error.code, message: error.message },
+    };
+  } else if (error instanceof McpInvalidArgumentError) {
+    payload = {
+      ok: false,
+      error: { code: "INVALID_ARGUMENT", message: error.message },
     };
   } else if (
     error instanceof Error
@@ -386,31 +401,116 @@ export function createMcpReadToolHandlers(
   };
 }
 
-async function defaultPersonalOpsSummary(
+type PersonalOpsSnapshot = {
+  date: string;
+  timezone: string;
+  summary: { trackedTodaySeconds: number; trackedTodayLabel: string };
+};
+
+type ExpenseSummaryLike =
+  | {
+      ok: true;
+      data: {
+        day: unknown;
+        weekToDate: unknown;
+        monthToDate: unknown;
+        coffee: unknown;
+      };
+    }
+  | { ok: false }
+  | null;
+
+/**
+ * Compose the owner-resolved time snapshot with the canonical spending
+ * summary. An unavailable/failed summary is reported as unavailable — never as
+ * zero spending — while the time fields still return.
+ */
+export function composePersonalOpsSummary(
+  snapshot: PersonalOpsSnapshot,
+  expenseSummary: ExpenseSummaryLike,
+) {
+  const spending = expenseSummary?.ok
+    ? {
+        available: true as const,
+        currency: "MAD" as const,
+        localDate: snapshot.date,
+        timezone: snapshot.timezone,
+        note: "Recorded non-deleted expenses in integer MAD centimes; totals exclude deleted rows.",
+        day: expenseSummary.data.day,
+        weekToDate: expenseSummary.data.weekToDate,
+        monthToDate: expenseSummary.data.monthToDate,
+        // Coffee is the same-month category projection, beside — not inside —
+        // the day/week windows. The name states the period explicitly.
+        coffeeMonthToDate: expenseSummary.data.coffee,
+      }
+    : {
+        available: false as const,
+        currency: "MAD" as const,
+        localDate: snapshot.date,
+        timezone: snapshot.timezone,
+        reason: "Recorded spending totals are temporarily unavailable.",
+      };
+
+  return {
+    date: snapshot.date,
+    timezone: snapshot.timezone,
+    trackedTodaySeconds: snapshot.summary.trackedTodaySeconds,
+    trackedTodayLabel: snapshot.summary.trackedTodayLabel,
+    spending,
+  };
+}
+
+export async function defaultPersonalOpsSummary(
   client: SupabaseClient<McpDatabase>,
   ownerUserId: string,
   context: { date?: string; timezone?: string },
 ) {
-  const { getOperatorSnapshot } = await import("@ega/application");
-  const { SupabaseTimeContextRepository, SupabaseTodayReadPort } = await import("@ega/data-access");
+  // Validate caller-supplied context before the application call: the
+  // snapshot use case reports these as a generic failure, which would be
+  // misreported as a dependency outage.
+  if (context.date !== undefined && !isIsoDate(context.date)) {
+    throw new McpInvalidArgumentError(
+      "date must be a real calendar date in YYYY-MM-DD form.",
+    );
+  }
+  if (
+    context.timezone !== undefined
+    && !isValidIANATimeZone(context.timezone)
+  ) {
+    throw new McpInvalidArgumentError("timezone must be a valid IANA timezone.");
+  }
+
+  const { getExpenseSummary, getOperatorSnapshot } = await import("@ega/application");
+  const {
+    SupabaseExpenseRepository,
+    SupabaseTimeContextRepository,
+    SupabaseTodayReadPort,
+  } = await import("@ega/data-access");
   const result = await getOperatorSnapshot(
     { userId: ownerUserId } as never,
     new SupabaseTodayReadPort(client as never),
     new SupabaseTimeContextRepository(client as never),
     { date: context.date, timezone: context.timezone },
   );
-  if (!result.ok) throw new Error("Failed to load EGA personal operations summary.");
-  const snapshot = result.data as unknown as {
-    date: string;
-    timezone: string;
-    summary: { trackedTodaySeconds: number; trackedTodayLabel: string };
-  };
-  return {
-    date: snapshot.date,
-    timezone: snapshot.timezone,
-    trackedTodaySeconds: snapshot.summary.trackedTodaySeconds,
-    trackedTodayLabel: snapshot.summary.trackedTodayLabel,
-  };
+  if (!result.ok) {
+    if (result.code === "validation") {
+      throw new McpInvalidArgumentError(result.errorMessage);
+    }
+    throw new Error("Failed to load EGA personal operations summary.");
+  }
+  const snapshot = result.data as unknown as PersonalOpsSnapshot;
+
+  // Canonical recorded-spending summary over the same owner-resolved date and
+  // timezone. Analytics failure is reported as unavailable — never as zero
+  // spending — while the time summary still returns.
+  const actor = { userId: ownerUserId } as never;
+  const expenseSummary = await getExpenseSummary(
+    actor,
+    new SupabaseExpenseRepository(client as never),
+    { localDate: snapshot.date, timezone: snapshot.timezone },
+  ).catch(() => null);
+
+  return composePersonalOpsSummary(snapshot, expenseSummary);
 }
 
 async function defaultPersonalOpsExpensesList(
@@ -430,7 +530,12 @@ async function defaultPersonalOpsExpensesList(
     },
     { timezone: query.timezone ?? null },
   );
-  if (!result.ok) throw new Error("Failed to list EGA expenses.");
+  if (!result.ok) {
+    if (result.code === "validation") {
+      throw new McpInvalidArgumentError(result.errorMessage);
+    }
+    throw new Error("Failed to list EGA expenses.");
+  }
   return { expenses: result.data.expenses, pagination: result.data.pagination };
 }
 
@@ -444,6 +549,11 @@ async function defaultPersonalOpsCheckinGet(
   const { SupabaseDailyCheckinRepository } = await import("@ega/data-access");
   const service = createDailyCheckinService(new SupabaseDailyCheckinRepository(client as never));
   const result = await service.getDailyCheckin({ userId: ownerUserId } as never, localDate, timezone);
-  if (!result.ok) throw new Error("Failed to load EGA check-in.");
+  if (!result.ok) {
+    if (result.code === "validation") {
+      throw new McpInvalidArgumentError(result.errorMessage);
+    }
+    throw new Error("Failed to load EGA check-in.");
+  }
   return { localDate, checkin: result.data };
 }

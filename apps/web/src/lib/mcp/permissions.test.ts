@@ -4,6 +4,7 @@ import {
   getPermissionsForProfile,
   hasMcpPermission,
   parsePermissionProfile,
+  profileHasWritePermission,
 } from "@/lib/mcp/permissions";
 
 describe("MCP permission profiles", () => {
@@ -58,4 +59,52 @@ test("personal operations profiles are explicit and never inherited by old profi
   expect(getPermissionsForProfile("personal_operations")).not.toContain("personal_ops.write");
   expect(getPermissionsForProfile("personal_operations_writer")).toContain("personal_ops.write");
   expect(parsePermissionProfile("personal_operations_writer")).toBe("personal_operations_writer");
+});
+
+test("combined workspace+Money profiles are the exact advertised union", () => {
+  const workspace = getPermissionsForProfile("workspace_manager");
+  const reader = getPermissionsForProfile("workspace_money_reader");
+  const writer = getPermissionsForProfile("workspace_money_writer");
+
+  // Reader is read-only everywhere; it never inherits workspace write access.
+  expect(new Set(reader)).toEqual(new Set([
+    "projects.read",
+    "goals.read",
+    "tasks.read",
+    "today.read",
+    "timer.read",
+    "personal_ops.read",
+  ]));
+  expect(profileHasWritePermission("workspace_money_reader")).toBe(false);
+
+  // Writer is exactly workspace_manager plus the Money union.
+  expect(new Set(writer)).toEqual(new Set([
+    ...workspace,
+    "personal_ops.read",
+    "personal_ops.write",
+  ]));
+  expect(new Set(writer).size).toBe(writer.length);
+  expect(profileHasWritePermission("workspace_money_writer")).toBe(true);
+
+  // The old workspace profile never gains Money by implication.
+  expect(workspace).not.toContain("personal_ops.read");
+  expect(workspace).not.toContain("personal_ops.write");
+});
+
+test("every write-capable profile is identifiable for writes-disabled consent", () => {
+  for (const profile of [
+    "task_manager",
+    "workspace_manager",
+    "personal_operations_writer",
+    "workspace_money_writer",
+  ] as const) {
+    expect(profileHasWritePermission(profile)).toBe(true);
+  }
+  for (const profile of [
+    "read_only",
+    "personal_operations",
+    "workspace_money_reader",
+  ] as const) {
+    expect(profileHasWritePermission(profile)).toBe(false);
+  }
 });

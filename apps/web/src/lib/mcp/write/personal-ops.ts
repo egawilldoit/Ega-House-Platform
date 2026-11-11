@@ -127,7 +127,13 @@ export function createMcpPersonalOpsWriteHandlers(
             ? errorResult({ code: "CONFLICT", message: result.errorMessage })
             : result.code === "validation"
               ? invalidArgument(result.errorMessage)
-              : errorResult({ code: "DEPENDENCY_UNAVAILABLE", message: "EGA House data is temporarily unavailable." });
+              : result.code === "forbidden"
+                ? errorResult({
+                    code: "PERMISSION_DENIED",
+                    message:
+                      "The stored grant does not allow writing this expense. Re-check the Money writer permission.",
+                  })
+                : errorResult({ code: "DEPENDENCY_UNAVAILABLE", message: "EGA House data is temporarily unavailable." });
         }
         // Verified receipt: the stored record itself, never an optimistic copy.
         return resultFromPayload({
