@@ -50,9 +50,12 @@ export const mcpAuthorizationGrants = pgTable(
       "mcp_authorization_grants_status_check",
       sql`${table.status} in ('pending', 'active', 'failed', 'revoked')`,
     ),
+    // Terminal audit rows may retain the retired `delivery_observer` profile;
+    // the SQL constraints in 0057/0093 additionally gate that to failed/revoked
+    // status and the exact three-permission historical union.
     check(
       "mcp_authorization_grants_profile_check",
-      sql`${table.permissionProfile} in ('read_only', 'task_manager', 'workspace_manager')`,
+      sql`${table.permissionProfile} in ('read_only', 'task_manager', 'workspace_manager', 'personal_operations', 'personal_operations_writer', 'workspace_money_reader', 'workspace_money_writer')`,
     ),
     check(
       "mcp_authorization_grants_resource_uri_check",

@@ -676,7 +676,8 @@ const READ_TOOL_REGISTRATIONS: readonly ReadToolRegistration[] = [
         "ega_personal_ops_summary",
         {
           title: "Personal operations summary",
-          description: "Work tracking, today spending and check-in presence for the authenticated user. Requires the explicit personal_ops.read grant.",
+          description:
+            "Owner-resolved operating summary: tracking time plus canonical recorded spending for today, week-to-date and month-to-date, including coffee. Amounts are integer MAD centimes (11.00 MAD = 1100) and currency is MAD. When omitted, date and timezone resolve from the owner's context. `spending.available=false` means totals are unavailable, not zero. Requires the explicit personal_ops.read grant.",
           inputSchema: personalOpsSummaryInputSchema,
           outputSchema: personalOpsSummaryOutputSchema,
           annotations: READ_ONLY_ANNOTATIONS,
@@ -692,7 +693,8 @@ const READ_TOOL_REGISTRATIONS: readonly ReadToolRegistration[] = [
         "ega_personal_ops_expenses_list",
         {
           title: "List personal expenses",
-          description: "Bounded owner expense list in MAD centimes. Requires the explicit personal_ops.read grant.",
+          description:
+            "Owner expense list in integer MAD centimes with a bounded limit. `from`/`to` are inclusive local dates resolved with the supplied timezone (never assume UTC). Unknown merchant, payment method or note is null, not an empty invented value. Requires the explicit personal_ops.read grant.",
           inputSchema: personalOpsExpensesInputSchema,
           outputSchema: personalOpsListOutputSchema,
           annotations: READ_ONLY_ANNOTATIONS,
@@ -1077,7 +1079,8 @@ const WRITE_TOOL_REGISTRATIONS: readonly WriteToolRegistration[] = [
         "ega_create_personal_ops_expense",
         {
           title: "Create personal expense",
-          description: "Create one MAD expense in the canonical ledger with an idempotency key. Requires the explicit personal_ops.write grant.",
+          description:
+            "Create one MAD expense in the canonical ledger. amountMinor is integer centimes (11.00 MAD = 1100). occurredAt is an ISO timestamp; for an explicit local day send that day's timestamp with an offset rather than guessing UTC. note, merchant and paymentMethod may be null when unknown. idempotencyKey identifies this purchase: the same key and same full payload replays the original row; changing any field conflicts. The result returns the stored id, amount, resolved occurredAt and version. Requires the explicit personal_ops.write grant.",
           inputSchema: personalOpsExpenseInputSchema,
           outputSchema: genericWriteOutputSchema,
           annotations: WRITE_ANNOTATIONS,
