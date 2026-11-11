@@ -5,6 +5,7 @@ import type { z } from "zod-v4";
 import {
   registerMcpReadTools,
   registerMcpToolsForPrincipal,
+  registerMcpWriteTools,
   type McpWriteToolHandlers,
 } from "@/lib/mcp/server";
 import { filterToolsByPermissions, getAllToolNames } from "@/lib/mcp/tool-discovery";
@@ -45,6 +46,8 @@ function createHandlers() {
     personalOpsSummary: vi.fn().mockResolvedValue({ content: [] }),
     personalOpsExpensesList: vi.fn().mockResolvedValue({ content: [] }),
     personalOpsCheckinGet: vi.fn().mockResolvedValue({ content: [] }),
+    getMoneyExpense: vi.fn().mockResolvedValue({ content: [] }),
+    listMoneyLedger: vi.fn().mockResolvedValue({ content: [] }),
   };
 }
 
@@ -68,6 +71,8 @@ describe("registerMcpReadTools", () => {
       "ega_personal_ops_summary",
       "ega_personal_ops_expenses_list",
       "ega_personal_ops_checkin_get",
+      "ega_money_get",
+      "ega_money_ledger_list",
       "ega_list_timer_sessions",
     ]);
   });
@@ -114,6 +119,51 @@ describe("registerMcpReadTools", () => {
       expect(schema.safeParse({ limit: 101 }).success).toBe(false);
       expect(schema.safeParse({ limit: 1.5 }).success).toBe(false);
     }
+  });
+
+  it("exposes reachable Money ledger continuation and version-pinned edits", () => {
+    const fake = createFakeServer();
+    registerMcpReadTools(fake.server, createHandlers());
+    registerMcpWriteTools(fake.server, {} as McpWriteToolHandlers);
+
+    const ledger = fake.registrations.find(
+      (item) => item.name === "ega_money_ledger_list",
+    )!;
+    const ledgerSchema = getInputSchema(ledger);
+    expect(
+      ledgerSchema.safeParse({ limit: 25, offset: 50 }).success,
+    ).toBe(true);
+    expect(ledgerSchema.safeParse({ offset: -1 }).success).toBe(false);
+    expect(ledgerSchema.safeParse({ offset: 1_000_001 }).success).toBe(false);
+
+    const update = fake.registrations.find(
+      (item) => item.name === "ega_money_update_expense",
+    )!;
+    const updateSchema = getInputSchema(update);
+    const id = "550e8400-e29b-41d4-a716-446655440000";
+    const operationId = "650e8400-e29b-41d4-a716-446655440000";
+    expect(
+      updateSchema.safeParse({
+        expenseId: id,
+        expectedVersion: 2,
+        note: null,
+        operationId,
+      }).success,
+    ).toBe(true);
+    expect(
+      updateSchema.safeParse({ expenseId: id, note: "x", operationId }).success,
+    ).toBe(false);
+
+    const remove = fake.registrations.find(
+      (item) => item.name === "ega_money_delete_expense",
+    )!;
+    expect(
+      getInputSchema(remove).safeParse({
+        expenseId: id,
+        expectedVersion: 2,
+        operationId,
+      }).success,
+    ).toBe(true);
   });
 
   it("validates UUID project and goal filters", () => {

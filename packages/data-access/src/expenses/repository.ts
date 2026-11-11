@@ -326,6 +326,7 @@ export class SupabaseExpenseRepository implements ExpenseRepository {
     actor: AuthenticatedActor,
     id: string,
     nowIso: string,
+    expectedVersion?: number,
   ): Promise<RepositoryResult<ExpenseDeleteOutcome>> {
     const current = await this.supabase
       .from(TABLE)
@@ -341,6 +342,8 @@ export class SupabaseExpenseRepository implements ExpenseRepository {
 
     const row = current.data as ExpenseVersionRow;
     if (row.deleted_at !== null) {
+      // A repeat delete stays an idempotent success even when a caller pinned
+      // an older version: the row is already in the requested terminal state.
       return {
         ok: true,
         value: {
@@ -349,6 +352,9 @@ export class SupabaseExpenseRepository implements ExpenseRepository {
           alreadyDeleted: true,
         },
       };
+    }
+    if (expectedVersion !== undefined && Number(row.version) !== expectedVersion) {
+      return { ok: false, error: { code: "conflict" } };
     }
 
     const { data, error } = await this.supabase

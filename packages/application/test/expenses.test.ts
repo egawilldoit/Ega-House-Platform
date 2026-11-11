@@ -100,7 +100,11 @@ function makeRepository(state: Partial<FakeState> = {}) {
     create: number;
     list: ExpenseListRecordQuery[];
     update: ExpenseUpdateRecordInput[];
-    delete: Array<{ id: string; nowIso: string }>;
+    delete: Array<{
+      id: string;
+      nowIso: string;
+      expectedVersion?: number;
+    }>;
   } = { find: [], create: 0, list: [], update: [], delete: [] };
 
   const repository: ExpenseRepository = {
@@ -129,8 +133,8 @@ function makeRepository(state: Partial<FakeState> = {}) {
     async summarize() {
       return { ok: true as const, value: { totalsByCategory: {}, countsByCategory: {}, recordCount: 0, truncated: false } };
     },
-    async softDelete(_actor, id, nowIso) {
-      calls.delete.push({ id, nowIso });
+    async softDelete(_actor, id, nowIso, expectedVersion) {
+      calls.delete.push({ id, nowIso, ...(expectedVersion !== undefined ? { expectedVersion } : {}) });
       return (
         state.deleteResult ?? {
           ok: true,
@@ -333,6 +337,7 @@ test("list limits to the requested page and reports hasMore exactly", async () =
   if (!result.ok) return;
   assert.equal(result.data.expenses.length, 2);
   assert.equal(result.data.pagination.hasMore, true);
+  assert.equal(result.data.pagination.nextOffset, 2);
   assert.equal(result.data.pagination.limit, 2);
   assert.equal(calls.list[0]?.limit, 3);
   assert.equal(calls.list[0]?.startUtcIso, "2026-10-31T15:00:00.000Z");
@@ -380,6 +385,26 @@ test("delete reports first and repeated soft deletes without extra state changes
     assert.equal(second.data.deletedAt, now.toISOString());
   }
   assert.equal(calls.delete.length, 1);
+});
+
+test("delete passes an expected version to persistence and rejects an invalid one", async () => {
+  const { repository, calls } = makeRepository();
+  const result = await deleteExpense(ACTOR, repository, ID, {
+    expectedVersion: 3,
+  });
+  assert.equal(result.ok, true);
+  assert.equal(calls.delete[0]?.expectedVersion, 3);
+
+  const invalidRepository = makeRepository();
+  const invalid = await deleteExpense(
+    ACTOR,
+    invalidRepository.repository,
+    ID,
+    { expectedVersion: 0 },
+  );
+  assert.equal(invalid.ok, false);
+  if (!invalid.ok) assert.equal(invalid.code, "validation");
+  assert.equal(invalidRepository.calls.delete.length, 0);
 });
 
 test("delete maps a missing id to notFound and never calls persistence for malformed ids", async () => {
