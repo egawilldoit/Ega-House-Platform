@@ -133,6 +133,7 @@ const HANDLER_TOOL_NAMES: Readonly<Record<keyof McpWriteToolHandlers, string>> =
   createMoneyExpense: "ega_money_create_expense",
   updateMoneyExpense: "ega_money_update_expense",
   deleteMoneyExpense: "ega_money_delete_expense",
+  updateMoneySettings: "ega_money_update_settings",
   createProject: "ega_create_project",
   updateProjectStatus: "ega_update_project_status",
   archiveProject: "ega_archive_project",

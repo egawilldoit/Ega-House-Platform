@@ -5,12 +5,18 @@ import { revalidatePath } from "next/cache";
 import {
   createAuthenticatedActor,
   createExpense,
+  createMoneyPeriod,
   deleteExpense,
   getExpense,
   updateExpense,
+  updateMoneySettings,
 } from "@ega/application";
 import type { ExpenseDto } from "@ega/contracts/expenses";
-import { SupabaseExpenseRepository } from "@ega/data-access";
+import type { MoneyOpeningInput } from "@ega/domain/money";
+import {
+  SupabaseExpenseRepository,
+  SupabaseMoneyPeriodRepository,
+} from "@ega/data-access";
 import {
   mapApplicationCode,
   type ExpenseMutationErrorCode,
@@ -18,7 +24,11 @@ import {
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentUser } from "@/lib/services/auth-service";
 import { EXPENSE_CATEGORY_VALUES, type ExpenseCategory } from "@ega/domain/expenses";
-import { parseMadAmountToMinor } from "@/lib/money/money-amount";
+import {
+  parseMadAmountToMinor,
+  parseOpeningAmountToMinor,
+} from "@/lib/money/money-amount";
+import { getWebTimeContext } from "@/lib/services/time-context-service";
 import { updateWebUserPreferences } from "@/lib/services/user-preferences-service";
 
 /**
@@ -99,6 +109,7 @@ export async function createExpenseAction(
       paymentMethod: input.paymentMethod,
       idempotencyKey: input.idempotencyKey,
     },
+    { periods: new SupabaseMoneyPeriodRepository(client) },
   );
   if (!result.ok) {
     return {
@@ -158,6 +169,7 @@ export async function updateExpenseAction(
         ? { paymentMethod: patch.paymentMethod }
         : {}),
     },
+    { periods: new SupabaseMoneyPeriodRepository(client) },
   );
   if (!result.ok) {
     return {
@@ -227,4 +239,148 @@ export async function getExpenseAction(
     };
   }
   return { ok: true, expense: result.data };
+}
+
+// ---------------------------------------------------------------------------
+// MONEY-03: period setup and settings. Both actions compose the same
+// application use cases as MCP; identity is the verified session only.
+// ---------------------------------------------------------------------------
+
+export type MoneyFormActionResult =
+  | { ok: true; error: null }
+  | { ok: false; error: string };
+
+function formText(formData: FormData, name: string): string {
+  const value = formData.get(name);
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function openingFromForm(
+  formData: FormData,
+  mode: string,
+): { ok: true; value: MoneyOpeningInput | null } | { ok: false; error: string } {
+  if (mode === "" || mode === "unknown" || mode === "unchanged") {
+    return { ok: true, value: null };
+  }
+  if (mode !== "known" && mode !== "verified") {
+    return { ok: false, error: "Choose a supported opening source." };
+  }
+  const rawAmount = formText(formData, "openingAmount");
+  if (!rawAmount) {
+    return {
+      ok: false,
+      error: "Enter the known opening cash, or choose unknown cash.",
+    };
+  }
+  const amount = parseOpeningAmountToMinor(rawAmount);
+  if (!amount.ok) return { ok: false, error: amount.error };
+  return {
+    ok: true,
+    value: {
+      amountMinor: amount.value,
+      source: mode === "verified" ? "verified_source" : "user_entered",
+      cutoffDate: formText(formData, "openingCutoffDate") || null,
+      evidence: formText(formData, "openingEvidence") || null,
+      note: formText(formData, "openingNote") || null,
+    },
+  };
+}
+
+async function moneyActionContext() {
+  const user = await getCurrentUser();
+  if (!user) return null;
+  const client = await createClient();
+  const time = await getWebTimeContext();
+  return {
+    actor: createAuthenticatedActor(user.id),
+    repository: new SupabaseMoneyPeriodRepository(client),
+    now: new Date(),
+    timezone: time.persistedTimezone,
+  };
+}
+
+/** Create one inclusive period with unknown, known-zero or verified opening. */
+export async function createMoneyPeriodAction(
+  formData: FormData,
+): Promise<MoneyFormActionResult> {
+  try {
+    const context = await moneyActionContext();
+    if (!context) return { ok: false, error: "Sign in to configure Money." };
+
+    const startDate = formText(formData, "startDate");
+    const endDate = formText(formData, "endDate");
+    const activeDate = formText(formData, "activeDate");
+    const timezone = formText(formData, "timezone");
+    const openingMode = formText(formData, "openingMode") || "unknown";
+    const opening = openingFromForm(formData, openingMode);
+    if (!opening.ok) return { ok: false, error: opening.error };
+
+    const input: Record<string, unknown> = {
+      startDate,
+      endDate,
+      opening: opening.value,
+    };
+    if (activeDate) input.activeDate = activeDate;
+    if (timezone) input.timezone = timezone;
+
+    const result = await createMoneyPeriod(
+      context.actor,
+      context.repository,
+      input,
+      {
+        now: context.now,
+        timezone: context.timezone,
+        surface: "web",
+      },
+    );
+    if (!result.ok) return { ok: false, error: result.errorMessage };
+    revalidatePath("/money");
+    return { ok: true, error: null };
+  } catch {
+    return { ok: false, error: "Unable to save the Money period right now." };
+  }
+}
+
+/** Update the active date and/or initialize/correct the single opening. */
+export async function updateMoneySettingsAction(
+  formData: FormData,
+): Promise<MoneyFormActionResult> {
+  try {
+    const context = await moneyActionContext();
+    if (!context) return { ok: false, error: "Sign in to update Money settings." };
+
+    const periodId = formText(formData, "periodId");
+    if (!periodId) return { ok: false, error: "A Money period is required." };
+    const rawVersion = formText(formData, "version");
+    if (!/^\d+$/.test(rawVersion) || Number(rawVersion) < 1) {
+      return { ok: false, error: "Reload the page and try again." };
+    }
+
+    const input: Record<string, unknown> = { version: Number(rawVersion) };
+    const activeDate = formText(formData, "activeDate");
+    if (activeDate) input.activeDate = activeDate;
+
+    const openingMode = formText(formData, "openingMode") || "unchanged";
+    if (openingMode !== "unchanged") {
+      const opening = openingFromForm(formData, openingMode);
+      if (!opening.ok) return { ok: false, error: opening.error };
+      if (opening.value === null) {
+        return { ok: false, error: "Choose known or verified opening cash." };
+      }
+      input.opening = opening.value;
+    }
+
+    const result = await updateMoneySettings(
+      context.actor,
+      context.repository,
+      periodId,
+      input,
+      { now: context.now, timezone: context.timezone },
+    );
+    if (!result.ok) return { ok: false, error: result.errorMessage };
+    revalidatePath("/money");
+    return { ok: true, error: null };
+  } catch {
+    return { ok: false, error: "Unable to save Money settings right now." };
+  }
 }

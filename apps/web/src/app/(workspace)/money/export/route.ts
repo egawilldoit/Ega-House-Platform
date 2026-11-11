@@ -116,10 +116,7 @@ export async function GET(request: Request) {
     { from: params.from, to: params.to, timezone },
   );
   if (!exported.ok) {
-    if (
-      exported.code === "validation" &&
-      exported.errorMessage.startsWith("This export contains more than")
-    ) {
+    if (exported.reason === "export_too_large") {
       return Response.json(
         { error: exported.errorMessage, maxRows: EXPENSE_EXPORT_MAX_ROWS },
         { status: 413 },

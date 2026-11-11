@@ -82,6 +82,12 @@ export type McpReadToolHandlers = {
     input: { from?: string; to?: string; timezone?: string; limit?: number; offset?: number },
     context?: McpProtocolContext,
   ) => Promise<CallToolResult>;
+  /** MONEY-03 period/active-date state. */
+  moneyState: (
+    authInfo: AuthInfo | undefined,
+    input: { periodId?: string; date?: string; mode?: "today" | "active_day" },
+    context?: McpProtocolContext,
+  ) => Promise<CallToolResult>;
 };
 
 export type McpWriteToolHandlers = {
@@ -253,6 +259,27 @@ export type McpWriteToolHandlers = {
     input: { expenseId: string; expectedVersion: number; operationId: string },
     context?: McpProtocolContext,
   ) => Promise<CallToolResult>;
+  updateMoneySettings: (
+    authInfo: AuthInfo | undefined,
+    input: {
+      operationId: string;
+      periodId?: string;
+      version?: number;
+      startDate?: string;
+      endDate?: string;
+      timezone?: string;
+      activeDate?: string;
+      opening?: {
+        amountMinor: number;
+        source: "user_entered" | "carry_forward" | "verified_source";
+        cutoffDate?: string | null;
+        evidence?: string | null;
+        note?: string | null;
+      } | null;
+      settings?: Record<string, unknown>;
+    },
+    context?: McpProtocolContext,
+  ) => Promise<CallToolResult>;
   stopTimer: (
     authInfo: AuthInfo | undefined,
     input: { sessionId: string; operationId: string },
@@ -413,6 +440,36 @@ const personalOpsCheckinInputSchema = z.object({
   localDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   timezone: z.string(),
 }).strict();
+
+const moneyStateInputSchema = z.object({
+  periodId: uuidSchema.optional(),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  mode: z.enum(["today", "active_day"]).optional(),
+}).strict();
+
+const moneyOpeningInputSchema = z.object({
+  amountMinor: z.number().int().min(0),
+  source: z.enum(["user_entered", "carry_forward", "verified_source"]),
+  cutoffDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+  evidence: z.string().max(500).nullable().optional(),
+  note: z.string().max(500).nullable().optional(),
+}).strict();
+
+const moneyUpdateSettingsInputSchema = z.object({
+  operationId: z.string().uuid(),
+  periodId: uuidSchema.optional(),
+  version: z.number().int().positive().optional(),
+  startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  timezone: z.string().min(1).max(128).optional(),
+  activeDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  opening: moneyOpeningInputSchema.nullable().optional(),
+  settings: z.record(z.string(), z.unknown()).optional(),
+}).strict();
+
+const moneyStateOutputSchema = z.object({
+  ok: z.literal(true),
+}).passthrough();
 
 const personalOpsSummaryOutputSchema = z.object({
   ok: z.literal(true),
@@ -845,6 +902,23 @@ const READ_TOOL_REGISTRATIONS: readonly ReadToolRegistration[] = [
         },
         async (input, ctx) =>
           handlers.listMoneyLedger(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
+      ),
+  },
+  {
+    name: "ega_money_state",
+    register: (server, handlers) =>
+      server.registerTool(
+        "ega_money_state",
+        {
+          title: "Get Money period state",
+          description:
+            "Owner Money context. Returns `localToday` (real owner-local date), `activeDate` (the tracking date, which may lag today), the owner timezone, the selected/current period, opening cash and recorded cash through the active date in integer MAD centimes (11.00 MAD = 1100). `datesDiffer=true` means today and the active day are different. Use mode:'today' for actual today and mode:'active_day' for the tracking date; a date outside the period is reported with `periodRelation` instead of being moved. `opening.status='unknown'` is not zero; `cash.available=false` means cash is unknown/unavailable, not zero. History and legacy row review counts are included; unassigned legacy rows are never claimed reconciled. Requires the explicit personal_ops.read grant.",
+          inputSchema: moneyStateInputSchema,
+          outputSchema: moneyStateOutputSchema,
+          annotations: READ_ONLY_ANNOTATIONS,
+        },
+        async (input, ctx) =>
+          handlers.moneyState(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
       ),
   },
   {
@@ -1282,6 +1356,23 @@ const WRITE_TOOL_REGISTRATIONS: readonly WriteToolRegistration[] = [
         },
         async (input, ctx) =>
           handlers.savePersonalOpsCheckin(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
+      ),
+  },
+  {
+    name: "ega_money_update_settings",
+    register: (server, handlers) =>
+      server.registerTool(
+        "ega_money_update_settings",
+        {
+          title: "Create a Money period or update its settings",
+          description:
+            "Create a period when startDate and endDate are supplied; otherwise update the selected/tracking period. Updates require the current `version` and fail on a stale version without overwriting. `activeDate` is the tracking day: changing it never changes the period boundaries, closes a day or resets transactions. `opening.amountMinor` is integer MAD centimes and zero is a valid known opening; omit `opening` to keep unknown cash unknown. A verified opening needs `cutoffDate` and evidence. This tool returns the stored period and its version, preserving update provenance. Requires the explicit personal_ops.write grant.",
+          inputSchema: moneyUpdateSettingsInputSchema,
+          outputSchema: genericWriteOutputSchema,
+          annotations: WRITE_ANNOTATIONS,
+        },
+        async (input, ctx) =>
+          handlers.updateMoneySettings(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
       ),
   },
   {

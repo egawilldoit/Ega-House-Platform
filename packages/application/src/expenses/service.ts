@@ -8,8 +8,11 @@ import {
   type ExpenseListValues,
   type PersonalExpense,
 } from "@ega/domain/expenses";
+import { getLocalDateInTimezone } from "@ega/domain/time-context";
 
 import type { AuthenticatedActor } from "../auth/actor";
+import type { MoneyPeriodRepository } from "../money/ports";
+import { routineEntryGuardFailure } from "../money/periods";
 import { sha256Hex } from "../shared/hash";
 import {
   applicationFailure,
@@ -97,10 +100,62 @@ function replayOutcome(
   return applicationSuccess({ expense: existing.expense, replayed: true });
 }
 
+export type CreateExpenseOptions = Readonly<{
+  /**
+   * Optional period guard. When supplied, a configured tracking period only
+   * accepts a routine expense whose owner-local booking date falls inside its
+   * inclusive range. Accounts with no period keep the existing behavior; an
+   * ended/rolled-over account must use the explicit historical correction path.
+   */
+  periods?: Pick<MoneyPeriodRepository, "findTracking" | "list">;
+}>;
+
+/**
+ * One tracking-period gate for routine writes, shared by create and by any
+ * update that moves the booking instant. Ended/rolled-over periods accept
+ * entries only through the explicit historical correction path.
+ */
+async function routineEntryGuard(
+  actor: AuthenticatedActor,
+  periods: NonNullable<CreateExpenseOptions["periods"]>,
+  occurredAt: string,
+): Promise<ApplicationResult<never> | null> {
+  const tracking = await periods.findTracking(actor);
+  if (!tracking.ok) {
+    return failureFor(
+      tracking.error.code,
+      "Unable to check the tracking period right now.",
+    );
+  }
+  if (tracking.value) {
+    const bookingDate = getLocalDateInTimezone(
+      new Date(occurredAt),
+      tracking.value.timezone,
+    );
+    const guardMessage = routineEntryGuardFailure(tracking.value, bookingDate);
+    return guardMessage ? applicationFailure(guardMessage, "validation") : null;
+  }
+  const existing = await periods.list(actor, 1);
+  if (!existing.ok) {
+    return failureFor(
+      existing.error.code,
+      "Unable to check Money periods right now.",
+    );
+  }
+  if (existing.value.length > 0) {
+    return applicationFailure(
+      "There is no tracking period. Ended or rolled-over periods accept entries only through the explicit historical correction path.",
+      "validation",
+    );
+  }
+  return null;
+}
+
 export async function createExpense(
   actor: AuthenticatedActor,
   repository: ExpenseRepository,
   input: unknown,
+  options: CreateExpenseOptions = {},
 ): Promise<ApplicationResult<CreateExpenseOutcome>> {
   const parsed = parseCreateExpenseInput(input);
   if (!parsed.ok) {
@@ -117,6 +172,15 @@ export async function createExpense(
     return failureFor(existing.error.code, "Unable to save the expense right now.");
   }
   if (existing.value) return replayOutcome(existing.value, createFingerprint);
+
+  if (options.periods) {
+    const guard = await routineEntryGuard(
+      actor,
+      options.periods,
+      values.occurredAt,
+    );
+    if (guard) return guard;
+  }
 
   const created = await repository.create(actor, { values, createFingerprint });
   if (created.ok) {
@@ -196,7 +260,7 @@ export async function updateExpense(
   repository: ExpenseRepository,
   id: unknown,
   input: unknown,
-  options: Readonly<{ now?: Date }> = {},
+  options: Readonly<{ now?: Date; periods?: CreateExpenseOptions["periods"] }> = {},
 ): Promise<ApplicationResult<PersonalExpense>> {
   const validId = validateId(id);
   if (!validId) return applicationFailure(NOT_FOUND, "notFound");
@@ -208,6 +272,17 @@ export async function updateExpense(
 
   const { expectedVersion, ...changes } = parsed.value;
   const now = options.now ?? new Date();
+
+  // Moving a purchase to another day must obey the same tracking-period gate
+  // as creating it; otherwise MCP/web/Hono edits could escape the period.
+  if (options.periods && changes.occurredAt !== undefined) {
+    const guard = await routineEntryGuard(
+      actor,
+      options.periods,
+      changes.occurredAt,
+    );
+    if (guard) return guard;
+  }
 
   return fromRepository(
     await repository.update(actor, validId, {

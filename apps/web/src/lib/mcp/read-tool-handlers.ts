@@ -59,6 +59,8 @@ export type McpReadToolDependencies = {
     localDate: string,
     timezone: string,
   ) => Promise<unknown>;
+  /** Deterministic clock injection for period/date resolution in tests. */
+  now?: () => Date;
 };
 
 const DEFAULT_DEPENDENCIES: McpReadToolDependencies = {
@@ -178,6 +180,7 @@ export function createMcpReadToolHandlers(
 ) {
   const moneyHandlers = createMcpMoneyHandlers({
     createUserClient: dependencies.createUserClient,
+    now: dependencies.now,
   });
 
   return {
@@ -418,6 +421,15 @@ export function createMcpReadToolHandlers(
       input: { from?: string; to?: string; timezone?: string; limit?: number; offset?: number },
     ): Promise<CallToolResult> {
       return moneyHandlers.listMoneyLedger(authInfo, input);
+    },
+
+    // Money period context (MONEY-03): the same application state read used by
+    // the web surface, fenced by the explicit personal_ops.read grant.
+    async moneyState(
+      authInfo: AuthInfo | undefined,
+      input: { periodId?: string; date?: string; mode?: "today" | "active_day" },
+    ): Promise<CallToolResult> {
+      return moneyHandlers.moneyState(authInfo, input);
     },
   };
 }

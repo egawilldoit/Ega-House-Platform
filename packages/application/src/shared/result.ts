@@ -15,7 +15,17 @@ export type ApplicationErrorCode =
 
 export type ApplicationResult<T> =
   | Readonly<{ ok: true; data: T }>
-  | Readonly<{ ok: false; errorMessage: string; code?: ApplicationErrorCode }>;
+  | Readonly<{
+      ok: false;
+      errorMessage: string;
+      code?: ApplicationErrorCode;
+      /**
+       * Stable machine-readable discrimination for callers that must map a
+       * specific validation failure (for example an export row-budget refusal)
+       * without matching human text.
+       */
+      reason?: string;
+    }>;
 
 export function applicationSuccess<T>(data: T): ApplicationResult<T> {
   return { ok: true, data };
@@ -24,6 +34,10 @@ export function applicationSuccess<T>(data: T): ApplicationResult<T> {
 export function applicationFailure<T = never>(
   errorMessage: string,
   code?: ApplicationErrorCode,
+  reason?: string,
 ): ApplicationResult<T> {
-  return code ? { ok: false, errorMessage, code } : { ok: false, errorMessage };
+  if (!code) return { ok: false, errorMessage };
+  return reason
+    ? { ok: false, errorMessage, code, reason }
+    : { ok: false, errorMessage, code };
 }

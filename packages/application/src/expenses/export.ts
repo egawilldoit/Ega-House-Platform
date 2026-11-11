@@ -93,6 +93,7 @@ export async function exportExpenses(
     return applicationFailure(
       `This export contains more than ${maxRows.toLocaleString("en-US")} expenses. Narrow the date range and try again.`,
       "validation",
+      "export_too_large",
     );
   }
   if (counted.value === 0) {
@@ -121,6 +122,7 @@ export async function exportExpenses(
       return applicationFailure(
         `This export contains more than ${maxRows.toLocaleString("en-US")} expenses. Narrow the date range and try again.`,
         "validation",
+        "export_too_large",
       );
     }
 
