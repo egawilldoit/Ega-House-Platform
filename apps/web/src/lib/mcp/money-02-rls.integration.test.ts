@@ -89,20 +89,24 @@ describe.skipIf(!connectionString)("MONEY-02 expense update invariants", () => {
         const asUser = async (ownerId: string, clientId: string | null) => {
           await tx`reset role`;
           await tx`set local role authenticated`;
+          // Supabase's auth.uid() reads either the individual claim setting or
+          // the JSON claims; the disposable proof shim reads the former.
+          await tx`select set_config('request.jwt.claim.sub', ${ownerId}, true)`;
           await tx`select set_config('request.jwt.claims', ${claims(ownerId, clientId)}, true)`;
         };
 
         const expectRejected = async (
           statement: () => Promise<unknown>,
-          code: string,
+          code: string | string[],
         ): Promise<boolean> => {
+          const expected = Array.isArray(code) ? code : [code];
           await tx.unsafe("savepoint expected_rejection");
           try {
             await statement();
           } catch (error) {
             const actual = (error as { code?: string }).code;
             await tx.unsafe("rollback to savepoint expected_rejection");
-            return actual === code;
+            return actual !== undefined && expected.includes(actual);
           }
           await tx.unsafe("release savepoint expected_rejection");
           return false;
@@ -141,7 +145,9 @@ describe.skipIf(!connectionString)("MONEY-02 expense update invariants", () => {
                 version = version + 1, updated_at = now()
             where id = ${expenseId}
           `,
-          "23514",
+          // Column-level grants deny the write before the trigger on a bare
+          // Postgres; hosted projects with broader grants hit the trigger.
+          ["42501", "23514"],
         );
 
         // Version must advance by exactly one.
