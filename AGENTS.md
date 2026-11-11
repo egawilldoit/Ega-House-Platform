@@ -127,3 +127,41 @@ Web server-side code must not self-fetch Hono just to reuse in-process policy.
   objective, base/head, changes, evidence, remaining work, authorization, and exact
   blockers. Finish independent authorized work before asking for a necessary
   user-owned action; do not invent product decisions or broaden scope silently.
+
+## Money and MCP delivery authorization (2026-11-11)
+
+The user explicitly authorized continuous delivery of the full Money workflow
+in [`docs/plans/money-mcp-full-delivery.md`](docs/plans/money-mcp-full-delivery.md),
+including using the existing environment to apply required migrations and
+merging completed issues. When assigned to execute that plan:
+
+- Continue issue by issue through implementation, validation, independent review,
+  PR, authorized merge to `main`, migration and release verification. Intermediate
+  milestones do not complete the assignment. Do not request the same permission
+  again at each issue or migration.
+- Use existing local environment files and authenticated tooling privately for
+  the scoped work. Apply reviewed, required Money/MCP migrations to the verified
+  EGA House target, including its production database when that is the target
+  serving the user's app. Verify project identity, migration history, recoverability
+  and upgrade compatibility before applying; record versions and postconditions.
+  Never infer the target from a credential filename alone or print credentials.
+- Merge reviewed Money/MCP PRs serially after required checks and repository
+  protections pass. Complete the existing main-only deployment path and required
+  Money/MCP feature configuration so the user can exercise the delivered app and
+  connector. Existing permission to deliver does not permit bypassing CI, reviews,
+  branch protection, verified OAuth consent or owner-scoped RLS.
+- Preserve unrelated data, worktrees, configuration and credentials. This is not
+  authority for unrelated migrations, destructive resets, secret rotation,
+  persistent auto-merge, general Runner policy changes or silent grant elevation.
+  Workbook import requires the plan's source reconciliation and cutover conditions;
+  a new financial balance must come from observed source data or user input.
+- If delegates are used, the user's model restriction is **DeepSeek V4.1 Flash
+  through OpenCode Go only** (`opencode-go/deepseek-v4.1-flash`). Verify provider
+  availability; do not substitute another model. This does not require parallel
+  implementation or additional agents beyond required review.
+- Keep the plan's delivery ledger current across resumptions. Report a genuine
+  external blocker precisely, finish independent work, and never mark the complete
+  workflow ready while required migration, deployment or runtime evidence is missing.
+
+This exception records task-specific user authorization. The repository's normal
+approval boundaries remain in effect for other work.
