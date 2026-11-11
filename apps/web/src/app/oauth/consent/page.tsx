@@ -1,12 +1,13 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
-import type { McpPermissionProfile } from "@/lib/mcp/permissions";
+import { isMcpWritesActive } from "@/lib/mcp/config";
 import {
   buildConsentLoginPath,
   normalizeAuthorizationDetails,
   parseAuthorizationId,
 } from "@/lib/oauth/consent";
+import { consentProfilesForWritesEnabled } from "@/lib/oauth/consent-profiles";
 import { createClient } from "@/lib/supabase/server";
 
 import { ConsentApprovalLabel } from "./consent-approval-label";
@@ -19,62 +20,6 @@ export const metadata: Metadata = {
 type ConsentPageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 };
-
-/**
- * Explicit consent choices. `writes` mirrors the profile's permission union:
- * a profile with any `.create`/`.update`/`.write` permission is only offered
- * when MCP writes are enabled. The decision service enforces the same rule for
- * crafted posts, so hiding an option is not the authorization boundary.
- */
-const CONSENT_PROFILE_CHOICES: ReadonlyArray<{
-  value: McpPermissionProfile;
-  label: string;
-  description: string;
-  writes: boolean;
-}> = [
-  {
-    value: "read_only",
-    label: "Workspace read-only",
-    description:
-      "List projects, goals, tasks, Today plan and timer sessions. No Money access.",
-    writes: false,
-  },
-  {
-    value: "personal_operations",
-    label: "Money read-only",
-    description:
-      "Read recorded MAD spending, the operating summary and daily check-ins. No writes.",
-    writes: false,
-  },
-  {
-    value: "workspace_money_reader",
-    label: "Workspace + Money read-only",
-    description:
-      "Read workspace items and recorded MAD spending in one connection. No writes.",
-    writes: false,
-  },
-  {
-    value: "workspace_manager",
-    label: "Workspace management",
-    description:
-      "Read plus create/update projects, goals, tasks, Today and timers. No Money access.",
-    writes: true,
-  },
-  {
-    value: "personal_operations_writer",
-    label: "Money management",
-    description:
-      "Record and correct MAD expenses/movements and daily check-ins. Owner-scoped and client-bound.",
-    writes: true,
-  },
-  {
-    value: "workspace_money_writer",
-    label: "Workspace + Money management",
-    description:
-      "Workspace management plus recording and correcting Money. The combined explicit union.",
-    writes: true,
-  },
-];
 
 const SCOPE_DESCRIPTIONS: Record<string, string> = {
   openid: "Confirm your EGA House account identity",
@@ -169,7 +114,7 @@ export default async function OAuthConsentPage({
   }
 
   const decisionError = readSingleParameter(parameters.error);
-  const writesEnabled = process.env.MCP_WRITES_ENABLED === "true";
+  const writesEnabled = isMcpWritesActive();
 
   return (
     <main
@@ -221,9 +166,7 @@ export default async function OAuthConsentPage({
               </h3>
               <fieldset className="mt-3 space-y-3">
                 <legend className="sr-only">Permission level</legend>
-                {CONSENT_PROFILE_CHOICES.filter(
-                  (choice) => writesEnabled || !choice.writes,
-                ).map((choice) => (
+                {consentProfilesForWritesEnabled(writesEnabled).map((choice) => (
                   <label
                     key={choice.value}
                     className="flex gap-3 rounded-[var(--radius-lg)] border border-[var(--ega-border)] bg-[color:var(--ega-surface)] p-4 has-[input:checked]:border-[var(--ega-ink)]"

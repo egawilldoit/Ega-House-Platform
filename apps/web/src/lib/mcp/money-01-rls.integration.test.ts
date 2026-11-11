@@ -18,6 +18,23 @@ import postgres from "postgres";
 const connectionString = process.env.MONEY_TEST_DATABASE_URL;
 const RESOURCE = "https://ega.example.com/api/mcp";
 
+/**
+ * This proof mutates a live server inside a rolled-back transaction. It only
+ * runs for a local target or when the caller explicitly acknowledges a remote
+ * throwaway/sandbox target; a bare remote URL fails closed.
+ */
+function assertSafeTarget(url: string | undefined): void {
+  if (!url) return;
+  const host = new URL(url).hostname;
+  const local =
+    host === "localhost" || host === "127.0.0.1" || host === "::1";
+  if (!local && process.env.MONEY_TEST_ALLOW_NONLOCAL !== "1") {
+    throw new Error(
+      "MONEY_TEST_DATABASE_URL points at a remote host. Set MONEY_TEST_ALLOW_NONLOCAL=1 only for an approved rolled-back proof target.",
+    );
+  }
+}
+
 class RollbackProof extends Error {}
 
 function claims(owner: string, clientId: string | null) {
@@ -35,11 +52,13 @@ describe.skipIf(!connectionString)("MONEY-01 finance grant RLS", () => {
   });
 
   it("allows only the matching active read/write grant and keeps owners isolated", async () => {
+    assertSafeTarget(connectionString);
     const owner = randomUUID();
     const otherOwner = randomUUID();
     const writerClient = `writer-${randomUUID()}`;
     const readerClient = `reader-${randomUUID()}`;
     const revokedClient = `revoked-${randomUUID()}`;
+    const pendingClient = `pending-${randomUUID()}`;
     const wrongResourceClient = `wrong-resource-${randomUUID()}`;
     const workspaceClient = `workspace-${randomUUID()}`;
     const expenseId = randomUUID();
@@ -96,6 +115,7 @@ describe.skipIf(!connectionString)("MONEY-01 finance grant RLS", () => {
         await seedGrant(writerClient, "personal_operations_writer", writePermissions);
         await seedGrant(readerClient, "personal_operations", readPermissions);
         await seedGrant(revokedClient, "personal_operations_writer", writePermissions, "revoked");
+        await seedGrant(pendingClient, "personal_operations", readPermissions, "pending");
         await seedGrant(
           wrongResourceClient,
           "personal_operations_writer",
@@ -153,15 +173,27 @@ describe.skipIf(!connectionString)("MONEY-01 finance grant RLS", () => {
             (${owner}, '2026-11-11T10:00:00.000Z', 2500, 'MAD', 'groceries',
              'need', ${`writer-${randomUUID()}`}, ${"b".repeat(64)})
           returning id`;
+        const writerUpdate = await tx`
+          update public.personal_expenses
+          set amount_minor = 1200, version = version + 1, updated_at = now()
+          where id = ${expenseId}
+          returning id`;
         state.writerRead = writerRows.length;
         state.writerInsert = writerInsert.length;
+        state.writerUpdate = writerUpdate.length;
 
-        // Reader grant: reads but cannot insert.
+        // Reader grant: reads but cannot insert or update.
         await tx`reset role`;
         await asUser(owner, readerClient);
         const readerRows = await tx`
           select id from public.personal_expenses where id = ${expenseId}`;
+        const readerUpdate = await tx`
+          update public.personal_expenses
+          set amount_minor = 1300, version = version + 1, updated_at = now()
+          where id = ${expenseId}
+          returning id`;
         state.readerRead = readerRows.length;
+        state.readerUpdate = readerUpdate.length;
         state.readerInsertDenied = await expectDenied(() => tx`
           insert into public.personal_expenses
             (owner_user_id, occurred_at, amount_minor, currency, category,
@@ -173,6 +205,7 @@ describe.skipIf(!connectionString)("MONEY-01 finance grant RLS", () => {
         // Revoked, wrong-resource, workspace_only and wrong-client deny.
         for (const [key, clientId, ownerId] of [
           ["revoked", revokedClient, owner],
+          ["pending", pendingClient, owner],
           ["wrongResource", wrongResourceClient, owner],
           ["workspaceOnly", workspaceClient, owner],
           ["wrongClient", `unknown-${randomUUID()}`, owner],
@@ -213,9 +246,12 @@ describe.skipIf(!connectionString)("MONEY-01 finance grant RLS", () => {
 
     expect(state.writerRead).toBe(1);
     expect(state.writerInsert).toBe(1);
+    expect(state.writerUpdate).toBe(1);
     expect(state.readerRead).toBe(1);
+    expect(state.readerUpdate).toBe(0);
     expect(state.readerInsertDenied).toBe(true);
     expect(state.revoked).toBe(0);
+    expect(state.pending).toBe(0);
     expect(state.wrongResource).toBe(0);
     expect(state.workspaceOnly).toBe(0);
     expect(state.wrongClient).toBe(0);

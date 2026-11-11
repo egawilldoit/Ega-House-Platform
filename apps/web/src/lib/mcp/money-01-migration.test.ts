@@ -3,6 +3,11 @@ import { resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
+import {
+  MCP_PERMISSION_PROFILES,
+  getPermissionsForProfile,
+} from "@/lib/mcp/permissions";
+
 const migration = readFileSync(
   resolve(process.cwd(), "..", "..", "drizzle/0093_money_01_finance_grants.sql"),
   "utf8",
@@ -24,18 +29,27 @@ describe("MONEY-01 finance grant migration", () => {
     expect(last.when).toBeGreaterThan(previous.when);
   });
 
-  it("stores the finance and combined profiles with their exact unions", () => {
-    expect(migration).toContain("'personal_operations'");
-    expect(migration).toContain("'personal_operations_writer'");
-    expect(migration).toContain("'workspace_money_reader'");
-    expect(migration).toContain("'workspace_money_writer'");
-    expect(migration).toContain(
-      '"personal_ops.read", "personal_ops.write"]\'::jsonb',
+  it("stores every runtime profile union exactly as the code advertises it", () => {
+    // Parse the jsonb array literals from the migration and compare each
+    // runtime profile's permissions by value. Re-ordering or editing
+    // permissions.ts without the migration now fails here instead of at
+    // consent time.
+    const literals = [...migration.matchAll(/'(\[[^\]]*\])'::jsonb/g)].map(
+      (match) => JSON.parse(match[1]) as string[],
     );
+
+    for (const profile of MCP_PERMISSION_PROFILES) {
+      expect(literals).toContainEqual(getPermissionsForProfile(profile));
+    }
+
     // The reader union never carries a write permission.
-    expect(migration).toContain(
-      '\'["projects.read", "goals.read", "tasks.read", "today.read", "timer.read", "personal_ops.read"]\'::jsonb',
+    const reader = literals.find(
+      (entry) =>
+        entry.includes("personal_ops.read") &&
+        entry.length === 6 &&
+        !entry.includes("personal_ops.write"),
     );
+    expect(reader).toEqual(getPermissionsForProfile("workspace_money_reader"));
   });
 
   it("resolves the active grant by owner, client, resource and revocation", () => {
@@ -88,7 +102,9 @@ describe("MONEY-01 finance grant migration", () => {
     );
     expect(updatePolicy.match(/personal_ops\.write/g)).toHaveLength(2);
 
-    expect(migration).not.toMatch(/personal_expenses_direct_user_delete[\s\S]*CREATE POLICY/);
+    expect(migration).not.toMatch(
+      /CREATE POLICY "personal_expenses_[^"]*delete"/i,
+    );
     expect(migration).not.toContain("GRANT DELETE");
   });
 });

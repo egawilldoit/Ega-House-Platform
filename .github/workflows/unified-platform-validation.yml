@@ -672,6 +672,10 @@ jobs:
         env:
           PROOF_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ega_proof
         run: node --import tsx scripts/db/personal-expenses-api-verify.mjs --url "$PROOF_DATABASE_URL"
+      - name: Prove MONEY-01 finance grant profiles and grant-scoped Money RLS through the migration journal
+        env:
+          PROOF_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ega_proof
+        run: node scripts/db/money-01-finance-grants-verify.mjs --url "$PROOF_DATABASE_URL"
 
   hygiene:
     needs: [changes, workspace, contracts, domain, application, data-access, regressions, lint-changed, lint-report, web, web-typecheck, web-tests, mobile, server, api-client, db-invariants]
