@@ -18,6 +18,7 @@ import {
   getTaskReadModel,
   getTodayPlan as getTodayPlanFromApplication,
 } from "@ega/application";
+import { isIsoDate, isValidIANATimeZone } from "@ega/domain/time-context";
 import {
   SupabaseTasksRepository,
   SupabaseTimeContextRepository,
@@ -459,11 +460,26 @@ export function composePersonalOpsSummary(
   };
 }
 
-async function defaultPersonalOpsSummary(
+export async function defaultPersonalOpsSummary(
   client: SupabaseClient<McpDatabase>,
   ownerUserId: string,
   context: { date?: string; timezone?: string },
 ) {
+  // Validate caller-supplied context before the application call: the
+  // snapshot use case reports these as a generic failure, which would be
+  // misreported as a dependency outage.
+  if (context.date !== undefined && !isIsoDate(context.date)) {
+    throw new McpInvalidArgumentError(
+      "date must be a real calendar date in YYYY-MM-DD form.",
+    );
+  }
+  if (
+    context.timezone !== undefined
+    && !isValidIANATimeZone(context.timezone)
+  ) {
+    throw new McpInvalidArgumentError("timezone must be a valid IANA timezone.");
+  }
+
   const { getExpenseSummary, getOperatorSnapshot } = await import("@ega/application");
   const {
     SupabaseExpenseRepository,
@@ -514,7 +530,12 @@ async function defaultPersonalOpsExpensesList(
     },
     { timezone: query.timezone ?? null },
   );
-  if (!result.ok) throw new Error("Failed to list EGA expenses.");
+  if (!result.ok) {
+    if (result.code === "validation") {
+      throw new McpInvalidArgumentError(result.errorMessage);
+    }
+    throw new Error("Failed to list EGA expenses.");
+  }
   return { expenses: result.data.expenses, pagination: result.data.pagination };
 }
 
@@ -528,6 +549,11 @@ async function defaultPersonalOpsCheckinGet(
   const { SupabaseDailyCheckinRepository } = await import("@ega/data-access");
   const service = createDailyCheckinService(new SupabaseDailyCheckinRepository(client as never));
   const result = await service.getDailyCheckin({ userId: ownerUserId } as never, localDate, timezone);
-  if (!result.ok) throw new Error("Failed to load EGA check-in.");
+  if (!result.ok) {
+    if (result.code === "validation") {
+      throw new McpInvalidArgumentError(result.errorMessage);
+    }
+    throw new Error("Failed to load EGA check-in.");
+  }
   return { localDate, checkin: result.data };
 }

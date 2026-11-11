@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { composePersonalOpsSummary } from "@/lib/mcp/read-tool-handlers";
+import {
+  McpInvalidArgumentError,
+  composePersonalOpsSummary,
+  defaultPersonalOpsSummary,
+} from "@/lib/mcp/read-tool-handlers";
 
 const snapshot = {
   date: "2026-11-11",
@@ -50,5 +54,25 @@ describe("personal operations summary spending", () => {
 
     expect(summary.trackedTodayLabel).toBe("1h 00m");
     expect(summary.spending).toMatchObject({ available: false });
+  });
+});
+
+describe("personal operations summary input validation", () => {
+  it("classifies an impossible date as INVALID_ARGUMENT, not an outage", async () => {
+    await expect(
+      defaultPersonalOpsSummary({} as never, "owner", {
+        date: "2026-13-40",
+        timezone: "Africa/Casablanca",
+      }),
+    ).rejects.toBeInstanceOf(McpInvalidArgumentError);
+  });
+
+  it("classifies an invalid timezone as INVALID_ARGUMENT", async () => {
+    await expect(
+      defaultPersonalOpsSummary({} as never, "owner", {
+        date: "2026-11-11",
+        timezone: "Mars/Olympus",
+      }),
+    ).rejects.toBeInstanceOf(McpInvalidArgumentError);
   });
 });

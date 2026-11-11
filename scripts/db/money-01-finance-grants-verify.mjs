@@ -147,7 +147,7 @@ async function applySupabaseShim(sql) {
   `);
   await sql.unsafe(`
     INSERT INTO auth.users (id, email) VALUES
-      ('${OWNER_A}'::uuid, 'owner-a@example.test'),
+      ('${OWNER_A}'::uuid, 'ab.mortaki@gmail.com'),
       ('${OWNER_B}'::uuid, 'owner-b@example.test')
     ON CONFLICT (id) DO NOTHING;
   `);
@@ -366,6 +366,36 @@ async function main() {
     );
     assert(writerUpdate.length === 1, "writer grant updates");
     assert(Number(writerUpdate[0].amount_minor) === 1200, "writer update persists 1200");
+
+    // COMBINED PROFILES ------------------------------------------------------
+    const combinedReader = asUser(sql, OWNER_A, {
+      clientId: "profile-workspace_money_reader",
+    });
+    const combinedReaderRows = await combinedReader.run((tx) =>
+      tx.unsafe(`SELECT id FROM public.personal_expenses`),
+    );
+    assert(combinedReaderRows.length >= 1, "combined reader reads own money rows");
+    await expectDenied("combined reader insert", () =>
+      combinedReader.run((tx) =>
+        insertExpense(tx, {
+          id: "ffffffff-ffff-4fff-8fff-ffffffffffff",
+          owner: OWNER_A,
+          key: "combined-reader-insert",
+        }),
+      ),
+    );
+
+    const combinedWriter = asUser(sql, OWNER_A, {
+      clientId: "profile-workspace_money_writer",
+    });
+    const combinedWriterUpdate = await combinedWriter.run((tx) =>
+      tx.unsafe(
+        `UPDATE public.personal_expenses SET amount_minor = 1250,
+           version = version + 1, updated_at = now()
+         WHERE id = '${EXPENSE_A}' RETURNING id`,
+      ),
+    );
+    assert(combinedWriterUpdate.length === 1, "combined writer updates own money rows");
 
     // DENIED VARIANTS --------------------------------------------------------
     await seedGrant(sql, {
