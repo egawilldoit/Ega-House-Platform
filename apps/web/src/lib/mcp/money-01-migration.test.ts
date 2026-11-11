@@ -104,6 +104,18 @@ describe("MONEY-01 finance grant migration", () => {
       migration.indexOf('CREATE POLICY "daily_checkins_direct_user_insert"'),
     );
     expect(checkinWrite.match(/personal_ops\.write/g)?.length).toBeGreaterThanOrEqual(3);
+
+    // 0090 declared policies but no table privileges; a bare Postgres (and the
+    // CI proof) needs the explicit verbs.
+    expect(migration).toContain(
+      'GRANT SELECT ON TABLE "public"."daily_checkins" TO authenticated',
+    );
+    expect(migration).toContain(
+      'GRANT INSERT ON TABLE "public"."daily_checkins" TO authenticated',
+    );
+    expect(migration).toContain(
+      'GRANT UPDATE ON TABLE "public"."daily_checkins" TO authenticated',
+    );
   });
 
   it("requires the write grant for insert and update and never adds DELETE", () => {
