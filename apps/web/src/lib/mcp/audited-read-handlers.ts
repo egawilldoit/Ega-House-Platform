@@ -332,5 +332,18 @@ export function createAuditedMcpReadHandlers(
         () => handlers.personalOpsCheckinGet(authInfo, input),
       );
     },
+
+    moneyState(
+      authInfo: AuthInfo | undefined,
+      input: Parameters<BaseReadHandlers["moneyState"]>[1],
+      context?: ProtocolContext,
+    ): Promise<CallToolResult> {
+      return execute(
+        "ega_money_state",
+        authInfo,
+        context,
+        () => handlers.moneyState(authInfo, input),
+      );
+    },
   };
 }

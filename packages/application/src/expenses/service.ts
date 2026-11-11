@@ -8,8 +8,11 @@ import {
   type ExpenseListValues,
   type PersonalExpense,
 } from "@ega/domain/expenses";
+import { getLocalDateInTimezone } from "@ega/domain/time-context";
 
 import type { AuthenticatedActor } from "../auth/actor";
+import type { MoneyPeriodRepository } from "../money/ports";
+import { routineEntryGuardFailure } from "../money/periods";
 import { sha256Hex } from "../shared/hash";
 import {
   applicationFailure,
@@ -91,10 +94,21 @@ function replayOutcome(
   return applicationSuccess({ expense: existing.expense, replayed: true });
 }
 
+export type CreateExpenseOptions = Readonly<{
+  /**
+   * Optional period guard. When supplied, a configured tracking period only
+   * accepts a routine expense whose owner-local booking date falls inside its
+   * inclusive range. Accounts with no period keep the existing behavior; an
+   * ended/rolled-over account must use the explicit historical correction path.
+   */
+  periods?: Pick<MoneyPeriodRepository, "findTracking" | "list">;
+}>;
+
 export async function createExpense(
   actor: AuthenticatedActor,
   repository: ExpenseRepository,
   input: unknown,
+  options: CreateExpenseOptions = {},
 ): Promise<ApplicationResult<CreateExpenseOutcome>> {
   const parsed = parseCreateExpenseInput(input);
   if (!parsed.ok) {
@@ -111,6 +125,38 @@ export async function createExpense(
     return failureFor(existing.error.code, "Unable to save the expense right now.");
   }
   if (existing.value) return replayOutcome(existing.value, createFingerprint);
+
+  if (options.periods) {
+    const tracking = await options.periods.findTracking(actor);
+    if (!tracking.ok) {
+      return failureFor(
+        tracking.error.code,
+        "Unable to check the tracking period right now.",
+      );
+    }
+    if (tracking.value) {
+      const bookingDate = getLocalDateInTimezone(
+        new Date(values.occurredAt),
+        tracking.value.timezone,
+      );
+      const guardMessage = routineEntryGuardFailure(tracking.value, bookingDate);
+      if (guardMessage) return applicationFailure(guardMessage, "validation");
+    } else {
+      const existing = await options.periods.list(actor, 1);
+      if (!existing.ok) {
+        return failureFor(
+          existing.error.code,
+          "Unable to check Money periods right now.",
+        );
+      }
+      if (existing.value.length > 0) {
+        return applicationFailure(
+          "There is no tracking period. Ended or rolled-over periods accept entries only through the explicit historical correction path.",
+          "validation",
+        );
+      }
+    }
+  }
 
   const created = await repository.create(actor, { values, createFingerprint });
   if (created.ok) {

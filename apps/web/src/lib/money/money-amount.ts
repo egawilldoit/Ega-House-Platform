@@ -59,6 +59,19 @@ export function parseMadAmountToMinor(raw: unknown): MadAmountParseResult {
   return { ok: true, value };
 }
 
+/**
+ * Parse a known opening-cash input. Zero is a real known opening (unknown cash
+ * is represented by omitting the value entirely), so this wraps the shared
+ * positive-amount parser with an explicit exact-zero branch.
+ */
+export function parseOpeningAmountToMinor(raw: unknown): MadAmountParseResult {
+  if (typeof raw === "string") {
+    const compact = raw.replace(/\s+/g, "").replace(",", ".").trim();
+    if (/^0(?:\.0{1,2})?$/.test(compact)) return { ok: true, value: 0 };
+  }
+  return parseMadAmountToMinor(raw);
+}
+
 /** Format integer centimes as `22.50 MAD` without floating point. */
 export function formatMinorToMad(amountMinor: number): string {
   const major = Math.trunc(amountMinor / 100);

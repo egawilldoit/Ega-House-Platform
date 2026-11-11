@@ -17,11 +17,22 @@ test("money page derives actor from verified user and reads through expense appl
 
 test("money page honors owner timezone and formats stored integer centimes as MAD", () => {
   assert.match(source, /getWebTimeContext\(\)/);
-  assert.match(source, /timezone\s*=\s*time\.timezone/);
+  assert.match(source, /time\.persistedTimezone\s*\?\?\s*MONEY_DEFAULT_TIMEZONE/);
   assert.match(source, /timeZone:\s*timezone/);
   assert.match(source, /expense\.amountMinor\s*\/\s*100/);
   assert.match(source, /currency:\s*"MAD"/);
   assert.doesNotMatch(source, /Africa\/Casablanca/);
+});
+
+test("money page composes the shared period state and shows local today separately", () => {
+  assert.match(source, /getMoneyState\(/);
+  assert.match(source, /SupabaseMoneyPeriodRepository/);
+  assert.match(source, /MoneyPeriodPanel/);
+  assert.match(source, /localToday=\{moneyState\.localToday\}/);
+  assert.match(source, /period=\{moneyState\.period\}/);
+  assert.match(source, /legacyReviewRequired=/);
+  assert.match(source, /selectedPeriodId/);
+  assert.match(source, /Tracking period unavailable/);
 });
 
 test("money ledger displays need-vs-want and keeps notes visible beside merchants", () => {

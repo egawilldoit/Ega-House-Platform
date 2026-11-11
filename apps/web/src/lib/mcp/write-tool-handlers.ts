@@ -42,6 +42,7 @@ import {
 import { createTaskMcpWriteHandlers } from "@/lib/mcp/write/tasks";
 import { createMcpTimerModuleHandlers } from "@/lib/mcp/write/timer";
 import { createMcpPersonalOpsWriteHandlers } from "@/lib/mcp/write/personal-ops";
+import { createMcpMoneyHandlers } from "@/lib/mcp/money/handlers";
 import {
   McpToolAuthorizationError,
   requireMcpPermission,
@@ -247,6 +248,7 @@ export function createMcpWriteToolHandlers(
   const taskHandlers = createTaskMcpWriteHandlers(moduleDeps);
   const timerHandlers = createMcpTimerModuleHandlers(moduleDeps, writesEnabled);
   const personalOpsHandlers = createMcpPersonalOpsWriteHandlers(moduleDeps);
+  const moneyHandlers = createMcpMoneyHandlers(moduleDeps);
 
   return {
     // Projects
@@ -753,6 +755,68 @@ export function createMcpWriteToolHandlers(
           patch: input.patch,
         }, () =>
           personalOpsHandlers.savePersonalOpsCheckin(authInfo, input, input.operationId),
+        );
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+
+    // Money period/settings writes (MONEY-03): the full normalized input is in
+    // the outer receipt, so a changed active date, opening, source, evidence,
+    // settings or target period conflicts instead of replaying.
+    async updateMoneySettings(
+      authInfo: AuthInfo | undefined,
+      input: {
+        operationId: string;
+        periodId?: string;
+        version?: number;
+        startDate?: string;
+        endDate?: string;
+        timezone?: string;
+        activeDate?: string;
+        opening?: {
+          amountMinor: number;
+          source: "user_entered" | "carry_forward" | "verified_source";
+          cutoffDate?: string | null;
+          evidence?: string | null;
+          note?: string | null;
+        } | null;
+        settings?: Record<string, unknown>;
+      },
+    ): Promise<CallToolResult> {
+      try {
+        assertWritesEnabled(writesEnabled);
+        requireMcpPermission(authInfo, "personal_ops.write");
+        const client = dependencies.createUserClient(authInfo!.token);
+        const semantic = {
+          periodId: input.periodId ?? null,
+          version: input.version ?? null,
+          startDate: input.startDate ?? null,
+          endDate: input.endDate ?? null,
+          timezone: input.timezone ?? null,
+          activeDate: input.activeDate ?? null,
+          opening: input.opening
+            ? {
+                amountMinor: input.opening.amountMinor,
+                source: input.opening.source,
+                cutoffDate: input.opening.cutoffDate ?? null,
+                evidence: input.opening.evidence ?? null,
+                note: input.opening.note ?? null,
+              }
+            : null,
+          settings: input.settings ?? null,
+        };
+        return await withExclusiveMutation(
+          client,
+          "ega_money_update_settings",
+          input.operationId,
+          semantic,
+          () =>
+            moneyHandlers.updateMoneySettings(
+              authInfo,
+              input,
+              input.operationId,
+            ),
         );
       } catch (error) {
         return errorResult(error);
