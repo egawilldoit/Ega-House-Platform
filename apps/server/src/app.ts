@@ -22,6 +22,7 @@ import { createFrictionRoutes } from "./routes/friction";
 import { createGoalsRoutes } from "./routes/goals";
 import { createHealthRoutes } from "./routes/health";
 import { createInboxRoutes } from "./routes/inbox";
+import { createMoneyRoutes } from "./routes/money";
 import { createNotificationsRoutes } from "./routes/notifications";
 import { createOperatorRoutes } from "./routes/operator";
 import { createProjectsRoutes } from "./routes/projects";
@@ -148,6 +149,7 @@ export function createApp(dependencies: ServerDependencies): Hono<{ Variables: S
   app.route("/api/friction", createFrictionRoutes(dependencies));
   app.route("/api/time-context", createTimeContextRoutes(dependencies));
   app.route("/api/expenses", createExpensesRoutes(dependencies));
+  app.route("/api/money", createMoneyRoutes(dependencies));
   app.route("/api/checkins", createCheckinsRoutes(dependencies));
   app.route("/api/notifications", createNotificationsRoutes());
   app.route("/api/review", createWeeklyReviewRoutes(dependencies));

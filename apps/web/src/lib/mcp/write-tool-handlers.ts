@@ -42,6 +42,7 @@ import {
 import { createTaskMcpWriteHandlers } from "@/lib/mcp/write/tasks";
 import { createMcpTimerModuleHandlers } from "@/lib/mcp/write/timer";
 import { createMcpPersonalOpsWriteHandlers } from "@/lib/mcp/write/personal-ops";
+import { createMcpObligationWriteHandlers } from "@/lib/mcp/write/obligations";
 import {
   McpToolAuthorizationError,
   requireMcpPermission,
@@ -247,6 +248,7 @@ export function createMcpWriteToolHandlers(
   const taskHandlers = createTaskMcpWriteHandlers(moduleDeps);
   const timerHandlers = createMcpTimerModuleHandlers(moduleDeps, writesEnabled);
   const personalOpsHandlers = createMcpPersonalOpsWriteHandlers(moduleDeps);
+  const obligationHandlers = createMcpObligationWriteHandlers(moduleDeps);
 
   return {
     // Projects
@@ -753,6 +755,235 @@ export function createMcpWriteToolHandlers(
           patch: input.patch,
         }, () =>
           personalOpsHandlers.savePersonalOpsCheckin(authInfo, input, input.operationId),
+        );
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+
+    // Money obligations (MONEY-06): explicit personal_ops.write grant only.
+    // Receipts bind the full normalized semantic input, and no tool here can
+    // mark an obligation paid — only the MONEY-07 atomic payment path can.
+    async createMoneyObligation(
+      authInfo: AuthInfo | undefined,
+      input: {
+        kind: string;
+        description: string;
+        amountMinor: number;
+        dueDate: string;
+        periodStart?: string;
+        periodEnd?: string;
+        templateId?: string | null;
+        needVsWant?: "need" | "want" | null;
+        purpose?: string | null;
+        countsInDaily?: boolean | null;
+        category?: string | null;
+        stateEffectiveDate: string;
+        idempotencyKey: string;
+        operationId: string;
+      },
+    ): Promise<CallToolResult> {
+      try {
+        assertWritesEnabled(writesEnabled);
+        requireMcpPermission(authInfo, "personal_ops.write");
+        const client = dependencies.createUserClient(authInfo!.token);
+        return await withExclusiveMutation(client, "ega_money_create_obligation", input.operationId, {
+          kind: input.kind,
+          description: canonicalReceiptText(input.description),
+          amountMinor: input.amountMinor,
+          dueDate: input.dueDate,
+          periodStart: input.periodStart ?? null,
+          periodEnd: input.periodEnd ?? null,
+          templateId: input.templateId ?? null,
+          needVsWant: input.needVsWant ?? null,
+          purpose: input.purpose ?? null,
+          countsInDaily: input.countsInDaily ?? null,
+          category: input.category ?? null,
+          stateEffectiveDate: input.stateEffectiveDate,
+          idempotencyKey: input.idempotencyKey,
+        }, () =>
+          obligationHandlers.createObligation(authInfo, input as never, input.operationId),
+        );
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+
+    async updateMoneyObligation(
+      authInfo: AuthInfo | undefined,
+      input: {
+        obligationId: string;
+        version: number;
+        description?: string;
+        amountMinor?: number;
+        periodStart?: string;
+        periodEnd?: string;
+        dueDate?: string;
+        needVsWant?: "need" | "want" | null;
+        purpose?: string;
+        countsInDaily?: boolean;
+        category?: string | null;
+        operationId: string;
+      },
+    ): Promise<CallToolResult> {
+      try {
+        assertWritesEnabled(writesEnabled);
+        requireMcpPermission(authInfo, "personal_ops.write");
+        const client = dependencies.createUserClient(authInfo!.token);
+        return await withExclusiveMutation(client, "ega_money_update_obligation", input.operationId, {
+          obligationId: input.obligationId,
+          version: input.version,
+          description: input.description === undefined ? null : canonicalReceiptText(input.description),
+          amountMinor: input.amountMinor ?? null,
+          periodStart: input.periodStart ?? null,
+          periodEnd: input.periodEnd ?? null,
+          dueDate: input.dueDate ?? null,
+          needVsWant: input.needVsWant ?? null,
+          purpose: input.purpose ?? null,
+          countsInDaily: input.countsInDaily ?? null,
+          category: input.category ?? null,
+        }, () =>
+          obligationHandlers.updateObligation(authInfo, input as never, input.operationId),
+        );
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+
+    async transitionMoneyObligation(
+      authInfo: AuthInfo | undefined,
+      input: {
+        obligationId: string;
+        version: number;
+        to: string;
+        effectiveDate: string;
+        reason?: string | null;
+        operationId: string;
+      },
+    ): Promise<CallToolResult> {
+      try {
+        assertWritesEnabled(writesEnabled);
+        requireMcpPermission(authInfo, "personal_ops.write");
+        const client = dependencies.createUserClient(authInfo!.token);
+        return await withExclusiveMutation(client, "ega_money_transition_obligation", input.operationId, {
+          obligationId: input.obligationId,
+          version: input.version,
+          to: input.to,
+          effectiveDate: input.effectiveDate,
+          reason: input.reason === undefined ? null : canonicalReceiptText(input.reason),
+        }, () =>
+          obligationHandlers.transitionObligation(authInfo, input as never, input.operationId),
+        );
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+
+    async createMoneyObligationTemplate(
+      authInfo: AuthInfo | undefined,
+      input: {
+        kind: string;
+        description: string;
+        amountMinor: number;
+        cadence: string;
+        dueDayOfMonth?: number | null;
+        dueWeekday?: number | null;
+        startDate: string;
+        endDate?: string | null;
+        needVsWant?: "need" | "want" | null;
+        purpose?: string | null;
+        countsInDaily?: boolean | null;
+        category?: string | null;
+        idempotencyKey: string;
+        operationId: string;
+      },
+    ): Promise<CallToolResult> {
+      try {
+        assertWritesEnabled(writesEnabled);
+        requireMcpPermission(authInfo, "personal_ops.write");
+        const client = dependencies.createUserClient(authInfo!.token);
+        return await withExclusiveMutation(client, "ega_money_create_obligation_template", input.operationId, {
+          kind: input.kind,
+          description: canonicalReceiptText(input.description),
+          amountMinor: input.amountMinor,
+          cadence: input.cadence,
+          dueDayOfMonth: input.dueDayOfMonth ?? null,
+          dueWeekday: input.dueWeekday ?? null,
+          startDate: input.startDate,
+          endDate: input.endDate ?? null,
+          needVsWant: input.needVsWant ?? null,
+          purpose: input.purpose ?? null,
+          countsInDaily: input.countsInDaily ?? null,
+          category: input.category ?? null,
+          idempotencyKey: input.idempotencyKey,
+        }, () =>
+          obligationHandlers.createObligationTemplate(authInfo, input as never, input.operationId),
+        );
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+
+    async updateMoneyObligationTemplate(
+      authInfo: AuthInfo | undefined,
+      input: {
+        templateId: string;
+        version: number;
+        description?: string;
+        amountMinor?: number;
+        cadence?: string;
+        dueDayOfMonth?: number | null;
+        dueWeekday?: number | null;
+        startDate?: string;
+        endDate?: string | null;
+        needVsWant?: "need" | "want" | null;
+        purpose?: string | null;
+        countsInDaily?: boolean | null;
+        category?: string | null;
+        lifecycle?: "active" | "archived";
+        operationId: string;
+      },
+    ): Promise<CallToolResult> {
+      try {
+        assertWritesEnabled(writesEnabled);
+        requireMcpPermission(authInfo, "personal_ops.write");
+        const client = dependencies.createUserClient(authInfo!.token);
+        return await withExclusiveMutation(client, "ega_money_update_obligation_template", input.operationId, {
+          templateId: input.templateId,
+          version: input.version,
+          description: input.description === undefined ? null : canonicalReceiptText(input.description),
+          amountMinor: input.amountMinor ?? null,
+          cadence: input.cadence ?? null,
+          dueDayOfMonth: input.dueDayOfMonth ?? null,
+          dueWeekday: input.dueWeekday ?? null,
+          startDate: input.startDate ?? null,
+          endDate: input.endDate ?? null,
+          needVsWant: input.needVsWant ?? null,
+          purpose: input.purpose ?? null,
+          countsInDaily: input.countsInDaily ?? null,
+          category: input.category ?? null,
+          lifecycle: input.lifecycle ?? null,
+        }, () =>
+          obligationHandlers.updateObligationTemplate(authInfo, input as never, input.operationId),
+        );
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+
+    async generateMoneyObligations(
+      authInfo: AuthInfo | undefined,
+      input: { templateId: string; throughDate: string; operationId: string },
+    ): Promise<CallToolResult> {
+      try {
+        assertWritesEnabled(writesEnabled);
+        requireMcpPermission(authInfo, "personal_ops.write");
+        const client = dependencies.createUserClient(authInfo!.token);
+        return await withExclusiveMutation(client, "ega_money_generate_obligations", input.operationId, {
+          templateId: input.templateId,
+          throughDate: input.throughDate,
+        }, () =>
+          obligationHandlers.generateObligations(authInfo, input, input.operationId),
         );
       } catch (error) {
         return errorResult(error);

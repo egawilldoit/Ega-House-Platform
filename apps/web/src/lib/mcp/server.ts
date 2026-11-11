@@ -4,6 +4,13 @@ import type { CallToolResult } from "@modelcontextprotocol/server";
 import { z } from "zod-v4";
 
 import { MCP_PERMISSIONS, MCP_PERMISSION_PROFILES } from "@/lib/mcp/permissions";
+import { EXPENSE_CATEGORY_VALUES } from "@ega/domain/expenses";
+import {
+  OBLIGATION_CADENCES,
+  OBLIGATION_KINDS,
+  OBLIGATION_STATES,
+} from "@ega/domain/obligations";
+import { MONEY_PURPOSES } from "@ega/domain/money";
 import type {
   McpGoalFilters,
   McpTaskFilters,
@@ -69,6 +76,27 @@ export type McpReadToolHandlers = {
   personalOpsCheckinGet: (
     authInfo: AuthInfo | undefined,
     input: { localDate: string; timezone: string },
+    context?: McpProtocolContext,
+  ) => Promise<CallToolResult>;
+  moneyObligationsList: (
+    authInfo: AuthInfo | undefined,
+    input: {
+      kind?: string;
+      state?: string;
+      dueFrom?: string;
+      dueTo?: string;
+      limit?: number;
+    },
+    context?: McpProtocolContext,
+  ) => Promise<CallToolResult>;
+  moneyObligationGet: (
+    authInfo: AuthInfo | undefined,
+    input: { obligationId: string },
+    context?: McpProtocolContext,
+  ) => Promise<CallToolResult>;
+  moneyObligationTemplatesList: (
+    authInfo: AuthInfo | undefined,
+    input: { kind?: string; includeArchived?: boolean },
     context?: McpProtocolContext,
   ) => Promise<CallToolResult>;
 };
@@ -215,6 +243,102 @@ export type McpWriteToolHandlers = {
     input: { date: string; operationId: string },
     context?: ServerContext,
   ) => Promise<CallToolResult>;
+  createMoneyObligation: (
+    authInfo: AuthInfo | undefined,
+    input: {
+      kind: string;
+      description: string;
+      amountMinor: number;
+      dueDate: string;
+      periodStart?: string;
+      periodEnd?: string;
+      templateId?: string | null;
+      needVsWant?: "need" | "want" | null;
+      purpose?: string | null;
+      countsInDaily?: boolean | null;
+      category?: string | null;
+      stateEffectiveDate: string;
+      idempotencyKey: string;
+      operationId: string;
+    },
+    context?: McpProtocolContext,
+  ) => Promise<CallToolResult>;
+  updateMoneyObligation: (
+    authInfo: AuthInfo | undefined,
+    input: {
+      obligationId: string;
+      version: number;
+      description?: string;
+      amountMinor?: number;
+      periodStart?: string;
+      periodEnd?: string;
+      dueDate?: string;
+      needVsWant?: "need" | "want" | null;
+      purpose?: string;
+      countsInDaily?: boolean;
+      category?: string | null;
+      operationId: string;
+    },
+    context?: McpProtocolContext,
+  ) => Promise<CallToolResult>;
+  transitionMoneyObligation: (
+    authInfo: AuthInfo | undefined,
+    input: {
+      obligationId: string;
+      version: number;
+      to: string;
+      effectiveDate: string;
+      reason?: string | null;
+      operationId: string;
+    },
+    context?: McpProtocolContext,
+  ) => Promise<CallToolResult>;
+  createMoneyObligationTemplate: (
+    authInfo: AuthInfo | undefined,
+    input: {
+      kind: string;
+      description: string;
+      amountMinor: number;
+      cadence: string;
+      dueDayOfMonth?: number | null;
+      dueWeekday?: number | null;
+      startDate: string;
+      endDate?: string | null;
+      needVsWant?: "need" | "want" | null;
+      purpose?: string | null;
+      countsInDaily?: boolean | null;
+      category?: string | null;
+      idempotencyKey: string;
+      operationId: string;
+    },
+    context?: McpProtocolContext,
+  ) => Promise<CallToolResult>;
+  updateMoneyObligationTemplate: (
+    authInfo: AuthInfo | undefined,
+    input: {
+      templateId: string;
+      version: number;
+      description?: string;
+      amountMinor?: number;
+      cadence?: string;
+      dueDayOfMonth?: number | null;
+      dueWeekday?: number | null;
+      startDate?: string;
+      endDate?: string | null;
+      needVsWant?: "need" | "want" | null;
+      purpose?: string | null;
+      countsInDaily?: boolean | null;
+      category?: string | null;
+      lifecycle?: "active" | "archived";
+      operationId: string;
+    },
+    context?: McpProtocolContext,
+  ) => Promise<CallToolResult>;
+  generateMoneyObligations: (
+    authInfo: AuthInfo | undefined,
+    input: { templateId: string; throughDate: string; operationId: string },
+    context?: McpProtocolContext,
+  ) => Promise<CallToolResult>;
 };
 
 const READ_ONLY_ANNOTATIONS = {
@@ -332,10 +456,34 @@ const personalOpsCheckinInputSchema = z.object({
   timezone: z.string(),
 }).strict();
 
+const obligationDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+const obligationKindSchema = z.enum(OBLIGATION_KINDS);
+const obligationStateSchema = z.enum(OBLIGATION_STATES);
+const obligationPurposeSchema = z.enum(MONEY_PURPOSES);
+const obligationCategorySchema = z.enum(EXPENSE_CATEGORY_VALUES);
+const obligationCadenceSchema = z.enum(OBLIGATION_CADENCES);
+const obligationNeedVsWantSchema = z.enum(["need", "want"]);
+
+const moneyObligationsInputSchema = z.object({
+  kind: obligationKindSchema.optional(),
+  state: obligationStateSchema.optional(),
+  dueFrom: obligationDateSchema.optional(),
+  dueTo: obligationDateSchema.optional(),
+  limit: limitSchema,
+}).strict();
+
+const moneyObligationGetInputSchema = z.object({
+  obligationId: uuidSchema,
+}).strict();
+
+const moneyObligationTemplatesInputSchema = z.object({
+  kind: obligationKindSchema.optional(),
+  includeArchived: z.boolean().default(false),
+}).strict();
+
 const personalOpsSummaryOutputSchema = z.object({
   ok: z.literal(true),
 }).passthrough();
-
 const personalOpsListOutputSchema = z.object({
   ok: z.literal(true),
 }).passthrough();
@@ -529,6 +677,92 @@ const personalOpsCheckinSaveInputSchema = z.object({
   operationId: z.string().uuid(),
 }).strict();
 
+const moneyObligationCreateInputSchema = z.object({
+  kind: obligationKindSchema,
+  description: z.string().min(1).max(200),
+  amountMinor: z.number().int().positive().max(2147483647),
+  dueDate: obligationDateSchema,
+  periodStart: obligationDateSchema.optional(),
+  periodEnd: obligationDateSchema.optional(),
+  templateId: uuidSchema.nullable().optional(),
+  needVsWant: obligationNeedVsWantSchema.nullable().optional(),
+  purpose: obligationPurposeSchema.nullable().optional(),
+  countsInDaily: z.boolean().nullable().optional(),
+  category: obligationCategorySchema.nullable().optional(),
+  stateEffectiveDate: obligationDateSchema,
+  idempotencyKey: z.string().min(1).max(128),
+  operationId: z.string().uuid(),
+}).strict();
+
+const moneyObligationUpdateInputSchema = z.object({
+  obligationId: uuidSchema,
+  version: z.number().int().positive(),
+  description: z.string().min(1).max(200).optional(),
+  amountMinor: z.number().int().positive().max(2147483647).optional(),
+  periodStart: obligationDateSchema.optional(),
+  periodEnd: obligationDateSchema.optional(),
+  dueDate: obligationDateSchema.optional(),
+  needVsWant: obligationNeedVsWantSchema.nullable().optional(),
+  purpose: obligationPurposeSchema.optional(),
+  countsInDaily: z.boolean().optional(),
+  category: obligationCategorySchema.nullable().optional(),
+  operationId: z.string().uuid(),
+}).strict();
+
+const moneyObligationTransitionInputSchema = z.object({
+  obligationId: uuidSchema,
+  version: z.number().int().positive(),
+  to: obligationStateSchema,
+  effectiveDate: obligationDateSchema,
+  reason: z.string().max(200).nullable().optional(),
+  operationId: z.string().uuid(),
+}).strict();
+
+const moneyObligationTemplateCreateInputSchema = z.object({
+  kind: obligationKindSchema,
+  description: z.string().min(1).max(200),
+  amountMinor: z.number().int().positive().max(2147483647),
+  cadence: obligationCadenceSchema,
+  dueDayOfMonth: z.number().int().min(1).max(31).nullable().optional(),
+  dueWeekday: z.number().int().min(0).max(6).nullable().optional(),
+  startDate: obligationDateSchema,
+  endDate: obligationDateSchema.nullable().optional(),
+  needVsWant: obligationNeedVsWantSchema.nullable().optional(),
+  purpose: obligationPurposeSchema.nullable().optional(),
+  countsInDaily: z.boolean().nullable().optional(),
+  category: obligationCategorySchema.nullable().optional(),
+  idempotencyKey: z.string().min(1).max(128),
+  operationId: z.string().uuid(),
+}).strict();
+
+const moneyObligationTemplateUpdateInputSchema = z.object({
+  templateId: uuidSchema,
+  version: z.number().int().positive(),
+  description: z.string().min(1).max(200).optional(),
+  amountMinor: z.number().int().positive().max(2147483647).optional(),
+  cadence: obligationCadenceSchema.optional(),
+  dueDayOfMonth: z.number().int().min(1).max(31).nullable().optional(),
+  dueWeekday: z.number().int().min(0).max(6).nullable().optional(),
+  startDate: obligationDateSchema.optional(),
+  endDate: obligationDateSchema.nullable().optional(),
+  needVsWant: obligationNeedVsWantSchema.nullable().optional(),
+  purpose: obligationPurposeSchema.nullable().optional(),
+  countsInDaily: z.boolean().nullable().optional(),
+  category: obligationCategorySchema.nullable().optional(),
+  lifecycle: z.enum(["active", "archived"]).optional(),
+  operationId: z.string().uuid(),
+}).strict();
+
+const moneyObligationGenerateInputSchema = z.object({
+  templateId: uuidSchema,
+  throughDate: obligationDateSchema,
+  operationId: z.string().uuid(),
+}).strict();
+
+const moneyObligationReadOutputSchema = z.object({
+  ok: z.literal(true),
+}).passthrough();
+
 const stopTimerInputSchema = z.object({
   sessionId: uuidSchema,
   operationId: z.string().uuid(),
@@ -717,6 +951,57 @@ const READ_TOOL_REGISTRATIONS: readonly ReadToolRegistration[] = [
         },
         async (input, ctx) =>
           handlers.personalOpsCheckinGet(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
+      ),
+  },
+  {
+    name: "ega_money_obligations_list",
+    register: (server, handlers) =>
+      server.registerTool(
+        "ega_money_obligations_list",
+        {
+          title: "List Money obligations",
+          description:
+            "List bill/subscription obligation occurrences for the authenticated owner in due-date order. Bills and subscriptions are the same occurrence rows filtered by `kind`, with one payment state. Amounts are integer MAD centimes. `dueFrom`/`dueTo` are inclusive dates. `state` is the explicit lifecycle (pending, paid, waived, cancelled); only a linked payment can make an occurrence paid. Requires the explicit personal_ops.read grant.",
+          inputSchema: moneyObligationsInputSchema,
+          outputSchema: moneyObligationReadOutputSchema,
+          annotations: READ_ONLY_ANNOTATIONS,
+        },
+        async (input, ctx) =>
+          handlers.moneyObligationsList(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
+      ),
+  },
+  {
+    name: "ega_money_obligation_get",
+    register: (server, handlers) =>
+      server.registerTool(
+        "ega_money_obligation_get",
+        {
+          title: "Get a Money obligation",
+          description:
+            "Read one obligation occurrence by id, including its version, lifecycle, effective date, snapshot classification and payment link/evidence. Unknown need/want is null, not invented. Requires the explicit personal_ops.read grant.",
+          inputSchema: moneyObligationGetInputSchema,
+          outputSchema: moneyObligationReadOutputSchema,
+          annotations: READ_ONLY_ANNOTATIONS,
+        },
+        async (input, ctx) =>
+          handlers.moneyObligationGet(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
+      ),
+  },
+  {
+    name: "ega_money_obligation_templates_list",
+    register: (server, handlers) =>
+      server.registerTool(
+        "ega_money_obligation_templates_list",
+        {
+          title: "List Money obligation templates",
+          description:
+            "List recurring bill/subscription templates. Templates supply recurrence and classification defaults and never post cash; archived templates are hidden unless `includeArchived` is true. Requires the explicit personal_ops.read grant.",
+          inputSchema: moneyObligationTemplatesInputSchema,
+          outputSchema: moneyObligationReadOutputSchema,
+          annotations: READ_ONLY_ANNOTATIONS,
+        },
+        async (input, ctx) =>
+          handlers.moneyObligationTemplatesList(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
       ),
   },
   {
@@ -1103,6 +1388,108 @@ const WRITE_TOOL_REGISTRATIONS: readonly WriteToolRegistration[] = [
         },
         async (input, ctx) =>
           handlers.savePersonalOpsCheckin(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
+      ),
+  },
+  {
+    name: "ega_money_create_obligation",
+    register: (server, handlers) =>
+      server.registerTool(
+        "ega_money_create_obligation",
+        {
+          title: "Create a Money obligation occurrence",
+          description:
+            "Create one bill/subscription obligation occurrence in `pending` state. Scheduling is not a cash movement. `dueDate` must fall inside the period; `periodStart`/`periodEnd` default to the due date for a one-off bill. Optional `templateId` supplies classification defaults, which the occurrence snapshots so later template edits do not rewrite it. Need/want may be omitted while unknown; it is requested at payment and never fabricated. `stateEffectiveDate` is the date the pending state takes effect (owner-local). The idempotencyKey binds the full payload: same key + same payload replays, a changed payload conflicts. Requires the explicit personal_ops.write grant.",
+          inputSchema: moneyObligationCreateInputSchema,
+          outputSchema: genericWriteOutputSchema,
+          annotations: WRITE_ANNOTATIONS,
+        },
+        async (input, ctx) =>
+          handlers.createMoneyObligation(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
+      ),
+  },
+  {
+    name: "ega_money_update_obligation",
+    register: (server, handlers) =>
+      server.registerTool(
+        "ega_money_update_obligation",
+        {
+          title: "Edit a Money obligation occurrence",
+          description:
+            "Edit one occurrence with the expected positive `version`. Amount, period, due date and classification are editable while pending; a paid occurrence is settled by its linked payment and can only be relabelled here (correct the payment through the atomic MONEY-07 path). Requires the explicit personal_ops.write grant.",
+          inputSchema: moneyObligationUpdateInputSchema,
+          outputSchema: genericWriteOutputSchema,
+          annotations: WRITE_ANNOTATIONS,
+        },
+        async (input, ctx) =>
+          handlers.updateMoneyObligation(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
+      ),
+  },
+  {
+    name: "ega_money_transition_obligation",
+    register: (server, handlers) =>
+      server.registerTool(
+        "ega_money_transition_obligation",
+        {
+          title: "Cancel, waive or reopen a Money obligation",
+          description:
+            "Apply one explicit lifecycle transition with the expected `version`: `to:'cancelled'` cancels, `to:'waived'` waives, `to:'pending'` reopens (restoring full reserve). The inclusive `effectiveDate` is retained for historical reconstruction and cannot precede the current state. No transition moves cash. `to:'paid'` is rejected here — a paid occurrence requires one atomically linked ledger payment through MONEY-07; a status change cannot manufacture cash history. Requires the explicit personal_ops.write grant.",
+          inputSchema: moneyObligationTransitionInputSchema,
+          outputSchema: genericWriteOutputSchema,
+          annotations: WRITE_ANNOTATIONS,
+        },
+        async (input, ctx) =>
+          handlers.transitionMoneyObligation(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
+      ),
+  },
+  {
+    name: "ega_money_create_obligation_template",
+    register: (server, handlers) =>
+      server.registerTool(
+        "ega_money_create_obligation_template",
+        {
+          title: "Create a recurring obligation template",
+          description:
+            "Create a recurring bill/subscription template. Weekly templates use `dueWeekday` (0=Sunday); monthly and longer cadences use `dueDayOfMonth` (1–31, clamped to shorter months). Templates are recurrence/classification defaults only: they never post cash and never rewrite occurrences already generated. Requires the explicit personal_ops.write grant.",
+          inputSchema: moneyObligationTemplateCreateInputSchema,
+          outputSchema: genericWriteOutputSchema,
+          annotations: WRITE_ANNOTATIONS,
+        },
+        async (input, ctx) =>
+          handlers.createMoneyObligationTemplate(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
+      ),
+  },
+  {
+    name: "ega_money_update_obligation_template",
+    register: (server, handlers) =>
+      server.registerTool(
+        "ega_money_update_obligation_template",
+        {
+          title: "Edit or archive a recurring obligation template",
+          description:
+            "Edit a template with the expected positive `version`, or set `lifecycle` to active/archived. Editing a template does not change previously generated occurrences (they snapshot their own classification). Requires the explicit personal_ops.write grant.",
+          inputSchema: moneyObligationTemplateUpdateInputSchema,
+          outputSchema: genericWriteOutputSchema,
+          annotations: WRITE_ANNOTATIONS,
+        },
+        async (input, ctx) =>
+          handlers.updateMoneyObligationTemplate(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
+      ),
+  },
+  {
+    name: "ega_money_generate_obligations",
+    register: (server, handlers) =>
+      server.registerTool(
+        "ega_money_generate_obligations",
+        {
+          title: "Generate obligation occurrences from a template",
+          description:
+            "Materialise template occurrences through the inclusive `throughDate`. Generation is idempotent per template period (one occurrence per owner+template+period), bounded per call and reports `truncated` when the cap stopped short. No cash moves. Requires the explicit personal_ops.write grant.",
+          inputSchema: moneyObligationGenerateInputSchema,
+          outputSchema: genericWriteOutputSchema,
+          annotations: WRITE_ANNOTATIONS,
+        },
+        async (input, ctx) =>
+          handlers.generateMoneyObligations(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
       ),
   },
   {

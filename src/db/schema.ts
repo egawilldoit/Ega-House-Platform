@@ -1394,6 +1394,194 @@ export const personalExpenses = pgTable(
 );
 
 /**
+ * Recurring bill/subscription template (MONEY-06). Supplies recurrence and
+ * classification defaults only; it never posts a cash movement and never
+ * rewrites occurrences already generated from it. The lifecycle/version guard
+ * lives in drizzle/0098_money_06_obligations.sql because Drizzle cannot
+ * express triggers.
+ */
+export const moneyObligationTemplates = pgTable(
+  "money_obligation_templates",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    ownerUserId: uuid("owner_user_id").default(sql`auth.uid()`).notNull(),
+    kind: varchar("kind", { length: 16 }).notNull(),
+    description: varchar("description", { length: 200 }).notNull(),
+    amountMinor: integer("amount_minor").notNull(),
+    currency: varchar("currency", { length: 3 }).default("MAD").notNull(),
+    cadence: varchar("cadence", { length: 16 }).notNull(),
+    dueDayOfMonth: integer("due_day_of_month"),
+    dueWeekday: integer("due_weekday"),
+    startDate: date("start_date").notNull(),
+    endDate: date("end_date"),
+    needVsWant: varchar("need_vs_want", { length: 8 }),
+    purpose: varchar("purpose", { length: 16 }),
+    countsInDaily: boolean("counts_in_daily"),
+    category: varchar("category", { length: 32 }),
+    lifecycle: varchar("lifecycle", { length: 16 }).default("active").notNull(),
+    idempotencyKey: varchar("idempotency_key", { length: 128 }).notNull(),
+    createFingerprint: varchar("create_fingerprint", { length: 64 }).notNull(),
+    version: integer("version").default(1).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("money_obligation_templates_owner_idempotency_key_unique").on(
+      table.ownerUserId,
+      table.idempotencyKey,
+    ),
+    index("money_obligation_templates_owner_kind_idx").on(
+      table.ownerUserId,
+      table.kind,
+      table.createdAt.desc(),
+    ),
+    check(
+      "money_obligation_templates_kind_check",
+      sql`${table.kind} in ('bill','subscription')`,
+    ),
+    check(
+      "money_obligation_templates_amount_minor_check",
+      sql`${table.amountMinor} >= 1 and ${table.amountMinor} <= 2147483647`,
+    ),
+    check(
+      "money_obligation_templates_currency_check",
+      sql`${table.currency} = 'MAD'`,
+    ),
+    check(
+      "money_obligation_templates_cadence_check",
+      sql`${table.cadence} in ('weekly','monthly','quarterly','semiannual','annual')`,
+    ),
+    check(
+      "money_obligation_templates_schedule_check",
+      sql`(${table.cadence} = 'weekly' and ${table.dueWeekday} between 0 and 6 and ${table.dueDayOfMonth} is null) or (${table.cadence} <> 'weekly' and ${table.dueDayOfMonth} between 1 and 31 and ${table.dueWeekday} is null)`,
+    ),
+    check(
+      "money_obligation_templates_dates_check",
+      sql`${table.endDate} is null or ${table.endDate} >= ${table.startDate}`,
+    ),
+    check(
+      "money_obligation_templates_need_vs_want_check",
+      sql`${table.needVsWant} is null or ${table.needVsWant} in ('need','want')`,
+    ),
+    check(
+      "money_obligation_templates_purpose_check",
+      sql`${table.purpose} is null or ${table.purpose} in ('fixed','flexible','emergency')`,
+    ),
+    check(
+      "money_obligation_templates_lifecycle_check",
+      sql`${table.lifecycle} in ('active','archived')`,
+    ),
+    check(
+      "money_obligation_templates_version_check",
+      sql`${table.version} > 0`,
+    ),
+    check(
+      "money_obligation_templates_create_fingerprint_check",
+      sql`${table.createFingerprint} ~ '^[0-9a-f]{64}$'`,
+    ),
+  ],
+);
+
+/**
+ * One durable obligation occurrence (MONEY-06). Bills and subscriptions are
+ * the same rows projected differently; there is no second paid flag. `paid`
+ * requires exactly one linked `personal_expenses` payment (unique) or explicit
+ * reconciled historical import evidence. Lifecycle, version and payment-link
+ * guards live in drizzle/0098_money_06_obligations.sql.
+ */
+export const moneyObligations = pgTable(
+  "money_obligations",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    ownerUserId: uuid("owner_user_id").default(sql`auth.uid()`).notNull(),
+    templateId: uuid("template_id").references(
+      () => moneyObligationTemplates.id,
+      { onDelete: "set null" },
+    ),
+    kind: varchar("kind", { length: 16 }).notNull(),
+    description: varchar("description", { length: 200 }).notNull(),
+    amountMinor: integer("amount_minor").notNull(),
+    currency: varchar("currency", { length: 3 }).default("MAD").notNull(),
+    periodStart: date("period_start").notNull(),
+    periodEnd: date("period_end").notNull(),
+    dueDate: date("due_date").notNull(),
+    needVsWant: varchar("need_vs_want", { length: 8 }),
+    purpose: varchar("purpose", { length: 16 }).notNull(),
+    countsInDaily: boolean("counts_in_daily").notNull(),
+    category: varchar("category", { length: 32 }),
+    state: varchar("state", { length: 16 }).default("pending").notNull(),
+    stateEffectiveDate: date("state_effective_date").notNull(),
+    stateReason: varchar("state_reason", { length: 200 }),
+    paymentExpenseId: uuid("payment_expense_id").references(
+      () => personalExpenses.id,
+      { onDelete: "restrict" },
+    ),
+    paymentEvidence: jsonb("payment_evidence"),
+    idempotencyKey: varchar("idempotency_key", { length: 128 }).notNull(),
+    createFingerprint: varchar("create_fingerprint", { length: 64 }).notNull(),
+    version: integer("version").default(1).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("money_obligations_owner_idempotency_key_unique").on(
+      table.ownerUserId,
+      table.idempotencyKey,
+    ),
+    uniqueIndex("money_obligations_template_period_unique")
+      .on(table.ownerUserId, table.templateId, table.periodStart)
+      .where(sql`${table.templateId} is not null`),
+    uniqueIndex("money_obligations_payment_expense_unique")
+      .on(table.paymentExpenseId)
+      .where(sql`${table.paymentExpenseId} is not null`),
+    index("money_obligations_owner_kind_due_idx").on(
+      table.ownerUserId,
+      table.kind,
+      table.dueDate,
+      table.id,
+    ),
+    index("money_obligations_owner_state_due_idx").on(
+      table.ownerUserId,
+      table.state,
+      table.dueDate,
+    ),
+    index("money_obligations_owner_template_idx").on(
+      table.ownerUserId,
+      table.templateId,
+    ),
+    check(
+      "money_obligations_kind_check",
+      sql`${table.kind} in ('bill','subscription')`,
+    ),
+    check(
+      "money_obligations_amount_minor_check",
+      sql`${table.amountMinor} >= 1 and ${table.amountMinor} <= 2147483647`,
+    ),
+    check("money_obligations_currency_check", sql`${table.currency} = 'MAD'`),
+    check(
+      "money_obligations_period_check",
+      sql`${table.periodEnd} >= ${table.periodStart} and ${table.dueDate} >= ${table.periodStart} and ${table.dueDate} <= ${table.periodEnd}`,
+    ),
+    check(
+      "money_obligations_purpose_check",
+      sql`${table.purpose} in ('fixed','flexible','emergency')`,
+    ),
+    check(
+      "money_obligations_state_check",
+      sql`${table.state} in ('pending','paid','waived','cancelled')`,
+    ),
+    check(
+      "money_obligations_paid_requires_evidence_check",
+      sql`${table.state} <> 'paid' or ${table.paymentExpenseId} is not null or (${table.paymentEvidence} ->> 'kind' = 'reconciled_historical_import' and btrim(coalesce(${table.paymentEvidence} ->> 'reference', '')) <> '')`,
+    ),
+    check(
+      "money_obligations_unpaid_has_no_payment_check",
+      sql`${table.state} = 'paid' or (${table.paymentExpenseId} is null and ${table.paymentEvidence} is null)`,
+    ),
+  ],
+);
+
+/**
  * Canonical daily check-in (PO-05, issue #345). One qualitative record per
  * owner/local date; timer hours and task completion remain in their canonical
  * stores and are derived at read time, never copied here.

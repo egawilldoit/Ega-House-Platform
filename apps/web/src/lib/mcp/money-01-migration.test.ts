@@ -21,12 +21,13 @@ const journal = JSON.parse(
 ) as { entries: Array<{ tag: string; when: number }> };
 
 describe("MONEY-01 finance grant migration", () => {
-  it("is the journal tail with a later timestamp than 0092", () => {
+  it("is in the journal after 0092 with a later timestamp", () => {
     const tags = journal.entries.map((entry) => entry.tag);
-    expect(tags.at(-1)).toBe("0093_money_01_finance_grants");
-    const last = journal.entries.at(-1)!;
-    const previous = journal.entries.at(-2)!;
-    expect(last.when).toBeGreaterThan(previous.when);
+    const index = tags.indexOf("0093_money_01_finance_grants");
+    expect(index).toBeGreaterThan(tags.indexOf("0092_routine_metrics"));
+    expect(journal.entries[index].when).toBeGreaterThan(
+      journal.entries[index - 1].when,
+    );
   });
 
   it("stores every runtime profile union exactly as the code advertises it", () => {
