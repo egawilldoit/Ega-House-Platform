@@ -348,8 +348,8 @@ test("GET /api/expenses resolves the owner timezone and returns a bounded page",
   const listSteps = tableCall(fake, "personal_expenses")?.steps ?? [];
   assert.ok(listSteps.some((step) => step.method === "eq" && step.args[0] === "owner_user_id" && step.args[1] === "user-123"));
   assert.ok(listSteps.some((step) => step.method === "is" && step.args[0] === "deleted_at" && step.args[1] === null));
-  assert.ok(listSteps.some((step) => step.method === "gte" && step.args[0] === "occurred_at" && step.args[1] === "2026-03-08T05:00:00.000Z"));
-  assert.ok(listSteps.some((step) => step.method === "lt" && step.args[0] === "occurred_at" && step.args[1] === "2026-03-09T04:00:00.000Z"));
+  assert.ok(listSteps.some((step) => step.method === "gte" && step.args[0] === "booking_date" && step.args[1] === "2026-03-08"));
+  assert.ok(listSteps.some((step) => step.method === "lt" && step.args[0] === "booking_date" && step.args[1] === "2026-03-09"));
   assert.ok(listSteps.some((step) => step.method === "range" && step.args[0] === 0 && step.args[1] === 10));
 });
 
@@ -365,8 +365,8 @@ test("GET /api/expenses uses an explicit IANA timezone without reading time cont
   assert.equal(res.status, 200);
   assert.equal(tableCall(fake, "user_time_context"), undefined);
   const listSteps = tableCall(fake, "personal_expenses")?.steps ?? [];
-  assert.ok(listSteps.some((step) => step.method === "gte" && step.args[1] === "2026-03-08T05:00:00.000Z"));
-  assert.ok(listSteps.some((step) => step.method === "lt" && step.args[1] === "2026-03-09T04:00:00.000Z"));
+  assert.ok(listSteps.some((step) => step.method === "gte" && step.args[1] === "2026-03-08"));
+  assert.ok(listSteps.some((step) => step.method === "lt" && step.args[1] === "2026-03-09"));
 });
 
 test("GET /api/expenses rejects invalid timezones and pagination with 400", async () => {
