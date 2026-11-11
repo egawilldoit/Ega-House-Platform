@@ -48,6 +48,9 @@ export function MoneyMovementActions({ movement }: { movement: MoneyMovementDto 
     }
   }
 
+  // Opening cash is corrected only through period settings.
+  if (movement.kind === "opening") return null;
+
   if (movement.kind === "expense") {
     return (
       <div className="text-right">

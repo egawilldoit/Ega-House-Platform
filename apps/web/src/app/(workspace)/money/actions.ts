@@ -33,7 +33,6 @@ import {
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentUser } from "@/lib/services/auth-service";
 import { EXPENSE_CATEGORY_VALUES, type ExpenseCategory } from "@ega/domain/expenses";
-import { getLocalDateInTimezone } from "@ega/domain";
 import {
   parseMadAmountToMinor,
   parseOpeningAmountToMinor,
@@ -412,6 +411,8 @@ export async function updateMoneySettingsAction(
 
 export type CreateMovementActionInput = {
   kind: Exclude<MoneyMovementDto["kind"], "opening">;
+  /** Required for reconciliation_adjustment; derived otherwise. */
+  direction?: MoneyMovementDto["direction"];
   amountMinor: number;
   category?: MoneyMovementDto["category"];
   needVsWant?: MoneyMovementDto["needVsWant"];
@@ -443,6 +444,7 @@ export async function createMovementAction(
     new SupabaseMoneyRepository(client),
     {
       kind: input.kind,
+      direction: input.direction,
       amountMinor: input.amountMinor,
       category: input.category ?? null,
       needVsWant: input.needVsWant ?? null,
@@ -632,7 +634,8 @@ export async function recordCoffeeVisitAction(
     },
     {
       visitKey: `coffee-expense-${expense.data.id}`,
-      localDate: getLocalDateInTimezone(new Date(expense.data.occurredAt), timezone),
+      // Booking date is the resolved owner-local day even for date-only rows.
+      localDate: expense.data.bookingDate,
       timezone,
       expenseIds: [expense.data.id],
       note: null,
