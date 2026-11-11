@@ -26,7 +26,7 @@
 -- 1. Grant profile constraints -------------------------------------------------
 ALTER TABLE public.mcp_authorization_grants
   DROP CONSTRAINT IF EXISTS mcp_authorization_grants_profile_check;
-
+--> statement-breakpoint
 ALTER TABLE public.mcp_authorization_grants
   ADD CONSTRAINT mcp_authorization_grants_profile_check
   CHECK (
@@ -45,10 +45,10 @@ ALTER TABLE public.mcp_authorization_grants
       AND permissions = '["delivery_runs.read", "delivery_events.read", "delivery_artifacts.read"]'::jsonb
     )
   );
-
+--> statement-breakpoint
 ALTER TABLE public.mcp_authorization_grants
   DROP CONSTRAINT IF EXISTS mcp_authorization_grants_profile_permissions_check;
-
+--> statement-breakpoint
 ALTER TABLE public.mcp_authorization_grants
   ADD CONSTRAINT mcp_authorization_grants_profile_permissions_check
   CHECK (
@@ -86,6 +86,7 @@ ALTER TABLE public.mcp_authorization_grants
   );
 
 -- 2. Grant-aware finance capability -------------------------------------------
+--> statement-breakpoint
 CREATE OR REPLACE FUNCTION public.mcp_finance_grant_allows(required_permission text)
 RETURNS boolean
 LANGUAGE sql
@@ -107,13 +108,17 @@ AS $function$
       AND grant_record.permissions ? required_permission
   );
 $function$;
-
+--> statement-breakpoint
 REVOKE ALL ON FUNCTION public.mcp_finance_grant_allows(text) FROM PUBLIC;
+--> statement-breakpoint
 REVOKE ALL ON FUNCTION public.mcp_finance_grant_allows(text) FROM anon;
+--> statement-breakpoint
 GRANT EXECUTE ON FUNCTION public.mcp_finance_grant_allows(text) TO authenticated;
 
 -- 3. Money read/write RLS ------------------------------------------------------
+--> statement-breakpoint
 DROP POLICY IF EXISTS "personal_expenses_direct_user_select" ON "public"."personal_expenses";
+--> statement-breakpoint
 CREATE POLICY "personal_expenses_direct_user_select" ON "public"."personal_expenses"
   FOR SELECT TO authenticated
   USING (
@@ -123,8 +128,9 @@ CREATE POLICY "personal_expenses_direct_user_select" ON "public"."personal_expen
       OR public.mcp_finance_grant_allows('personal_ops.read')
     )
   );
-
+--> statement-breakpoint
 DROP POLICY IF EXISTS "personal_expenses_direct_user_insert" ON "public"."personal_expenses";
+--> statement-breakpoint
 CREATE POLICY "personal_expenses_direct_user_insert" ON "public"."personal_expenses"
   FOR INSERT TO authenticated
   WITH CHECK (
@@ -134,8 +140,9 @@ CREATE POLICY "personal_expenses_direct_user_insert" ON "public"."personal_expen
       OR public.mcp_finance_grant_allows('personal_ops.write')
     )
   );
-
+--> statement-breakpoint
 DROP POLICY IF EXISTS "personal_expenses_direct_user_update" ON "public"."personal_expenses";
+--> statement-breakpoint
 CREATE POLICY "personal_expenses_direct_user_update" ON "public"."personal_expenses"
   FOR UPDATE TO authenticated
   USING (

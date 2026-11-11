@@ -41,6 +41,17 @@ function isExplicitlyEnabled(value: string | undefined): boolean {
   return value === "true";
 }
 
+/**
+ * One writes-enabled decision for the route, consent page and decision
+ * service. Writes require BOTH the MCP feature switch and the writes switch.
+ */
+export function isMcpWritesActive(
+  env: McpEnvironment = process.env as McpEnvironment,
+): boolean {
+  return isExplicitlyEnabled(env.MCP_ENABLED)
+    && isExplicitlyEnabled(env.MCP_WRITES_ENABLED);
+}
+
 export function getMcpRuntimeConfig(
   env: McpEnvironment = process.env as McpEnvironment,
 ): McpRuntimeConfig {
@@ -49,8 +60,7 @@ export function getMcpRuntimeConfig(
 
   return {
     enabled,
-    writesEnabled:
-      enabled && isExplicitlyEnabled(env.MCP_WRITES_ENABLED),
+    writesEnabled: isMcpWritesActive(env),
     resource: normalizeMcpResourceUrl(
       requireEnv(env, "MCP_RESOURCE_URL"),
     ),

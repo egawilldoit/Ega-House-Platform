@@ -17,8 +17,10 @@
  *                 same key is allowed for a different owner; the internal
  *                 create_fingerprint is a SHA-256 hex receipt of the original
  *                 create payload, not a copy of it.
- *   RLS         - owners cannot read/write each other's rows; anonymous and
- *                 OAuth client_id tokens are denied; hard DELETE is not
+ *   RLS         - owners cannot read/write each other's rows; anonymous is
+ *                 denied; an OAuth client_id token without a grant is denied;
+ *                 an active personal_ops.read grant can read but not write; a
+ *                 personal_ops.write grant can write; hard DELETE is not
  *                 granted. Authenticated immutable-column changes are denied by
  *                 column grants (42501), with the BEFORE UPDATE trigger proven
  *                 as the owner-role backstop for immutable/undelete/version.
@@ -179,7 +181,13 @@ function asUser(sql, userId, { clientId = null } = {}) {
           userId,
         ]);
         await tx.unsafe(`SELECT set_config('request.jwt.claims', $1, true)`, [
-          clientId ? JSON.stringify({ client_id: clientId }) : "{}",
+          clientId
+            ? JSON.stringify({
+                sub: userId,
+                client_id: clientId,
+                aud: "https://ega.example.com/api/mcp",
+              })
+            : "{}",
         ]);
         return fn(tx);
       });
@@ -763,9 +771,9 @@ async function main() {
     const oauthRows = await oauth.run((tx) =>
       tx.unsafe(`SELECT count(*)::int AS count FROM public.personal_expenses`),
     );
-    assert(oauthRows[0].count === 0, "client_id JWT must not read expenses");
+    assert(oauthRows[0].count === 0, "client_id JWT without a grant must not read expenses");
     await expectCode(
-      "client_id insert",
+      "client_id insert without a grant",
       () =>
         oauth.run((tx) =>
           insertExpense(tx, {
@@ -776,7 +784,49 @@ async function main() {
         ),
       "42501",
     );
-    log("RLS", "owner isolation, anonymous denial and client_id denial proven");
+
+    // MONEY-01: an active grant distinguishes allow from deny. The reader
+    // profile can read the owner's rows but never write.
+    await sql.unsafe(
+      `INSERT INTO public.mcp_authorization_grants
+         (owner_user_id, oauth_client_id, resource_uri, status,
+          permission_profile, permissions, permissions_version, approved_at)
+       VALUES
+         ('${OWNER_A}'::uuid, 'mcp-reader', 'https://ega.example.com/api/mcp',
+          'active', 'personal_operations',
+          '["today.read", "timer.read", "personal_ops.read"]'::jsonb, 1, now())`,
+    );
+    const reader = asUser(sql, OWNER_A, { clientId: "mcp-reader" });
+    const readerRows = await reader.run((tx) =>
+      tx.unsafe(
+        `SELECT count(*)::int AS count FROM public.personal_expenses
+         WHERE owner_user_id = auth.uid()`,
+      ),
+    );
+    const [expectedActive] = await sql.unsafe(
+      `SELECT count(*)::int AS count FROM public.personal_expenses
+       WHERE owner_user_id = '${OWNER_A}' AND deleted_at IS NULL`,
+    );
+    assert(
+      readerRows[0].count === expectedActive.count,
+      "active personal_ops.read grant must read the owner's rows",
+    );
+    await expectCode(
+      "reader grant insert",
+      () =>
+        reader.run((tx) =>
+          insertExpense(tx, {
+            occurredAt: "2026-11-07T10:00:00Z",
+            amountMinor: 100,
+            idempotencyKey: "oauth-reader",
+          }),
+        ),
+      "42501",
+    );
+    log(
+      "RLS",
+      "owner isolation, anonymous denial, no-grant denial and grant-scoped reader allow proven",
+    );
 
     // SOFT DELETE / TOTALS -----------------------------------------------------
     const softA = await ownerA.run((tx) =>

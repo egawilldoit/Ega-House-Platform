@@ -9,10 +9,9 @@ import {
   markMcpGrantFailed,
 } from "@/lib/oauth/grant-admin";
 import type { McpDatabase } from "@/lib/mcp/mcp-database.types";
-import {
-  parsePermissionProfile,
-  profileHasWritePermission,
-} from "@/lib/mcp/permissions";
+import { isMcpWritesActive } from "@/lib/mcp/config";
+import { parsePermissionProfile } from "@/lib/mcp/permissions";
+import { isConsentProfileOffered } from "@/lib/oauth/consent-profiles";
 
 type OAuthMethodResult = Promise<{
   data: unknown;
@@ -99,11 +98,14 @@ export async function processOAuthConsentDecision(
 
   // Writes-disabled deployments must not retain a write-capable grant. A
   // crafted `permission_profile` post is refused here rather than silently
-  // downgraded, so the stored profile always matches what the user saw.
-  const writesEnabled = process.env.MCP_WRITES_ENABLED === "true";
-  if (!writesEnabled && profileHasWritePermission(requestedProfile)) {
+  // downgraded, and a profile the consent screen does not offer is refused too,
+  // so the stored profile always matches what the user saw.
+  const writesEnabled = isMcpWritesActive();
+  if (!isConsentProfileOffered(requestedProfile, writesEnabled)) {
     throw new Error(
-      "Write-capable MCP profiles are disabled on this deployment. Choose a read-only profile.",
+      writesEnabled
+        ? "That permission profile is not offered by this consent screen."
+        : "Write-capable MCP profiles are disabled on this deployment. Choose a read-only profile.",
     );
   }
 

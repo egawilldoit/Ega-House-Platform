@@ -171,6 +171,7 @@ function createSupabaseMock() {
 async function renderConsentPage(writesEnabled: boolean) {
   const { client, getAuthorizationDetails } = createSupabaseMock();
   vi.mocked(createClient).mockResolvedValue(client);
+  process.env.MCP_ENABLED = "true";
   process.env.MCP_WRITES_ENABLED = writesEnabled ? "true" : "false";
 
   const tree = await Page({
@@ -305,5 +306,23 @@ describe("OAuth consent page — permission_profile submission (blocker B8 regre
     expect(text).toContain("Money read-only");
     expect(text).toContain("Money management");
     expect(text).toContain("Workspace + Money management");
+  });
+
+  it("hides write profiles when either MCP switch is off", async () => {
+    const { client } = createSupabaseMock();
+    vi.mocked(createClient).mockResolvedValue(client);
+    process.env.MCP_ENABLED = "false";
+    process.env.MCP_WRITES_ENABLED = "true";
+
+    const tree = await Page({
+      searchParams: Promise.resolve({ authorization_id: authorizationIdParam }),
+    });
+    const form = findSingleForm(tree);
+
+    expect(
+      collectElements(form, isPermissionProfileRadio)
+        .map((radio) => String(radio.props.value)),
+    ).not.toContain("workspace_money_writer");
+    expect(collectText(tree)).toContain("Write access is currently disabled");
   });
 });

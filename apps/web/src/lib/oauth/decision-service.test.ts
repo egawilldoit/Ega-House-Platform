@@ -1,8 +1,17 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { describe, expect, it, vi } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
 
 import { processOAuthConsentDecision } from "@/lib/oauth/decision-service";
 import type { McpDatabase } from "@/lib/mcp/mcp-database.types";
+
+// Writes require both feature switches; individual tests toggle the writes
+// switch only, so the MCP feature switch is held on for this file.
+const originalMcpEnabled = process.env.MCP_ENABLED;
+process.env.MCP_ENABLED = "true";
+afterAll(() => {
+  if (originalMcpEnabled === undefined) delete process.env.MCP_ENABLED;
+  else process.env.MCP_ENABLED = originalMcpEnabled;
+});
 
 function authorizationDetails() {
   return {
@@ -309,6 +318,79 @@ describe("OAuth consent decision service", () => {
     ).rejects.toThrow("Unsupported MCP permission profile.");
 
     expect(activateGrant).not.toHaveBeenCalled();
+  });
+
+  it("refuses a supported profile that the consent screen does not offer", async () => {
+    const originalWritesFlag = process.env.MCP_WRITES_ENABLED;
+    process.env.MCP_WRITES_ENABLED = "true";
+    const activateGrant = vi.fn();
+
+    try {
+      await expect(
+      processOAuthConsentDecision({
+        decision: "approve",
+        authorizationId: "authorization-123",
+        ownerUserId: "user-123",
+        resourceUri: "https://preview.example/api/mcp",
+        permissionProfile: "task_manager",
+        oauth: {
+          getAuthorizationDetails: vi.fn().mockResolvedValue({
+            data: authorizationDetails(),
+            error: null,
+          }),
+          approveAuthorization: vi.fn(),
+          denyAuthorization: vi.fn(),
+        },
+        admin: {} as SupabaseClient<McpDatabase>,
+        activateGrant,
+      }),
+      ).rejects.toThrow(
+        "That permission profile is not offered by this consent screen.",
+      );
+
+      expect(activateGrant).not.toHaveBeenCalled();
+    } finally {
+      if (originalWritesFlag === undefined) delete process.env.MCP_WRITES_ENABLED;
+      else process.env.MCP_WRITES_ENABLED = originalWritesFlag;
+    }
+  });
+
+  it("treats MCP_ENABLED=false as writes disabled even when writes are switched on", async () => {
+    const originalMcpFlag = process.env.MCP_ENABLED;
+    const originalWritesFlag = process.env.MCP_WRITES_ENABLED;
+    process.env.MCP_ENABLED = "false";
+    process.env.MCP_WRITES_ENABLED = "true";
+    const activateGrant = vi.fn();
+
+    try {
+      await expect(
+        processOAuthConsentDecision({
+          decision: "approve",
+          authorizationId: "authorization-123",
+          ownerUserId: "user-123",
+          resourceUri: "https://preview.example/api/mcp",
+          permissionProfile: "workspace_money_writer",
+          oauth: {
+            getAuthorizationDetails: vi.fn().mockResolvedValue({
+              data: authorizationDetails(),
+              error: null,
+            }),
+            approveAuthorization: vi.fn(),
+            denyAuthorization: vi.fn(),
+          },
+          admin: {} as SupabaseClient<McpDatabase>,
+          activateGrant,
+        }),
+      ).rejects.toThrow(
+        "Write-capable MCP profiles are disabled on this deployment.",
+      );
+      expect(activateGrant).not.toHaveBeenCalled();
+    } finally {
+      if (originalMcpFlag === undefined) delete process.env.MCP_ENABLED;
+      else process.env.MCP_ENABLED = originalMcpFlag;
+      if (originalWritesFlag === undefined) delete process.env.MCP_WRITES_ENABLED;
+      else process.env.MCP_WRITES_ENABLED = originalWritesFlag;
+    }
   });
 
   it("fails the activated grant when Supabase approval fails", async () => {

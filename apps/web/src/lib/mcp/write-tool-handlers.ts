@@ -105,6 +105,22 @@ function requestViewOf(ctx: unknown): McpRequestView | undefined {
 const CONFIRMATION_SCHEMA = z.object({ confirm: z.boolean() });
 
 /**
+ * Receipt normalization matching the domain's canonical create payload:
+ * equivalent timestamp spellings hash equally, and text is trimmed so a retry
+ * with incidental whitespace is not misreported as a changed purchase.
+ */
+function canonicalReceiptInstant(value: string): unknown {
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? new Date(parsed).toISOString() : value;
+}
+
+function canonicalReceiptText(value: string | null | undefined): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed === "" ? null : trimmed;
+}
+
+/**
  * Exclusive-execution wrapper (A1 contract):
  * CLAIM_GRANTED → mutate → store with claim token; handler-reported errors and
  * thrown errors mark FAILED_FINAL so the row is re-claimable; IN_PROGRESS and
@@ -708,12 +724,12 @@ export function createMcpWriteToolHandlers(
         // canonical create fingerprint. A changed note/merchant/method/intent
         // must conflict instead of replaying an earlier purchase.
         return await withExclusiveMutation(client, "ega_create_personal_ops_expense", input.operationId, {
-          occurredAt: input.occurredAt,
+          occurredAt: canonicalReceiptInstant(input.occurredAt),
           amountMinor: input.amountMinor,
           category: input.category,
           needVsWant: input.needVsWant,
-          note: input.note ?? null,
-          merchant: input.merchant ?? null,
+          note: canonicalReceiptText(input.note),
+          merchant: canonicalReceiptText(input.merchant),
           paymentMethod: input.paymentMethod ?? null,
           idempotencyKey: input.idempotencyKey,
         }, () =>

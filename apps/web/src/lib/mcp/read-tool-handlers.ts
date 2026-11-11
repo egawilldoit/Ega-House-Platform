@@ -78,8 +78,17 @@ type ToolErrorCode =
   | "UNAUTHENTICATED"
   | "PERMISSION_DENIED"
   | "NOT_FOUND"
+  | "INVALID_ARGUMENT"
   | "DEPENDENCY_UNAVAILABLE"
   | "INTERNAL_ERROR";
+
+/** A caller-supplied date/timezone/identifier failure, not an outage. */
+export class McpInvalidArgumentError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "McpInvalidArgumentError";
+  }
+}
 
 type ToolErrorPayload = {
   ok: false;
@@ -103,6 +112,11 @@ function errorResult(error: unknown): CallToolResult {
     payload = {
       ok: false,
       error: { code: error.code, message: error.message },
+    };
+  } else if (error instanceof McpInvalidArgumentError) {
+    payload = {
+      ok: false,
+      error: { code: "INVALID_ARGUMENT", message: error.message },
     };
   } else if (
     error instanceof Error
@@ -386,6 +400,65 @@ export function createMcpReadToolHandlers(
   };
 }
 
+type PersonalOpsSnapshot = {
+  date: string;
+  timezone: string;
+  summary: { trackedTodaySeconds: number; trackedTodayLabel: string };
+};
+
+type ExpenseSummaryLike =
+  | {
+      ok: true;
+      data: {
+        day: unknown;
+        weekToDate: unknown;
+        monthToDate: unknown;
+        coffee: unknown;
+      };
+    }
+  | { ok: false }
+  | null;
+
+/**
+ * Compose the owner-resolved time snapshot with the canonical spending
+ * summary. An unavailable/failed summary is reported as unavailable — never as
+ * zero spending — while the time fields still return.
+ */
+export function composePersonalOpsSummary(
+  snapshot: PersonalOpsSnapshot,
+  expenseSummary: ExpenseSummaryLike,
+) {
+  const spending = expenseSummary?.ok
+    ? {
+        available: true as const,
+        currency: "MAD" as const,
+        localDate: snapshot.date,
+        timezone: snapshot.timezone,
+        note: "Recorded non-deleted expenses in integer MAD centimes; totals exclude deleted rows.",
+        day: expenseSummary.data.day,
+        weekToDate: expenseSummary.data.weekToDate,
+        monthToDate: expenseSummary.data.monthToDate,
+        // Coffee is the same-month category projection, beside — not inside —
+        // the day/week windows. The name states the period explicitly.
+        coffeeMonthToDate: expenseSummary.data.coffee,
+      }
+    : {
+        available: false as const,
+        currency: "MAD" as const,
+        localDate: snapshot.date,
+        timezone: snapshot.timezone,
+        reason: "Recorded spending totals are temporarily unavailable.",
+      };
+
+  return {
+    date: snapshot.date,
+    timezone: snapshot.timezone,
+    trackedTodaySeconds: snapshot.summary.trackedTodaySeconds,
+    trackedTodayLabel: snapshot.summary.trackedTodayLabel,
+    spending,
+  };
+}
+
 async function defaultPersonalOpsSummary(
   client: SupabaseClient<McpDatabase>,
   ownerUserId: string,
@@ -403,12 +476,13 @@ async function defaultPersonalOpsSummary(
     new SupabaseTimeContextRepository(client as never),
     { date: context.date, timezone: context.timezone },
   );
-  if (!result.ok) throw new Error("Failed to load EGA personal operations summary.");
-  const snapshot = result.data as unknown as {
-    date: string;
-    timezone: string;
-    summary: { trackedTodaySeconds: number; trackedTodayLabel: string };
-  };
+  if (!result.ok) {
+    if (result.code === "validation") {
+      throw new McpInvalidArgumentError(result.errorMessage);
+    }
+    throw new Error("Failed to load EGA personal operations summary.");
+  }
+  const snapshot = result.data as unknown as PersonalOpsSnapshot;
 
   // Canonical recorded-spending summary over the same owner-resolved date and
   // timezone. Analytics failure is reported as unavailable — never as zero
@@ -420,33 +494,7 @@ async function defaultPersonalOpsSummary(
     { localDate: snapshot.date, timezone: snapshot.timezone },
   ).catch(() => null);
 
-  const spending = expenseSummary?.ok
-    ? {
-        available: true as const,
-        currency: "MAD" as const,
-        localDate: snapshot.date,
-        timezone: snapshot.timezone,
-        note: "Recorded non-deleted expenses in integer MAD centimes; totals exclude deleted rows.",
-        day: expenseSummary.data.day,
-        weekToDate: expenseSummary.data.weekToDate,
-        monthToDate: expenseSummary.data.monthToDate,
-        coffee: expenseSummary.data.coffee,
-      }
-    : {
-        available: false as const,
-        currency: "MAD" as const,
-        localDate: snapshot.date,
-        timezone: snapshot.timezone,
-        reason: "Recorded spending totals are temporarily unavailable.",
-      };
-
-  return {
-    date: snapshot.date,
-    timezone: snapshot.timezone,
-    trackedTodaySeconds: snapshot.summary.trackedTodaySeconds,
-    trackedTodayLabel: snapshot.summary.trackedTodayLabel,
-    spending,
-  };
+  return composePersonalOpsSummary(snapshot, expenseSummary);
 }
 
 async function defaultPersonalOpsExpensesList(
