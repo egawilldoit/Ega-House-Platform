@@ -88,6 +88,24 @@ describe("MONEY-01 finance grant migration", () => {
     expect(selectPolicy).not.toContain("personal_ops.write");
   });
 
+  it("extends the same grant to daily check-ins so the profile is truthful", () => {
+    const checkinSelect = migration.slice(
+      migration.indexOf('CREATE POLICY "daily_checkins_direct_user_select"'),
+      migration.indexOf('CREATE POLICY "daily_checkins_direct_user_insert"'),
+    );
+    expect(checkinSelect).toContain(
+      "public.mcp_finance_grant_allows('personal_ops.read')",
+    );
+    expect(checkinSelect).toContain(
+      "((SELECT auth.jwt()) ->> 'client_id') IS NULL",
+    );
+
+    const checkinWrite = migration.slice(
+      migration.indexOf('CREATE POLICY "daily_checkins_direct_user_insert"'),
+    );
+    expect(checkinWrite.match(/personal_ops\.write/g)?.length).toBeGreaterThanOrEqual(3);
+  });
+
   it("requires the write grant for insert and update and never adds DELETE", () => {
     const insertPolicy = migration.slice(
       migration.indexOf('CREATE POLICY "personal_expenses_direct_user_insert"'),
@@ -99,6 +117,7 @@ describe("MONEY-01 finance grant migration", () => {
 
     const updatePolicy = migration.slice(
       migration.indexOf('CREATE POLICY "personal_expenses_direct_user_update"'),
+      migration.indexOf("-- 4. Daily check-ins"),
     );
     expect(updatePolicy.match(/personal_ops\.write/g)).toHaveLength(2);
 

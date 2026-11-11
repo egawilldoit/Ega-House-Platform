@@ -159,3 +159,52 @@ CREATE POLICY "personal_expenses_direct_user_update" ON "public"."personal_expen
       OR public.mcp_finance_grant_allows('personal_ops.write')
     )
   );
+
+-- 4. Daily check-ins are part of the same personal-operations grant ----------
+-- The finance profiles expose `ega_personal_ops_checkin_get` and (writers)
+-- `ega_save_personal_ops_checkin`. Without these policies the consent promise
+-- would be false: reads would return an empty/null result and saves would be
+-- denied even though the stored grant allows them.
+--> statement-breakpoint
+DROP POLICY IF EXISTS "daily_checkins_direct_user_select" ON "public"."daily_checkins";
+--> statement-breakpoint
+CREATE POLICY "daily_checkins_direct_user_select" ON "public"."daily_checkins"
+  FOR SELECT TO authenticated
+  USING (
+    owner_user_id = (SELECT auth.uid())
+    AND (
+      ((SELECT auth.jwt()) ->> 'client_id') IS NULL
+      OR public.mcp_finance_grant_allows('personal_ops.read')
+    )
+  );
+--> statement-breakpoint
+DROP POLICY IF EXISTS "daily_checkins_direct_user_insert" ON "public"."daily_checkins";
+--> statement-breakpoint
+CREATE POLICY "daily_checkins_direct_user_insert" ON "public"."daily_checkins"
+  FOR INSERT TO authenticated
+  WITH CHECK (
+    owner_user_id = (SELECT auth.uid())
+    AND (
+      ((SELECT auth.jwt()) ->> 'client_id') IS NULL
+      OR public.mcp_finance_grant_allows('personal_ops.write')
+    )
+  );
+--> statement-breakpoint
+DROP POLICY IF EXISTS "daily_checkins_direct_user_update" ON "public"."daily_checkins";
+--> statement-breakpoint
+CREATE POLICY "daily_checkins_direct_user_update" ON "public"."daily_checkins"
+  FOR UPDATE TO authenticated
+  USING (
+    owner_user_id = (SELECT auth.uid())
+    AND (
+      ((SELECT auth.jwt()) ->> 'client_id') IS NULL
+      OR public.mcp_finance_grant_allows('personal_ops.write')
+    )
+  )
+  WITH CHECK (
+    owner_user_id = (SELECT auth.uid())
+    AND (
+      ((SELECT auth.jwt()) ->> 'client_id') IS NULL
+      OR public.mcp_finance_grant_allows('personal_ops.write')
+    )
+  );
