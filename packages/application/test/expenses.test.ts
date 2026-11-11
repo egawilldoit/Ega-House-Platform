@@ -133,6 +133,9 @@ function makeRepository(state: Partial<FakeState> = {}) {
     async summarize() {
       return { ok: true as const, value: { totalsByCategory: {}, countsByCategory: {}, recordCount: 0, truncated: false } };
     },
+    async count() {
+      return { ok: true as const, value: 0 };
+    },
     async softDelete(_actor, id, nowIso, expectedVersion) {
       calls.delete.push({ id, nowIso, ...(expectedVersion !== undefined ? { expectedVersion } : {}) });
       return (

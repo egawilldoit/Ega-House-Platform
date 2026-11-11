@@ -110,6 +110,9 @@ function makeRepository() {
     async summarize() {
       return { ok: true as const, value: { totalsByCategory: {}, countsByCategory: {}, recordCount: 0, truncated: false } };
     },
+    async count() {
+      return { ok: true as const, value: 0 };
+    },
     async findByIdempotencyKey(actor, idempotencyKey) {
       const receipt = byKey.get(`${actor.userId}::${idempotencyKey}`) ?? null;
       return { ok: true as const, value: receipt };
