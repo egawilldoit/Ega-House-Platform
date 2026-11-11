@@ -78,16 +78,43 @@ export async function exportExpenses(
   }
 
   const query = parsed.value;
-  const expenses: PersonalExpense[] = [];
+  if (!query.startUtcIso || !query.endUtcExclusiveIso) {
+    return applicationFailure("Export requires a complete date range.", "validation");
+  }
+  const window = {
+    startUtcIso: query.startUtcIso,
+    endUtcExclusiveIso: query.endUtcExclusiveIso,
+  };
 
-  for (let offset = 0; ; offset += EXPENSE_EXPORT_PAGE_SIZE) {
+  // Refuse an oversized range before reading any rows.
+  const counted = await repository.count(actor, window);
+  if (!counted.ok) return failureFor(counted.error.code);
+  if (counted.value > maxRows) {
+    return applicationFailure(
+      `This export contains more than ${maxRows.toLocaleString("en-US")} expenses. Narrow the date range and try again.`,
+      "validation",
+    );
+  }
+  if (counted.value === 0) {
+    return applicationSuccess({ expenses: [], recordCount: 0 });
+  }
+
+  const expenses: PersonalExpense[] = [];
+  let cursor: { occurredAt: string; id: string } | null = null;
+
+  for (;;) {
+    // Keyset paging rather than offset: a concurrent delete cannot shift an
+    // unread row before the next offset and silently omit it.
     const page = await repository.list(actor, {
       limit: EXPENSE_EXPORT_PAGE_SIZE,
-      offset,
-      startUtcIso: query.startUtcIso,
-      endUtcExclusiveIso: query.endUtcExclusiveIso,
+      offset: 0,
+      startUtcIso: window.startUtcIso,
+      endUtcExclusiveIso: window.endUtcExclusiveIso,
+      beforeOccurredAt: cursor?.occurredAt ?? null,
+      beforeId: cursor?.id ?? null,
     });
     if (!page.ok) return failureFor(page.error.code);
+    if (page.value.length === 0) break;
 
     expenses.push(...page.value);
     if (expenses.length > maxRows) {
@@ -96,11 +123,30 @@ export async function exportExpenses(
         "validation",
       );
     }
-    if (page.value.length < EXPENSE_EXPORT_PAGE_SIZE) {
-      return applicationSuccess({
-        expenses,
-        recordCount: expenses.length,
-      });
+
+    const last = page.value[page.value.length - 1];
+    if (cursor && cursor.occurredAt === last.occurredAt && cursor.id === last.id) {
+      return applicationFailure(
+        "The ledger changed during this export. Retry to get a complete file.",
+        "conflict",
+      );
     }
+    cursor = { occurredAt: last.occurredAt, id: last.id };
+    if (page.value.length < EXPENSE_EXPORT_PAGE_SIZE) break;
   }
+
+  // Insert/delete between the initial count and the walk means the walk is not
+  // a complete representation of the counted set. Refuse rather than return a
+  // silently incomplete CSV.
+  if (expenses.length !== counted.value) {
+    return applicationFailure(
+      "The ledger changed during this export. Retry to get a complete file.",
+      "conflict",
+    );
+  }
+
+  return applicationSuccess({
+    expenses,
+    recordCount: expenses.length,
+  });
 }

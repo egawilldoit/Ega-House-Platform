@@ -200,6 +200,9 @@ function createRepository() {
         },
       };
     },
+    async count() {
+      return { ok: true as const, value: 0 };
+    },
   };
 
   return repository;
