@@ -38,7 +38,8 @@ export function parseExpenseExportParams(searchParams: URLSearchParams) {
 
 export function buildExpenseExportCsv(
   rows: Array<{
-    occurredAt: string;
+    bookingDate: string;
+    occurredAt: string | null;
     amountMinor: number;
     category: string;
     merchant: string | null;
@@ -50,6 +51,7 @@ export function buildExpenseExportCsv(
 ) {
   return toCsvDocument(
     [
+      "booking_date",
       "occurred_at",
       "amount_minor",
       "amount_mad",
@@ -61,7 +63,9 @@ export function buildExpenseExportCsv(
       "timezone",
     ],
     rows.map((row) => [
-      row.occurredAt,
+      row.bookingDate,
+      // An empty instant means the booking is date-only; never invent one.
+      row.occurredAt ?? "",
       row.amountMinor,
       (row.amountMinor / 100).toFixed(2),
       row.category,
@@ -137,6 +141,7 @@ export async function GET(request: Request) {
 
   const csv = buildExpenseExportCsv(
     exported.data.expenses.map((row) => ({
+      bookingDate: row.bookingDate,
       occurredAt: row.occurredAt,
       amountMinor: row.amountMinor,
       category: row.category,

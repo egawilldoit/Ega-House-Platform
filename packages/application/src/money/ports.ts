@@ -1,4 +1,8 @@
 import type {
+  MoneyCreateValues,
+  MoneyDirection,
+  MoneyKind,
+  MoneyLedgerRow,
   MoneyOpening,
   MoneyOpeningInput,
   MoneyPeriod,
@@ -6,15 +10,20 @@ import type {
   MoneyPeriodInitialization,
   MoneyPeriodProvenance,
   MoneyPeriodSettings,
+  MoneyUpdateChanges,
 } from "@ega/domain/money";
 
 import type { AuthenticatedActor } from "../auth/actor";
 import type { RepositoryResult } from "../shared/result";
 
 /**
- * Persistence port for period/opening state. Every operation takes the verified
- * actor; implementations filter by `owner_user_id` in addition to
- * request-scoped RLS. Opening and period writes are atomic at the adapter.
+ * Persistence ports for Money. Every operation takes the verified actor;
+ * implementations filter by `owner_user_id` in addition to request-scoped RLS.
+ * Expense-only queries stay on the existing `ExpenseRepository`.
+ *
+ * `MoneyPeriodRepository` owns period/opening state (MONEY-03) and is the only
+ * period reader. `MoneyMovementRepository` owns ledger movement rows
+ * (MONEY-04) and deliberately does not re-read period state.
  */
 
 export type MoneyPeriodCreateRecordInput = Readonly<{
@@ -104,4 +113,79 @@ export type MoneyPeriodRepository = {
       endDate: string;
     }>,
   ): Promise<RepositoryResult<MoneyLedgerOverview>>;
+};
+
+export type MoneyIdempotencyReceipt = Readonly<{
+  movement: MoneyLedgerRow;
+  createFingerprint: string;
+}>;
+
+export type MoneyCreateRecordInput = Readonly<{
+  values: MoneyCreateValues;
+  createFingerprint: string;
+  periodId: string | null;
+}>;
+
+export type MoneyListRecordQuery = Readonly<{
+  limit: number;
+  offset: number;
+  from: string | null;
+  to: string | null;
+  cutoff: string | null;
+  kind: MoneyKind | null;
+}>;
+
+export type MoneyUpdateRecordInput = Readonly<{
+  changes: MoneyUpdateChanges;
+  expectedVersion: number;
+  updatedAt: string;
+}>;
+
+/** Compact row projection used for the application-owned movement totals. */
+export type MoneyAggregateRow = Readonly<{
+  id: string;
+  kind: MoneyKind;
+  direction: MoneyDirection;
+  amountMinor: number;
+  countsInDaily: boolean;
+  bookingDate: string;
+}>;
+
+export type MoneyAggregateQuery = Readonly<{
+  cutoff: string;
+  /** Inclusive period start; null when no period context is available. */
+  startDate: string | null;
+}>;
+
+export type MoneyAggregate = Readonly<{
+  rows: MoneyAggregateRow[];
+  truncated: boolean;
+}>;
+
+export type MoneyMovementRepository = {
+  findByIdempotencyKey(
+    actor: AuthenticatedActor,
+    idempotencyKey: string,
+  ): Promise<RepositoryResult<MoneyIdempotencyReceipt | null>>;
+  create(
+    actor: AuthenticatedActor,
+    input: MoneyCreateRecordInput,
+  ): Promise<RepositoryResult<MoneyLedgerRow>>;
+  get(
+    actor: AuthenticatedActor,
+    id: string,
+  ): Promise<RepositoryResult<MoneyLedgerRow | null>>;
+  list(
+    actor: AuthenticatedActor,
+    query: MoneyListRecordQuery,
+  ): Promise<RepositoryResult<MoneyLedgerRow[]>>;
+  update(
+    actor: AuthenticatedActor,
+    id: string,
+    input: MoneyUpdateRecordInput,
+  ): Promise<RepositoryResult<MoneyLedgerRow>>;
+  aggregate(
+    actor: AuthenticatedActor,
+    query: MoneyAggregateQuery,
+  ): Promise<RepositoryResult<MoneyAggregate>>;
 };

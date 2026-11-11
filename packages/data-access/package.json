@@ -15,6 +15,7 @@
     "./time-context": "./src/time-context/repository.ts",
     "./preferences": "./src/preferences/repository.ts",
     "./expenses": "./src/expenses/repository.ts",
+    "./money": "./src/money/repository.ts",
     "./execution-evidence": "./src/execution-evidence/repository.ts",
     "./operator": "./src/operator/repository.ts",
     "./weekly-review": "./src/weekly-review/repository.ts",

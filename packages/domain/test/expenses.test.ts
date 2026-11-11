@@ -61,6 +61,7 @@ test("create normalizes centimes, trims metadata and canonicalizes the instant",
   if (!parsed.ok) return;
   assert.deepEqual(parsed.value, {
     occurredAt: "2026-11-07T08:30:00.000Z",
+    bookingDate: "2026-11-07",
     amountMinor: 2250,
     category: "coffee",
     note: "morning coffee",

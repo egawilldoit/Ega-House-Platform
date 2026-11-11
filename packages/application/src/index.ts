@@ -51,6 +51,7 @@ export * from "./expenses/summary";
 export * from "./expenses/export";
 export * from "./money/ports";
 export * from "./money/periods";
+export * from "./money/service";
 export * from "./money/summary";
 export * from "./checkins/ports";
 export * from "./checkins/service";
