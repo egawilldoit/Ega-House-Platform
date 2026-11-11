@@ -5,12 +5,15 @@ import { revalidatePath } from "next/cache";
 import {
   createAuthenticatedActor,
   createExpense,
+  createMovement,
   deleteExpense,
   getExpense,
   updateExpense,
+  updateMovement,
 } from "@ega/application";
 import type { ExpenseDto } from "@ega/contracts/expenses";
-import { SupabaseExpenseRepository } from "@ega/data-access";
+import type { MoneyMovementDto } from "@ega/contracts/money";
+import { SupabaseExpenseRepository, SupabaseMoneyRepository } from "@ega/data-access";
 import {
   mapApplicationCode,
   type ExpenseMutationErrorCode,
@@ -121,12 +124,15 @@ export async function createExpenseAction(
 export type UpdateExpenseActionPatch = {
   version: number;
   occurredAt?: string;
+  bookingDate?: string;
   amountMinor?: number;
   category?: ExpenseDto["category"];
   needVsWant?: ExpenseDto["needVsWant"];
   merchant?: string | null;
   note?: string | null;
   paymentMethod?: ExpenseDto["paymentMethod"] | null;
+  purpose?: ExpenseDto["purpose"];
+  countsInDaily?: boolean;
 };
 
 export type UpdateExpenseActionResult =
@@ -156,6 +162,11 @@ export async function updateExpenseAction(
       ...(patch.note !== undefined ? { note: patch.note } : {}),
       ...(patch.paymentMethod !== undefined
         ? { paymentMethod: patch.paymentMethod }
+        : {}),
+      ...(patch.bookingDate !== undefined ? { bookingDate: patch.bookingDate } : {}),
+      ...(patch.purpose !== undefined ? { purpose: patch.purpose } : {}),
+      ...(patch.countsInDaily !== undefined
+        ? { countsInDaily: patch.countsInDaily }
         : {}),
     },
   );
@@ -223,4 +234,126 @@ export async function getExpenseAction(
     };
   }
   return { ok: true, expense: result.data };
+}
+
+/**
+ * MONEY-04 movement mutations. These compose the same application use cases as
+ * the HTTP route and MCP tool (`createMovement`/`updateMovement`): parsing,
+ * owner scope, idempotency fingerprint and optimistic concurrency are shared.
+ */
+export type CreateMovementActionInput = {
+  kind: Exclude<MoneyMovementDto["kind"], "opening">;
+  amountMinor: number;
+  category?: MoneyMovementDto["category"];
+  needVsWant?: MoneyMovementDto["needVsWant"];
+  paymentMethod?: MoneyMovementDto["paymentMethod"];
+  purpose?: MoneyMovementDto["purpose"];
+  countsInDaily?: boolean;
+  /** Owner-local booking day; keep the movement date-only unless time is known. */
+  bookingDate: string;
+  occurredAt?: string | null;
+  note?: string | null;
+  merchant?: string | null;
+  idempotencyKey: string;
+};
+
+export type MovementMutationResult =
+  | { ok: true; movement: MoneyMovementDto; replayed: boolean }
+  | { ok: false; code: ExpenseMutationErrorCode; error: string };
+
+export async function createMovementAction(
+  input: CreateMovementActionInput,
+): Promise<MovementMutationResult> {
+  const user = await getCurrentUser();
+  if (!user) {
+    return { ok: false, code: "UNAUTHENTICATED", error: "Sign in to record money movements." };
+  }
+  const client = await createClient();
+  const result = await createMovement(
+    createAuthenticatedActor(user.id),
+    new SupabaseMoneyRepository(client),
+    {
+      kind: input.kind,
+      amountMinor: input.amountMinor,
+      category: input.category ?? null,
+      needVsWant: input.needVsWant ?? null,
+      paymentMethod: input.paymentMethod ?? null,
+      purpose: input.purpose ?? null,
+      ...(input.countsInDaily !== undefined
+        ? { countsInDaily: input.countsInDaily }
+        : {}),
+      bookingDate: input.bookingDate,
+      occurredAt: input.occurredAt ?? null,
+      note: input.note ?? null,
+      merchant: input.merchant ?? null,
+      idempotencyKey: input.idempotencyKey,
+    },
+  );
+  if (!result.ok) {
+    return {
+      ok: false,
+      code: mapApplicationCode(result.code),
+      error: result.errorMessage,
+    };
+  }
+  revalidatePath("/money");
+  revalidatePath("/today");
+  return {
+    ok: true,
+    movement: result.data.movement,
+    replayed: result.data.replayed,
+  };
+}
+
+export type UpdateMovementActionPatch = {
+  version: number;
+  bookingDate?: string;
+  occurredAt?: string | null;
+  amountMinor?: number;
+  note?: string | null;
+  merchant?: string | null;
+  purpose?: MoneyMovementDto["purpose"];
+  countsInDaily?: boolean;
+};
+
+export type UpdateMovementActionResult =
+  | { ok: true; movement: MoneyMovementDto }
+  | { ok: false; code: ExpenseMutationErrorCode; error: string };
+
+export async function updateMovementAction(
+  id: string,
+  patch: UpdateMovementActionPatch,
+): Promise<UpdateMovementActionResult> {
+  const user = await getCurrentUser();
+  if (!user) {
+    return { ok: false, code: "UNAUTHENTICATED", error: "Sign in to correct money movements." };
+  }
+  const client = await createClient();
+  const result = await updateMovement(
+    createAuthenticatedActor(user.id),
+    new SupabaseMoneyRepository(client),
+    id,
+    {
+      version: patch.version,
+      ...(patch.bookingDate !== undefined ? { bookingDate: patch.bookingDate } : {}),
+      ...(patch.occurredAt !== undefined ? { occurredAt: patch.occurredAt } : {}),
+      ...(patch.amountMinor !== undefined ? { amountMinor: patch.amountMinor } : {}),
+      ...(patch.note !== undefined ? { note: patch.note } : {}),
+      ...(patch.merchant !== undefined ? { merchant: patch.merchant } : {}),
+      ...(patch.purpose !== undefined ? { purpose: patch.purpose } : {}),
+      ...(patch.countsInDaily !== undefined
+        ? { countsInDaily: patch.countsInDaily }
+        : {}),
+    },
+  );
+  if (!result.ok) {
+    return {
+      ok: false,
+      code: mapApplicationCode(result.code),
+      error: result.errorMessage,
+    };
+  }
+  revalidatePath("/money");
+  revalidatePath("/today");
+  return { ok: true, movement: result.data };
 }

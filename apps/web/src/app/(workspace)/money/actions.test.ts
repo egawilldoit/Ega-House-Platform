@@ -11,7 +11,6 @@ import {
 } from "@ega/application";
 import type { AuthenticatedActor } from "@ega/application";
 import type {
-  ExpenseCreateValues,
   PersonalExpense,
 } from "@ega/domain/expenses";
 
@@ -103,7 +102,10 @@ function makeRepository() {
       const now = new Date().toISOString();
       const expense = {
         id: `11111111-1111-4111-8111-1111111111${String(sequence).padStart(2, "0")}`,
+        kind: "expense",
+        direction: "out",
         occurredAt: input.values.occurredAt,
+        bookingDate: input.values.bookingDate,
         amountMinor: input.values.amountMinor,
         currency: "MAD",
         category: input.values.category,
@@ -111,6 +113,9 @@ function makeRepository() {
         merchant: input.values.merchant,
         needVsWant: input.values.needVsWant,
         paymentMethod: input.values.paymentMethod,
+        purpose: null,
+        countsInDaily: true,
+        periodId: null,
         idempotencyKey: input.values.idempotencyKey,
         version: 1,
         deletedAt: null,
@@ -190,7 +195,7 @@ function makeRepository() {
   return repository;
 }
 
-const CREATE_VALUES: ExpenseCreateValues = {
+const CREATE_VALUES = {
   occurredAt: "2026-11-08T10:00:00.000Z",
   amountMinor: 2250,
   category: "groceries",

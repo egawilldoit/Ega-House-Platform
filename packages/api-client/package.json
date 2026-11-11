@@ -14,6 +14,7 @@
     "./today": "./src/today.ts",
     "./time-context": "./src/time-context.ts",
     "./expenses": "./src/expenses.ts",
+    "./money": "./src/money.ts",
     "./notifications": "./src/notifications.ts",
     "./weekly-review": "./src/weekly-review.ts"
   },

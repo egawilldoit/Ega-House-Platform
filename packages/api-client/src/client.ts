@@ -13,6 +13,7 @@ import { createExpensesApi, type ExpensesApi } from "./expenses";
 import { createFrictionApi, type FrictionApi } from "./friction";
 import { createGoalsApi, type GoalsApi } from "./goals";
 import { createHealthApi, type HealthApi } from "./health";
+import { createMoneyApi, type MoneyApi } from "./money";
 import {
   HttpClient,
   type AuthErrorHandler,
@@ -63,6 +64,7 @@ export type EgaApiClient = {
   timeContext: TimeContextApi;
   notifications: NotificationsApi;
   expenses: ExpensesApi;
+  money: MoneyApi;
   checkins: CheckinsApi;
   auth: AuthApi;
 };
@@ -96,6 +98,7 @@ export function createEgaApiClient(options: EgaApiClientOptions): EgaApiClient {
     timeContext: createTimeContextApi(http),
     notifications: createNotificationsApi(http),
     expenses: createExpensesApi(http),
+    money: createMoneyApi(http),
     checkins: createCheckinsApi(http),
     auth: createAuthApi(http),
   };
