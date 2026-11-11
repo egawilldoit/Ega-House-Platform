@@ -116,6 +116,12 @@ describe("MONEY-01 finance grant migration", () => {
     expect(migration).toContain(
       'GRANT UPDATE ON TABLE "public"."daily_checkins" TO authenticated',
     );
+    expect(migration).toContain(
+      'REVOKE ALL ON TABLE "public"."daily_checkins" FROM authenticated',
+    );
+    expect(migration).toContain(
+      'REVOKE ALL ON TABLE "public"."daily_checkins" FROM anon',
+    );
   });
 
   it("requires the write grant for insert and update and never adds DELETE", () => {
