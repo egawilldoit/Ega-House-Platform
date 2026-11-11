@@ -27,9 +27,18 @@ const ALL_TOOLS: readonly McpToolDefinition[] = [
   { name: "ega_personal_ops_summary", requiredPermission: "personal_ops.read" },
   { name: "ega_personal_ops_expenses_list", requiredPermission: "personal_ops.read" },
   { name: "ega_personal_ops_checkin_get", requiredPermission: "personal_ops.read" },
+  // MONEY-05 budget, coffee window and visit reads (shared Money surface).
+  { name: "ega_money_budget_get", requiredPermission: "personal_ops.read" },
+  { name: "ega_money_coffee_window", requiredPermission: "personal_ops.read" },
+  { name: "ega_money_coffee_visits_list", requiredPermission: "personal_ops.read" },
   // Personal Operations writes: explicit writer grant, never auto-upgraded.
   { name: "ega_create_personal_ops_expense", requiredPermission: "personal_ops.write", writesEnabledRequired: true },
   { name: "ega_save_personal_ops_checkin", requiredPermission: "personal_ops.write", writesEnabledRequired: true },
+  // MONEY-05 allocation/classification/visit writes.
+  { name: "ega_money_set_allocation", requiredPermission: "personal_ops.write", writesEnabledRequired: true },
+  { name: "ega_money_classify_expense", requiredPermission: "personal_ops.write", writesEnabledRequired: true },
+  { name: "ega_money_record_coffee_visit", requiredPermission: "personal_ops.write", writesEnabledRequired: true },
+  { name: "ega_money_delete_coffee_visit", requiredPermission: "personal_ops.write", writesEnabledRequired: true },
   // Project writes
   { name: "ega_create_project", requiredPermission: "projects.create", writesEnabledRequired: true },
   { name: "ega_update_project_status", requiredPermission: "projects.update", writesEnabledRequired: true },

@@ -29,6 +29,11 @@ import {
   McpToolAuthorizationError,
   requireMcpPermission,
 } from "@/lib/mcp/tool-authorization";
+import {
+  getMoneyBudgetForOwner,
+  getMoneyCoffeeWindowForOwner,
+  listMoneyCoffeeVisitsForOwner,
+} from "@/lib/mcp/money/handlers";
 
 export type McpReadToolDependencies = {
   createUserClient: (accessToken: string) => SupabaseClient<McpDatabase>;
@@ -57,6 +62,28 @@ export type McpReadToolDependencies = {
     ownerUserId: string,
     localDate: string,
     timezone: string,
+  ) => Promise<unknown>;
+  moneyBudgetGet?: (
+    client: SupabaseClient<McpDatabase>,
+    ownerUserId: string,
+    input: { periodStartDate?: string; periodEndDate?: string },
+  ) => Promise<unknown>;
+  moneyCoffeeWindow?: (
+    client: SupabaseClient<McpDatabase>,
+    ownerUserId: string,
+    input: {
+      localDate: string;
+      timezone: string;
+      periodStartDate: string;
+      periodEndDate: string;
+      spendLimitMinor?: number | null;
+      visitLimitMinor?: number | null;
+    },
+  ) => Promise<unknown>;
+  moneyCoffeeVisitsList?: (
+    client: SupabaseClient<McpDatabase>,
+    ownerUserId: string,
+    input: { from: string; to: string; limit?: number; offset?: number },
   ) => Promise<unknown>;
 };
 
@@ -115,6 +142,14 @@ function errorResult(error: unknown): CallToolResult {
       error: { code: error.code, message: error.message },
     };
   } else if (error instanceof McpInvalidArgumentError) {
+    payload = {
+      ok: false,
+      error: { code: "INVALID_ARGUMENT", message: error.message },
+    };
+  } else if (
+    error instanceof Error
+    && error.name === "McpInvalidArgumentError"
+  ) {
     payload = {
       ok: false,
       error: { code: "INVALID_ARGUMENT", message: error.message },
@@ -392,6 +427,68 @@ export function createMcpReadToolHandlers(
           principal.ownerUserId,
           input.localDate,
           input.timezone,
+        );
+        return resultFromPayload({ ok: true, ...((data as Record<string, unknown>) ?? {}) });
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+
+    // MONEY-05 budget and counted-coffee reads through the shared use cases.
+    async moneyBudgetGet(
+      authInfo: AuthInfo | undefined,
+      input: { periodStartDate?: string; periodEndDate?: string },
+    ): Promise<CallToolResult> {
+      try {
+        const principal = requireMcpPermission(authInfo, "personal_ops.read");
+        const client = createClient(dependencies, authInfo!);
+        const data = await (dependencies.moneyBudgetGet ?? getMoneyBudgetForOwner)(
+          client,
+          principal.ownerUserId,
+          input ?? {},
+        );
+        return resultFromPayload({ ok: true, ...((data as Record<string, unknown>) ?? {}) });
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+
+    async moneyCoffeeWindow(
+      authInfo: AuthInfo | undefined,
+      input: {
+        localDate: string;
+        timezone: string;
+        periodStartDate: string;
+        periodEndDate: string;
+        spendLimitMinor?: number | null;
+        visitLimitMinor?: number | null;
+      },
+    ): Promise<CallToolResult> {
+      try {
+        const principal = requireMcpPermission(authInfo, "personal_ops.read");
+        const client = createClient(dependencies, authInfo!);
+        const data = await (dependencies.moneyCoffeeWindow ?? getMoneyCoffeeWindowForOwner)(
+          client,
+          principal.ownerUserId,
+          input,
+        );
+        return resultFromPayload({ ok: true, ...((data as Record<string, unknown>) ?? {}) });
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+
+    async moneyCoffeeVisitsList(
+      authInfo: AuthInfo | undefined,
+      input: { from: string; to: string; limit?: number; offset?: number },
+    ): Promise<CallToolResult> {
+      try {
+        const principal = requireMcpPermission(authInfo, "personal_ops.read");
+        const client = createClient(dependencies, authInfo!);
+        const data = await (dependencies.moneyCoffeeVisitsList ?? listMoneyCoffeeVisitsForOwner)(
+          client,
+          principal.ownerUserId,
+          input,
         );
         return resultFromPayload({ ok: true, ...((data as Record<string, unknown>) ?? {}) });
       } catch (error) {

@@ -12,6 +12,8 @@ export * from "./inbox/repository";
 export * from "./time-context/repository";
 export * from "./preferences/repository";
 export * from "./expenses/repository";
+export * from "./money/budget-repository";
+export * from "./money/coffee-repository";
 export * from "./checkins/repository";
 export * from "./execution-evidence/repository";
 export * from "./operator/repository";

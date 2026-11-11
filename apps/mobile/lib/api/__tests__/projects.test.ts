@@ -110,6 +110,7 @@ function makeWave2Apis() {
     expenses: {
       list: jest.fn(), create: jest.fn(), get: jest.fn(), update: jest.fn(), remove: jest.fn(),
     },
+    money: { getBudgetPlan: jest.fn(), saveBudgetPlan: jest.fn(), setAllocation: jest.fn(), recordCoffeeVisit: jest.fn(), listCoffeeVisits: jest.fn(), deleteCoffeeVisit: jest.fn(), getCoffeeWindow: jest.fn(), classifyExpense: jest.fn() },
     checkins: { get: jest.fn(), save: jest.fn() },
   };
 }
