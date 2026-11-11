@@ -65,7 +65,7 @@ test("category caps save through one validated preference patch without blocking
   const createBody = actionsSource.slice(actionsSource.indexOf("createExpenseAction"), actionsSource.indexOf("updateExpenseAction"));
   assert.doesNotMatch(createBody, /categoryCaps/);
   assert.match(pageSource, /CategoryCapsForm/);
-  assert.match(pageSource, /Monthly category caps/);
+  assert.match(pageSource, /MONEY_ADVISORY_CAP_LABEL/);
 });
 
 test("money period actions share the verified session, repository and centime parser", () => {

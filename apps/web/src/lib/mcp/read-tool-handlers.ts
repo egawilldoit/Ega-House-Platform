@@ -455,6 +455,37 @@ export function createMcpReadToolHandlers(
     ): Promise<CallToolResult> {
       return moneyHandlers.moneyMovementGet(authInfo, input);
     },
+
+    // MONEY-05 plan and counted-coffee reads. The budget plan belongs to the
+    // canonical period; the coffee window keeps counted and category totals
+    // distinct instead of forcing them equal.
+    async moneyBudgetGet(
+      authInfo: AuthInfo | undefined,
+      input: { periodStartDate: string; periodEndDate: string },
+    ): Promise<CallToolResult> {
+      return moneyHandlers.moneyBudgetGet(authInfo, input);
+    },
+
+    async moneyCoffeeWindow(
+      authInfo: AuthInfo | undefined,
+      input: {
+        localDate: string;
+        timezone: string;
+        periodStartDate: string;
+        periodEndDate: string;
+        spendLimitMinor?: number | null;
+        visitLimitMinor?: number | null;
+      },
+    ): Promise<CallToolResult> {
+      return moneyHandlers.moneyCoffeeWindow(authInfo, input);
+    },
+
+    async moneyCoffeeVisitList(
+      authInfo: AuthInfo | undefined,
+      input: { from: string; to: string; limit?: number; offset?: number },
+    ): Promise<CallToolResult> {
+      return moneyHandlers.moneyCoffeeVisitList(authInfo, input);
+    },
   };
 }
 

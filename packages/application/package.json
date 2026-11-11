@@ -58,6 +58,8 @@
     "./money/periods": "./src/money/periods.ts",
     "./money/service": "./src/money/service.ts",
     "./money/summary": "./src/money/summary.ts",
+    "./money/budgets": "./src/money/budgets.ts",
+    "./money/coffee": "./src/money/coffee.ts",
     "./health/workload-snapshot": "./src/health/workload-snapshot.ts",
     "./health/recommendations": "./src/health/recommendations.ts"
   },

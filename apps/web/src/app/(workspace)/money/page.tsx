@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation";
 import {
   createAuthenticatedActor,
+  getMoneyBudgetPlan,
+  getMoneyCoffeeWindow,
   getMoneyMovementTotals,
   getMoneyState,
   listExpenses,
@@ -11,11 +13,19 @@ import {
 } from "@ega/application";
 import {
   SupabaseExpenseRepository,
+  SupabaseMoneyBudgetRepository,
+  SupabaseMoneyCoffeeRepository,
   SupabaseMoneyPeriodRepository,
   SupabaseMoneyRepository,
 } from "@ega/data-access";
-import { MONEY_DEFAULT_TIMEZONE, MONEY_TRACKED_CASH_BOUNDARY } from "@ega/domain/money";
-import type { MoneyLedgerRow } from "@ega/domain/money";
+import {
+  MONEY_ADVISORY_CAP_LABEL,
+  MONEY_DEFAULT_TIMEZONE,
+  MONEY_HANDOFF_CATEGORY_MAPPING,
+  MONEY_TRACKED_CASH_BOUNDARY,
+  describeExpenseCategory,
+} from "@ega/domain/money";
+import type { CoffeeWindowSummary, MoneyLedgerRow } from "@ega/domain/money";
 import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
 import { RefreshOnFocus } from "@/components/refresh-on-focus";
 import { createClient } from "@/lib/supabase/server";
@@ -27,8 +37,13 @@ import { MoneyPeriodPanel } from "./_components/money-period-panel";
 import { MoneyMovementPanel } from "./_components/money-movement-panel";
 import { MoneyMovementActions } from "./_components/money-movement-actions";
 import { CategoryCapsForm } from "./_components/category-caps-form";
+import { BudgetPlanForm } from "./_components/budget-plan-form";
+import { CoffeeVisitControls } from "./_components/coffee-visit-controls";
 import {
+  classifyExpenseCategoryAction,
   createMoneyPeriodAction,
+  recordCoffeeVisitAction,
+  saveBudgetPlanAction,
   saveCategoryCapsAction,
   updateMoneySettingsAction,
 } from "./actions";
@@ -65,8 +80,11 @@ export default async function MoneyPage({ searchParams }: Props) {
       ? params.periodId.trim()
       : null;
   const client = await createClient();
+  const actor = createAuthenticatedActor(user.id);
   let result;
   let moneyState: MoneyState | null = null;
+  let budgetResult: Awaited<ReturnType<typeof getMoneyBudgetPlan>> | null = null;
+  let coffeeWindow: CoffeeWindowSummary | null = null;
   let movements: MoneyLedgerRow[] | null = null;
   let movementTotals: MoneyMovementTotals | null = null;
   let movementsHasMore = false;
@@ -75,7 +93,6 @@ export default async function MoneyPage({ searchParams }: Props) {
   try {
     const time = await getWebTimeContext();
     timezone = time.persistedTimezone ?? MONEY_DEFAULT_TIMEZONE;
-    const actor = createAuthenticatedActor(user.id);
     result = await listExpenses(actor, new SupabaseExpenseRepository(client), { limit: "25", offset: String(offset) }, { timezone });
     // The period state is the shared owner context. A failed read renders as
     // unavailable rather than as an empty/invented period.
@@ -86,6 +103,38 @@ export default async function MoneyPage({ searchParams }: Props) {
       { now: new Date(), timezone: time.persistedTimezone },
     );
     moneyState = stateResult.ok ? stateResult.data : null;
+
+    // MONEY-05 period plan and counted coffee. A plan belongs to the canonical
+    // period; both reads fail closed instead of inventing zero values.
+    const period = moneyState?.period ?? null;
+    if (moneyState?.period) {
+      const period = moneyState.period;
+      budgetResult = await getMoneyBudgetPlan(
+        actor,
+        {
+          budgets: new SupabaseMoneyBudgetRepository(client),
+          periods: new SupabaseMoneyPeriodRepository(client),
+        },
+        { periodStartDate: period.startDate, periodEndDate: period.endDate },
+      ).catch(() => null);
+      const plan = budgetResult?.ok ? budgetResult.data : null;
+      const coffeeResult = await getMoneyCoffeeWindow(
+        actor,
+        {
+          expenses: new SupabaseExpenseRepository(client),
+          coffee: new SupabaseMoneyCoffeeRepository(client),
+        },
+        {
+          localDate: moneyState.localToday,
+          timezone,
+          periodStartDate: period.startDate,
+          periodEndDate: period.endDate,
+          spendLimitMinor: plan?.coffeeWeeklySpendLimitMinor ?? null,
+          visitLimitMinor: plan?.coffeeWeeklyVisitLimit ?? null,
+        },
+      ).catch(() => null);
+      coffeeWindow = coffeeResult?.ok ? coffeeResult.data : null;
+    }
 
     // MONEY-04 movement ledger: the same canonical rows and totals as HTTP/MCP.
     // Failures render as unavailable, never as a confirmed zero balance.
@@ -118,6 +167,8 @@ export default async function MoneyPage({ searchParams }: Props) {
   } catch {
     result = null;
     moneyState = null;
+    budgetResult = null;
+    coffeeWindow = null;
     movements = null;
     movementTotals = null;
     timeContextFailed = true;
@@ -243,9 +294,133 @@ export default async function MoneyPage({ searchParams }: Props) {
       )}
     </section>
 
+    <section aria-labelledby="money-budget-heading" className="mt-6 rounded-lg border border-ega-border p-5">
+      <h2 id="money-budget-heading" className="text-[length:var(--text-section)] font-semibold tracking-[var(--tracking-tight)]">
+        Period budget plan
+      </h2>
+      {moneyState?.period ? (
+        <>
+          {budgetResult && !budgetResult.ok ? (
+            <p className="mt-2 text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
+              {budgetResult.errorMessage} The ledger below is unaffected.
+            </p>
+          ) : null}
+          <div className="mt-4">
+            <BudgetPlanForm
+              plan={budgetResult?.ok ? budgetResult.data : null}
+              periodStartDate={moneyState.period.startDate}
+              periodEndDate={moneyState.period.endDate}
+              action={saveBudgetPlanAction}
+            />
+          </div>
+          {budgetResult?.ok && budgetResult.data && Object.keys(budgetResult.data.allocations).length > 0 ? (
+            <ul className="mt-4 flex flex-col gap-1.5">
+              {(Object.entries(budgetResult.data.allocations) as Array<[ExpenseCategory, number]>)
+                .sort((a, b) => b[1] - a[1])
+                .map(([category, allocation]) => {
+                  // Coffee consumption follows counted-visit amounts; other
+                  // categories use the canonical category total. The difference
+                  // between counted and category coffee is stated, not erased.
+                  const spent =
+                    category === "coffee"
+                      ? coffeeWindow?.countedVisitSpendMinor ?? spentByCategory.coffee ?? 0
+                      : spentByCategory[category] ?? 0;
+                  return (
+                    <li key={category} className="flex flex-wrap items-baseline gap-x-3 text-[length:var(--text-body)]">
+                      <span className="font-medium">{describeExpenseCategory(category).label}</span>
+                      <span>
+                        {formatMad(spent)}
+                        {" / "}
+                        {formatMad(allocation)}
+                      </span>
+                    </li>
+                  );
+                })}
+            </ul>
+          ) : null}
+          <p className="mt-3 text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
+            Plan consumption compares spending with the period allocation; an allocation
+            takes precedence over an advisory cap while both stay visible. Recording an
+            expense never rewrites either value. Published handoff mapping covers{" "}
+            {MONEY_HANDOFF_CATEGORY_MAPPING.length} source labels. Coffee consumption uses counted-visit amounts
+            while category coffee stays a separate projection.
+          </p>
+        </>
+      ) : (
+        <p className="mt-2 text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
+          Create a tracking period first; a budget plan always belongs to one period.
+        </p>
+      )}
+    </section>
+
+    <section aria-labelledby="money-coffee-heading" className="mt-6 rounded-lg border border-ega-border p-5">
+      <h2 id="money-coffee-heading" className="text-[length:var(--text-section)] font-semibold tracking-[var(--tracking-tight)]">
+        Counted coffee this week
+      </h2>
+      {coffeeWindow ? (
+        <>
+          <dl className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
+            <div>
+              <dt className="text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">Counted visits</dt>
+              <dd className="font-medium">
+                {coffeeWindow.countedVisitCount}
+                {coffeeWindow.visitLimit !== null ? ` / ${coffeeWindow.visitLimit}` : ""}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">Counted visit spend</dt>
+              <dd className="font-medium">{formatMad(coffeeWindow.countedVisitSpendMinor)}</dd>
+            </div>
+            <div>
+              <dt className="text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">Remaining visits</dt>
+              <dd className="font-medium">
+                {coffeeWindow.remainingVisits === null ? "No limit" : coffeeWindow.remainingVisits}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">Remaining spend</dt>
+              <dd className="font-medium">
+                {coffeeWindow.remainingSpendMinor === null ? "No limit" : formatMad(coffeeWindow.remainingSpendMinor)}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">Spend overshoot</dt>
+              <dd className="font-medium">
+                {coffeeWindow.spendOvershootMinor === null ? "No limit" : formatMad(coffeeWindow.spendOvershootMinor)}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">Visit overshoot</dt>
+              <dd className="font-medium">
+                {coffeeWindow.visitOvershoot === null ? "No limit" : coffeeWindow.visitOvershoot}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">Category coffee (separate)</dt>
+              <dd className="font-medium">{formatMad(coffeeWindow.categoryCoffeeSpendMinor)}</dd>
+            </div>
+            <div>
+              <dt className="text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">Uncounted category coffee</dt>
+              <dd className="font-medium">{formatMad(coffeeWindow.uncountedCategoryCoffeeSpendMinor)}</dd>
+            </div>
+          </dl>
+          <p className="mt-3 text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
+            Week {coffeeWindow.weekStart} to {coffeeWindow.weekEnd}
+            {coffeeWindow.clippedToPeriod ? " (clipped to the selected period)" : ""}.{" "}
+            {coffeeWindow.projectionNote}
+            {coffeeWindow.truncated ? " This week hit the bounded scan cap; counts are a lower bound." : ""}
+          </p>
+        </>
+      ) : (
+        <p className="mt-2 text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
+          Counted coffee usage is unavailable right now. Recorded expenses are unaffected.
+        </p>
+      )}
+    </section>
+
     <section aria-labelledby="money-caps-heading" className="mt-6 rounded-lg border border-ega-border p-5">
       <h2 id="money-caps-heading" className="text-[length:var(--text-section)] font-semibold tracking-[var(--tracking-tight)]">
-        Monthly category caps
+        {MONEY_ADVISORY_CAP_LABEL}
       </h2>
       {cappedCategories.length > 0 ? (
         <ul className="mt-3 flex flex-col gap-1.5">
@@ -261,7 +436,7 @@ export default async function MoneyPage({ searchParams }: Props) {
             const over = hasReading && spent > cap;
             return (
               <li key={category} className="flex flex-wrap items-baseline gap-x-3 text-[length:var(--text-body)]">
-                <span className="font-medium">{category.replaceAll("_", " ")}</span>
+                <span className="font-medium">{describeExpenseCategory(category).label}</span>
                 {hasReading ? (
                   <span>
                     {new Intl.NumberFormat("fr-MA", { style: "currency", currency: "MAD", minimumFractionDigits: 2 }).format(spent / 100)}
@@ -421,7 +596,19 @@ export default async function MoneyPage({ searchParams }: Props) {
                     <td className={`p-3 text-right tabular-nums ${effect.cashDeltaMinor < 0 ? "text-[color:var(--ega-danger)]" : ""}`}>
                       {formatMad(effect.cashDeltaMinor)}
                     </td>
-                    <td className="p-3 text-right"><MoneyMovementActions movement={movement} /></td>
+                    <td className="p-3 text-right">
+                      <div className="flex flex-col items-end gap-2">
+                        <MoneyMovementActions movement={movement} />
+                        {movement.kind === "expense" && movement.category === "coffee" ? (
+                          <CoffeeVisitControls
+                            expenseId={movement.id}
+                            version={movement.version}
+                            recordVisit={recordCoffeeVisitAction}
+                            classifyAsGroceries={classifyExpenseCategoryAction}
+                          />
+                        ) : null}
+                      </div>
+                    </td>
                   </tr>
                 );
               })}

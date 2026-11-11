@@ -106,6 +106,29 @@ export type McpReadToolHandlers = {
     input: { movementId: string },
     context?: McpProtocolContext,
   ) => Promise<CallToolResult>;
+  /** MONEY-05 budget plan and counted coffee reads. */
+  moneyBudgetGet: (
+    authInfo: AuthInfo | undefined,
+    input: { periodStartDate: string; periodEndDate: string },
+    context?: McpProtocolContext,
+  ) => Promise<CallToolResult>;
+  moneyCoffeeWindow: (
+    authInfo: AuthInfo | undefined,
+    input: {
+      localDate: string;
+      timezone: string;
+      periodStartDate: string;
+      periodEndDate: string;
+      spendLimitMinor?: number | null;
+      visitLimitMinor?: number | null;
+    },
+    context?: McpProtocolContext,
+  ) => Promise<CallToolResult>;
+  moneyCoffeeVisitList: (
+    authInfo: AuthInfo | undefined,
+    input: { from: string; to: string; limit?: number; offset?: number },
+    context?: McpProtocolContext,
+  ) => Promise<CallToolResult>;
 };
 
 export type McpWriteToolHandlers = {
@@ -336,6 +359,51 @@ export type McpWriteToolHandlers = {
       countsInDaily?: boolean;
       operationId: string;
     },
+    context?: McpProtocolContext,
+  ) => Promise<CallToolResult>;
+  /** MONEY-05 budget, classification and counted coffee writes. */
+  setMoneyAllocation: (
+    authInfo: AuthInfo | undefined,
+    input: {
+      periodStartDate: string;
+      periodEndDate: string;
+      version: number;
+      allocations?: Record<string, number | null>;
+      savingsTargetMinor?: number | null;
+      emergencyTargetMinor?: number | null;
+      coffeeWeeklySpendLimitMinor?: number | null;
+      coffeeWeeklyVisitLimit?: number | null;
+      operationId: string;
+    },
+    context?: McpProtocolContext,
+  ) => Promise<CallToolResult>;
+  classifyMoneyExpense: (
+    authInfo: AuthInfo | undefined,
+    input: {
+      expenseId: string;
+      version: number;
+      category: string;
+      note?: string | null;
+      needVsWant?: "need" | "want";
+      operationId: string;
+    },
+    context?: McpProtocolContext,
+  ) => Promise<CallToolResult>;
+  recordCoffeeVisit: (
+    authInfo: AuthInfo | undefined,
+    input: {
+      visitKey: string;
+      localDate: string;
+      timezone: string;
+      expenseIds: string[];
+      note?: string | null;
+      operationId: string;
+    },
+    context?: McpProtocolContext,
+  ) => Promise<CallToolResult>;
+  deleteCoffeeVisit: (
+    authInfo: AuthInfo | undefined,
+    input: { visitId: string; version: number; operationId: string },
     context?: McpProtocolContext,
   ) => Promise<CallToolResult>;
   stopTimer: (
@@ -787,6 +855,68 @@ const moneyUpdateMovementInputSchema = z.object({
   countsInDaily: z.boolean().optional(),
   operationId: z.string().uuid(),
 }).strict();
+
+// MONEY-05 budget, classification and counted-visit schemas. Amounts stay
+// non-negative integer MAD centimes; category text is validated by the domain
+// so appended categories do not need a parallel MCP enum.
+const moneyBudgetPeriodSchema = z.object({
+  periodStartDate: moneyMovementDateSchema,
+  periodEndDate: moneyMovementDateSchema,
+}).strict();
+
+const moneyBudgetGetInputSchema = moneyBudgetPeriodSchema;
+
+const moneySetAllocationInputSchema = z.object({
+  periodStartDate: moneyMovementDateSchema,
+  periodEndDate: moneyMovementDateSchema,
+  version: z.number().int().min(0),
+  allocations: z.record(z.string(), z.number().int().min(0).max(2147483647).nullable()).optional(),
+  savingsTargetMinor: z.number().int().min(0).max(2147483647).nullable().optional(),
+  emergencyTargetMinor: z.number().int().min(0).max(2147483647).nullable().optional(),
+  coffeeWeeklySpendLimitMinor: z.number().int().min(0).max(2147483647).nullable().optional(),
+  coffeeWeeklyVisitLimit: z.number().int().min(0).max(2147483647).nullable().optional(),
+  operationId: z.string().uuid(),
+}).strict();
+
+const moneyClassifyExpenseInputSchema = z.object({
+  expenseId: uuidSchema,
+  version: z.number().int().positive(),
+  category: z.string().min(1),
+  note: nullableStringSchema.optional(),
+  needVsWant: z.enum(["need", "want"]).optional(),
+  operationId: z.string().uuid(),
+}).strict();
+
+const moneyRecordCoffeeVisitInputSchema = z.object({
+  visitKey: z.string().min(1).max(128),
+  localDate: moneyMovementDateSchema,
+  timezone: z.string().min(1).max(128),
+  expenseIds: z.array(uuidSchema).min(1).max(50),
+  note: nullableStringSchema.optional(),
+  operationId: z.string().uuid(),
+}).strict();
+
+const moneyDeleteCoffeeVisitInputSchema = z.object({
+  visitId: uuidSchema,
+  version: z.number().int().positive(),
+  operationId: z.string().uuid(),
+}).strict();
+
+const moneyCoffeeWindowInputSchema = z.object({
+  localDate: moneyMovementDateSchema,
+  timezone: z.string().min(1).max(128),
+  periodStartDate: moneyMovementDateSchema,
+  periodEndDate: moneyMovementDateSchema,
+  spendLimitMinor: z.number().int().min(0).max(2147483647).nullable().optional(),
+  visitLimitMinor: z.number().int().min(0).max(2147483647).nullable().optional(),
+}).strict();
+
+const moneyCoffeeVisitListInputSchema = z.object({
+  from: moneyMovementDateSchema,
+  to: moneyMovementDateSchema,
+  limit: limitSchema,
+  offset: offsetSchema,
+}).strict();
 const stopTimerInputSchema = z.object({
   sessionId: uuidSchema,
   operationId: z.string().uuid(),
@@ -1060,6 +1190,57 @@ const READ_TOOL_REGISTRATIONS: readonly ReadToolRegistration[] = [
         },
         async (input, ctx) =>
           handlers.moneyMovementGet(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
+      ),
+  },
+  {
+    name: "ega_money_budget_get",
+    register: (server, handlers) =>
+      server.registerTool(
+        "ega_money_budget_get",
+        {
+          title: "Get the period budget plan",
+          description:
+            "Read the one explicit budget plan for a canonical Money period identified by inclusive periodStartDate/periodEndDate. Returns `plan: null` when none exists (not a zero budget). Allocations, savings/emergency targets and coffee weekly limits are integer MAD centimes; the period dates are read from the period row. Requires the explicit personal_ops.read grant.",
+          inputSchema: moneyBudgetGetInputSchema,
+          outputSchema: personalOpsListOutputSchema,
+          annotations: READ_ONLY_ANNOTATIONS,
+        },
+        async (input, ctx) =>
+          handlers.moneyBudgetGet(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
+      ),
+  },
+  {
+    name: "ega_money_coffee_window",
+    register: (server, handlers) =>
+      server.registerTool(
+        "ega_money_coffee_window",
+        {
+          title: "Get counted coffee usage",
+          description:
+            "Read counted coffee for the owner-local ISO week clipped to the selected period. Counted visits and counted visit spend come from canonical coffee expenses linked to counted visits; category coffee spending is a separate projection and uncounted purchases stay visible. Remaining limits and overshoot are distinct values. Requires the explicit personal_ops.read grant.",
+          inputSchema: moneyCoffeeWindowInputSchema,
+          outputSchema: personalOpsListOutputSchema,
+          annotations: READ_ONLY_ANNOTATIONS,
+        },
+        async (input, ctx) =>
+          handlers.moneyCoffeeWindow(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
+      ),
+  },
+  {
+    name: "ega_money_coffee_visits_list",
+    register: (server, handlers) =>
+      server.registerTool(
+        "ega_money_coffee_visits_list",
+        {
+          title: "List counted coffee visits",
+          description:
+            "List counted coffee visits with their canonical expense lines in inclusive owner-local from/to dates, newest first. Each line carries the canonical expense amount/category; the visit stores no second amount. Requires the explicit personal_ops.read grant.",
+          inputSchema: moneyCoffeeVisitListInputSchema,
+          outputSchema: personalOpsListOutputSchema,
+          annotations: READ_ONLY_ANNOTATIONS,
+        },
+        async (input, ctx) =>
+          handlers.moneyCoffeeVisitList(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
       ),
   },
   {
@@ -1548,6 +1729,74 @@ const WRITE_TOOL_REGISTRATIONS: readonly WriteToolRegistration[] = [
         },
         async (input, ctx) =>
           handlers.updateMoneyMovement(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
+      ),
+  },
+  {
+    name: "ega_money_set_allocation",
+    register: (server, handlers) =>
+      server.registerTool(
+        "ega_money_set_allocation",
+        {
+          title: "Set a period budget allocation",
+          description:
+            "Edit one canonical period budget plan with optimistic concurrency. `version: 0` creates the plan; any other value must match the current plan version. Omitted fields stay unchanged and explicit null clears an allocation or target. Allocations, savings/emergency targets and coffee weekly spend/visit limits are whole non-negative MAD centimes (visits are whole numbers). Routine spending never changes these values. Requires the explicit personal_ops.write grant.",
+          inputSchema: moneySetAllocationInputSchema,
+          outputSchema: genericWriteOutputSchema,
+          annotations: WRITE_ANNOTATIONS,
+        },
+        async (input, ctx) =>
+          handlers.setMoneyAllocation(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
+      ),
+  },
+  {
+    name: "ega_money_classify_expense",
+    register: (server, handlers) =>
+      server.registerTool(
+        "ega_money_classify_expense",
+        {
+          title: "Classify an expense category",
+          description:
+            "Explicitly reclassify one owned expense with optimistic concurrency. This is an ordinary versioned expense update: it increases the chosen category and never creates a counted coffee visit. 'Coffee, classify as groceries for testing' keeps its description/override, increases groceries spending and leaves counted coffee usage unchanged; the receipt reports affected counted visit ids. Requires the explicit personal_ops.write grant.",
+          inputSchema: moneyClassifyExpenseInputSchema,
+          outputSchema: genericWriteOutputSchema,
+          annotations: WRITE_ANNOTATIONS,
+        },
+        async (input, ctx) =>
+          handlers.classifyMoneyExpense(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
+      ),
+  },
+  {
+    name: "ega_money_record_coffee_visit",
+    register: (server, handlers) =>
+      server.registerTool(
+        "ega_money_record_coffee_visit",
+        {
+          title: "Count a coffee visit",
+          description:
+            "Link one or more canonical coffee-category expense ids to one counted visit. `visitKey` is the stable retry identity: the same key and same payload replays the stored visit; the same key with different lines conflicts. Several purchase lines count as one visit and never add a second cash effect. Requires the explicit personal_ops.write grant.",
+          inputSchema: moneyRecordCoffeeVisitInputSchema,
+          outputSchema: genericWriteOutputSchema,
+          annotations: WRITE_ANNOTATIONS,
+        },
+        async (input, ctx) =>
+          handlers.recordCoffeeVisit(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
+      ),
+  },
+  {
+    name: "ega_money_delete_coffee_visit",
+    register: (server, handlers) =>
+      server.registerTool(
+        "ega_money_delete_coffee_visit",
+        {
+          title: "Delete a counted coffee visit",
+          description:
+            "Delete one owned counted coffee visit and its lines with `version` fencing. The canonical expenses remain and keep their recorded cash effect; only the visit metadata is removed. Requires the explicit personal_ops.write grant.",
+          inputSchema: moneyDeleteCoffeeVisitInputSchema,
+          outputSchema: genericWriteOutputSchema,
+          annotations: WRITE_ANNOTATIONS,
+        },
+        async (input, ctx) =>
+          handlers.deleteCoffeeVisit(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
       ),
   },
   {
