@@ -391,8 +391,12 @@ async function defaultPersonalOpsSummary(
   ownerUserId: string,
   context: { date?: string; timezone?: string },
 ) {
-  const { getOperatorSnapshot } = await import("@ega/application");
-  const { SupabaseTimeContextRepository, SupabaseTodayReadPort } = await import("@ega/data-access");
+  const { getExpenseSummary, getOperatorSnapshot } = await import("@ega/application");
+  const {
+    SupabaseExpenseRepository,
+    SupabaseTimeContextRepository,
+    SupabaseTodayReadPort,
+  } = await import("@ega/data-access");
   const result = await getOperatorSnapshot(
     { userId: ownerUserId } as never,
     new SupabaseTodayReadPort(client as never),
@@ -405,11 +409,43 @@ async function defaultPersonalOpsSummary(
     timezone: string;
     summary: { trackedTodaySeconds: number; trackedTodayLabel: string };
   };
+
+  // Canonical recorded-spending summary over the same owner-resolved date and
+  // timezone. Analytics failure is reported as unavailable — never as zero
+  // spending — while the time summary still returns.
+  const actor = { userId: ownerUserId } as never;
+  const expenseSummary = await getExpenseSummary(
+    actor,
+    new SupabaseExpenseRepository(client as never),
+    { localDate: snapshot.date, timezone: snapshot.timezone },
+  ).catch(() => null);
+
+  const spending = expenseSummary?.ok
+    ? {
+        available: true as const,
+        currency: "MAD" as const,
+        localDate: snapshot.date,
+        timezone: snapshot.timezone,
+        note: "Recorded non-deleted expenses in integer MAD centimes; totals exclude deleted rows.",
+        day: expenseSummary.data.day,
+        weekToDate: expenseSummary.data.weekToDate,
+        monthToDate: expenseSummary.data.monthToDate,
+        coffee: expenseSummary.data.coffee,
+      }
+    : {
+        available: false as const,
+        currency: "MAD" as const,
+        localDate: snapshot.date,
+        timezone: snapshot.timezone,
+        reason: "Recorded spending totals are temporarily unavailable.",
+      };
+
   return {
     date: snapshot.date,
     timezone: snapshot.timezone,
     trackedTodaySeconds: snapshot.summary.trackedTodaySeconds,
     trackedTodayLabel: snapshot.summary.trackedTodayLabel,
+    spending,
   };
 }
 

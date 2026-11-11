@@ -704,10 +704,17 @@ export function createMcpWriteToolHandlers(
         assertWritesEnabled(writesEnabled);
         requireMcpPermission(authInfo, "personal_ops.write");
         const client = dependencies.createUserClient(authInfo!.token);
+        // The outer receipt binds every semantic create field, matching the
+        // canonical create fingerprint. A changed note/merchant/method/intent
+        // must conflict instead of replaying an earlier purchase.
         return await withExclusiveMutation(client, "ega_create_personal_ops_expense", input.operationId, {
           occurredAt: input.occurredAt,
           amountMinor: input.amountMinor,
           category: input.category,
+          needVsWant: input.needVsWant,
+          note: input.note ?? null,
+          merchant: input.merchant ?? null,
+          paymentMethod: input.paymentMethod ?? null,
           idempotencyKey: input.idempotencyKey,
         }, () =>
           personalOpsHandlers.createPersonalOpsExpense(authInfo, input, input.operationId),
