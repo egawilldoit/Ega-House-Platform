@@ -287,12 +287,30 @@ AS $booking_date$
 DECLARE
   v_timezone text;
 BEGIN
-  IF NEW."booking_date" IS NULL AND NEW."occurred_at" IS NOT NULL THEN
-    SELECT NULLIF(btrim(zone."iana_timezone"), '')
-      INTO v_timezone
-      FROM public.user_time_context AS zone
-      WHERE zone."user_id" = NEW."owner_user_id"
-      LIMIT 1;
+  -- Recompute when a timestamped booking is (re)written: a changed instant
+  -- must not keep the old derived day. A date-only row keeps its explicit date.
+  IF NEW."occurred_at" IS NOT NULL
+     AND (
+       NEW."booking_date" IS NULL
+       OR (TG_OP = 'UPDATE' AND NEW."occurred_at" IS DISTINCT FROM OLD."occurred_at")
+     ) THEN
+    -- The period's configured timezone is the single entry/booking authority
+    -- when the movement belongs to a period; owner context is the fallback.
+    IF NEW."period_id" IS NOT NULL THEN
+      SELECT NULLIF(btrim(period."timezone"), '')
+        INTO v_timezone
+        FROM public.money_periods AS period
+        WHERE period."id" = NEW."period_id"
+          AND period."owner_user_id" = NEW."owner_user_id";
+    END IF;
+
+    IF v_timezone IS NULL THEN
+      SELECT NULLIF(btrim(zone."iana_timezone"), '')
+        INTO v_timezone
+        FROM public.user_time_context AS zone
+        WHERE zone."user_id" = NEW."owner_user_id"
+        LIMIT 1;
+    END IF;
 
     IF v_timezone IS NULL
        OR NOT EXISTS (

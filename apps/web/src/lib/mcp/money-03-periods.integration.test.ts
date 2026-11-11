@@ -185,6 +185,17 @@ describe.skipIf(!connectionString)("MONEY-03 period and opening proof", () => {
         state.expenseAfterAdvance = Number(untouched[0].amount_minor);
         state.bookingAfterAdvance = String(untouched[0].booking_date);
 
+        // Correcting the instant re-derives the booking day (a stale derived
+        // date would move cash but not the timestamp-based spending summary).
+        const moved = await tx`
+          update public.personal_expenses
+          set occurred_at = '2026-11-12T09:00:00.000Z',
+              version = version + 1, updated_at = now()
+          where id = ${expenseId}
+          returning booking_date::text as booking_date, version`;
+        state.movedBooking = String(moved[0].booking_date);
+        state.movedVersion = Number(moved[0].version);
+
         // Stale version returns no row and never overwrites.
         const stale = await tx`
           select id, active_date::text as active_date, start_date::text as start_date, end_date::text as end_date, version from public.money_update_period(
@@ -304,6 +315,8 @@ describe.skipIf(!connectionString)("MONEY-03 period and opening proof", () => {
     expect(state.advancedVersion).toBe(3);
     expect(state.expenseAfterAdvance).toBe(1100);
     expect(state.bookingAfterAdvance).toBe("2026-11-10");
+    expect(state.movedBooking).toBe("2026-11-12");
+    expect(state.movedVersion).toBe(2);
     expect(state.staleRows).toBe(0);
     expect(state.stillActiveDate).toBe("2026-11-10");
     expect(state.stillVersion).toBe(3);
