@@ -24,6 +24,7 @@ vi.mock("@ega/application", async (importOriginal) => {
 vi.mock("@ega/data-access", () => ({
   SupabaseExpenseRepository: mocks.expenseRepositoryFactory,
   SupabaseDailyCheckinRepository: mocks.expenseRepositoryFactory,
+  SupabaseMoneyPeriodRepository: mocks.expenseRepositoryFactory,
 }));
 
 const WRITER_PRINCIPAL: McpPrincipal = {

@@ -339,13 +339,15 @@ async function main() {
     const expectedColumns = [
       ["id", "uuid", null, "NO", /gen_random_uuid\(\)/],
       ["owner_user_id", "uuid", null, "NO", /auth\.uid\(\)/],
-      ["occurred_at", "timestamp with time zone", null, "NO", null],
+      // MONEY-03 adds date-only bookings, so a known instant is optional.
+      ["occurred_at", "timestamp with time zone", null, "YES", null],
       ["amount_minor", "integer", null, "NO", null],
       ["currency", "character varying", 3, "NO", /'MAD'/],
-      ["category", "character varying", 32, "NO", null],
+      // Non-expense movements keep category/need-vs-want null (0095).
+      ["category", "character varying", 32, "YES", null],
       ["note", "character varying", 500, "YES", null],
       ["merchant", "character varying", 120, "YES", null],
-      ["need_vs_want", "character varying", 8, "NO", null],
+      ["need_vs_want", "character varying", 8, "YES", null],
       ["payment_method", "character varying", 32, "YES", null],
       ["idempotency_key", "character varying", 128, "NO", null],
       ["create_fingerprint", "character varying", 64, "NO", null],
@@ -353,6 +355,12 @@ async function main() {
       ["deleted_at", "timestamp with time zone", null, "YES", null],
       ["created_at", "timestamp with time zone", null, "NO", /now\(\)/],
       ["updated_at", "timestamp with time zone", null, "NO", /now\(\)/],
+      // MONEY-03 period/opening columns (appended by 0095).
+      ["kind", "character varying", 32, "NO", /'expense'/],
+      ["direction", "character varying", 8, "NO", /'out'/],
+      ["booking_date", "date", null, "NO", null],
+      ["counts_in_daily", "boolean", null, "NO", /true/],
+      ["period_id", "uuid", null, "YES", null],
     ];
     assert(columns.length === expectedColumns.length, "expected column count");
     for (const [name, dataType, maxLength, nullable, defaultPattern] of expectedColumns) {

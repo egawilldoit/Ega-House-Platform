@@ -11,7 +11,7 @@ import type {
 } from "@ega/domain/expenses";
 
 import { createMcpAuthInfo } from "@/lib/mcp/auth-info";
-import { createMcpMoneyHandlers } from "@/lib/mcp/money/handlers";
+import { createMcpMoneyExpenseHandlers } from "@/lib/mcp/money/expense-handlers";
 import type { McpPrincipal } from "@/lib/mcp/principal";
 
 const OPERATION_ID = "650e8400-e29b-41d4-a716-446655440000";
@@ -209,7 +209,7 @@ function createRepository() {
 }
 
 function createHandlers(repository: ExpenseRepository = createRepository()) {
-  return createMcpMoneyHandlers({
+  return createMcpMoneyExpenseHandlers({
     createUserClient: () => ({}) as never,
     repositoryFactory: () => repository,
     timeContextRepositoryFactory: () =>
@@ -219,6 +219,16 @@ function createHandlers(repository: ExpenseRepository = createRepository()) {
         },
         async setTimezone() {
           return { ok: true as const, value: "Africa/Casablanca" };
+        },
+      }) as never,
+    // No active period in these unit fixtures: the guard is a no-op.
+    periodRepositoryFactory: () =>
+      ({
+        async findTracking() {
+          return { ok: true as const, value: null };
+        },
+        async list() {
+          return { ok: true as const, value: [] };
         },
       }) as never,
   });

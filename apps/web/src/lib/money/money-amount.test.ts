@@ -4,6 +4,7 @@ import {
   formatMinorToMad,
   formatMinorToMadInput,
   parseMadAmountToMinor,
+  parseOpeningAmountToMinor,
 } from "./money-amount";
 
 describe("parseMadAmountToMinor", () => {
@@ -41,6 +42,21 @@ describe("parseMadAmountToMinor", () => {
   it("rejects non-string input", () => {
     expect(parseMadAmountToMinor(22.5).ok).toBe(false);
     expect(parseMadAmountToMinor(null).ok).toBe(false);
+  });
+});
+
+describe("parseOpeningAmountToMinor", () => {
+  it("accepts known zero without making it an unknown opening", () => {
+    expect(parseOpeningAmountToMinor("0")).toEqual({ ok: true, value: 0 });
+    expect(parseOpeningAmountToMinor("0.00")).toEqual({ ok: true, value: 0 });
+    expect(parseOpeningAmountToMinor("0,0")).toEqual({ ok: true, value: 0 });
+  });
+
+  it("still parses positive openings exactly and rejects invalid input", () => {
+    expect(parseOpeningAmountToMinor("500.00")).toEqual({ ok: true, value: 50000 });
+    expect(parseOpeningAmountToMinor("").ok).toBe(false);
+    expect(parseOpeningAmountToMinor("-1").ok).toBe(false);
+    expect(parseOpeningAmountToMinor("1.234").ok).toBe(false);
   });
 });
 

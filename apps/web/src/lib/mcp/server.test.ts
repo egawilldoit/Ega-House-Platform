@@ -48,6 +48,7 @@ function createHandlers() {
     personalOpsCheckinGet: vi.fn().mockResolvedValue({ content: [] }),
     getMoneyExpense: vi.fn().mockResolvedValue({ content: [] }),
     listMoneyLedger: vi.fn().mockResolvedValue({ content: [] }),
+    moneyState: vi.fn().mockResolvedValue({ content: [] }),
   };
 }
 
@@ -73,6 +74,7 @@ describe("registerMcpReadTools", () => {
       "ega_personal_ops_checkin_get",
       "ega_money_get",
       "ega_money_ledger_list",
+      "ega_money_state",
       "ega_list_timer_sessions",
     ]);
   });
