@@ -14,6 +14,7 @@ import {
 } from "@ega/application";
 import {
   SupabaseExpenseRepository,
+  SupabaseMoneyPeriodRepository,
   SupabaseTimeContextRepository,
 } from "@ega/data-access";
 import {
@@ -339,6 +340,9 @@ export function createMcpMoneyExpenseHandlers(
             paymentMethod: input.paymentMethod ?? null,
             idempotencyKey: input.idempotencyKey,
           },
+          // Same tracking-period gate as web/Hono/personal-ops: an MCP writer
+          // cannot record a routine purchase outside the active period.
+          { periods: new SupabaseMoneyPeriodRepository(client as never) },
         );
         if (!result.ok) {
           return mapFailure(result.code, result.errorMessage);

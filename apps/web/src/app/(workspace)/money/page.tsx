@@ -98,6 +98,7 @@ export default async function MoneyPage({ searchParams }: Props) {
 
     {moneyState ? (
       <MoneyPeriodPanel
+        key={`${moneyState.period?.id ?? "none"}:${moneyState.period?.version ?? 0}`}
         localToday={moneyState.localToday}
         timezone={moneyState.timezone}
         period={moneyState.period}
