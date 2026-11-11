@@ -1331,14 +1331,20 @@ export const personalExpenses = pgTable(
   {
     id: uuid("id").defaultRandom().primaryKey(),
     ownerUserId: uuid("owner_user_id").default(sql`auth.uid()`).notNull(),
-    occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull(),
+    kind: varchar("kind", { length: 32 }).default("expense").notNull(),
+    direction: varchar("direction", { length: 8 }).default("out").notNull(),
+    occurredAt: timestamp("occurred_at", { withTimezone: true }),
+    bookingDate: date("booking_date").notNull(),
     amountMinor: integer("amount_minor").notNull(),
     currency: varchar("currency", { length: 3 }).default("MAD").notNull(),
-    category: varchar("category", { length: 32 }).notNull(),
+    category: varchar("category", { length: 32 }),
     note: varchar("note", { length: 500 }),
     merchant: varchar("merchant", { length: 120 }),
-    needVsWant: varchar("need_vs_want", { length: 8 }).notNull(),
+    needVsWant: varchar("need_vs_want", { length: 8 }),
     paymentMethod: varchar("payment_method", { length: 32 }),
+    purpose: varchar("purpose", { length: 16 }),
+    countsInDaily: boolean("counts_in_daily").notNull(),
+    periodId: uuid("period_id"),
     idempotencyKey: varchar("idempotency_key", { length: 128 }).notNull(),
     createFingerprint: varchar("create_fingerprint", { length: 64 }).notNull(),
     version: integer("version").default(1).notNull(),
@@ -1356,18 +1362,44 @@ export const personalExpenses = pgTable(
       table.occurredAt.desc(),
       table.id.desc(),
     ),
+    index("personal_expenses_owner_booking_date_idx").on(
+      table.ownerUserId,
+      table.bookingDate.desc(),
+      table.id.desc(),
+    ),
     check(
       "personal_expenses_amount_minor_check",
-      sql`${table.amountMinor} >= 1 and ${table.amountMinor} <= 2147483647`,
+      sql`${table.amountMinor} <= 2147483647 and ((${table.kind} = 'opening' and ${table.amountMinor} >= 0) or (${table.kind} <> 'opening' and ${table.amountMinor} >= 1))`,
     ),
     check("personal_expenses_currency_check", sql`${table.currency} = 'MAD'`),
     check(
+      "personal_expenses_kind_check",
+      sql`${table.kind} in ('expense','income','opening','savings_transfer','reconciliation_adjustment')`,
+    ),
+    check(
+      "personal_expenses_direction_check",
+      sql`${table.direction} in ('in','out')`,
+    ),
+    check(
+      "personal_expenses_purpose_check",
+      sql`${table.purpose} is null or ${table.purpose} in ('fixed','flexible','emergency')`,
+    ),
+    check(
+      "personal_expenses_kind_shape_check",
+      sql`(
+        (${table.kind} = 'expense' and ${table.direction} = 'out' and ${table.category} is not null and ${table.needVsWant} is not null)
+        or (${table.kind} in ('income','opening') and ${table.direction} = 'in' and ${table.category} is null and ${table.needVsWant} is null and ${table.purpose} is null)
+        or (${table.kind} = 'savings_transfer' and ${table.direction} = 'out' and ${table.category} is null and ${table.needVsWant} is null and ${table.purpose} is null)
+        or (${table.kind} = 'reconciliation_adjustment' and ${table.direction} in ('in','out') and ${table.category} is null and ${table.needVsWant} is null and ${table.purpose} is null)
+      )`,
+    ),
+    check(
       "personal_expenses_category_check",
-      sql`${table.category} in ('coffee','groceries','eating_out','transport','bills','subscriptions','household','health','other')`,
+      sql`${table.category} is null or ${table.category} in ('coffee','groceries','eating_out','transport','bills','subscriptions','household','health','other')`,
     ),
     check(
       "personal_expenses_need_vs_want_check",
-      sql`${table.needVsWant} in ('need','want')`,
+      sql`${table.needVsWant} is null or ${table.needVsWant} in ('need','want')`,
     ),
     check(
       "personal_expenses_payment_method_check",

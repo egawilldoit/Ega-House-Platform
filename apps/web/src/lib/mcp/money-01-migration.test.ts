@@ -26,11 +26,15 @@ describe("MONEY-01 finance grant migration", () => {
     const index = tags.indexOf("0093_money_01_finance_grants");
     expect(index).toBeGreaterThan(0);
     // Later Money issues append migrations after 0093; what matters is that it
-    // follows 0092 with a strictly greater timestamp.
+    // follows 0092 with a strictly greater timestamp and every later additive
+    // migration keeps a strictly increasing timestamp.
     expect(tags[index - 1]).toBe("0092_routine_metrics");
     expect(journal.entries[index].when).toBeGreaterThan(
       journal.entries[index - 1].when,
     );
+    for (const later of journal.entries.slice(index + 1)) {
+      expect(later.when).toBeGreaterThan(journal.entries[index].when);
+    }
   });
 
   it("stores every runtime profile union exactly as the code advertises it", () => {

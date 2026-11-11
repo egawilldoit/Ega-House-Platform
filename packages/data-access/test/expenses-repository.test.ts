@@ -35,6 +35,7 @@ const FINGERPRINT = "0123456789abcdef".repeat(4);
 
 const CREATE_VALUES = {
   occurredAt: "2026-11-07T08:30:00.000Z",
+  bookingDate: "2026-11-07",
   amountMinor: 2250,
   category: "coffee" as const,
   note: "morning coffee",

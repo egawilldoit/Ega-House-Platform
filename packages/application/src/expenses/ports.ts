@@ -19,6 +19,9 @@ export type ExpenseListRecordQuery = Readonly<{
   offset: number;
   startUtcIso: string | null;
   endUtcExclusiveIso: string | null;
+  /** Owner-local booking-date window (preferred for dated reads). */
+  startBookingDate?: string | null;
+  endBookingDateExclusive?: string | null;
   /**
    * Keyset cursor for a stable export walk. When both are present the
    * repository returns rows strictly after `(beforeOccurredAt, beforeId)` in
@@ -26,6 +29,7 @@ export type ExpenseListRecordQuery = Readonly<{
    * snapshot-safe under concurrent inserts/deletes.
    */
   beforeOccurredAt?: string | null;
+  beforeBookingDate?: string | null;
   beforeId?: string | null;
 }>;
 
@@ -60,6 +64,9 @@ export type ExpenseDeleteOutcome = Readonly<{
 export type ExpenseSummaryWindow = Readonly<{
   startUtcIso: string;
   endUtcExclusiveIso: string;
+  /** Owner-local booking-date bounds; preferred when present. */
+  startBookingDate?: string | null;
+  endBookingDateExclusive?: string | null;
 }>;
 
 /**

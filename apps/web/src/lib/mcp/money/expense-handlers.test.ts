@@ -89,7 +89,10 @@ function createRepository() {
       const now = new Date().toISOString();
       const expense: PersonalExpense = {
         id: nextId(),
+        kind: "expense",
+        direction: "out",
         occurredAt: input.values.occurredAt,
+        bookingDate: input.values.bookingDate,
         amountMinor: input.values.amountMinor,
         currency: "MAD",
         category: input.values.category,
@@ -97,6 +100,9 @@ function createRepository() {
         merchant: input.values.merchant,
         needVsWant: input.values.needVsWant,
         paymentMethod: input.values.paymentMethod,
+        purpose: null,
+        countsInDaily: true,
+        periodId: null,
         idempotencyKey: input.values.idempotencyKey,
         version: 1,
         deletedAt: null,
@@ -126,14 +132,16 @@ function createRepository() {
         .filter(
           (row) =>
             (query.startUtcIso === null
-              || row.expense.occurredAt >= query.startUtcIso)
+              || (row.expense.occurredAt ?? "") >= query.startUtcIso)
             && (query.endUtcExclusiveIso === null
-              || row.expense.occurredAt < query.endUtcExclusiveIso),
+              || (row.expense.occurredAt ?? "") < query.endUtcExclusiveIso),
         )
         .map((row) => row.expense)
         .sort((left, right) => {
-          if (left.occurredAt !== right.occurredAt) {
-            return left.occurredAt < right.occurredAt ? 1 : -1;
+          const leftAt = left.occurredAt ?? "";
+          const rightAt = right.occurredAt ?? "";
+          if (leftAt !== rightAt) {
+            return leftAt < rightAt ? 1 : -1;
           }
           return left.id < right.id ? 1 : -1;
         });
@@ -400,7 +408,10 @@ describe("MCP Money expense handlers", () => {
       hasMore: true,
       nextOffset: 2,
     });
-    expect(first.expenses![0].occurredAt > first.expenses![1].occurredAt).toBe(true);
+    expect(
+      (first.expenses![0].occurredAt ?? "") >
+        (first.expenses![1].occurredAt ?? ""),
+    ).toBe(true);
 
     const second = structured(
       await handlers.listMoneyLedger(writerAuth, { limit: 2, offset: 2 }),
