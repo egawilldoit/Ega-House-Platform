@@ -255,6 +255,16 @@ export async function updateMovement(
   if (!current.value) return applicationFailure(NOT_FOUND, "notFound");
   const movement = current.value;
 
+  // Opening cash has one owner: the period/settings correction path, which
+  // keeps version, provenance and evidence coherent. A generic ledger update
+  // must never become a second opening writer.
+  if (movement.kind === "opening") {
+    return applicationFailure(
+      "Opening cash is corrected through Money period settings, not the movement ledger.",
+      "validation",
+    );
+  }
+
   const kindError = validateChangesForKind(movement.kind, changes);
   if (kindError) return applicationFailure(kindError, "validation");
 

@@ -18,7 +18,6 @@ import {
   type ExpenseCategory,
   type ExpenseNeedVsWant,
   type ExpensePaymentMethod,
-  type ExpenseValidationFailure,
 } from "./expenses";
 import {
   addDaysToIsoDate,

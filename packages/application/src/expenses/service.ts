@@ -118,7 +118,7 @@ export type CreateExpenseOptions = Readonly<{
 async function routineEntryGuard(
   actor: AuthenticatedActor,
   periods: NonNullable<CreateExpenseOptions["periods"]>,
-  occurredAt: string,
+  entry: Readonly<{ occurredAt?: string; bookingDate?: string }>,
 ): Promise<ApplicationResult<never> | null> {
   const tracking = await periods.findTracking(actor);
   if (!tracking.ok) {
@@ -128,10 +128,17 @@ async function routineEntryGuard(
     );
   }
   if (tracking.value) {
-    const bookingDate = getLocalDateInTimezone(
-      new Date(occurredAt),
-      tracking.value.timezone,
-    );
+    // A date-only edit supplies the booking day directly; a timestamped one is
+    // resolved in the same timezone the entry guard uses.
+    const bookingDate =
+      entry.bookingDate ??
+      (entry.occurredAt
+        ? getLocalDateInTimezone(
+            new Date(entry.occurredAt),
+            tracking.value.timezone,
+          )
+        : null);
+    if (bookingDate === null) return null;
     const guardMessage = routineEntryGuardFailure(tracking.value, bookingDate);
     return guardMessage ? applicationFailure(guardMessage, "validation") : null;
   }
@@ -177,7 +184,7 @@ export async function createExpense(
     const guard = await routineEntryGuard(
       actor,
       options.periods,
-      values.occurredAt,
+      { occurredAt: values.occurredAt },
     );
     if (guard) return guard;
   }
@@ -238,6 +245,8 @@ export async function listExpenses(
     offset: query.offset,
     startUtcIso: query.startUtcIso,
     endUtcExclusiveIso: query.endUtcExclusiveIso,
+    startBookingDate: query.startBookingDate,
+    endBookingDateExclusive: query.endBookingDateExclusive,
   });
   if (!result.ok) {
     return failureFor(result.error.code, "Unable to load expenses right now.");
@@ -274,13 +283,16 @@ export async function updateExpense(
   const now = options.now ?? new Date();
 
   // Moving a purchase to another day must obey the same tracking-period gate
-  // as creating it; otherwise MCP/web/Hono edits could escape the period.
-  if (options.periods && changes.occurredAt !== undefined) {
-    const guard = await routineEntryGuard(
-      actor,
-      options.periods,
-      changes.occurredAt,
-    );
+  // as creating it, whether the caller supplies an instant or a date-only
+  // booking day.
+  if (
+    options.periods
+    && (changes.occurredAt !== undefined || changes.bookingDate !== undefined)
+  ) {
+    const guard = await routineEntryGuard(actor, options.periods, {
+      occurredAt: changes.occurredAt,
+      bookingDate: changes.bookingDate,
+    });
     if (guard) return guard;
   }
 
