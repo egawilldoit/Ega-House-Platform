@@ -42,6 +42,7 @@ import {
 import { createTaskMcpWriteHandlers } from "@/lib/mcp/write/tasks";
 import { createMcpTimerModuleHandlers } from "@/lib/mcp/write/timer";
 import { createMcpPersonalOpsWriteHandlers } from "@/lib/mcp/write/personal-ops";
+import { createMcpMoneyWriteHandlers } from "@/lib/mcp/money/handlers";
 import {
   McpToolAuthorizationError,
   requireMcpPermission,
@@ -118,6 +119,21 @@ function canonicalReceiptText(value: string | null | undefined): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
   return trimmed === "" ? null : trimmed;
+}
+
+function hasOwn(value: object, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(value, key);
+}
+
+function normalizedAllocationReceipt(
+  allocations: Record<string, number | null> | undefined,
+): Record<string, number | null> | null {
+  if (allocations === undefined) return null;
+  const normalized: Record<string, number | null> = {};
+  for (const key of Object.keys(allocations).sort()) {
+    normalized[key] = allocations[key] ?? null;
+  }
+  return normalized;
 }
 
 /**
@@ -247,6 +263,7 @@ export function createMcpWriteToolHandlers(
   const taskHandlers = createTaskMcpWriteHandlers(moduleDeps);
   const timerHandlers = createMcpTimerModuleHandlers(moduleDeps, writesEnabled);
   const personalOpsHandlers = createMcpPersonalOpsWriteHandlers(moduleDeps);
+  const moneyHandlers = createMcpMoneyWriteHandlers(moduleDeps);
 
   return {
     // Projects
@@ -753,6 +770,126 @@ export function createMcpWriteToolHandlers(
           patch: input.patch,
         }, () =>
           personalOpsHandlers.savePersonalOpsCheckin(authInfo, input, input.operationId),
+        );
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+
+    // MONEY-05 budgets, classification and counted coffee visits. The outer
+    // receipt binds the complete normalized semantic input, including which
+    // optional fields were present (absent = unchanged, null = clear).
+    async setMoneyAllocation(
+      authInfo: AuthInfo | undefined,
+      input: {
+        periodStartDate: string;
+        periodEndDate: string;
+        version: number;
+        allocations?: Record<string, number | null>;
+        savingsTargetMinor?: number | null;
+        emergencyTargetMinor?: number | null;
+        coffeeWeeklySpendLimitMinor?: number | null;
+        coffeeWeeklyVisitLimit?: number | null;
+        operationId: string;
+      },
+    ): Promise<CallToolResult> {
+      try {
+        assertWritesEnabled(writesEnabled);
+        requireMcpPermission(authInfo, "personal_ops.write");
+        const client = dependencies.createUserClient(authInfo!.token);
+        const semantic: Record<string, unknown> = {
+          periodStartDate: input.periodStartDate,
+          periodEndDate: input.periodEndDate,
+          version: input.version,
+          allocations: normalizedAllocationReceipt(input.allocations),
+        };
+        for (const field of [
+          "savingsTargetMinor",
+          "emergencyTargetMinor",
+          "coffeeWeeklySpendLimitMinor",
+          "coffeeWeeklyVisitLimit",
+        ] as const) {
+          if (hasOwn(input, field)) semantic[field] = input[field] ?? null;
+        }
+        return await withExclusiveMutation(client, "ega_money_set_allocation", input.operationId, semantic, () =>
+          moneyHandlers.setMoneyAllocation(authInfo, input, input.operationId),
+        );
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+
+    async classifyMoneyExpense(
+      authInfo: AuthInfo | undefined,
+      input: {
+        expenseId: string;
+        version: number;
+        category: string;
+        note?: string | null;
+        needVsWant?: "need" | "want";
+        operationId: string;
+      },
+    ): Promise<CallToolResult> {
+      try {
+        assertWritesEnabled(writesEnabled);
+        requireMcpPermission(authInfo, "personal_ops.write");
+        const client = dependencies.createUserClient(authInfo!.token);
+        return await withExclusiveMutation(client, "ega_money_classify_expense", input.operationId, {
+          expenseId: input.expenseId,
+          version: input.version,
+          category: input.category,
+          note: hasOwn(input, "note") ? canonicalReceiptText(input.note) : "__unchanged__",
+          needVsWant: input.needVsWant ?? null,
+        }, () =>
+          moneyHandlers.classifyMoneyExpense(authInfo, input, input.operationId),
+        );
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+
+    async recordCoffeeVisit(
+      authInfo: AuthInfo | undefined,
+      input: {
+        visitKey: string;
+        localDate: string;
+        timezone: string;
+        expenseIds: string[];
+        note?: string | null;
+        operationId: string;
+      },
+    ): Promise<CallToolResult> {
+      try {
+        assertWritesEnabled(writesEnabled);
+        requireMcpPermission(authInfo, "personal_ops.write");
+        const client = dependencies.createUserClient(authInfo!.token);
+        return await withExclusiveMutation(client, "ega_money_record_coffee_visit", input.operationId, {
+          visitKey: input.visitKey.trim(),
+          localDate: input.localDate,
+          timezone: input.timezone,
+          expenseIds: [...input.expenseIds].map((id) => id.toLowerCase()).sort(),
+          note: canonicalReceiptText(input.note),
+        }, () =>
+          moneyHandlers.recordCoffeeVisit(authInfo, input, input.operationId),
+        );
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+
+    async deleteCoffeeVisit(
+      authInfo: AuthInfo | undefined,
+      input: { visitId: string; version: number; operationId: string },
+    ): Promise<CallToolResult> {
+      try {
+        assertWritesEnabled(writesEnabled);
+        requireMcpPermission(authInfo, "personal_ops.write");
+        const client = dependencies.createUserClient(authInfo!.token);
+        return await withExclusiveMutation(client, "ega_money_delete_coffee_visit", input.operationId, {
+          visitId: input.visitId,
+          version: input.version,
+        }, () =>
+          moneyHandlers.deleteCoffeeVisit(authInfo, input, input.operationId),
         );
       } catch (error) {
         return errorResult(error);

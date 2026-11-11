@@ -18,6 +18,7 @@ export type { HealthApi } from "./health";
 export type { FrictionApi } from "./friction";
 export type { TimeContextApi, TimeContextQuery } from "./time-context";
 export type { ExpensesApi } from "./expenses";
+export type { MoneyApi } from "./money";
 export type { CheckinsApi } from "./checkins";
 export type { AuthApi } from "./auth";
 

@@ -68,6 +68,9 @@ describe("registerMcpReadTools", () => {
       "ega_personal_ops_summary",
       "ega_personal_ops_expenses_list",
       "ega_personal_ops_checkin_get",
+      "ega_money_budget_get",
+      "ega_money_coffee_window",
+      "ega_money_coffee_visits_list",
       "ega_list_timer_sessions",
     ]);
   });

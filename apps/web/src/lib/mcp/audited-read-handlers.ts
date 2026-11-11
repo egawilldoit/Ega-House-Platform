@@ -14,9 +14,9 @@ import {
   consumeMcpRateLimit,
   type McpRateLimitResult,
 } from "@/lib/mcp/rate-limit-repository";
-import type { createMcpReadToolHandlers } from "@/lib/mcp/read-tool-handlers";
+import type { McpReadToolHandlers } from "@/lib/mcp/server";
 
-type BaseReadHandlers = ReturnType<typeof createMcpReadToolHandlers>;
+type BaseReadHandlers = McpReadToolHandlers;
 
 type ProtocolContext = {
   requestId?: string | number;
@@ -330,6 +330,52 @@ export function createAuditedMcpReadHandlers(
         authInfo,
         context,
         () => handlers.personalOpsCheckinGet(authInfo, input),
+      );
+    },
+
+    moneyBudgetGet(
+      authInfo: AuthInfo | undefined,
+      input: { periodStartDate: string; periodEndDate: string },
+      context?: ProtocolContext,
+    ): Promise<CallToolResult> {
+      return execute(
+        "ega_money_budget_get",
+        authInfo,
+        context,
+        () => handlers.moneyBudgetGet!(authInfo, input),
+      );
+    },
+
+    moneyCoffeeWindow(
+      authInfo: AuthInfo | undefined,
+      input: {
+        localDate: string;
+        timezone: string;
+        periodStartDate: string;
+        periodEndDate: string;
+        spendLimitMinor?: number | null;
+        visitLimitMinor?: number | null;
+      },
+      context?: ProtocolContext,
+    ): Promise<CallToolResult> {
+      return execute(
+        "ega_money_coffee_window",
+        authInfo,
+        context,
+        () => handlers.moneyCoffeeWindow!(authInfo, input),
+      );
+    },
+
+    moneyCoffeeVisitsList(
+      authInfo: AuthInfo | undefined,
+      input: { from: string; to: string; limit?: number; offset?: number },
+      context?: ProtocolContext,
+    ): Promise<CallToolResult> {
+      return execute(
+        "ega_money_coffee_visits_list",
+        authInfo,
+        context,
+        () => handlers.moneyCoffeeVisitsList!(authInfo, input),
       );
     },
   };
