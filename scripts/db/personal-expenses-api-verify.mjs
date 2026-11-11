@@ -910,6 +910,13 @@ async function main() {
     log("RLS", "client_id claim insert is 403 and reads are empty/404");
 
     // DST / TIMEZONE WINDOWS ---------------------------------------------------
+    // Booking dates are derived in the owner timezone by the DB trigger; align
+    // the owner context with the explicit NY window used by this proof.
+    await sql.unsafe(
+      `INSERT INTO public.user_time_context (user_id, iana_timezone)
+       VALUES ('${OWNER_A}'::uuid, 'America/New_York')
+       ON CONFLICT (user_id) DO UPDATE SET iana_timezone = excluded.iana_timezone`,
+    );
     const dstRows = [
       { occurredAt: "2026-03-08T04:59:59.999Z", key: "api-dst-before" },
       { occurredAt: "2026-03-08T05:00:00.000Z", key: "api-dst-start" },
@@ -975,6 +982,11 @@ async function main() {
     assert(invalidTimezone.status === 400, "invalid IANA timezone answers 400");
 
     // PAGINATION ---------------------------------------------------------------
+    // Booking dates follow the owner timezone; use UTC so the midnight-Z rows
+    // below land on the dates this window asserts.
+    await sql.unsafe(
+      `UPDATE public.user_time_context SET iana_timezone = 'UTC' WHERE user_id = '${OWNER_A}'::uuid`,
+    );
     const pageRows = [
       { occurredAt: "2026-10-05T00:00:00Z", key: "api-page-5", amount: 500 },
       { occurredAt: "2026-10-04T00:00:00Z", key: "api-page-4", amount: 400 },
