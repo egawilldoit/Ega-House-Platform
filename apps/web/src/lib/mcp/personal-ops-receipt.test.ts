@@ -105,6 +105,34 @@ describe("ega_create_personal_ops_expense receipt fingerprint", () => {
     expect(hashes[0]).toBe(hashes[1]);
   });
 
+  it("normalizes incidental whitespace and null/omitted optional text", async () => {
+    const { handlers, hashes } = handlerWithRecordedHashes();
+
+    await handlers.createPersonalOpsExpense(authInfo, {
+      ...baseInput(),
+      note: "  morning coffee  ",
+      merchant: " Cafe ",
+    });
+    await handlers.createPersonalOpsExpense(authInfo, {
+      ...baseInput(),
+      note: "morning coffee",
+      merchant: "Cafe",
+    });
+    expect(hashes[0]).toBe(hashes[1]);
+
+    await handlers.createPersonalOpsExpense(authInfo, {
+      ...baseInput(),
+      note: null,
+      merchant: null,
+    });
+    await handlers.createPersonalOpsExpense(authInfo, {
+      ...baseInput(),
+      note: undefined,
+      merchant: undefined,
+    });
+    expect(hashes[2]).toBe(hashes[3]);
+  });
+
   it("refuses to claim anything when writes are disabled", async () => {
     const { handlers, hashes } = handlerWithRecordedHashes(false);
 

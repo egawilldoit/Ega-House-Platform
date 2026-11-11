@@ -27,7 +27,7 @@ function assertSafeTarget(url: string | undefined): void {
   if (!url) return;
   const host = new URL(url).hostname;
   const local =
-    host === "localhost" || host === "127.0.0.1" || host === "::1";
+    host === "localhost" || host === "127.0.0.1" || host === "[::1]";
   if (!local && process.env.MONEY_TEST_ALLOW_NONLOCAL !== "1") {
     throw new Error(
       "MONEY_TEST_DATABASE_URL points at a remote host. Set MONEY_TEST_ALLOW_NONLOCAL=1 only for an approved rolled-back proof target.",
@@ -263,7 +263,10 @@ describe.skipIf(!connectionString)("MONEY-01 finance grant RLS", () => {
     const leftovers = await sql`
       select count(*)::int as n
       from public.mcp_authorization_grants
-      where oauth_client_id in (${writerClient}, ${readerClient}, ${revokedClient})`;
+      where oauth_client_id in (
+        ${writerClient}, ${readerClient}, ${revokedClient},
+        ${pendingClient}, ${wrongResourceClient}, ${workspaceClient}
+      )`;
     expect(leftovers[0].n).toBe(0);
   }, 60_000);
 });
