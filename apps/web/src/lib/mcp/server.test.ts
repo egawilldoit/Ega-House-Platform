@@ -51,6 +51,9 @@ function createHandlers() {
     moneyState: vi.fn().mockResolvedValue({ content: [] }),
     moneyMovementList: vi.fn().mockResolvedValue({ content: [] }),
     moneyMovementGet: vi.fn().mockResolvedValue({ content: [] }),
+  moneyBudgetGet: vi.fn().mockResolvedValue({ content: [] }),
+  moneyCoffeeWindow: vi.fn().mockResolvedValue({ content: [] }),
+  moneyCoffeeVisitList: vi.fn().mockResolvedValue({ content: [] }),
   };
 }
 
@@ -79,6 +82,9 @@ describe("registerMcpReadTools", () => {
       "ega_money_state",
       "ega_money_movement_list",
       "ega_money_movement_get",
+      "ega_money_budget_get",
+      "ega_money_coffee_window",
+      "ega_money_coffee_visits_list",
       "ega_list_timer_sessions",
     ]);
   });

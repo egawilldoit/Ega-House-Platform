@@ -1072,5 +1072,129 @@ export function createMcpWriteToolHandlers(
         return errorResult(error);
       }
     },
+
+    // MONEY-05 writes: the full normalized input is stored in the outer
+    // receipt, and each mutation calls the canonical application use case.
+    async setMoneyAllocation(
+      authInfo: AuthInfo | undefined,
+      input: {
+        periodStartDate: string;
+        periodEndDate: string;
+        version: number;
+        allocations?: Record<string, number | null>;
+        savingsTargetMinor?: number | null;
+        emergencyTargetMinor?: number | null;
+        coffeeWeeklySpendLimitMinor?: number | null;
+        coffeeWeeklyVisitLimit?: number | null;
+        operationId: string;
+      },
+    ): Promise<CallToolResult> {
+      try {
+        assertWritesEnabled(writesEnabled);
+        requireMcpPermission(authInfo, "personal_ops.write");
+        const client = dependencies.createUserClient(authInfo!.token);
+        const semanticInput: Record<string, unknown> = {
+          periodStartDate: input.periodStartDate,
+          periodEndDate: input.periodEndDate,
+          expectedVersion: input.version,
+        };
+        if (input.allocations !== undefined) {
+          semanticInput.allocations = Object.fromEntries(
+            Object.entries(input.allocations).sort(([a], [b]) => a.localeCompare(b)),
+          );
+        }
+        if (input.savingsTargetMinor !== undefined) {
+          semanticInput.savingsTargetMinor = input.savingsTargetMinor;
+        }
+        if (input.emergencyTargetMinor !== undefined) {
+          semanticInput.emergencyTargetMinor = input.emergencyTargetMinor;
+        }
+        if (input.coffeeWeeklySpendLimitMinor !== undefined) {
+          semanticInput.coffeeWeeklySpendLimitMinor = input.coffeeWeeklySpendLimitMinor;
+        }
+        if (input.coffeeWeeklyVisitLimit !== undefined) {
+          semanticInput.coffeeWeeklyVisitLimit = input.coffeeWeeklyVisitLimit;
+        }
+        return await withExclusiveMutation(client, "ega_money_set_allocation", input.operationId, semanticInput, () =>
+          moneyHandlers.setMoneyAllocation(authInfo, input, input.operationId),
+        );
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+
+    async classifyMoneyExpense(
+      authInfo: AuthInfo | undefined,
+      input: {
+        expenseId: string;
+        version: number;
+        category: string;
+        note?: string | null;
+        needVsWant?: "need" | "want";
+        operationId: string;
+      },
+    ): Promise<CallToolResult> {
+      try {
+        assertWritesEnabled(writesEnabled);
+        requireMcpPermission(authInfo, "personal_ops.write");
+        const client = dependencies.createUserClient(authInfo!.token);
+        const semanticInput: Record<string, unknown> = {
+          expenseId: input.expenseId,
+          expectedVersion: input.version,
+          category: input.category,
+        };
+        if (input.note !== undefined) semanticInput.note = canonicalReceiptText(input.note);
+        if (input.needVsWant !== undefined) semanticInput.needVsWant = input.needVsWant;
+        return await withExclusiveMutation(client, "ega_money_classify_expense", input.operationId, semanticInput, () =>
+          moneyHandlers.classifyMoneyExpense(authInfo, input, input.operationId),
+        );
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+
+    async recordCoffeeVisit(
+      authInfo: AuthInfo | undefined,
+      input: {
+        visitKey: string;
+        localDate: string;
+        timezone: string;
+        expenseIds: string[];
+        note?: string | null;
+        operationId: string;
+      },
+    ): Promise<CallToolResult> {
+      try {
+        assertWritesEnabled(writesEnabled);
+        requireMcpPermission(authInfo, "personal_ops.write");
+        const client = dependencies.createUserClient(authInfo!.token);
+        return await withExclusiveMutation(client, "ega_money_record_coffee_visit", input.operationId, {
+          visitKey: input.visitKey,
+          localDate: input.localDate,
+          timezone: input.timezone,
+          expenseIds: [...input.expenseIds].sort(),
+          note: canonicalReceiptText(input.note ?? null),
+        }, () => moneyHandlers.recordCoffeeVisit(authInfo, input, input.operationId));
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+
+    async deleteCoffeeVisit(
+      authInfo: AuthInfo | undefined,
+      input: { visitId: string; version: number; operationId: string },
+    ): Promise<CallToolResult> {
+      try {
+        assertWritesEnabled(writesEnabled);
+        requireMcpPermission(authInfo, "personal_ops.write");
+        const client = dependencies.createUserClient(authInfo!.token);
+        return await withExclusiveMutation(client, "ega_money_delete_coffee_visit", input.operationId, {
+          visitId: input.visitId,
+          expectedVersion: input.version,
+        }, () => moneyHandlers.deleteCoffeeVisit(authInfo, input, input.operationId));
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
   };
 }

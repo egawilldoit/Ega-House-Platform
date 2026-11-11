@@ -42,6 +42,11 @@ test("the fixed categories, need-vs-want and payment methods match PO-08", () =>
     "household",
     "health",
     "other",
+    "daily_usage",
+    "personal_care",
+    "work_tools",
+    "fun",
+    "emergency",
   ]);
   assert.deepEqual(EXPENSE_NEED_VS_WANT_VALUES, ["need", "want"]);
   assert.deepEqual(EXPENSE_PAYMENT_METHOD_VALUES, [
