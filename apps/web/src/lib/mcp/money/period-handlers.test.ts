@@ -296,4 +296,3 @@ describe("Money MCP tools", () => {
     expect(structured(missingOperation).error?.code).toBe("INVALID_ARGUMENT");
   });
 });
-

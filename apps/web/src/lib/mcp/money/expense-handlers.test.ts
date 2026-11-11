@@ -455,4 +455,3 @@ describe("MCP Money expense handlers", () => {
     expect(foreign.error!.code).toBe("NOT_FOUND");
   });
 });
-

@@ -259,5 +259,3 @@ export function createMcpMoneyPeriodHandlers(
     },
   };
 }
-
-
