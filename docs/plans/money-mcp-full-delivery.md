@@ -918,8 +918,8 @@ delivery report; never include credentials or private source exports.
 
 | Issue | State | PR / head / merge SHA | Migrations / runtime evidence | Remaining blocker |
 | --- | --- | --- | --- | --- |
-| MONEY-01 | Planned | — | — | — |
-| MONEY-02 | Planned | — | — | — |
+| MONEY-01 | Merged | PR #392 / reviewed `c491e50b` / merge `70a1709a` | Migrations `0089`–`0092` (pre-existing pending) and `0093_money_01_finance_grants` applied to the verified Supabase target; grant/check-in RLS and both DB proofs pass locally and in `db-invariants` | Runtime OAuth/MCP same-row readback awaits the real connector at MONEY-14 |
+| MONEY-02 | In review | `feat/money-02-integration` (PR pending) | `0094` committed, not applied; RLS proof passes against disposable PostgreSQL 18 | Awaiting PR checks/merge; migration apply follows merge |
 | MONEY-03 | Planned | — | — | — |
 | MONEY-04 | Planned | — | — | — |
 | MONEY-05 | Planned | — | — | — |
