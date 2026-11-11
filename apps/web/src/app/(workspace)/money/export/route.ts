@@ -2,13 +2,24 @@ import { createClient } from "@/lib/supabase/server";
 import { getWebTimeContext } from "@/lib/services/time-context-service";
 import { toCsvDocument } from "@/lib/csv";
 import { captureServerException } from "@/lib/monitoring/capture-server-exception";
-import { createAuthenticatedActor } from "@ega/application";
+import {
+  createAuthenticatedActor,
+  exportExpenses,
+  EXPENSE_EXPORT_MAX_ROWS,
+} from "@ega/application";
 import { SupabaseExpenseRepository } from "@ega/data-access";
 import { getLocalDayWindow, isIsoDate } from "@ega/domain/time-context";
 
 export const dynamic = "force-dynamic";
 
-/** Bounded owner expense export (PO-15, issue #360). */
+/**
+ * Bounded owner expense export (PO-15, issue #360; MONEY-02 completeness).
+ *
+ * The route keeps its explicit 93-day window but no longer relies on a single
+ * 10,000-row page. `exportExpenses` walks the canonical repository to
+ * exhaustion and refuses explicitly if the row budget is exceeded, so a
+ * downloaded file is either complete or the request fails with a reason.
+ */
 export const MAX_EXPORT_DAYS = 93;
 
 export function parseExpenseExportParams(searchParams: URLSearchParams) {
@@ -16,22 +27,39 @@ export function parseExpenseExportParams(searchParams: URLSearchParams) {
   const to = searchParams.get("to")?.trim() ?? "";
   if (!isIsoDate(from) || !isIsoDate(to)) return null;
   if (to < from) return null;
-  const days = Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000) + 1;
+  const days =
+    Math.round(
+      (Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) /
+        86_400_000,
+    ) + 1;
   if (days > MAX_EXPORT_DAYS) return null;
   return { from, to };
 }
 
-export function buildExpenseExportCsv(rows: Array<{
-  occurredAt: string;
-  amountMinor: number;
-  category: string;
-  merchant: string | null;
-  note: string | null;
-  needVsWant: string;
-  paymentMethod: string | null;
-}>, timezone: string) {
+export function buildExpenseExportCsv(
+  rows: Array<{
+    occurredAt: string;
+    amountMinor: number;
+    category: string;
+    merchant: string | null;
+    note: string | null;
+    needVsWant: string;
+    paymentMethod: string | null;
+  }>,
+  timezone: string,
+) {
   return toCsvDocument(
-    ["occurred_at", "amount_minor", "amount_mad", "category", "merchant", "note", "need_vs_want", "payment_method", "timezone"],
+    [
+      "occurred_at",
+      "amount_minor",
+      "amount_mad",
+      "category",
+      "merchant",
+      "note",
+      "need_vs_want",
+      "payment_method",
+      "timezone",
+    ],
     rows.map((row) => [
       row.occurredAt,
       row.amountMinor,
@@ -50,7 +78,10 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const params = parseExpenseExportParams(url.searchParams);
   if (!params) {
-    return Response.json({ error: "Use a bounded from/to date range (max 93 days)." }, { status: 400 });
+    return Response.json(
+      { error: "Use a bounded from/to date range (max 93 days)." },
+      { status: 400 },
+    );
   }
 
   const supabase = await createClient();
@@ -67,30 +98,48 @@ export async function GET(request: Request) {
     timezone = "UTC";
   }
 
-  // Owner-local half-open bounds for the selected range.
-  let startUtc: string;
-  let endUtcExclusive: string;
+  // Validate the owner-local window once here for a clear range error before
+  // the canonical export walks pages.
   try {
-    startUtc = getLocalDayWindow(timezone, params.from).startUtcIso;
-    endUtcExclusive = getLocalDayWindow(timezone, params.to).endUtcIso;
+    getLocalDayWindow(timezone, params.from);
+    getLocalDayWindow(timezone, params.to);
   } catch {
-    return Response.json({ error: "Unable to resolve the export range." }, { status: 400 });
+    return Response.json(
+      { error: "Unable to resolve the export range." },
+      { status: 400 },
+    );
   }
 
-  const repository = new SupabaseExpenseRepository(supabase);
-  const listed = await repository.list(createAuthenticatedActor(ownerUserId), {
-    limit: 10000,
-    offset: 0,
-    startUtcIso: startUtc,
-    endUtcExclusiveIso: endUtcExclusive,
-  });
-  if (!listed.ok) {
-    captureServerException(new Error(listed.error.code), { area: "route.expense-export", operation: "load_expenses" });
-    return Response.json({ error: "Unable to load expenses right now." }, { status: 500 });
+  const exported = await exportExpenses(
+    createAuthenticatedActor(ownerUserId),
+    new SupabaseExpenseRepository(supabase),
+    { from: params.from, to: params.to, timezone },
+  );
+  if (!exported.ok) {
+    if (
+      exported.code === "validation" &&
+      exported.errorMessage.startsWith("This export contains more than")
+    ) {
+      return Response.json(
+        { error: exported.errorMessage, maxRows: EXPENSE_EXPORT_MAX_ROWS },
+        { status: 413 },
+      );
+    }
+    if (exported.code === "validation") {
+      return Response.json({ error: exported.errorMessage }, { status: 400 });
+    }
+    captureServerException(new Error(exported.code ?? "unknown"), {
+      area: "route.expense-export",
+      operation: "export_expenses",
+    });
+    return Response.json(
+      { error: "Unable to load expenses right now." },
+      { status: exported.code === "forbidden" ? 403 : 500 },
+    );
   }
 
   const csv = buildExpenseExportCsv(
-    listed.value.map((row) => ({
+    exported.data.expenses.map((row) => ({
       occurredAt: row.occurredAt,
       amountMinor: row.amountMinor,
       category: row.category,
@@ -107,6 +156,7 @@ export async function GET(request: Request) {
       "Content-Type": "text/csv; charset=utf-8",
       "Content-Disposition": `attachment; filename="ega-expenses-${params.from}-${params.to}.csv"`,
       "Cache-Control": "private, no-store",
+      "X-EGA-Export-Rows": String(exported.data.recordCount),
     },
   });
 }

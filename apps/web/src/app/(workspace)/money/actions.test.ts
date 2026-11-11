@@ -41,6 +41,22 @@ test("money actions derive the actor from the verified session and never accept 
   assert.doesNotMatch(actionsSource, /getSupabaseServiceClient/);
 });
 
+test("edit and delete invalidate both Money and Today projections", () => {
+  const updateBody = actionsSource.slice(
+    actionsSource.indexOf("updateExpenseAction"),
+    actionsSource.indexOf("deleteExpenseAction"),
+  );
+  assert.match(updateBody, /revalidatePath\("\/money"\)/);
+  assert.match(updateBody, /revalidatePath\("\/today"\)/);
+
+  const deleteBody = actionsSource.slice(
+    actionsSource.indexOf("deleteExpenseAction"),
+    actionsSource.indexOf("getExpenseAction"),
+  );
+  assert.match(deleteBody, /revalidatePath\("\/money"\)/);
+  assert.match(deleteBody, /revalidatePath\("\/today"\)/);
+});
+
 test("category caps save through one validated preference patch without blocking creation", () => {
   assert.match(actionsSource, /saveCategoryCapsAction/);
   assert.match(actionsSource, /updateWebUserPreferences\(\{ categoryCaps/);
@@ -93,6 +109,9 @@ function makeRepository() {
   const repository: ExpenseRepository = {
     async summarize() {
       return { ok: true as const, value: { totalsByCategory: {}, countsByCategory: {}, recordCount: 0, truncated: false } };
+    },
+    async count() {
+      return { ok: true as const, value: 0 };
     },
     async findByIdempotencyKey(actor, idempotencyKey) {
       const receipt = byKey.get(`${actor.userId}::${idempotencyKey}`) ?? null;

@@ -229,6 +229,13 @@ export class SupabaseExpenseRepository implements ExpenseRepository {
     if (query.endUtcExclusiveIso) {
       request = request.lt("occurred_at", query.endUtcExclusiveIso);
     }
+    // Keyset continuation keeps an export from shifting under concurrent
+    // inserts/deletes. Values come from the previous stored row, not a caller.
+    if (query.beforeOccurredAt && query.beforeId) {
+      request = request.or(
+        `occurred_at.lt.${query.beforeOccurredAt},and(occurred_at.eq.${query.beforeOccurredAt},id.lt.${query.beforeId})`,
+      );
+    }
 
     const { data, error } = await request
       .order("occurred_at", { ascending: false })
@@ -322,10 +329,28 @@ export class SupabaseExpenseRepository implements ExpenseRepository {
     return { ok: true, value: { totalsByCategory: totals, countsByCategory: counts, recordCount, truncated } };
   }
 
+  async count(
+    actor: AuthenticatedActor,
+    window: ExpenseSummaryWindow,
+  ): Promise<RepositoryResult<number>> {
+    const { count, error } = await this.supabase
+      .from(TABLE)
+      .select("id", { count: "exact", head: true })
+      .eq("owner_user_id", actor.userId)
+      .is("deleted_at", null)
+      .gte("occurred_at", window.startUtcIso)
+      .lt("occurred_at", window.endUtcExclusiveIso);
+
+    if (error) return { ok: false, error: expenseFailure(error) };
+    if (typeof count !== "number") return { ok: false, error: { code: "unknown" } };
+    return { ok: true, value: count };
+  }
+
   async softDelete(
     actor: AuthenticatedActor,
     id: string,
     nowIso: string,
+    expectedVersion?: number,
   ): Promise<RepositoryResult<ExpenseDeleteOutcome>> {
     const current = await this.supabase
       .from(TABLE)
@@ -341,6 +366,8 @@ export class SupabaseExpenseRepository implements ExpenseRepository {
 
     const row = current.data as ExpenseVersionRow;
     if (row.deleted_at !== null) {
+      // A repeat delete stays an idempotent success even when a caller pinned
+      // an older version: the row is already in the requested terminal state.
       return {
         ok: true,
         value: {
@@ -349,6 +376,9 @@ export class SupabaseExpenseRepository implements ExpenseRepository {
           alreadyDeleted: true,
         },
       };
+    }
+    if (expectedVersion !== undefined && Number(row.version) !== expectedVersion) {
+      return { ok: false, error: { code: "conflict" } };
     }
 
     const { data, error } = await this.supabase

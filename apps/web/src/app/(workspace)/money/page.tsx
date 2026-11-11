@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { createAuthenticatedActor, listExpenses } from "@ega/application";
 import { SupabaseExpenseRepository } from "@ega/data-access";
 import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
+import { RefreshOnFocus } from "@/components/refresh-on-focus";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentUser } from "@/lib/services/auth-service";
 import { getWebTimeContext } from "@/lib/services/time-context-service";
@@ -91,7 +92,7 @@ export default async function MoneyPage({ searchParams }: Props) {
               <dt className="text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">Coffee this month</dt>
               <dd className="text-[length:var(--text-body)] font-medium">
                 {new Intl.NumberFormat("fr-MA", { style: "currency", currency: "MAD", minimumFractionDigits: 2 }).format(summary.coffee.totalMinor / 100)}
-                <span className="block text-[length:var(--text-meta)] font-normal text-[color:var(--ega-text-secondary)]">{summary.coffee.recordCount} recorded</span>
+                <span className="block text-[length:var(--text-meta)] font-normal text-[color:var(--ega-text-secondary)]">{summary.coffee.recordCount} recorded{summary.coffee.truncated ? " (lower bound)" : ""}</span>
               </dd>
             </div>
           </dl>
@@ -129,16 +130,32 @@ export default async function MoneyPage({ searchParams }: Props) {
       {cappedCategories.length > 0 ? (
         <ul className="mt-3 flex flex-col gap-1.5">
           {cappedCategories.map(([category, cap]) => {
-            const spent = spentByCategory[category] ?? 0;
-            const over = spent > cap;
+            // An unavailable or truncated summary must never render as a
+            // complete zero-progress bar. A category missing from a truncated
+            // read is unknown, not zero; only a complete reading may show 0.
+            const spendValue = spentByCategory[category];
+            const truncated = summary?.monthToDate.truncated ?? false;
+            const hasReading =
+              summary !== null && (!truncated || typeof spendValue === "number");
+            const spent = spendValue ?? 0;
+            const over = hasReading && spent > cap;
             return (
               <li key={category} className="flex flex-wrap items-baseline gap-x-3 text-[length:var(--text-body)]">
                 <span className="font-medium">{category.replaceAll("_", " ")}</span>
-                <span>
-                  {new Intl.NumberFormat("fr-MA", { style: "currency", currency: "MAD", minimumFractionDigits: 2 }).format(spent / 100)}
-                  {" / "}
-                  {new Intl.NumberFormat("fr-MA", { style: "currency", currency: "MAD", minimumFractionDigits: 2 }).format(cap / 100)}
-                </span>
+                {hasReading ? (
+                  <span>
+                    {new Intl.NumberFormat("fr-MA", { style: "currency", currency: "MAD", minimumFractionDigits: 2 }).format(spent / 100)}
+                    {truncated ? "+" : ""}
+                    {" / "}
+                    {new Intl.NumberFormat("fr-MA", { style: "currency", currency: "MAD", minimumFractionDigits: 2 }).format(cap / 100)}
+                  </span>
+                ) : (
+                  <span className="text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
+                    {summary === null
+                      ? "Progress unavailable — not shown as zero."
+                      : "Incomplete reading — not shown as zero."}
+                  </span>
+                )}
                 {over ? (
                   <span className="text-[length:var(--text-meta)] text-[color:var(--ega-danger)]">
                     Over cap — advisory only, spending stays allowed.
@@ -161,6 +178,42 @@ export default async function MoneyPage({ searchParams }: Props) {
       </div>
     </section>
 
+    <section aria-labelledby="money-export-heading" className="mt-6 rounded-lg border border-ega-border p-5">
+      <h2 id="money-export-heading" className="text-[length:var(--text-section)] font-semibold tracking-[var(--tracking-tight)]">
+        Export expenses
+      </h2>
+      <form action="/money/export" method="get" className="mt-3 flex flex-wrap items-end gap-3">
+        <label className="flex flex-col gap-1 text-[length:var(--text-meta)]">
+          From
+          <input
+            type="date"
+            name="from"
+            required
+            defaultValue={`${localToday.slice(0, 7)}-01`}
+            className="rounded border border-ega-border bg-transparent px-2 py-1 text-[length:var(--text-body)]"
+          />
+        </label>
+        <label className="flex flex-col gap-1 text-[length:var(--text-meta)]">
+          To
+          <input
+            type="date"
+            name="to"
+            required
+            defaultValue={localToday}
+            className="rounded border border-ega-border bg-transparent px-2 py-1 text-[length:var(--text-body)]"
+          />
+        </label>
+        <button type="submit" className="btn-instrument flex h-8 items-center px-3 text-sm">
+          Download CSV
+        </button>
+      </form>
+      <p className="mt-2 text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
+        Owner-local dates, up to 93 days. The download is complete for the range or the
+        request is refused; it is never silently cut off at 10,000 rows.
+      </p>
+    </section>
+
+    <RefreshOnFocus />
     <MoneyCreatePanel ownerKey={user.id} />
     {(!result || !result.ok) ? <section role="alert" className="mt-6 rounded-lg border border-ega-border p-5">
       <p>Expenses could not be loaded.</p><a className="underline" href={`/money?offset=${offset}`}>Retry</a>

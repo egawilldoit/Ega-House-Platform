@@ -19,6 +19,14 @@ export type ExpenseListRecordQuery = Readonly<{
   offset: number;
   startUtcIso: string | null;
   endUtcExclusiveIso: string | null;
+  /**
+   * Keyset cursor for a stable export walk. When both are present the
+   * repository returns rows strictly after `(beforeOccurredAt, beforeId)` in
+   * the canonical `occurred_at DESC, id DESC` order. Offset paging is not
+   * snapshot-safe under concurrent inserts/deletes.
+   */
+  beforeOccurredAt?: string | null;
+  beforeId?: string | null;
 }>;
 
 /**
@@ -88,13 +96,27 @@ export type ExpenseRepository = {
     id: string,
     input: ExpenseUpdateRecordInput,
   ): Promise<RepositoryResult<PersonalExpense>>;
+  /**
+   * Soft delete. When `expectedVersion` is supplied, a row that changed since
+   * that read is rejected with `conflict` instead of being deleted. Omit it for
+   * the existing idempotent HTTP/DELETE behavior.
+   */
   softDelete(
     actor: AuthenticatedActor,
     id: string,
     nowIso: string,
+    expectedVersion?: number,
   ): Promise<RepositoryResult<ExpenseDeleteOutcome>>;
   summarize(
     actor: AuthenticatedActor,
     window: ExpenseSummaryWindow,
   ): Promise<RepositoryResult<ExpenseSummary>>;
+  /**
+   * Exact non-deleted row count for the window. Export uses it to refuse an
+   * oversized range up front and to detect an intervening insert/delete.
+   */
+  count(
+    actor: AuthenticatedActor,
+    window: ExpenseSummaryWindow,
+  ): Promise<RepositoryResult<number>>;
 };
