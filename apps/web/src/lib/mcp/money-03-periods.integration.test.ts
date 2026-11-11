@@ -83,6 +83,9 @@ describe.skipIf(!connectionString)("MONEY-03 period and opening proof", () => {
         const asUser = async (userId: string, clientId: string | null) => {
           await tx`reset role`;
           await tx`set local role authenticated`;
+          // Supabase auth.uid() reads either the individual claim or the JSON
+          // claims; the disposable proof shim reads the former.
+          await tx`select set_config('request.jwt.claim.sub', ${userId}, true)`;
           await tx`select set_config('request.jwt.claims', ${claims(userId, clientId)}, true)`;
         };
 
@@ -99,7 +102,7 @@ describe.skipIf(!connectionString)("MONEY-03 period and opening proof", () => {
             (${expenseId}, '2026-11-09T23:30:00.000Z', 1100, 'MAD', 'coffee',
              'want', ${`proof-${expenseId}`}, ${"a".repeat(64)})`;
         const expense = await tx`
-          select occurred_at, booking_date, kind, direction, amount_minor
+          select occurred_at, booking_date::text as booking_date, kind, direction, amount_minor
           from public.personal_expenses where id = ${expenseId}`;
         state.expenseInstant = new Date(
           expense[0].occurred_at as string | Date,
@@ -140,7 +143,7 @@ describe.skipIf(!connectionString)("MONEY-03 period and opening proof", () => {
         state.openingMovementId = String(created[0].opening_movement_id);
 
         const opening = await tx`
-          select id, amount_minor, occurred_at, booking_date, version
+          select id, amount_minor, occurred_at, booking_date::text as booking_date, version
           from public.personal_expenses
           where kind = 'opening' and period_id = ${periodId}`;
         state.openingRows = opening.length;
@@ -169,7 +172,7 @@ describe.skipIf(!connectionString)("MONEY-03 period and opening proof", () => {
 
         // Active date changes without changing boundaries or transactions.
         const advanced = await tx`
-          select * from public.money_update_period(
+          select id, active_date::text as active_date, start_date::text as start_date, end_date::text as end_date, version from public.money_update_period(
             ${periodId}::uuid, 2, ${"2026-11-10"}::date, null, null, null, null, null, null,
             ${"2026-11-11T11:00:00.000Z"}::timestamptz
           )`;
@@ -178,19 +181,19 @@ describe.skipIf(!connectionString)("MONEY-03 period and opening proof", () => {
         state.advancedEnd = String(advanced[0].end_date);
         state.advancedVersion = Number(advanced[0].version);
         const untouched = await tx`
-          select amount_minor, booking_date from public.personal_expenses where id = ${expenseId}`;
+          select amount_minor, booking_date::text as booking_date from public.personal_expenses where id = ${expenseId}`;
         state.expenseAfterAdvance = Number(untouched[0].amount_minor);
         state.bookingAfterAdvance = String(untouched[0].booking_date);
 
         // Stale version returns no row and never overwrites.
         const stale = await tx`
-          select * from public.money_update_period(
+          select id, active_date::text as active_date, start_date::text as start_date, end_date::text as end_date, version from public.money_update_period(
             ${periodId}::uuid, 2, ${"2026-11-09"}::date, null, null, null, null, null, null,
             ${"2026-11-11T12:00:00.000Z"}::timestamptz
           )`;
         state.staleRows = stale.length;
         const stillAdvanced = await tx`
-          select active_date, version from public.money_periods where id = ${periodId}`;
+          select active_date::text as active_date, version from public.money_periods where id = ${periodId}`;
         state.stillActiveDate = String(stillAdvanced[0].active_date);
         state.stillVersion = Number(stillAdvanced[0].version);
 
@@ -233,25 +236,8 @@ describe.skipIf(!connectionString)("MONEY-03 period and opening proof", () => {
         state.sameOpeningId =
           String(correctedOpening[0].id) === state.openingMovementId;
 
-        // Ending is a versioned transition; routine updates then refuse.
-        await tx`
-          update public.money_periods
-          set lifecycle = 'ended', version = version + 1, updated_at = now()
-          where id = ${periodId}`;
-        state.endedRoutineRefused = false;
-        await tx.unsafe("savepoint ended_period");
-        try {
-          await tx`
-            select * from public.money_update_period(
-              ${periodId}::uuid, 4, ${"2026-11-10"}::date, null, null, null, null, null, null, now()
-            )`;
-          await tx.unsafe("release savepoint ended_period");
-        } catch {
-          await tx.unsafe("rollback to savepoint ended_period");
-          state.endedRoutineRefused = true;
-        }
-
-        // An overlapping tracking period is refused by the unique tracking index.
+        // An overlapping tracking period is refused by the unique tracking
+        // index. This must run while the source period is still tracking.
         state.overlapRejected = false;
         await tx.unsafe("savepoint overlap_period");
         try {
@@ -266,6 +252,24 @@ describe.skipIf(!connectionString)("MONEY-03 period and opening proof", () => {
         } catch {
           await tx.unsafe("rollback to savepoint overlap_period");
           state.overlapRejected = true;
+        }
+
+        // Ending is a versioned transition; routine updates then refuse.
+        await tx`
+          update public.money_periods
+          set lifecycle = 'ended', version = version + 1, updated_at = now()
+          where id = ${periodId}`;
+        state.endedRoutineRefused = false;
+        await tx.unsafe("savepoint ended_period");
+        try {
+          await tx`
+            select * from public.money_update_period(
+              ${periodId}::uuid, 5, ${"2026-11-10"}::date, null, null, null, null, null, null, now()
+            )`;
+          await tx.unsafe("release savepoint ended_period");
+        } catch {
+          await tx.unsafe("rollback to savepoint ended_period");
+          state.endedRoutineRefused = true;
         }
 
         // Another owner sees neither the period nor the opening under RLS.
