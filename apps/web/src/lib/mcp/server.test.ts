@@ -49,6 +49,8 @@ function createHandlers() {
     getMoneyExpense: vi.fn().mockResolvedValue({ content: [] }),
     listMoneyLedger: vi.fn().mockResolvedValue({ content: [] }),
     moneyState: vi.fn().mockResolvedValue({ content: [] }),
+    moneyMovementList: vi.fn().mockResolvedValue({ content: [] }),
+    moneyMovementGet: vi.fn().mockResolvedValue({ content: [] }),
   };
 }
 
@@ -75,6 +77,8 @@ describe("registerMcpReadTools", () => {
       "ega_money_get",
       "ega_money_ledger_list",
       "ega_money_state",
+      "ega_money_movement_list",
+      "ega_money_movement_get",
       "ega_list_timer_sessions",
     ]);
   });
@@ -166,6 +170,68 @@ describe("registerMcpReadTools", () => {
         operationId,
       }).success,
     ).toBe(true);
+  });
+
+  it("registers a non-colliding, kind-bounded MONEY-04 movement family", () => {
+    const fake = createFakeServer();
+    registerMcpReadTools(fake.server, createHandlers());
+    registerMcpWriteTools(fake.server, {} as McpWriteToolHandlers);
+
+    const names = fake.registrations.map(({ name }) => name);
+    expect(names.filter((name) => name === "ega_money_state")).toHaveLength(1);
+    expect(names.filter((name) => name === "ega_money_ledger_list")).toHaveLength(1);
+    expect(names).toContain("ega_money_movement_list");
+    expect(names).toContain("ega_money_movement_get");
+
+    const movementList = fake.registrations.find(
+      (item) => item.name === "ega_money_movement_list",
+    )!;
+    const listSchema = getInputSchema(movementList);
+    expect(listSchema.safeParse({ kind: "income", limit: 10 }).success).toBe(true);
+    expect(listSchema.safeParse({ kind: "transfer" }).success).toBe(false);
+
+    const movementGet = fake.registrations.find(
+      (item) => item.name === "ega_money_movement_get",
+    )!;
+    const getSchema = getInputSchema(movementGet);
+    const movementId = "550e8400-e29b-41d4-a716-446655440001";
+    expect(getSchema.safeParse({ movementId }).success).toBe(true);
+    expect(getSchema.safeParse({}).success).toBe(false);
+
+    const operationId = "650e8400-e29b-41d4-a716-446655440001";
+    const create = fake.registrations.find(
+      (item) => item.name === "ega_money_create_movement",
+    )!;
+    const createSchema = getInputSchema(create);
+    expect(
+      createSchema.safeParse({
+        kind: "income",
+        amountMinor: 20000,
+        bookingDate: "2026-11-09",
+        idempotencyKey: "income-1",
+        operationId,
+      }).success,
+    ).toBe(true);
+    // Opening cash stays owned by MONEY-03 period initialization.
+    expect(
+      createSchema.safeParse({
+        kind: "opening",
+        amountMinor: 50000,
+        bookingDate: "2026-11-01",
+        idempotencyKey: "opening-1",
+        operationId,
+      }).success,
+    ).toBe(false);
+
+    const update = fake.registrations.find(
+      (item) => item.name === "ega_money_update_movement",
+    )!;
+    const updateSchema = getInputSchema(update);
+    expect(
+      updateSchema.safeParse({ movementId, version: 1, countsInDaily: false, operationId })
+        .success,
+    ).toBe(true);
+    expect(updateSchema.safeParse({ movementId, operationId }).success).toBe(false);
   });
 
   it("validates UUID project and goal filters", () => {

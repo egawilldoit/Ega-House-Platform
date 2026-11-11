@@ -89,7 +89,10 @@ function createRepository() {
       const now = new Date().toISOString();
       const expense: PersonalExpense = {
         id: nextId(),
+        kind: "expense",
+        direction: "out",
         occurredAt: input.values.occurredAt,
+        bookingDate: input.values.bookingDate,
         amountMinor: input.values.amountMinor,
         currency: "MAD",
         category: input.values.category,
@@ -97,6 +100,9 @@ function createRepository() {
         merchant: input.values.merchant,
         needVsWant: input.values.needVsWant,
         paymentMethod: input.values.paymentMethod,
+        purpose: null,
+        countsInDaily: true,
+        periodId: null,
         idempotencyKey: input.values.idempotencyKey,
         version: 1,
         deletedAt: null,

@@ -6,16 +6,20 @@ import {
   createAuthenticatedActor,
   createExpense,
   createMoneyPeriod,
+  createMovement,
   deleteExpense,
   getExpense,
   updateExpense,
   updateMoneySettings,
+  updateMovement,
 } from "@ega/application";
 import type { ExpenseDto } from "@ega/contracts/expenses";
+import type { MoneyMovementDto } from "@ega/contracts/money";
 import type { MoneyOpeningInput } from "@ega/domain/money";
 import {
   SupabaseExpenseRepository,
   SupabaseMoneyPeriodRepository,
+  SupabaseMoneyRepository,
 } from "@ega/data-access";
 import {
   mapApplicationCode,
@@ -132,12 +136,15 @@ export async function createExpenseAction(
 export type UpdateExpenseActionPatch = {
   version: number;
   occurredAt?: string;
+  bookingDate?: string;
   amountMinor?: number;
   category?: ExpenseDto["category"];
   needVsWant?: ExpenseDto["needVsWant"];
   merchant?: string | null;
   note?: string | null;
   paymentMethod?: ExpenseDto["paymentMethod"] | null;
+  purpose?: ExpenseDto["purpose"];
+  countsInDaily?: boolean;
 };
 
 export type UpdateExpenseActionResult =
@@ -160,6 +167,7 @@ export async function updateExpenseAction(
     {
       version: patch.version,
       ...(patch.occurredAt !== undefined ? { occurredAt: patch.occurredAt } : {}),
+      ...(patch.bookingDate !== undefined ? { bookingDate: patch.bookingDate } : {}),
       ...(patch.amountMinor !== undefined ? { amountMinor: patch.amountMinor } : {}),
       ...(patch.category !== undefined ? { category: patch.category } : {}),
       ...(patch.needVsWant !== undefined ? { needVsWant: patch.needVsWant } : {}),
@@ -167,6 +175,10 @@ export async function updateExpenseAction(
       ...(patch.note !== undefined ? { note: patch.note } : {}),
       ...(patch.paymentMethod !== undefined
         ? { paymentMethod: patch.paymentMethod }
+        : {}),
+      ...(patch.purpose !== undefined ? { purpose: patch.purpose } : {}),
+      ...(patch.countsInDaily !== undefined
+        ? { countsInDaily: patch.countsInDaily }
         : {}),
     },
     { periods: new SupabaseMoneyPeriodRepository(client) },
@@ -383,4 +395,133 @@ export async function updateMoneySettingsAction(
   } catch {
     return { ok: false, error: "Unable to save Money settings right now." };
   }
+}
+
+// ---------------------------------------------------------------------------
+// MONEY-04: movement mutations. These compose the same application use cases as
+// the HTTP route and MCP tools (`createMovement`/`updateMovement`): parsing,
+// owner scope, idempotency fingerprint, the shared period guard and optimistic
+// concurrency are never re-implemented here.
+// ---------------------------------------------------------------------------
+
+export type CreateMovementActionInput = {
+  kind: Exclude<MoneyMovementDto["kind"], "opening">;
+  amountMinor: number;
+  category?: MoneyMovementDto["category"];
+  needVsWant?: MoneyMovementDto["needVsWant"];
+  paymentMethod?: MoneyMovementDto["paymentMethod"];
+  purpose?: MoneyMovementDto["purpose"];
+  countsInDaily?: boolean;
+  /** Owner-local booking day; keep the movement date-only unless time is known. */
+  bookingDate: string;
+  occurredAt?: string | null;
+  note?: string | null;
+  merchant?: string | null;
+  idempotencyKey: string;
+};
+
+export type MovementMutationResult =
+  | { ok: true; movement: MoneyMovementDto; replayed: boolean }
+  | { ok: false; code: ExpenseMutationErrorCode; error: string };
+
+export async function createMovementAction(
+  input: CreateMovementActionInput,
+): Promise<MovementMutationResult> {
+  const user = await getCurrentUser();
+  if (!user) {
+    return { ok: false, code: "UNAUTHENTICATED", error: "Sign in to record money movements." };
+  }
+  const client = await createClient();
+  const result = await createMovement(
+    createAuthenticatedActor(user.id),
+    new SupabaseMoneyRepository(client),
+    {
+      kind: input.kind,
+      amountMinor: input.amountMinor,
+      category: input.category ?? null,
+      needVsWant: input.needVsWant ?? null,
+      paymentMethod: input.paymentMethod ?? null,
+      purpose: input.purpose ?? null,
+      ...(input.countsInDaily !== undefined
+        ? { countsInDaily: input.countsInDaily }
+        : {}),
+      bookingDate: input.bookingDate,
+      occurredAt: input.occurredAt ?? null,
+      note: input.note ?? null,
+      merchant: input.merchant ?? null,
+      idempotencyKey: input.idempotencyKey,
+    },
+    { periods: new SupabaseMoneyPeriodRepository(client) },
+  );
+  if (!result.ok) {
+    return {
+      ok: false,
+      code: mapApplicationCode(result.code),
+      error: result.errorMessage,
+    };
+  }
+  revalidatePath("/money");
+  revalidatePath("/today");
+  return {
+    ok: true,
+    movement: result.data.movement,
+    replayed: result.data.replayed,
+  };
+}
+
+export type UpdateMovementActionPatch = {
+  version: number;
+  bookingDate?: string;
+  occurredAt?: string | null;
+  amountMinor?: number;
+  note?: string | null;
+  merchant?: string | null;
+  purpose?: MoneyMovementDto["purpose"];
+  countsInDaily?: boolean;
+};
+
+export type UpdateMovementActionResult =
+  | { ok: true; movement: MoneyMovementDto }
+  | { ok: false; code: ExpenseMutationErrorCode; error: string };
+
+export async function updateMovementAction(
+  id: string,
+  patch: UpdateMovementActionPatch,
+): Promise<UpdateMovementActionResult> {
+  const user = await getCurrentUser();
+  if (!user) {
+    return { ok: false, code: "UNAUTHENTICATED", error: "Sign in to correct money movements." };
+  }
+  const client = await createClient();
+  const result = await updateMovement(
+    createAuthenticatedActor(user.id),
+    new SupabaseMoneyRepository(client),
+    id,
+    {
+      version: patch.version,
+      ...(patch.bookingDate !== undefined ? { bookingDate: patch.bookingDate } : {}),
+      ...(patch.occurredAt !== undefined ? { occurredAt: patch.occurredAt } : {}),
+      ...(patch.amountMinor !== undefined ? { amountMinor: patch.amountMinor } : {}),
+      ...(patch.note !== undefined ? { note: patch.note } : {}),
+      ...(patch.merchant !== undefined ? { merchant: patch.merchant } : {}),
+      ...(patch.purpose !== undefined ? { purpose: patch.purpose } : {}),
+      ...(patch.countsInDaily !== undefined
+        ? { countsInDaily: patch.countsInDaily }
+        : {}),
+    },
+    {
+      periods: new SupabaseMoneyPeriodRepository(client),
+      now: new Date(),
+    },
+  );
+  if (!result.ok) {
+    return {
+      ok: false,
+      code: mapApplicationCode(result.code),
+      error: result.errorMessage,
+    };
+  }
+  revalidatePath("/money");
+  revalidatePath("/today");
+  return { ok: true, movement: result.data };
 }

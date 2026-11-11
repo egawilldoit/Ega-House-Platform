@@ -722,7 +722,10 @@ function expenseRepository() {
     async create(actor, input) {
       created = {
         id: "eeeeeeee-0000-4000-8000-000000000001",
+        kind: "expense",
+        direction: "out",
         occurredAt: input.values.occurredAt,
+        bookingDate: input.values.bookingDate,
         amountMinor: input.values.amountMinor,
         currency: "MAD",
         category: input.values.category,
@@ -730,6 +733,9 @@ function expenseRepository() {
         merchant: input.values.merchant,
         needVsWant: input.values.needVsWant,
         paymentMethod: input.values.paymentMethod,
+        purpose: null,
+        countsInDaily: true,
+        periodId: null,
         idempotencyKey: input.values.idempotencyKey,
         version: 1,
         deletedAt: null,

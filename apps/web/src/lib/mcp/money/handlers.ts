@@ -13,17 +13,22 @@ import {
   type McpMoneyExpenseHandlers,
 } from "./expense-handlers";
 import {
+  createMcpMoneyMovementHandlers,
+  type McpMoneyMovementHandlers,
+} from "./movement-handlers";
+import {
   createMcpMoneyPeriodHandlers,
   type McpMoneyPeriodHandlers,
 } from "./period-handlers";
 
 /**
- * One Money MCP surface composed from two disjoint tool families:
- * expense CRUD/reads (MONEY-02) and period/settings state (MONEY-03).
+ * One Money MCP surface composed from three disjoint tool families:
+ * expense CRUD/reads (MONEY-02), period/settings state (MONEY-03) and movement
+ * create/read/update (MONEY-04).
  *
- * Both families call the same canonical application use cases and repositories;
+ * Each family calls the same canonical application use cases and repositories;
  * this barrel only owns the shared dependency shape and the composed handler
- * type, so neither issue maintains a second ledger or calculator.
+ * type, so no issue maintains a second ledger, period reader or calculator.
  */
 export type McpMoneyDependencies = {
   createUserClient: (accessToken: string) => SupabaseClient<McpDatabase>;
@@ -37,7 +42,9 @@ export type McpMoneyDependencies = {
   now?: () => Date;
 };
 
-export type McpMoneyHandlers = McpMoneyExpenseHandlers & McpMoneyPeriodHandlers;
+export type McpMoneyHandlers = McpMoneyExpenseHandlers &
+  McpMoneyPeriodHandlers &
+  McpMoneyMovementHandlers;
 
 export function createMcpMoneyHandlers(
   dependencies: McpMoneyDependencies,
@@ -45,6 +52,7 @@ export function createMcpMoneyHandlers(
   return {
     ...createMcpMoneyExpenseHandlers(dependencies),
     ...createMcpMoneyPeriodHandlers(dependencies),
+    ...createMcpMoneyMovementHandlers(dependencies),
   };
 }
 
@@ -54,6 +62,12 @@ export type {
   McpMoneyLedgerQuery,
   McpMoneyUpdateInput,
 } from "./expense-handlers";
+export type {
+  McpMoneyCreateMovementInput,
+  McpMoneyMovementGetInput,
+  McpMoneyMovementListInput,
+  McpMoneyUpdateMovementInput,
+} from "./movement-handlers";
 export type {
   McpMoneyOpeningInput,
   McpMoneyStateInput,

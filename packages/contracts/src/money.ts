@@ -1,16 +1,26 @@
 import type {
+  ExpenseCategory,
+  ExpenseCurrency,
+  ExpenseNeedVsWant,
+  ExpensePaymentMethod,
+} from "@ega/domain/expenses";
+import type {
+  MoneyDirection,
+  MoneyKind,
   MoneyOpeningProvenance,
   MoneyOpeningSource,
   MoneyPeriodInitialization,
   MoneyPeriodLifecycle,
   MoneyPeriodProvenance,
   MoneyPeriodSettings,
+  MoneyPurpose,
 } from "@ega/domain/money";
 
 /**
- * Wire contracts for period setup and the shared Money state (MONEY-03).
- * Amounts are integer MAD centimes. The owner is always derived from verified
- * authentication; no request may select an owner or currency.
+ * Wire contracts for Money period setup/state (MONEY-03) and the movement
+ * ledger (MONEY-04). Amounts are integer MAD centimes; the owner is always
+ * derived from verified authentication and no request may select an owner,
+ * a currency or a second ledger.
  */
 
 /** Explicit date modes shared by HTTP and MCP; they resolve differently. */
@@ -166,6 +176,103 @@ export type UpdateMoneySettingsRequest = Readonly<{
 export type UpdateMoneySettingsResponse = Readonly<{
   ok: true;
   period: MoneyPeriodDto;
+}>;
+
+/** One row of the extended `personal_expenses` ledger. */
+export type MoneyMovementDto = Readonly<{
+  id: string;
+  kind: MoneyKind;
+  direction: MoneyDirection;
+  amountMinor: number;
+  currency: ExpenseCurrency;
+  category: ExpenseCategory | null;
+  note: string | null;
+  merchant: string | null;
+  needVsWant: ExpenseNeedVsWant | null;
+  paymentMethod: ExpensePaymentMethod | null;
+  purpose: MoneyPurpose | null;
+  countsInDaily: boolean;
+  /** Inclusive owner-local booking date; occurrence time may be unknown. */
+  bookingDate: string;
+  occurredAt: string | null;
+  periodId: string | null;
+  version: number;
+  deletedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}>;
+
+export type CreateMovementRequest = Readonly<{
+  kind: Exclude<MoneyKind, "opening">;
+  direction?: MoneyDirection;
+  amountMinor: number;
+  category?: ExpenseCategory | null;
+  note?: string | null;
+  merchant?: string | null;
+  needVsWant?: ExpenseNeedVsWant | null;
+  paymentMethod?: ExpensePaymentMethod | null;
+  purpose?: MoneyPurpose | null;
+  countsInDaily?: boolean;
+  bookingDate?: string;
+  occurredAt?: string | null;
+  idempotencyKey: string;
+}>;
+
+export type UpdateMovementRequest = Readonly<{
+  version: number;
+  bookingDate?: string;
+  occurredAt?: string | null;
+  amountMinor?: number;
+  category?: ExpenseCategory;
+  note?: string | null;
+  merchant?: string | null;
+  needVsWant?: ExpenseNeedVsWant;
+  paymentMethod?: ExpensePaymentMethod | null;
+  purpose?: MoneyPurpose | null;
+  countsInDaily?: boolean;
+}>;
+
+export type ListMovementsQuery = Readonly<{
+  /** Inclusive booking-date start (YYYY-MM-DD). */
+  from?: string | null;
+  /** Inclusive booking-date end (YYYY-MM-DD). */
+  to?: string | null;
+  /** Inclusive booking-date cutoff; never includes later records. */
+  cutoff?: string | null;
+  timezone?: string | null;
+  kind?: MoneyKind | null;
+  limit?: number;
+  offset?: number;
+}>;
+
+export type MovementPaginationDto = Readonly<{
+  limit: number;
+  offset: number;
+  hasMore: boolean;
+}>;
+
+export type CreateMovementResponse = Readonly<{
+  ok: true;
+  movement: MoneyMovementDto;
+  replayed: boolean;
+}>;
+
+export type GetMovementResponse = Readonly<{
+  ok: true;
+  movement: MoneyMovementDto;
+}>;
+
+export type ListMovementsResponse = Readonly<{
+  ok: true;
+  movements: MoneyMovementDto[];
+  pagination: MovementPaginationDto;
+  cutoff: string;
+  timezone: string | null;
+}>;
+
+export type UpdateMovementResponse = Readonly<{
+  ok: true;
+  movement: MoneyMovementDto;
 }>;
 
 export type MoneyErrorCode =

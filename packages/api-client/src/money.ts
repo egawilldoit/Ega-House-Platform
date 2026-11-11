@@ -1,8 +1,15 @@
 import type {
   CreateMoneyPeriodRequest,
   CreateMoneyPeriodResponse,
+  CreateMovementRequest,
+  CreateMovementResponse,
   GetMoneyStateQuery,
   GetMoneyStateResponse,
+  GetMovementResponse,
+  ListMovementsQuery,
+  ListMovementsResponse,
+  UpdateMovementRequest,
+  UpdateMovementResponse,
   UpdateMoneySettingsRequest,
   UpdateMoneySettingsResponse,
 } from "@ega/contracts/money";
@@ -11,8 +18,10 @@ import type { ApiResult } from "./errors";
 import type { HttpClient } from "./http";
 
 /**
- * Typed cross-platform transport for Money period state. Owner identity comes
- * from the bearer token; callers never send an owner id or choose currency.
+ * Typed cross-platform transport for Money. Owner identity comes from the
+ * bearer token; callers never send an owner id or choose the currency. Period
+ * state is the MONEY-03 canonical read; movements are the MONEY-04 ledger
+ * surface.
  */
 export type MoneyApi = {
   /** GET /api/money/state - actual local today plus the tracking context. */
@@ -26,10 +35,25 @@ export type MoneyApi = {
     id: string,
     request: UpdateMoneySettingsRequest,
   ): Promise<ApiResult<UpdateMoneySettingsResponse>>;
+  /** GET /api/money/movements - newest booking date first. */
+  listMovements(query?: ListMovementsQuery): Promise<ApiResult<ListMovementsResponse>>;
+  /** POST /api/money/movements - 201 on create, 200 on idempotent replay. */
+  createMovement(request: CreateMovementRequest): Promise<ApiResult<CreateMovementResponse>>;
+  /** GET /api/money/movements/:id */
+  getMovement(id: string): Promise<ApiResult<GetMovementResponse>>;
+  /** PATCH /api/money/movements/:id - requires the current positive `version`. */
+  updateMovement(
+    id: string,
+    request: UpdateMovementRequest,
+  ): Promise<ApiResult<UpdateMovementResponse>>;
 };
 
 function periodSettingsPath(id: string): string {
   return `/api/money/periods/${encodeURIComponent(id)}/settings`;
+}
+
+function movementPath(id: string): string {
+  return `/api/money/movements/${encodeURIComponent(id)}`;
 }
 
 export function createMoneyApi(http: HttpClient): MoneyApi {
@@ -54,6 +78,37 @@ export function createMoneyApi(http: HttpClient): MoneyApi {
     updateSettings(id, request) {
       return http.request<UpdateMoneySettingsResponse>({
         path: periodSettingsPath(id),
+        method: "PATCH",
+        body: request,
+      });
+    },
+    listMovements(query) {
+      return http.request<ListMovementsResponse>({
+        path: "/api/money/movements",
+        query: {
+          from: query?.from?.trim() || undefined,
+          to: query?.to?.trim() || undefined,
+          cutoff: query?.cutoff?.trim() || undefined,
+          timezone: query?.timezone?.trim() || undefined,
+          kind: query?.kind ?? undefined,
+          limit: query?.limit === undefined ? undefined : String(query.limit),
+          offset: query?.offset === undefined ? undefined : String(query.offset),
+        },
+      });
+    },
+    createMovement(request) {
+      return http.request<CreateMovementResponse>({
+        path: "/api/money/movements",
+        method: "POST",
+        body: request,
+      });
+    },
+    getMovement(id) {
+      return http.request<GetMovementResponse>({ path: movementPath(id) });
+    },
+    updateMovement(id, request) {
+      return http.request<UpdateMovementResponse>({
+        path: movementPath(id),
         method: "PATCH",
         body: request,
       });

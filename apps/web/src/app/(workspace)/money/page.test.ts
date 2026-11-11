@@ -43,6 +43,19 @@ test("money ledger displays need-vs-want and keeps notes visible beside merchant
   assert.doesNotMatch(source, /expense\.merchant\s*\?\?\s*expense\.note/);
 });
 
+test("money page renders recorded cash and the movement ledger through the shared use cases", () => {
+  assert.match(source, /getMoneyState\(/);
+  assert.match(source, /listMovements\(/);
+  // Recorded cash is rendered by the canonical period panel from the shared
+  // MONEY-03 cash position, never a second page-local calculation.
+  assert.match(source, /cash=\{moneyState\.cash\}/);
+  assert.match(source, /getMoneyMovementTotals\(/);
+  assert.match(source, /new SupabaseMoneyRepository\(client\)/);
+  assert.match(source, /MoneyMovementPanel/);
+  assert.match(source, /MoneyMovementActions/);
+  assert.doesNotMatch(source, /owner_user_id\s*:/);
+});
+
 test("money ledger has bounded URL pagination and accessible loading failure recovery", () => {
   assert.match(source, /limit:\s*"25"/);
   assert.match(source, /Math\.min\(parsedOffset,\s*100_000\)/);

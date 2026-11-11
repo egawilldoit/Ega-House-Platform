@@ -18,7 +18,10 @@ const ACTOR = createAuthenticatedActor("owner-1");
 function row(index: number): PersonalExpense {
   return {
     id: `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+    kind: "expense",
+    direction: "out",
     occurredAt: "2026-11-11T09:00:00.000Z",
+    bookingDate: "2026-11-11",
     amountMinor: 1100,
     currency: "MAD",
     category: "coffee",
@@ -26,6 +29,9 @@ function row(index: number): PersonalExpense {
     merchant: null,
     needVsWant: "want",
     paymentMethod: null,
+    purpose: null,
+    countsInDaily: true,
+    periodId: null,
     idempotencyKey: `key-${index}`,
     version: 1,
     deletedAt: null,

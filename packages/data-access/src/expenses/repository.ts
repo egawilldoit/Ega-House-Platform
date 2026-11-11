@@ -36,14 +36,17 @@ const TABLE = "personal_expenses";
 const IDEMPOTENCY_CONSTRAINT = "personal_expenses_owner_idempotency_key_unique";
 
 const EXPENSE_COLUMNS =
-  "id, occurred_at, amount_minor, currency, category, note, merchant, need_vs_want, payment_method, idempotency_key, version, deleted_at, created_at, updated_at";
+  "id, kind, direction, occurred_at, booking_date, amount_minor, currency, category, note, merchant, need_vs_want, payment_method, purpose, counts_in_daily, period_id, idempotency_key, version, deleted_at, created_at, updated_at";
 
 const EXPENSE_COLUMNS_WITH_FINGERPRINT =
-  "id, occurred_at, amount_minor, currency, category, note, merchant, need_vs_want, payment_method, idempotency_key, version, deleted_at, created_at, updated_at, create_fingerprint";
+  "id, kind, direction, occurred_at, booking_date, amount_minor, currency, category, note, merchant, need_vs_want, payment_method, purpose, counts_in_daily, period_id, idempotency_key, version, deleted_at, created_at, updated_at, create_fingerprint";
 
 type ExpenseRow = {
   id: string;
+  kind: string;
+  direction: string;
   occurred_at: string;
+  booking_date: string;
   amount_minor: number;
   currency: string;
   category: string;
@@ -51,6 +54,9 @@ type ExpenseRow = {
   merchant: string | null;
   need_vs_want: string;
   payment_method: string | null;
+  purpose: string | null;
+  counts_in_daily: boolean;
+  period_id: string | null;
   idempotency_key: string;
   version: number;
   deleted_at: string | null;
@@ -91,7 +97,10 @@ type ExpenseVersionRow = {
 function toRecord(row: ExpenseRow): PersonalExpense {
   return {
     id: String(row.id),
+    kind: "expense",
+    direction: "out",
     occurredAt: String(row.occurred_at),
+    bookingDate: String(row.booking_date),
     amountMinor: Number(row.amount_minor),
     currency: EXPENSE_CURRENCY,
     category: String(row.category) as ExpenseCategory,
@@ -102,6 +111,9 @@ function toRecord(row: ExpenseRow): PersonalExpense {
       row.payment_method == null
         ? null
         : (String(row.payment_method) as ExpensePaymentMethod),
+    purpose: row.purpose == null ? null : (String(row.purpose) as PersonalExpense["purpose"]),
+    countsInDaily: Boolean(row.counts_in_daily),
+    periodId: row.period_id == null ? null : String(row.period_id),
     idempotencyKey: String(row.idempotency_key),
     version: Number(row.version),
     deletedAt: row.deleted_at == null ? null : String(row.deleted_at),
@@ -117,7 +129,10 @@ function toInsertPayload(
   const values = input.values;
   return {
     owner_user_id: actor.userId,
+    kind: "expense",
+    direction: "out",
     occurred_at: values.occurredAt,
+    booking_date: values.bookingDate,
     amount_minor: values.amountMinor,
     currency: EXPENSE_CURRENCY,
     category: values.category,
@@ -125,6 +140,9 @@ function toInsertPayload(
     merchant: values.merchant,
     need_vs_want: values.needVsWant,
     payment_method: values.paymentMethod,
+    purpose: null,
+    counts_in_daily: true,
+    period_id: null,
     idempotency_key: values.idempotencyKey,
     create_fingerprint: input.createFingerprint,
   };
@@ -139,6 +157,7 @@ function toUpdatePayload(
   };
   const changes = input.changes;
   if (changes.occurredAt !== undefined) payload.occurred_at = changes.occurredAt;
+  if (changes.bookingDate !== undefined) payload.booking_date = changes.bookingDate;
   if (changes.amountMinor !== undefined) payload.amount_minor = changes.amountMinor;
   if (changes.category !== undefined) payload.category = changes.category;
   if (changes.note !== undefined) payload.note = changes.note;
@@ -146,6 +165,10 @@ function toUpdatePayload(
   if (changes.needVsWant !== undefined) payload.need_vs_want = changes.needVsWant;
   if (changes.paymentMethod !== undefined) {
     payload.payment_method = changes.paymentMethod;
+  }
+  if (changes.purpose !== undefined) payload.purpose = changes.purpose;
+  if (changes.countsInDaily !== undefined) {
+    payload.counts_in_daily = changes.countsInDaily;
   }
   return payload;
 }
@@ -205,6 +228,7 @@ export class SupabaseExpenseRepository implements ExpenseRepository {
       .from(TABLE)
       .select(EXPENSE_COLUMNS)
       .eq("owner_user_id", actor.userId)
+      .eq("kind", "expense")
       .eq("id", id)
       .eq("kind", "expense")
       .is("deleted_at", null)
@@ -259,6 +283,7 @@ export class SupabaseExpenseRepository implements ExpenseRepository {
       .from(TABLE)
       .update(toUpdatePayload(input))
       .eq("owner_user_id", actor.userId)
+      .eq("kind", "expense")
       .eq("id", id)
       .eq("kind", "expense")
       .eq("version", input.expectedVersion)
@@ -275,6 +300,7 @@ export class SupabaseExpenseRepository implements ExpenseRepository {
       .from(TABLE)
       .select("version, deleted_at")
       .eq("owner_user_id", actor.userId)
+      .eq("kind", "expense")
       .eq("id", id)
       .eq("kind", "expense")
       .maybeSingle();
@@ -363,6 +389,7 @@ export class SupabaseExpenseRepository implements ExpenseRepository {
       .from(TABLE)
       .select("version, deleted_at")
       .eq("owner_user_id", actor.userId)
+      .eq("kind", "expense")
       .eq("id", id)
       .eq("kind", "expense")
       .maybeSingle();
@@ -397,6 +424,7 @@ export class SupabaseExpenseRepository implements ExpenseRepository {
         version: Number(row.version) + 1,
       })
       .eq("owner_user_id", actor.userId)
+      .eq("kind", "expense")
       .eq("id", id)
       .eq("kind", "expense")
       .eq("version", row.version)
@@ -423,6 +451,7 @@ export class SupabaseExpenseRepository implements ExpenseRepository {
       .from(TABLE)
       .select("version, deleted_at")
       .eq("owner_user_id", actor.userId)
+      .eq("kind", "expense")
       .eq("id", id)
       .eq("kind", "expense")
       .maybeSingle();
