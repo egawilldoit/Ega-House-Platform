@@ -103,5 +103,7 @@ test("page query values succeed through the actual listExpenses parser and repos
     offset: 50,
     startUtcIso: null,
     endUtcExclusiveIso: null,
+    startBookingDate: null,
+    endBookingDateExclusive: null,
   });
 });

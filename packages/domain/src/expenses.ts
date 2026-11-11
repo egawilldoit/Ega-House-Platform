@@ -78,7 +78,8 @@ export type PersonalExpense = Readonly<{
   id: string;
   kind: "expense";
   direction: "out";
-  occurredAt: string;
+  /** Null means a date-only booking; `bookingDate` remains known. */
+  occurredAt: string | null;
   bookingDate: string;
   amountMinor: number;
   currency: ExpenseCurrency;
@@ -138,6 +139,13 @@ export type ExpenseListValues = Readonly<{
   timezone: string | null;
   startUtcIso: string | null;
   endUtcExclusiveIso: string | null;
+  /**
+   * Owner-local booking-date window `[startBookingDate, endBookingDateExclusive)`.
+   * Reporting uses this so date-only rows (unknown instant) and timestamped rows
+   * are counted on the same resolved day.
+   */
+  startBookingDate: string | null;
+  endBookingDateExclusive: string | null;
 }>;
 
 export type ExpenseValidationFailure = Readonly<{
@@ -487,6 +495,13 @@ export function parseUpdateExpenseInput(
     changes.occurredAt = parsed.value;
   }
 
+  if (input.bookingDate !== undefined && input.occurredAt !== undefined) {
+    return failure(
+      "body",
+      "Provide either occurredAt or bookingDate, not both: an instant already determines the booking day.",
+    );
+  }
+
   if (input.bookingDate !== undefined) {
     if (typeof input.bookingDate !== "string" || !isIsoDate(input.bookingDate.trim())) {
       return failure("bookingDate", "Booking date must be a valid YYYY-MM-DD date.");
@@ -690,6 +705,10 @@ export function parseExpenseListQuery(
 
   let startUtcIso: string | null = null;
   let endUtcExclusiveIso: string | null = null;
+  const startBookingDate = from.value;
+  const endBookingDateExclusive = to.value
+    ? addDaysToIsoDate(to.value, 1)
+    : null;
 
   if (hasWindow) {
     if (timezone === null) {
@@ -720,6 +739,8 @@ export function parseExpenseListQuery(
       timezone,
       startUtcIso,
       endUtcExclusiveIso,
+      startBookingDate,
+      endBookingDateExclusive,
     },
   };
 }

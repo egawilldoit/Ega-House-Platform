@@ -3,15 +3,16 @@ import { resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
+// Normalize line endings: the checkout may use CRLF on Windows while CI uses LF.
 const migration = readFileSync(
   resolve(process.cwd(), "..", "..", "drizzle/0096_money_04_movements.sql"),
   "utf8",
-);
+).replaceAll("\r\n", "\n");
 
 const previousMigration = readFileSync(
   resolve(process.cwd(), "..", "..", "drizzle/0095_money_03_periods.sql"),
   "utf8",
-);
+).replaceAll("\r\n", "\n");
 
 const journal = JSON.parse(
   readFileSync(
@@ -28,7 +29,11 @@ describe("MONEY-04 movement migration", () => {
     expect(entry).toBeDefined();
     expect(entry?.idx).toBe(109);
     expect(entry?.when).toBe(1787880000059);
-    const previous = journal.entries.at(-2)!;
+    // Later Money issues append after 0096; only its own position is fixed.
+    const index = journal.entries.findIndex(
+      (candidate) => candidate.tag === "0096_money_04_movements",
+    );
+    const previous = journal.entries[index - 1]!;
     expect(previous.tag).toBe("0095_money_03_periods");
     expect(entry!.when).toBeGreaterThan(previous.when);
   });

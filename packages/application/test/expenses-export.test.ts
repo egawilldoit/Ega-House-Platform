@@ -43,9 +43,9 @@ function row(index: number): PersonalExpense {
 function repositoryWith(rows: PersonalExpense[]) {
   const calls: Array<{ actorUserId: string; query: ExpenseListRecordQuery }> = [];
   const ordered = [...rows].sort((left, right) =>
-    left.occurredAt === right.occurredAt
+    left.bookingDate === right.bookingDate
       ? right.id.localeCompare(left.id)
-      : right.occurredAt.localeCompare(left.occurredAt),
+      : right.bookingDate.localeCompare(left.bookingDate),
   );
   const repository = {
     async count() {
@@ -53,11 +53,11 @@ function repositoryWith(rows: PersonalExpense[]) {
     },
     async list(actor: { userId: string }, query: ExpenseListRecordQuery) {
       calls.push({ actorUserId: actor.userId, query });
-      const remaining = query.beforeOccurredAt && query.beforeId
+      const remaining = query.beforeBookingDate && query.beforeId
         ? ordered.filter(
             (item) =>
-              item.occurredAt < query.beforeOccurredAt! ||
-              (item.occurredAt === query.beforeOccurredAt && item.id < query.beforeId!),
+              item.bookingDate < query.beforeBookingDate! ||
+              (item.bookingDate === query.beforeBookingDate && item.id < query.beforeId!),
           )
         : ordered;
       return {
@@ -106,15 +106,15 @@ test("export refuses when the ledger changes between counted pages", async () =>
       // A row disappears after the first page; the keyset walk cannot return it.
       const remaining = rows.filter((item) => item.id !== rows[0].id);
       const ordered = remaining.sort((left, right) =>
-        left.occurredAt === right.occurredAt
+        left.bookingDate === right.bookingDate
           ? right.id.localeCompare(left.id)
-          : right.occurredAt.localeCompare(left.occurredAt),
+          : right.bookingDate.localeCompare(left.bookingDate),
       );
-      const afterCursor = query.beforeOccurredAt && query.beforeId
+      const afterCursor = query.beforeBookingDate && query.beforeId
         ? ordered.filter(
             (item) =>
-              item.occurredAt < query.beforeOccurredAt! ||
-              (item.occurredAt === query.beforeOccurredAt && item.id < query.beforeId!),
+              item.bookingDate < query.beforeBookingDate! ||
+              (item.bookingDate === query.beforeBookingDate && item.id < query.beforeId!),
           )
         : ordered;
       return {

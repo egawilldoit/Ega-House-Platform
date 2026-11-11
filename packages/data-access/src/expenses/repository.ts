@@ -45,7 +45,7 @@ type ExpenseRow = {
   id: string;
   kind: string;
   direction: string;
-  occurred_at: string;
+  occurred_at: string | null;
   booking_date: string;
   amount_minor: number;
   currency: string;
@@ -99,7 +99,7 @@ function toRecord(row: ExpenseRow): PersonalExpense {
     id: String(row.id),
     kind: "expense",
     direction: "out",
-    occurredAt: String(row.occurred_at),
+    occurredAt: row.occurred_at == null ? null : String(row.occurred_at),
     bookingDate: String(row.booking_date),
     amountMinor: Number(row.amount_minor),
     currency: EXPENSE_CURRENCY,
@@ -132,7 +132,7 @@ function toInsertPayload(
     kind: "expense",
     direction: "out",
     occurred_at: values.occurredAt,
-    booking_date: values.bookingDate,
+    // booking_date is derived by the DB in the owner/period timezone.
     amount_minor: values.amountMinor,
     currency: EXPENSE_CURRENCY,
     category: values.category,
@@ -157,7 +157,9 @@ function toUpdatePayload(
   };
   const changes = input.changes;
   if (changes.occurredAt !== undefined) payload.occurred_at = changes.occurredAt;
-  if (changes.bookingDate !== undefined) payload.booking_date = changes.bookingDate;
+  // A timestamp change re-derives booking_date in the DB (owner/period zone).
+  // A date-only change writes the explicit day.
+  else if (changes.bookingDate !== undefined) payload.booking_date = changes.bookingDate;
   if (changes.amountMinor !== undefined) payload.amount_minor = changes.amountMinor;
   if (changes.category !== undefined) payload.category = changes.category;
   if (changes.note !== undefined) payload.note = changes.note;
@@ -250,22 +252,36 @@ export class SupabaseExpenseRepository implements ExpenseRepository {
       .eq("kind", "expense")
       .is("deleted_at", null);
 
-    if (query.startUtcIso) {
+    // Dated reads use the resolved owner-local booking day so date-only rows
+    // are included and timestamped rows cannot shift by timezone.
+    if (query.startBookingDate) {
+      request = request.gte("booking_date", query.startBookingDate);
+    } else if (query.startUtcIso) {
       request = request.gte("occurred_at", query.startUtcIso);
     }
-    if (query.endUtcExclusiveIso) {
+    if (query.endBookingDateExclusive) {
+      request = request.lt("booking_date", query.endBookingDateExclusive);
+    } else if (query.endUtcExclusiveIso) {
       request = request.lt("occurred_at", query.endUtcExclusiveIso);
     }
     // Keyset continuation keeps an export from shifting under concurrent
-    // inserts/deletes. Values come from the previous stored row, not a caller.
-    if (query.beforeOccurredAt && query.beforeId) {
+    // inserts/deletes. Booking-date windows use a booking-date cursor so
+    // date-only rows (null occurred_at) are still reachable.
+    const byBookingDate = Boolean(
+      query.startBookingDate || query.endBookingDateExclusive,
+    );
+    if (byBookingDate && query.beforeBookingDate && query.beforeId) {
+      request = request.or(
+        `booking_date.lt.${query.beforeBookingDate},and(booking_date.eq.${query.beforeBookingDate},id.lt.${query.beforeId})`,
+      );
+    } else if (!byBookingDate && query.beforeOccurredAt && query.beforeId) {
       request = request.or(
         `occurred_at.lt.${query.beforeOccurredAt},and(occurred_at.eq.${query.beforeOccurredAt},id.lt.${query.beforeId})`,
       );
     }
 
     const { data, error } = await request
-      .order("occurred_at", { ascending: false })
+      .order(byBookingDate ? "booking_date" : "occurred_at", { ascending: false })
       .order("id", { ascending: false })
       .range(query.offset, query.offset + query.limit - 1);
 
@@ -332,14 +348,19 @@ export class SupabaseExpenseRepository implements ExpenseRepository {
     let truncated = false;
 
     for (let offset = 0; offset < MAX_ROWS; offset += PAGE_SIZE) {
-      const { data, error } = await this.supabase
+      let request = this.supabase
         .from(TABLE)
         .select("category, amount_minor")
         .eq("owner_user_id", actor.userId)
         .eq("kind", "expense")
-        .is("deleted_at", null)
-        .gte("occurred_at", window.startUtcIso)
-        .lt("occurred_at", window.endUtcExclusiveIso)
+        .is("deleted_at", null);
+      request = window.startBookingDate
+        ? request.gte("booking_date", window.startBookingDate)
+        : request.gte("occurred_at", window.startUtcIso);
+      request = window.endBookingDateExclusive
+        ? request.lt("booking_date", window.endBookingDateExclusive)
+        : request.lt("occurred_at", window.endUtcExclusiveIso);
+      const { data, error } = await request
         .order("occurred_at", { ascending: false })
         .order("id", { ascending: false })
         .range(offset, offset + PAGE_SIZE - 1);
@@ -365,14 +386,19 @@ export class SupabaseExpenseRepository implements ExpenseRepository {
     actor: AuthenticatedActor,
     window: ExpenseSummaryWindow,
   ): Promise<RepositoryResult<number>> {
-    const { count, error } = await this.supabase
+    let request = this.supabase
       .from(TABLE)
       .select("id", { count: "exact", head: true })
       .eq("owner_user_id", actor.userId)
       .eq("kind", "expense")
-      .is("deleted_at", null)
-      .gte("occurred_at", window.startUtcIso)
-      .lt("occurred_at", window.endUtcExclusiveIso);
+      .is("deleted_at", null);
+    request = window.startBookingDate
+      ? request.gte("booking_date", window.startBookingDate)
+      : request.gte("occurred_at", window.startUtcIso);
+    request = window.endBookingDateExclusive
+      ? request.lt("booking_date", window.endBookingDateExclusive)
+      : request.lt("occurred_at", window.endUtcExclusiveIso);
+    const { count, error } = await request;
 
     if (error) return { ok: false, error: expenseFailure(error) };
     if (typeof count !== "number") return { ok: false, error: { code: "unknown" } };

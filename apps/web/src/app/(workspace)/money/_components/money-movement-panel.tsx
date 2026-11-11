@@ -53,6 +53,7 @@ export function MoneyMovementPanel({
 }) {
   const router = useRouter();
   const [kind, setKind] = useState<MovementKind>("income");
+  const [direction, setDirection] = useState<"in" | "out">("out");
   const [idempotencyKey, rotateKey] = useStableIdempotencyKey({
     ownerKey,
     purchaseNonce: "movement",
@@ -113,6 +114,7 @@ export function MoneyMovementPanel({
     try {
       const result = await createMovementAction({
         kind,
+        ...(kind === "reconciliation_adjustment" ? { direction } : {}),
         amountMinor: amount.value,
         bookingDate,
         ...(knownTime ? { occurredAt: localDateTimeToIso(knownTime) } : {}),
@@ -180,6 +182,21 @@ export function MoneyMovementPanel({
               ))}
             </select>
           </div>
+          {kind === "reconciliation_adjustment" ? (
+            <div className="space-y-2">
+              <label htmlFor="movement-direction" className={FIELD_LABEL}>Direction</label>
+              <select
+                id="movement-direction"
+                value={direction}
+                onChange={(event) => setDirection(event.target.value as "in" | "out")}
+                disabled={pending || success !== null}
+                className="input-instrument h-11 w-full text-sm"
+              >
+                <option value="out">Outflow (reduces cash)</option>
+                <option value="in">Inflow (increases cash)</option>
+              </select>
+            </div>
+          ) : null}
           <div className="space-y-2">
             <label htmlFor="movement-amount" className={FIELD_LABEL}>Amount (MAD)</label>
             <Input

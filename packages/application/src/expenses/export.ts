@@ -84,6 +84,8 @@ export async function exportExpenses(
   const window = {
     startUtcIso: query.startUtcIso,
     endUtcExclusiveIso: query.endUtcExclusiveIso,
+    startBookingDate: query.startBookingDate,
+    endBookingDateExclusive: query.endBookingDateExclusive,
   };
 
   // Refuse an oversized range before reading any rows.
@@ -101,7 +103,7 @@ export async function exportExpenses(
   }
 
   const expenses: PersonalExpense[] = [];
-  let cursor: { occurredAt: string; id: string } | null = null;
+  let cursor: { bookingDate: string; occurredAt: string | null; id: string } | null = null;
 
   for (;;) {
     // Keyset paging rather than offset: a concurrent delete cannot shift an
@@ -111,7 +113,10 @@ export async function exportExpenses(
       offset: 0,
       startUtcIso: window.startUtcIso,
       endUtcExclusiveIso: window.endUtcExclusiveIso,
+      startBookingDate: window.startBookingDate,
+      endBookingDateExclusive: window.endBookingDateExclusive,
       beforeOccurredAt: cursor?.occurredAt ?? null,
+      beforeBookingDate: cursor?.bookingDate ?? null,
       beforeId: cursor?.id ?? null,
     });
     if (!page.ok) return failureFor(page.error.code);
@@ -127,13 +132,17 @@ export async function exportExpenses(
     }
 
     const last = page.value[page.value.length - 1];
-    if (cursor && cursor.occurredAt === last.occurredAt && cursor.id === last.id) {
+    if (cursor && cursor.bookingDate === last.bookingDate && cursor.id === last.id) {
       return applicationFailure(
         "The ledger changed during this export. Retry to get a complete file.",
         "conflict",
       );
     }
-    cursor = { occurredAt: last.occurredAt, id: last.id };
+    cursor = {
+      bookingDate: last.bookingDate,
+      occurredAt: last.occurredAt,
+      id: last.id,
+    };
     if (page.value.length < EXPENSE_EXPORT_PAGE_SIZE) break;
   }
 
