@@ -161,6 +161,7 @@ export class SupabaseExpenseRepository implements ExpenseRepository {
       .from(TABLE)
       .select(EXPENSE_COLUMNS_WITH_FINGERPRINT)
       .eq("owner_user_id", actor.userId)
+      .eq("kind", "expense")
       .eq("idempotency_key", idempotencyKey)
       .maybeSingle();
 
@@ -205,6 +206,7 @@ export class SupabaseExpenseRepository implements ExpenseRepository {
       .select(EXPENSE_COLUMNS)
       .eq("owner_user_id", actor.userId)
       .eq("id", id)
+      .eq("kind", "expense")
       .is("deleted_at", null)
       .maybeSingle();
 
@@ -221,6 +223,7 @@ export class SupabaseExpenseRepository implements ExpenseRepository {
       .from(TABLE)
       .select(EXPENSE_COLUMNS)
       .eq("owner_user_id", actor.userId)
+      .eq("kind", "expense")
       .is("deleted_at", null);
 
     if (query.startUtcIso) {
@@ -250,6 +253,7 @@ export class SupabaseExpenseRepository implements ExpenseRepository {
       .update(toUpdatePayload(input))
       .eq("owner_user_id", actor.userId)
       .eq("id", id)
+      .eq("kind", "expense")
       .eq("version", input.expectedVersion)
       .is("deleted_at", null)
       .select(EXPENSE_COLUMNS)
@@ -265,6 +269,7 @@ export class SupabaseExpenseRepository implements ExpenseRepository {
       .select("version, deleted_at")
       .eq("owner_user_id", actor.userId)
       .eq("id", id)
+      .eq("kind", "expense")
       .maybeSingle();
 
     if (current.error) {
@@ -298,6 +303,7 @@ export class SupabaseExpenseRepository implements ExpenseRepository {
         .from(TABLE)
         .select("category, amount_minor")
         .eq("owner_user_id", actor.userId)
+        .eq("kind", "expense")
         .is("deleted_at", null)
         .gte("occurred_at", window.startUtcIso)
         .lt("occurred_at", window.endUtcExclusiveIso)
@@ -332,6 +338,7 @@ export class SupabaseExpenseRepository implements ExpenseRepository {
       .select("version, deleted_at")
       .eq("owner_user_id", actor.userId)
       .eq("id", id)
+      .eq("kind", "expense")
       .maybeSingle();
 
     if (current.error) {
@@ -360,6 +367,7 @@ export class SupabaseExpenseRepository implements ExpenseRepository {
       })
       .eq("owner_user_id", actor.userId)
       .eq("id", id)
+      .eq("kind", "expense")
       .eq("version", row.version)
       .is("deleted_at", null)
       .select("id, deleted_at")
@@ -385,6 +393,7 @@ export class SupabaseExpenseRepository implements ExpenseRepository {
       .select("version, deleted_at")
       .eq("owner_user_id", actor.userId)
       .eq("id", id)
+      .eq("kind", "expense")
       .maybeSingle();
     if (raced.error) {
       return { ok: false, error: expenseFailure(raced.error) };

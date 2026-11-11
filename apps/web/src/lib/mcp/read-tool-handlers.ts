@@ -18,6 +18,7 @@ import {
   getTaskReadModel,
   getTodayPlan as getTodayPlanFromApplication,
 } from "@ega/application";
+import { createMcpMoneyHandlers } from "@/lib/mcp/money/handlers";
 import { isIsoDate, isValidIANATimeZone } from "@ega/domain/time-context";
 import {
   SupabaseTasksRepository,
@@ -58,6 +59,8 @@ export type McpReadToolDependencies = {
     localDate: string,
     timezone: string,
   ) => Promise<unknown>;
+  /** Deterministic clock injection for period/date resolution in tests. */
+  now?: () => Date;
 };
 
 const DEFAULT_DEPENDENCIES: McpReadToolDependencies = {
@@ -175,6 +178,11 @@ export function createMcpReadToolHandlers(
   dependencies: McpReadToolDependencies = DEFAULT_DEPENDENCIES,
   writesEnabled = false,
 ) {
+  const moneyHandlers = createMcpMoneyHandlers({
+    createUserClient: dependencies.createUserClient,
+    now: dependencies.now,
+  });
+
   return {
     async getCapabilities(
       authInfo: AuthInfo | undefined,
@@ -397,6 +405,15 @@ export function createMcpReadToolHandlers(
       } catch (error) {
         return errorResult(error);
       }
+    },
+
+    // Money period context (MONEY-03): the same application state read used by
+    // the web surface, fenced by the explicit personal_ops.read grant.
+    async moneyState(
+      authInfo: AuthInfo | undefined,
+      input: { periodId?: string; date?: string; mode?: "today" | "active_day" },
+    ): Promise<CallToolResult> {
+      return moneyHandlers.moneyState(authInfo, input);
     },
   };
 }

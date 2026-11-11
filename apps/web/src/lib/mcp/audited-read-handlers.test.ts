@@ -51,6 +51,7 @@ function createBaseHandlers() {
     personalOpsSummary: vi.fn().mockResolvedValue(successResult(0)),
     personalOpsExpensesList: vi.fn().mockResolvedValue(successResult(0)),
     personalOpsCheckinGet: vi.fn().mockResolvedValue(successResult(0)),
+    moneyState: vi.fn().mockResolvedValue(successResult(0)),
   };
 }
 

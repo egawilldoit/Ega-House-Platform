@@ -53,6 +53,31 @@ test("category caps save through one validated preference patch without blocking
   assert.match(pageSource, /Monthly category caps/);
 });
 
+test("money period actions share the verified session, repository and centime parser", () => {
+  assert.match(actionsSource, /createMoneyPeriodAction/);
+  assert.match(actionsSource, /updateMoneySettingsAction/);
+  assert.match(actionsSource, /getMoneyState|createMoneyPeriod|updateMoneySettings/);
+  assert.match(actionsSource, /getCurrentUser\(\)/);
+  assert.match(actionsSource, /createAuthenticatedActor\(user\.id\)/);
+  assert.match(actionsSource, /new SupabaseMoneyPeriodRepository\(client\)/);
+  assert.match(actionsSource, /parseOpeningAmountToMinor/);
+  assert.match(actionsSource, /getWebTimeContext\(\)/);
+  assert.match(actionsSource, /persistedTimezone/);
+  assert.match(actionsSource, /openingMode/);
+  assert.match(actionsSource, /version: Number\(rawVersion\)/);
+  assert.match(actionsSource, /periodId/);
+  assert.match(actionsSource, /revalidatePath\("\/money"\)/);
+  assert.doesNotMatch(actionsSource, /owner_user_id\s*:/);
+  assert.doesNotMatch(actionsSource, /getSupabaseServiceClient/);
+});
+
+test("expense creation carries the tracking-period guard on the shared repo", () => {
+  assert.match(
+    actionsSource,
+    /periods:\s*new SupabaseMoneyPeriodRepository\(client\)/,
+  );
+});
+
 test("money actions map application codes onto the component conflict contract", () => {
   assert.equal(mapApplicationCode("conflict"), "CONFLICT");
   assert.equal(mapApplicationCode("validation"), "VALIDATION");
