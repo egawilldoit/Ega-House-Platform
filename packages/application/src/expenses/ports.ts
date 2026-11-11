@@ -88,10 +88,16 @@ export type ExpenseRepository = {
     id: string,
     input: ExpenseUpdateRecordInput,
   ): Promise<RepositoryResult<PersonalExpense>>;
+  /**
+   * Soft delete. When `expectedVersion` is supplied, a row that changed since
+   * that read is rejected with `conflict` instead of being deleted. Omit it for
+   * the existing idempotent HTTP/DELETE behavior.
+   */
   softDelete(
     actor: AuthenticatedActor,
     id: string,
     nowIso: string,
+    expectedVersion?: number,
   ): Promise<RepositoryResult<ExpenseDeleteOutcome>>;
   summarize(
     actor: AuthenticatedActor,

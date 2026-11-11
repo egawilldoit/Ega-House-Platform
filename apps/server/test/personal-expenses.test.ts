@@ -331,7 +331,12 @@ test("GET /api/expenses resolves the owner timezone and returns a bounded page",
   const body = await res.json();
   assert.equal(body.ok, true);
   assert.equal(body.expenses.length, 1);
-  assert.deepEqual(body.pagination, { limit: 10, offset: 0, hasMore: false });
+  assert.deepEqual(body.pagination, {
+    limit: 10,
+    offset: 0,
+    hasMore: false,
+    nextOffset: null,
+  });
 
   const listSteps = tableCall(fake, "personal_expenses")?.steps ?? [];
   assert.ok(listSteps.some((step) => step.method === "eq" && step.args[0] === "owner_user_id" && step.args[1] === "user-123"));

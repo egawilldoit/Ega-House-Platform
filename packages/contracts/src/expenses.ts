@@ -65,6 +65,8 @@ export type ExpensePaginationDto = Readonly<{
   limit: number;
   offset: number;
   hasMore: boolean;
+  /** Offset to request next, or null when `hasMore` is false. */
+  nextOffset: number | null;
 }>;
 
 /**

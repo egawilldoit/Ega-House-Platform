@@ -42,6 +42,22 @@ test("money ledger has bounded URL pagination and accessible loading failure rec
   assert.match(source, /No expenses yet/);
 });
 
+test("money page exposes complete filtered CSV export and focus refresh", () => {
+  assert.match(source, /action="\/money\/export"/);
+  assert.match(source, /name="from"/);
+  assert.match(source, /name="to"/);
+  assert.match(source, /Download CSV/);
+  assert.match(source, /never silently cut off/);
+  assert.match(source, /RefreshOnFocus/);
+});
+
+test("unavailable or truncated spending is never shown as a complete zero", () => {
+  assert.match(source, /Progress unavailable — not shown as zero/);
+  assert.match(source, /Incomplete reading — not shown as zero/);
+  assert.match(source, /summary\.monthToDate\.truncated/);
+  assert.match(source, /Spending summaries unavailable right now/);
+});
+
 test("page query values succeed through the actual listExpenses parser and repository path", async () => {
   let received: unknown;
   const repository = {

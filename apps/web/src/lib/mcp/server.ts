@@ -63,12 +63,23 @@ export type McpReadToolHandlers = {
   ) => Promise<CallToolResult>;
   personalOpsExpensesList: (
     authInfo: AuthInfo | undefined,
-    input: { from?: string; to?: string; timezone?: string; limit?: number },
+    input: { from?: string; to?: string; timezone?: string; limit?: number; offset?: number },
     context?: McpProtocolContext,
   ) => Promise<CallToolResult>;
   personalOpsCheckinGet: (
     authInfo: AuthInfo | undefined,
     input: { localDate: string; timezone: string },
+    context?: McpProtocolContext,
+  ) => Promise<CallToolResult>;
+  /** MONEY-02 canonical Money reads. */
+  getMoneyExpense: (
+    authInfo: AuthInfo | undefined,
+    input: { expenseId: string },
+    context?: McpProtocolContext,
+  ) => Promise<CallToolResult>;
+  listMoneyLedger: (
+    authInfo: AuthInfo | undefined,
+    input: { from?: string; to?: string; timezone?: string; limit?: number; offset?: number },
     context?: McpProtocolContext,
   ) => Promise<CallToolResult>;
 };
@@ -205,6 +216,43 @@ export type McpWriteToolHandlers = {
     input: { localDate: string; timezone: string; patch: Record<string, unknown>; operationId: string },
     context?: McpProtocolContext,
   ) => Promise<CallToolResult>;
+  /** MONEY-02 canonical Money writes. */
+  createMoneyExpense: (
+    authInfo: AuthInfo | undefined,
+    input: {
+      occurredAt: string;
+      amountMinor: number;
+      category: string;
+      needVsWant: "need" | "want";
+      note?: string | null;
+      merchant?: string | null;
+      paymentMethod?: string | null;
+      idempotencyKey: string;
+      operationId: string;
+    },
+    context?: McpProtocolContext,
+  ) => Promise<CallToolResult>;
+  updateMoneyExpense: (
+    authInfo: AuthInfo | undefined,
+    input: {
+      expenseId: string;
+      expectedVersion: number;
+      occurredAt?: string;
+      amountMinor?: number;
+      category?: string;
+      needVsWant?: "need" | "want";
+      note?: string | null;
+      merchant?: string | null;
+      paymentMethod?: string | null;
+      operationId: string;
+    },
+    context?: McpProtocolContext,
+  ) => Promise<CallToolResult>;
+  deleteMoneyExpense: (
+    authInfo: AuthInfo | undefined,
+    input: { expenseId: string; expectedVersion: number; operationId: string },
+    context?: McpProtocolContext,
+  ) => Promise<CallToolResult>;
   stopTimer: (
     authInfo: AuthInfo | undefined,
     input: { sessionId: string; operationId: string },
@@ -320,11 +368,45 @@ const personalOpsSummaryInputSchema = z.object({
   timezone: z.string().optional(),
 }).strict();
 
+const offsetSchema = z.number().int().min(0).max(1_000_000).default(0);
+
 const personalOpsExpensesInputSchema = z.object({
   from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   timezone: z.string().optional(),
   limit: limitSchema,
+  offset: offsetSchema,
+}).strict();
+
+const moneyLedgerListInputSchema = z.object({
+  from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  timezone: z.string().optional(),
+  limit: limitSchema,
+  offset: offsetSchema,
+}).strict();
+
+const moneyExpenseIdInputSchema = z.object({
+  expenseId: uuidSchema,
+}).strict();
+
+const moneyUpdateExpenseInputSchema = z.object({
+  expenseId: uuidSchema,
+  expectedVersion: z.number().int().positive(),
+  occurredAt: z.string().optional(),
+  amountMinor: z.number().int().positive().optional(),
+  category: z.string().optional(),
+  needVsWant: z.enum(["need", "want"]).optional(),
+  note: nullableStringSchema.optional(),
+  merchant: nullableStringSchema.optional(),
+  paymentMethod: nullableStringSchema.optional(),
+  operationId: z.string().uuid(),
+}).strict();
+
+const moneyDeleteExpenseInputSchema = z.object({
+  expenseId: uuidSchema,
+  expectedVersion: z.number().int().positive(),
+  operationId: z.string().uuid(),
 }).strict();
 
 const personalOpsCheckinInputSchema = z.object({
@@ -529,6 +611,18 @@ const personalOpsCheckinSaveInputSchema = z.object({
   operationId: z.string().uuid(),
 }).strict();
 
+const moneyCreateExpenseInputSchema = z.object({
+  occurredAt: z.string(),
+  amountMinor: z.number().int().positive(),
+  category: z.string(),
+  needVsWant: z.enum(["need", "want"]),
+  note: nullableStringSchema.optional(),
+  merchant: nullableStringSchema.optional(),
+  paymentMethod: nullableStringSchema.optional(),
+  idempotencyKey: z.string().min(1),
+  operationId: z.string().uuid(),
+}).strict();
+
 const stopTimerInputSchema = z.object({
   sessionId: uuidSchema,
   operationId: z.string().uuid(),
@@ -717,6 +811,40 @@ const READ_TOOL_REGISTRATIONS: readonly ReadToolRegistration[] = [
         },
         async (input, ctx) =>
           handlers.personalOpsCheckinGet(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
+      ),
+  },
+  {
+    name: "ega_money_get",
+    register: (server, handlers) =>
+      server.registerTool(
+        "ega_money_get",
+        {
+          title: "Get one Money expense",
+          description:
+            "Read one identified, non-deleted expense owned by the authenticated user. `expenseId` is the canonical ledger id returned by create/list; amounts are integer MAD centimes (11.00 MAD = 1100). Unknown merchant, payment method or note stays null. Requires personal_ops.read.",
+          inputSchema: moneyExpenseIdInputSchema,
+          outputSchema: personalOpsListOutputSchema,
+          annotations: READ_ONLY_ANNOTATIONS,
+        },
+        async (input, ctx) =>
+          handlers.getMoneyExpense(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
+      ),
+  },
+  {
+    name: "ega_money_ledger_list",
+    register: (server, handlers) =>
+      server.registerTool(
+        "ega_money_ledger_list",
+        {
+          title: "List the Money ledger",
+          description:
+            "List active expenses newest first with stable (occurred_at, id) ordering. `from`/`to` are inclusive owner-local dates; when omitted, the owner's stored timezone resolves them. `offset` continues from `pagination.nextOffset` until null, so every page is reachable. Amounts are integer MAD centimes. Requires personal_ops.read.",
+          inputSchema: moneyLedgerListInputSchema,
+          outputSchema: personalOpsListOutputSchema,
+          annotations: READ_ONLY_ANNOTATIONS,
+        },
+        async (input, ctx) =>
+          handlers.listMoneyLedger(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
       ),
   },
   {
@@ -1087,6 +1215,57 @@ const WRITE_TOOL_REGISTRATIONS: readonly WriteToolRegistration[] = [
         },
         async (input, ctx) =>
           handlers.createPersonalOpsExpense(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
+      ),
+  },
+  {
+    name: "ega_money_create_expense",
+    register: (server, handlers) =>
+      server.registerTool(
+        "ega_money_create_expense",
+        {
+          title: "Create a Money expense",
+          description:
+            "Create one MAD expense in the canonical ledger. amountMinor is integer centimes (11.00 MAD = 1100). occurredAt is an ISO timestamp; send an explicit local day's timestamp with an offset rather than guessing UTC. note, merchant and paymentMethod may be null when unknown. idempotencyKey identifies this purchase: the same key and full payload replays the original row (including after deletion); any changed field conflicts. Returns the stored id, resolved occurredAt and version. Requires the explicit personal_ops.write grant.",
+          inputSchema: moneyCreateExpenseInputSchema,
+          outputSchema: genericWriteOutputSchema,
+          annotations: WRITE_ANNOTATIONS,
+        },
+        async (input, ctx) =>
+          handlers.createMoneyExpense(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
+      ),
+  },
+  {
+    name: "ega_money_update_expense",
+    register: (server, handlers) =>
+      server.registerTool(
+        "ega_money_update_expense",
+        {
+          title: "Update a Money expense",
+          description:
+            "Edit one identified expense through the canonical use case. expectedVersion is the version from the latest get/list; a stale version returns CONFLICT and never overwrites newer data. Only supplied fields change; note/merchant/paymentMethod can be explicitly cleared with null and then stay unknown. Requires personal_ops.write.",
+          inputSchema: moneyUpdateExpenseInputSchema,
+          outputSchema: genericWriteOutputSchema,
+          annotations: WRITE_ANNOTATIONS,
+        },
+        async (input, ctx) =>
+          handlers.updateMoneyExpense(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
+      ),
+  },
+  {
+    name: "ega_money_delete_expense",
+    register: (server, handlers) =>
+      server.registerTool(
+        "ega_money_delete_expense",
+        {
+          title: "Delete a Money expense",
+          description:
+            "Soft-delete one identified expense with its expectedVersion. A stale version returns CONFLICT; repeating the delete returns alreadyDeleted=true and never recreates or restores the row. Requires personal_ops.write.",
+          inputSchema: moneyDeleteExpenseInputSchema,
+          outputSchema: genericWriteOutputSchema,
+          annotations: WRITE_ANNOTATIONS,
+        },
+        async (input, ctx) =>
+          handlers.deleteMoneyExpense(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
       ),
   },
   {
