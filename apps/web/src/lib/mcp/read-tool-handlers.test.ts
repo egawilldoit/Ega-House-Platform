@@ -53,6 +53,18 @@ function createDependencies(): McpReadToolDependencies {
       localDate: "2026-11-08",
       checkin: null,
     }),
+    moneyObligationsList: vi.fn().mockResolvedValue({
+      obligations: [],
+      pagination: { limit: 25, offset: 0, hasMore: false },
+      count: 0,
+    }),
+    moneyObligationGet: vi.fn().mockResolvedValue({
+      obligation: { id: "obligation-1", state: "pending", version: 1 },
+    }),
+    moneyObligationTemplatesList: vi.fn().mockResolvedValue({
+      templates: [],
+      count: 0,
+    }),
   };
 }
 

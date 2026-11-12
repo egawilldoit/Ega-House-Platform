@@ -239,6 +239,12 @@ export default async function MoneyPage({ searchParams }: Props) {
   return <main className="mx-auto w-full max-w-5xl px-4 py-6 sm:px-6">
     <WorkspacePageHeader title="Money" description="Your personal expense ledger." />
 
+    <nav aria-label="Money sections" className="mt-4 flex flex-wrap gap-4 text-[length:var(--text-body)]">
+      <a className="underline" aria-current="page" href="/money">Money ledger</a>
+      <a className="underline" href="/money/bills">Bills</a>
+      <a className="underline" href="/money/subscriptions">Subscriptions</a>
+    </nav>
+
     {moneyState ? (
       <MoneyPeriodPanel
         key={`${moneyState.period?.id ?? "none"}:${moneyState.period?.version ?? 0}`}
