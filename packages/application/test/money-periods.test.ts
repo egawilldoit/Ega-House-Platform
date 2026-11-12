@@ -6,6 +6,7 @@ import {
   createExpense,
   createMoneyPeriod,
   getMoneyState,
+  rebaseMoneyDayStartBaseline,
   routineEntryGuardFailure,
   updateMoneySettings,
   type ExpenseRepository,
@@ -17,6 +18,18 @@ import type { PersonalExpense } from "@ega/domain/expenses";
 const ACTOR = createAuthenticatedActor("owner-money");
 const OTHER = createAuthenticatedActor("owner-other");
 const NOW = new Date("2026-11-11T12:00:00.000Z");
+
+test("rebases a day-start baseline through the explicit use case", async () => {
+  let calls = 0;
+  const result = await rebaseMoneyDayStartBaseline(ACTOR, {
+    async rebaseDayStartBaseline() {
+      calls += 1;
+      return { ok: true, value: { date: "2026-11-12", version: 2, availability: "unavailable", unavailableReason: "first_day", cashMinor: null, commitmentsMinor: null, savingsTargetMinor: null, savingsFundedMinor: null, emergencyTargetMinor: null, emergencyUsedMinor: null } };
+    },
+  }, "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
+  assert.equal(result.ok, true);
+  assert.equal(calls, 1);
+});
 
 type LedgerRow = {
   id: string;
