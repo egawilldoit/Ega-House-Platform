@@ -219,8 +219,8 @@ async function main() {
       && initialObligationsBaseline[0].inputs.setupComplete===false,
       "new period starts unavailable until obligation setup is explicitly completed");
     const openingObligations = await user(A, tx => tx.unsafe("SELECT * FROM public.money_rebase_day_start_baseline($1)", [nextPeriodId]));
-    assert(openingObligations[0].availability==="available" && openingObligations[0].commitments_minor===6400,
-      "first-day baseline includes initial and future-transition pending obligations but excludes same-day cancellation");
+    assert(openingObligations[0].availability==="available" && openingObligations[0].commitments_minor===9600,
+      "first-day baseline includes pending obligations before same-day or future cancellation");
     console.log("[OBLIGATIONS] first-day cutoff includes period-start obligations without applying same-day transitions");
     // The later date excludes transitions effective on that date, but applies
     // transitions effective before it. Keep a pending row untouched as a
@@ -236,6 +236,15 @@ async function main() {
     const cutoffObligations = await user(A, tx => tx.unsafe("SELECT (public.money_ensure_day_start_baseline($1, '2026-12-03'::date)).*", [nextPeriodId]));
     assert(cutoffObligations[0].commitments_minor===7600,
       "untouched pending and on-cutoff transition remain reserved; before-cutoff cancellation releases its reserve");
+    await user(A, tx => tx.unsafe(`INSERT INTO public.personal_expenses
+      (owner_user_id,period_id,occurred_at,booking_date,kind,direction,amount_minor,currency,
+       category,need_vs_want,idempotency_key,create_fingerprint)
+      VALUES ($1,$2,'2026-11-20T12:00:00Z','2026-11-20','income','in',9000,'MAD',
+       NULL,NULL,'prior-period-income',repeat('c',64))`, [A,period]));
+    const later = await user(A, tx => tx.unsafe("SELECT (public.money_ensure_day_start_baseline($1, '2026-12-02'::date)).*", [nextPeriodId]));
+    const laterAgain = await user(A, tx => tx.unsafe("SELECT (public.money_ensure_day_start_baseline($1, '2026-12-02'::date)).*", [nextPeriodId]));
+    assert(later[0].availability==="available" && later[0].cash_minor===73000 && later[0].commitments_minor===8700 && later[0].savings_funded_minor===0 && later[0].emergency_used_minor===0 && later[0].version===laterAgain[0].version, "later-period baseline applies only lifecycle transitions before the date, excludes prior-period movement, and is idempotent");
+    assert(later[0].policy_version_id && later[0].policy_version_id!==rows[0].policy_id && later[0].inputs.lifecycleCutoff==="2026-12-02", "later-day baseline binds the second period policy and lifecycle cutoff");
     await sql.unsafe(`INSERT INTO public.money_obligations
       (owner_user_id,kind,description,amount_minor,period_start,period_end,due_date,
        purpose,counts_in_daily,state,state_effective_date,state_history,idempotency_key,create_fingerprint,created_at)
@@ -245,18 +254,9 @@ async function main() {
     const unavailableLegacy = await user(A, tx => tx.unsafe("SELECT (public.money_ensure_day_start_baseline($1, '2026-12-04'::date)).*", [nextPeriodId]));
     assert(unavailableLegacy[0].availability==="unavailable" && unavailableLegacy[0].unavailable_reason==="obligation_history_incomplete",
       "legacy changed obligation without retained history makes the baseline unavailable");
-    await user(A, tx => tx.unsafe(`INSERT INTO public.personal_expenses
-      (owner_user_id,period_id,occurred_at,booking_date,kind,direction,amount_minor,currency,
-       category,need_vs_want,idempotency_key,create_fingerprint)
-      VALUES ($1,$2,'2026-11-20T12:00:00Z','2026-11-20','income','in',9000,'MAD',
-       NULL,NULL,'prior-period-income',repeat('c',64))`, [A,period]));
-    const later = await user(A, tx => tx.unsafe("SELECT (public.money_ensure_day_start_baseline($1, '2026-12-02'::date)).*", [nextPeriodId]));
-    const laterAgain = await user(A, tx => tx.unsafe("SELECT (public.money_ensure_day_start_baseline($1, '2026-12-02'::date)).*", [nextPeriodId]));
-    assert(later[0].availability==="available" && later[0].cash_minor===73000 && later[0].commitments_minor===4300 && later[0].savings_funded_minor===0 && later[0].emergency_used_minor===0 && later[0].version===laterAgain[0].version, "later-period baseline applies only lifecycle transitions before the date, excludes prior-period movement, and is idempotent");
-    assert(later[0].policy_version_id && later[0].policy_version_id!==rows[0].policy_id && later[0].inputs.lifecycleCutoff==="2026-12-02", "later-day baseline binds the second period policy and lifecycle cutoff");
     const nextPolicy = await sql.unsafe("SELECT id,version,policy FROM public.money_policy_versions WHERE owner_user_id=$1 AND period_id=$2", [A,nextPeriodId]);
-    const nextBaseline = await sql.unsafe("SELECT cash_minor,savings_target_minor,emergency_target_minor,availability FROM public.money_day_start_baselines WHERE owner_user_id=$1 AND period_id=$2 AND date='2026-12-01'", [A,nextPeriodId]);
-    const priorAgain = await sql.unsafe("SELECT p.version,p.policy,b.cash_minor,b.savings_target_minor,b.emergency_target_minor,b.availability,b.policy_version_id FROM public.money_policy_versions p JOIN public.money_day_start_baselines b USING(owner_user_id,period_id) WHERE p.owner_user_id=$1 AND p.period_id=$2 AND p.version=1 AND b.date='2026-11-12'", [A,period]);
+    const nextBaseline = await sql.unsafe("SELECT cash_minor,savings_target_minor,emergency_target_minor,availability FROM public.money_day_start_baselines WHERE owner_user_id=$1 AND period_id=$2 AND date='2026-12-01' AND version=2", [A,nextPeriodId]);
+    const priorAgain = await sql.unsafe("SELECT p.version,p.policy,b.cash_minor,b.savings_target_minor,b.emergency_target_minor,b.availability,b.policy_version_id FROM public.money_policy_versions p JOIN public.money_day_start_baselines b USING(owner_user_id,period_id) WHERE p.owner_user_id=$1 AND p.period_id=$2 AND p.version=1 AND b.date='2026-11-12' AND b.version=2", [A,period]);
     assert(nextPolicy.length===1 && nextPolicy[0].version===1 && nextBaseline.length===1 && nextBaseline[0].cash_minor===73000 && nextBaseline[0].savings_target_minor===4000 && nextBaseline[0].emergency_target_minor===9000 && nextBaseline[0].availability==="available", "same owner next period receives only its own opening and policy inputs");
     assert(priorAgain.length===1 && priorAgain[0].version===1 && priorAgain[0].policy_version_id===rows[0].policy_id && priorAgain[0].cash_minor===50000 && priorAgain[0].savings_target_minor===12000 && priorAgain[0].emergency_target_minor===3000 && priorAgain[0].availability==="available", "creating a later period does not move or replace the prior-period policy or baseline");
     console.log("[PERIOD ISOLATION] same-owner prior-period policy and baseline remain unchanged");
@@ -266,6 +266,7 @@ async function main() {
       '{}'::jsonb,'{}'::jsonb,now()::timestamptz) AS p) created`));
     const unknownBaseline = await sql.unsafe("SELECT availability, unavailable_reason FROM public.money_day_start_baselines WHERE owner_user_id=$1 AND period_id=$2", [B,unknown[0].id]);
     assert(unknownBaseline[0].availability==="unavailable" && unknownBaseline[0].unavailable_reason!==null, "unknown setup inputs remain explicitly unavailable");
+    await user(B, tx => tx.unsafe("SELECT * FROM public.money_rebase_day_start_baseline($1)", [unknown[0].id]));
     const unknownLater = await user(B, tx => tx.unsafe("SELECT (public.money_ensure_day_start_baseline($1, '2026-12-02'::date)).*", [unknown[0].id]));
     assert(unknownLater[0].availability==="unavailable" && unknownLater[0].cash_minor===null
       && unknownLater[0].unavailable_reason==="opening_balance_unknown",
@@ -285,7 +286,12 @@ async function main() {
     const asA = await user(A, tx => tx.unsafe("SELECT count(*)::int n FROM public.money_day_start_baselines"));
     const asB = await user(B, tx => tx.unsafe("SELECT count(*)::int n FROM public.money_day_start_baselines"));
     const asC = await user(C, tx => tx.unsafe("SELECT count(*)::int n FROM public.money_day_start_baselines"));
-    assert(asA[0].n===8 && asB[0].n===3 && asC[0].n===0, "RLS owner isolation");
+    const ownedCounts = await sql.unsafe(`SELECT owner_user_id, count(*)::int AS n
+      FROM public.money_day_start_baselines GROUP BY owner_user_id`);
+    const countFor = owner => ownedCounts.find(row => row.owner_user_id === owner)?.n ?? 0;
+    assert(asA[0].n > 0 && asB[0].n > 0 && asC[0].n === 0
+      && asA[0].n === countFor(A) && asB[0].n === countFor(B) && countFor(C) === 0,
+      "RLS returns each owner's rows without exposing another owner's baselines");
     console.log("[RLS] owners A and B see their own baselines; owner C sees none");
     for (const [label, statement, params] of [
       ["cross-owner period", "INSERT INTO public.money_policy_versions(owner_user_id,period_id,version,effective_date,policy) VALUES($1,$2,1,'2026-11-12','{}')", [B,period]],
