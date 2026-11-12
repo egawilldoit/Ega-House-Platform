@@ -4,11 +4,13 @@ import {
   getMoneyBudgetPlan,
   getMoneyCoffeeWindow,
   getMoneyMovementTotals,
+  getMoneyPeriodSpending,
   getMoneyState,
   listExpenses,
   listMovements,
   movementEffect,
   type MoneyMovementTotals,
+  type MoneyPeriodSpending,
   type MoneyState,
 } from "@ega/application";
 import {
@@ -85,6 +87,7 @@ export default async function MoneyPage({ searchParams }: Props) {
   let moneyState: MoneyState | null = null;
   let budgetResult: Awaited<ReturnType<typeof getMoneyBudgetPlan>> | null = null;
   let coffeeWindow: CoffeeWindowSummary | null = null;
+  let periodSpending: MoneyPeriodSpending | null = null;
   let movements: MoneyLedgerRow[] | null = null;
   let movementTotals: MoneyMovementTotals | null = null;
   let movementsHasMore = false;
@@ -106,7 +109,6 @@ export default async function MoneyPage({ searchParams }: Props) {
 
     // MONEY-05 period plan and counted coffee. A plan belongs to the canonical
     // period; both reads fail closed instead of inventing zero values.
-    const period = moneyState?.period ?? null;
     if (moneyState?.period) {
       const period = moneyState.period;
       budgetResult = await getMoneyBudgetPlan(
@@ -118,6 +120,18 @@ export default async function MoneyPage({ searchParams }: Props) {
         { periodStartDate: period.startDate, periodEndDate: period.endDate },
       ).catch(() => null);
       const plan = budgetResult?.ok ? budgetResult.data : null;
+      // Budget consumption is period-scoped. The month-to-date summary below
+      // remains the advisory monthly cap projection and is never reused here.
+      const spendingResult = await getMoneyPeriodSpending(
+        actor,
+        new SupabaseExpenseRepository(client),
+        {
+          periodStartDate: period.startDate,
+          periodEndDate: period.endDate,
+          timezone: period.timezone,
+        },
+      ).catch(() => null);
+      periodSpending = spendingResult?.ok ? spendingResult.data : null;
       const coffeeResult = await getMoneyCoffeeWindow(
         actor,
         {
@@ -130,7 +144,7 @@ export default async function MoneyPage({ searchParams }: Props) {
           periodStartDate: period.startDate,
           periodEndDate: period.endDate,
           spendLimitMinor: plan?.coffeeWeeklySpendLimitMinor ?? null,
-          visitLimitMinor: plan?.coffeeWeeklyVisitLimit ?? null,
+          visitLimit: plan?.coffeeWeeklyVisitLimit ?? null,
         },
       ).catch(() => null);
       coffeeWindow = coffeeResult?.ok ? coffeeResult.data : null;
@@ -175,6 +189,7 @@ export default async function MoneyPage({ searchParams }: Props) {
     moneyState = null;
     budgetResult = null;
     coffeeWindow = null;
+    periodSpending = null;
     movements = null;
     movementTotals = null;
     timeContextFailed = true;
@@ -316,33 +331,53 @@ export default async function MoneyPage({ searchParams }: Props) {
               plan={budgetResult?.ok ? budgetResult.data : null}
               periodStartDate={moneyState.period.startDate}
               periodEndDate={moneyState.period.endDate}
+              readOnly={moneyState.period.lifecycle !== "tracking"}
               action={saveBudgetPlanAction}
             />
           </div>
           {budgetResult?.ok && budgetResult.data && Object.keys(budgetResult.data.allocations).length > 0 ? (
-            <ul className="mt-4 flex flex-col gap-1.5">
-              {(Object.entries(budgetResult.data.allocations) as Array<[ExpenseCategory, number]>)
-                .sort((a, b) => b[1] - a[1])
-                .map(([category, allocation]) => {
-                  // Coffee consumption follows counted-visit amounts; other
-                  // categories use the canonical category total. The difference
-                  // between counted and category coffee is stated, not erased.
-                  const spent =
-                    category === "coffee"
-                      ? coffeeWindow?.countedVisitSpendMinor ?? spentByCategory.coffee ?? 0
-                      : spentByCategory[category] ?? 0;
-                  return (
-                    <li key={category} className="flex flex-wrap items-baseline gap-x-3 text-[length:var(--text-body)]">
-                      <span className="font-medium">{describeExpenseCategory(category).label}</span>
-                      <span>
-                        {formatMad(spent)}
-                        {" / "}
-                        {formatMad(allocation)}
-                      </span>
-                    </li>
-                  );
-                })}
-            </ul>
+            <>
+              {periodSpending === null ? (
+                <p className="mt-4 text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
+                  Period spending is unavailable right now; allocation progress is not shown as zero.
+                </p>
+              ) : null}
+              <ul className="mt-4 flex flex-col gap-1.5">
+                {(Object.entries(budgetResult.data.allocations) as Array<[ExpenseCategory, number]>)
+                  .sort((a, b) => b[1] - a[1])
+                  .map(([category, allocation]) => {
+                    // Consumption uses this period's booking dates. Coffee
+                    // follows counted-visit amounts; category coffee remains a
+                    // separate projection. Unknown values stay unavailable.
+                    const spent =
+                      category === "coffee"
+                        ? coffeeWindow?.countedVisitSpendMinor ?? null
+                        : periodSpending?.totalsByCategory[category] ?? (periodSpending ? 0 : null);
+                    return (
+                      <li key={category} className="flex flex-wrap items-baseline gap-x-3 text-[length:var(--text-body)]">
+                        <span className="font-medium">{describeExpenseCategory(category).label}</span>
+                        {spent === null ? (
+                          <span className="text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
+                            Spending unavailable
+                          </span>
+                        ) : (
+                          <span>
+                            {formatMad(spent)}
+                            {periodSpending?.truncated ? "+" : ""}
+                            {" / "}
+                            {formatMad(allocation)}
+                          </span>
+                        )}
+                      </li>
+                    );
+                  })}
+              </ul>
+            </>
+          ) : null}
+          {periodSpending?.truncated ? (
+            <p className="mt-2 text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
+              Period spending is a lower bound: the bounded summary limit was reached.
+            </p>
           ) : null}
           <p className="mt-3 text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
             Plan consumption compares spending with the period allocation; an allocation

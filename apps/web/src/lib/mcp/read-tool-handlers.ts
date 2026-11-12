@@ -474,7 +474,7 @@ export function createMcpReadToolHandlers(
         periodStartDate: string;
         periodEndDate: string;
         spendLimitMinor?: number | null;
-        visitLimitMinor?: number | null;
+        visitLimit?: number | null;
       },
     ): Promise<CallToolResult> {
       return moneyHandlers.moneyCoffeeWindow(authInfo, input);

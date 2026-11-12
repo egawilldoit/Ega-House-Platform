@@ -120,7 +120,7 @@ export type McpReadToolHandlers = {
       periodStartDate: string;
       periodEndDate: string;
       spendLimitMinor?: number | null;
-      visitLimitMinor?: number | null;
+      visitLimit?: number | null;
     },
     context?: McpProtocolContext,
   ) => Promise<CallToolResult>;
@@ -908,7 +908,7 @@ const moneyCoffeeWindowInputSchema = z.object({
   periodStartDate: moneyMovementDateSchema,
   periodEndDate: moneyMovementDateSchema,
   spendLimitMinor: z.number().int().min(0).max(2147483647).nullable().optional(),
-  visitLimitMinor: z.number().int().min(0).max(2147483647).nullable().optional(),
+  visitLimit: z.number().int().min(0).max(2147483647).nullable().optional(),
 }).strict();
 
 const moneyCoffeeVisitListInputSchema = z.object({

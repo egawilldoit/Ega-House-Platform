@@ -1,5 +1,12 @@
 import type { MoneyOpening, MoneyPeriod } from "@ega/domain/money";
 import type { MoneyDirection, MoneyKind } from "@ega/domain/money";
+import type { ExpenseCategory } from "@ega/domain/expenses";
+import {
+  addDaysToIsoDate,
+  getLocalDayWindow,
+  isIsoDate,
+  isValidIANATimeZone,
+} from "@ega/domain/time-context";
 
 import type { AuthenticatedActor } from "../auth/actor";
 import {
@@ -7,6 +14,7 @@ import {
   applicationSuccess,
   type ApplicationResult,
 } from "../shared/result";
+import type { ExpenseRepository } from "../expenses/ports";
 import type {
   MoneyAggregate,
   MoneyAggregateRow,
@@ -197,4 +205,75 @@ export function movementEffect(row: Pick<
         ? row.amountMinor
         : 0,
   };
+}
+
+/**
+ * Category spending inside one canonical period (MONEY-05).
+ *
+ * Budget consumption must use the period's inclusive dates, never the current
+ * calendar month: a partial period such as Nov 9–30 must not include Nov 1–8.
+ * Booking-date bounds are passed to the repository so date-only rows count and
+ * the result stays stable across timezone boundaries. A bounded/truncated read
+ * is surfaced as such; the caller must not present it as complete.
+ */
+export type MoneyPeriodSpending = Readonly<{
+  currency: "MAD";
+  periodStartDate: string;
+  periodEndDate: string;
+  totalsByCategory: Partial<Record<ExpenseCategory, number>>;
+  recordCount: number;
+  truncated: boolean;
+}>;
+
+export async function getMoneyPeriodSpending(
+  actor: AuthenticatedActor,
+  expenses: Pick<ExpenseRepository, "summarize">,
+  input: Readonly<{
+    periodStartDate: string;
+    periodEndDate: string;
+    timezone: string;
+  }>,
+): Promise<ApplicationResult<MoneyPeriodSpending>> {
+  if (!isIsoDate(input.periodStartDate) || !isIsoDate(input.periodEndDate)) {
+    return applicationFailure("Use a valid period date range.", "validation");
+  }
+  if (input.periodEndDate < input.periodStartDate) {
+    return applicationFailure(
+      "The period end date must be on or after its start date.",
+      "validation",
+    );
+  }
+  if (!isValidIANATimeZone(input.timezone)) {
+    return applicationFailure("Use a valid IANA timezone.", "validation");
+  }
+
+  let startUtcIso: string;
+  let endUtcExclusiveIso: string;
+  try {
+    startUtcIso = getLocalDayWindow(input.timezone, input.periodStartDate).startUtcIso;
+    endUtcExclusiveIso = getLocalDayWindow(input.timezone, input.periodEndDate).endUtcIso;
+  } catch {
+    return applicationFailure("Unable to resolve the period window.", "validation");
+  }
+
+  const summary = await expenses.summarize(actor, {
+    startUtcIso,
+    endUtcExclusiveIso,
+    startBookingDate: input.periodStartDate,
+    endBookingDateExclusive: addDaysToIsoDate(input.periodEndDate, 1),
+  });
+  if (!summary.ok) {
+    return applicationFailure(
+      "Unable to calculate period spending right now.",
+      summary.error.code,
+    );
+  }
+  return applicationSuccess({
+    currency: "MAD",
+    periodStartDate: input.periodStartDate,
+    periodEndDate: input.periodEndDate,
+    totalsByCategory: summary.value.totalsByCategory,
+    recordCount: summary.value.recordCount,
+    truncated: summary.value.truncated,
+  });
 }

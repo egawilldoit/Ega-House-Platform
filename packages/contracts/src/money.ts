@@ -419,7 +419,7 @@ export type MoneyCoffeeWindowQuery = Readonly<{
   periodStartDate: string;
   periodEndDate: string;
   spendLimitMinor?: number | null;
-  visitLimitMinor?: number | null;
+  visitLimit?: number | null;
 }>;
 
 export type MoneyCoffeeWindowResponse = Readonly<{

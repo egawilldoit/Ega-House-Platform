@@ -58,7 +58,7 @@ export type McpMoneyCoffeeWindowInput = Readonly<{
   periodStartDate: string;
   periodEndDate: string;
   spendLimitMinor?: number | null;
-  visitLimitMinor?: number | null;
+  visitLimit?: number | null;
 }>;
 
 export type McpMoneyCoffeeVisitListInput = Readonly<{

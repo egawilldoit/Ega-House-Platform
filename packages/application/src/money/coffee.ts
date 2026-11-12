@@ -16,6 +16,7 @@ import {
   type ExpenseCategory,
   type PersonalExpense,
 } from "@ega/domain/expenses";
+import { addDaysToIsoDate } from "@ega/domain/time-context";
 
 import type { AuthenticatedActor } from "../auth/actor";
 import { updateExpense } from "../expenses/service";
@@ -263,9 +264,13 @@ export async function getMoneyCoffeeWindow(
     }
   }
 
+  // Booking-date bounds are authoritative: they include date-only coffee rows
+  // and stay stable across the owner timezone and DST boundaries.
   const category = await dependencies.expenses.summarize(actor, {
     startUtcIso: window.startUtcIso,
     endUtcExclusiveIso: window.endUtcExclusiveIso,
+    startBookingDate: window.weekStart,
+    endBookingDateExclusive: addDaysToIsoDate(window.weekEnd, 1),
   });
   if (!category.ok) {
     return mapFailure(
@@ -283,7 +288,7 @@ export async function getMoneyCoffeeWindow(
       countedVisitSpendMinor: totals.countedVisitSpendMinor,
       categoryCoffeeSpendMinor: category.value.totalsByCategory.coffee ?? 0,
       spendLimitMinor: parsed.value.spendLimitMinor,
-      visitLimit: parsed.value.visitLimitMinor,
+      visitLimit: parsed.value.visitLimit,
     }),
   );
 }
