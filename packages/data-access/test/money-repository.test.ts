@@ -178,6 +178,20 @@ test("findTracking scopes owner and lifecycle and maps provenance/settings", asy
   assert.ok(call.includes("eq:lifecycle=tracking"));
 });
 
+test("daily included outflow total is incomplete when its sum exceeds safe integer range", async () => {
+  const fake = new FakeSupabase();
+  fake.push("personal_expenses", { data: [{ amount_minor: 9_007_199_254_740_991 }, { amount_minor: 1 }], error: null });
+  const result = await repository(fake).getDailyIncludedExpenseTotal(ACTOR, PERIOD_ID, "2026-11-11");
+  assert.equal(result.ok, true);
+  if (result.ok) {
+    assert.equal(result.value.amountMinor, 9_007_199_254_740_992);
+    assert.equal(result.value.complete, false);
+  }
+  const call = steps(fake, "personal_expenses");
+  assert.ok(call.includes("eq:owner_user_id=owner-money"));
+  assert.ok(call.includes(`eq:period_id=${PERIOD_ID}`));
+});
+
 test("overlap and list queries are owner-scoped and inclusive", async () => {
   const fake = new FakeSupabase();
   fake.push("money_periods", { data: [PERIOD_ROW], error: null });

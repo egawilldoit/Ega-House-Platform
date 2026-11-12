@@ -268,8 +268,14 @@ export class SupabaseMoneyPeriodRepository implements MoneyPeriodRepository {
       .limit(10001);
     if (error) return { ok: false as const, error: moneyFailure(error) };
     const rows = data ?? [];
-    const total = rows.reduce((sum, row) => sum + Number(row.amount_minor), 0);
-    return { ok: true as const, value: { amountMinor: total, complete: rows.length <= 10000 } };
+    let total = 0;
+    let safe = true;
+    for (const row of rows) {
+      const amount = Number(row.amount_minor);
+      if (!Number.isSafeInteger(amount) || !Number.isSafeInteger(total + amount)) safe = false;
+      total += amount;
+    }
+    return { ok: true as const, value: { amountMinor: total, complete: rows.length <= 10000 && safe } };
   }
 
   async findTracking(

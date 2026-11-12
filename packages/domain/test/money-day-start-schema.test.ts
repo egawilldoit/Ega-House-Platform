@@ -10,6 +10,8 @@ describe("MONEY-08 day-start persistence migration", () => {
   it("retains policy and baseline versions under owner-scoped RLS", () => {
     expect(migration).toContain("UNIQUE (owner_user_id, period_id, version)");
     expect(migration).toContain("UNIQUE (owner_user_id, period_id, date, version)");
+    expect(migration).toContain("FOREIGN KEY (owner_user_id, period_id, policy_version_id)");
+    expect(migration).toContain("REFERENCES public.money_policy_versions(owner_user_id, period_id, id)");
     expect(migration).toContain("ENABLE ROW LEVEL SECURITY");
     expect(migration).toContain("FORCE ROW LEVEL SECURITY");
     expect(migration).toContain("owner_user_id = (SELECT auth.uid())");

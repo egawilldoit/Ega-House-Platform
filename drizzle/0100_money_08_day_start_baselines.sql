@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS public.money_day_start_baselines (
   period_id uuid NOT NULL,
   date date NOT NULL,
   version integer NOT NULL CHECK (version > 0),
-  policy_version_id uuid REFERENCES public.money_policy_versions(id) ON DELETE RESTRICT,
+  policy_version_id uuid,
   algorithm_version text NOT NULL,
   availability text NOT NULL CHECK (availability IN ('available', 'unavailable')),
   unavailable_reason text,
@@ -38,6 +38,8 @@ CREATE TABLE IF NOT EXISTS public.money_day_start_baselines (
   created_at timestamptz NOT NULL DEFAULT now(),
   FOREIGN KEY (owner_user_id, period_id)
     REFERENCES public.money_periods(owner_user_id, id) ON DELETE RESTRICT,
+  FOREIGN KEY (owner_user_id, period_id, policy_version_id)
+    REFERENCES public.money_policy_versions(owner_user_id, period_id, id) ON DELETE RESTRICT,
   UNIQUE (owner_user_id, period_id, date, version),
   CHECK ((availability = 'available' AND unavailable_reason IS NULL
       AND cash_minor IS NOT NULL AND commitments_minor IS NOT NULL
