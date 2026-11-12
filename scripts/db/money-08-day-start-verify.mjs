@@ -56,7 +56,7 @@ async function main() {
     assert(baseline.length===1 && baseline[0].cash_minor===50000 && baseline[0].commitments_minor===0 && baseline[0].savings_target_minor===12000 && baseline[0].savings_funded_minor===0 && baseline[0].emergency_target_minor===3000 && baseline[0].emergency_used_minor===0, "setup snapshot preserves opening and configured targets");
     const later = await user(A, tx => tx.unsafe("SELECT (public.money_ensure_day_start_baseline($1, '2026-11-13'::date)).*", [period]));
     const laterAgain = await user(A, tx => tx.unsafe("SELECT (public.money_ensure_day_start_baseline($1, '2026-11-13'::date)).*", [period]));
-    assert(later[0].availability==="unavailable" && later[0].unavailable_reason==="historical_inputs_not_reconstructable" && later[0].version===laterAgain[0].version, "later day is materialized idempotently and unknown history stays unavailable");
+    assert(later[0].availability==="available" && later[0].cash_minor===50000 && later[0].commitments_minor===0 && later[0].savings_funded_minor===0 && later[0].emergency_used_minor===0 && later[0].version===laterAgain[0].version, "later day reconstructs from opening and is materialized idempotently");
     assert(later[0].policy_version_id===rows[0].policy_id && later[0].inputs.lifecycleCutoff==="2026-11-13", "later day binds effective policy and explicit lifecycle cutoff");
     const unknown = await user(B, tx => tx.unsafe(`SELECT (public.money_create_period(
       '2026-12-01'::date,'2026-12-31'::date,'Africa/Casablanca'::text,
@@ -68,7 +68,7 @@ async function main() {
     const asA = await user(A, tx => tx.unsafe("SELECT count(*)::int n FROM public.money_day_start_baselines"));
     const asB = await user(B, tx => tx.unsafe("SELECT count(*)::int n FROM public.money_day_start_baselines"));
     const asC = await user(C, tx => tx.unsafe("SELECT count(*)::int n FROM public.money_day_start_baselines"));
-    assert(asA[0].n===1 && asB[0].n===1 && asC[0].n===0, "RLS owner isolation");
+    assert(asA[0].n===2 && asB[0].n===1 && asC[0].n===0, "RLS owner isolation");
     console.log("[RLS] owners A and B see their own baselines; owner C sees none");
     for (const [label, statement, params] of [
       ["cross-owner period", "INSERT INTO public.money_policy_versions(owner_user_id,period_id,version,effective_date,policy) VALUES($1,$2,1,'2026-11-12','{}')", [B,period]],
