@@ -783,6 +783,7 @@ export class SupabaseMoneyRepository implements MoneyMovementRepository {
       direction: string;
       amount_minor: number;
       counts_in_daily: boolean;
+      purpose: MoneyPurpose | null;
       booking_date: string;
     }> = [];
     let truncated = false;
@@ -790,7 +791,7 @@ export class SupabaseMoneyRepository implements MoneyMovementRepository {
     for (let offset = 0; offset < MAX_ROWS; offset += PAGE_SIZE) {
       let request = this.supabase
         .from(LEDGER_TABLE)
-        .select("id, kind, direction, amount_minor, counts_in_daily, booking_date")
+        .select("id, kind, direction, amount_minor, counts_in_daily, purpose, booking_date")
         .eq("owner_user_id", actor.userId)
         .is("deleted_at", null)
         .lte("booking_date", query.cutoff);
@@ -823,6 +824,7 @@ export class SupabaseMoneyRepository implements MoneyMovementRepository {
             direction: row.direction === "in" ? "in" : "out",
             amountMinor: Number(row.amount_minor),
             countsInDaily: Boolean(row.counts_in_daily),
+            purpose: row.purpose,
             bookingDate: String(row.booking_date),
           };
         }),
