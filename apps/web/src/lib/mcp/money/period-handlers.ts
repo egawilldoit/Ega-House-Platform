@@ -6,6 +6,7 @@ import {
   createMoneyPeriod,
   getCurrentMoneyReserves,
   getMoneyState,
+  rebaseMoneyDayStartBaseline,
   updateMoneySettings,
 } from "@ega/application";
 import {
@@ -64,6 +65,7 @@ export type McpMoneyPeriodHandlers = {
     input: McpMoneyUpdateSettingsInput,
     operationId: string,
   ): Promise<CallToolResult>;
+  rebaseMoneyDayStartBaseline(authInfo: AuthInfo | undefined, periodId: string): Promise<CallToolResult>;
 };
 
 type ToolPayload = {
@@ -289,6 +291,24 @@ export function createMcpMoneyPeriodHandlers(
           code: "INTERNAL_ERROR",
           message: "The MCP tool could not complete the request.",
         });
+      }
+    },
+
+    async rebaseMoneyDayStartBaseline(authInfo, periodId) {
+      try {
+        const { actor, client } = contextOf(authInfo, "personal_ops.write");
+        const result = await rebaseMoneyDayStartBaseline(
+          actor,
+          new SupabaseMoneyPeriodRepository(client as never),
+          periodId,
+        );
+        if (!result.ok) return mapApplicationError(result);
+        return resultFromPayload({ ok: true, baseline: result.data });
+      } catch (error) {
+        if (error instanceof McpToolAuthorizationError) {
+          return errorResult({ code: error.code, message: error.message });
+        }
+        return errorResult({ code: "INTERNAL_ERROR", message: "The MCP tool could not complete the request." });
       }
     },
   };
