@@ -19,6 +19,7 @@ import {
   resolveObligationClassification,
   startOfObligationPeriod,
   summarizeObligationOccurrences,
+  templateClassificationSource,
   validateObligationPayment,
   validateObligationPeriod,
   type ObligationOccurrence,
@@ -121,6 +122,55 @@ test("classification precedence is payment > occurrence > template > kind defaul
   });
   assert.equal(fromPayment.needVsWant, "need");
   assert.equal(fromPayment.category, "bills");
+});
+
+test("an unset template classification falls through to kind defaults", () => {
+  const templateSource = templateClassificationSource({
+    id: "template-1",
+    kind: "bill",
+    description: "Rent",
+    amountMinor: 10000,
+    currency: "MAD",
+    cadence: "monthly",
+    dueDayOfMonth: 5,
+    dueWeekday: null,
+    startDate: "2026-11-01",
+    endDate: null,
+    needVsWant: null,
+    purpose: null,
+    countsInDaily: null,
+    category: null,
+    lifecycle: "active",
+    idempotencyKey: "template-1",
+    version: 1,
+    createdAt: "2026-11-01T00:00:00.000Z",
+    updatedAt: "2026-11-01T00:00:00.000Z",
+  });
+  const resolved = resolveObligationClassification({
+    kind: "bill",
+    template: templateSource,
+  });
+  assert.equal(resolved.purpose, OBLIGATION_KIND_DEFAULTS.bill.purpose);
+  assert.equal(resolved.countsInDaily, OBLIGATION_KIND_DEFAULTS.bill.countsInDaily);
+  assert.equal(resolved.category, "bills");
+  assert.equal(resolved.needVsWant, null);
+});
+
+test("an occurrence's explicit unknown is not backfilled from a live template", () => {
+  const resolved = resolveObligationClassification({
+    kind: "bill",
+    template: {
+      needVsWant: "need",
+      purpose: "flexible",
+      countsInDaily: true,
+      category: "household",
+    },
+    occurrence: { needVsWant: null, category: null },
+  });
+  assert.equal(resolved.needVsWant, null);
+  assert.equal(resolved.category, null);
+  // Non-null occurrence snapshots still win.
+  assert.equal(resolved.purpose, "flexible");
 });
 
 test("need/want is never fabricated and kind defaults carry no need/want", () => {
