@@ -100,6 +100,17 @@ const STATE = {
     recordedCashMinor: 48900,
     recordCount: 1,
   },
+  dayStartBaseline: {
+    availability: "available",
+    cashMinor: 48900,
+    commitmentsMinor: 0,
+    savingsTargetMinor: 0,
+    savingsFundedMinor: 0,
+    emergencyTargetMinor: 0,
+    emergencyUsedMinor: 0,
+    dailyReference: { available: true, algorithm: "safe-flexible-start-of-day-v1", daysRemaining: 20, safePoolMinor: 48900, referenceMinor: 2445, dailyIncludedExpenseMinor: 0, dailyRemainingMinor: 2445 },
+  },
+  dayStartBaselineUnavailable: false,
   dateResolution: {
     localToday: "2026-11-13",
     timezone: "Africa/Casablanca",
@@ -166,6 +177,20 @@ describe("Money MCP tools", () => {
       datesDiffer: true,
       activeDate: "2026-11-11",
     });
+    expect(structured(allowed).analytics).toMatchObject({
+      available: true,
+      method: "safe-flexible-start-of-day-v1",
+      dayStartBaseline: { dailyReference: { referenceMinor: 2445 } },
+    });
+  });
+
+  it("labels missing analytics unavailable without inventing values", async () => {
+    mocks.timezoneGet.mockResolvedValue({ ok: true, value: "Africa/Casablanca" });
+    mocks.getMoneyState.mockResolvedValue({ ok: true, data: {
+      ...STATE, dayStartBaseline: null, dayStartBaselineUnavailable: true,
+    } });
+    const result = structured(await handlers().moneyState(authInfo(READER_PRINCIPAL), {}));
+    expect(result.analytics).toMatchObject({ available: false, reason: "baseline_unavailable", method: "safe-flexible-start-of-day-v1", dayStartBaseline: null });
   });
 
   it("passes the explicit today/active-day mode and owner timezone to the shared use case", async () => {
