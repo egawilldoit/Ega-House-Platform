@@ -56,6 +56,15 @@ test("money page renders recorded cash and the movement ledger through the share
   assert.doesNotMatch(source, /owner_user_id\s*:/);
 });
 
+test("daily reference renders shared values with method and unavailable state", () => {
+  assert.match(source, /dayStartBaseline\?\.dailyReference\?\.available/);
+  assert.match(source, /Daily reference/);
+  assert.match(source, /Daily remaining/);
+  assert.match(source, /dailyReference\.algorithm/);
+  assert.match(source, /Unavailable — baseline or complete daily expense data is missing/);
+  assert.doesNotMatch(source, /dailyRemainingMinor\s*\?\?/);
+});
+
 test("money ledger has bounded URL pagination and accessible loading failure recovery", () => {
   assert.match(source, /limit:\s*"25"/);
   assert.match(source, /Math\.min\(parsedOffset,\s*100_000\)/);

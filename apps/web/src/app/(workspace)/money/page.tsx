@@ -246,6 +246,18 @@ export default async function MoneyPage({ searchParams }: Props) {
     </nav>
 
     {moneyState ? (
+      <section aria-labelledby="daily-reference-heading" className="mt-6 rounded-lg border border-ega-border p-5">
+        <h2 id="daily-reference-heading" className="text-[length:var(--text-section)] font-semibold">Day-start daily reference</h2>
+        <p className="mt-1 text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">Method: {moneyState.dayStartBaseline?.dailyReference?.available ? moneyState.dayStartBaseline.dailyReference.algorithm : "shared day-start daily reference"}</p>
+        {moneyState.dayStartBaseline?.dailyReference?.available ? (
+          <dl className="mt-3 grid gap-2 sm:grid-cols-2">
+            <div><dt>Daily reference</dt><dd className="font-semibold">{formatMad(moneyState.dayStartBaseline.dailyReference.referenceMinor)}</dd></div>
+            <div><dt>Daily remaining</dt><dd className="font-semibold">{formatMad(moneyState.dayStartBaseline.dailyReference.dailyRemainingMinor)}</dd></div>
+          </dl>
+        ) : (
+          <p role="status" className="mt-3 text-[color:var(--ega-text-secondary)]">Unavailable — baseline or complete daily expense data is missing.</p>
+        )}
+      </section>
       <MoneyPeriodPanel
         key={`${moneyState.period?.id ?? "none"}:${moneyState.period?.version ?? 0}`}
         localToday={moneyState.localToday}
