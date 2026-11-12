@@ -240,11 +240,6 @@ AS $create_period$
 DECLARE
   v_period public.money_periods;
   v_policy_id uuid;
-  v_commitments integer;
-  v_savings_target integer;
-  v_emergency_target integer;
-  v_availability text := 'unavailable';
-  v_unavailable_reason text := 'initial_setup_inputs_unknown';
 BEGIN
   v_period := public.money_create_period_v3(
     p_start_date, p_end_date, p_timezone, p_active_date, p_initialization,
@@ -256,36 +251,12 @@ BEGIN
   VALUES (auth.uid(), v_period.id, 1, p_active_date,
     jsonb_build_object('settings', p_settings, 'algorithmVersion', 'safe-flexible-start-of-day-v1'), p_created_at)
   RETURNING id INTO v_policy_id;
-  v_savings_target := CASE WHEN p_settings ? 'savingsTargetMinor'
-    THEN (p_settings ->> 'savingsTargetMinor')::integer END;
-  v_emergency_target := CASE WHEN p_settings ? 'emergencyTargetMinor'
-    THEN (p_settings ->> 'emergencyTargetMinor')::integer END;
-  SELECT COALESCE(sum(amount_minor), 0)::integer INTO v_commitments
-  FROM public.money_obligations
-  WHERE owner_user_id = auth.uid()
-    AND period_start <= p_active_date AND period_end >= p_active_date
-    AND state = 'pending' AND state_effective_date <= p_active_date;
-  IF p_opening_amount_minor IS NOT NULL
-    AND v_savings_target IS NOT NULL AND v_emergency_target IS NOT NULL THEN
-    v_availability := 'available';
-    v_unavailable_reason := NULL;
-  END IF;
   INSERT INTO public.money_day_start_baselines
     (owner_user_id, period_id, date, version, policy_version_id, algorithm_version,
-     availability, unavailable_reason, cash_minor, commitments_minor,
-     savings_target_minor, savings_funded_minor, emergency_target_minor,
-     emergency_used_minor, inputs, created_at)
+     availability, unavailable_reason, inputs, created_at)
   VALUES (auth.uid(), v_period.id, p_active_date, 1, v_policy_id,
-    'safe-flexible-start-of-day-v1', v_availability, v_unavailable_reason,
-    CASE WHEN v_availability = 'available' THEN p_opening_amount_minor END,
-    CASE WHEN v_availability = 'available' THEN v_commitments END,
-    CASE WHEN v_availability = 'available' THEN v_savings_target END,
-    CASE WHEN v_availability = 'available' THEN 0 END,
-    CASE WHEN v_availability = 'available' THEN v_emergency_target END,
-    CASE WHEN v_availability = 'available' THEN 0 END,
-    jsonb_build_object('setupDate', p_active_date, 'openingAmountMinor', p_opening_amount_minor,
-      'commitmentsAsOf', p_active_date, 'savingsFundedBeforeMinor', 0, 'emergencyUsedBeforeMinor', 0),
-    p_created_at);
+    'safe-flexible-start-of-day-v1', 'unavailable', 'initial_setup_incomplete',
+    jsonb_build_object('setupComplete', false), p_created_at);
   RETURN v_period;
 END
 $create_period$;
