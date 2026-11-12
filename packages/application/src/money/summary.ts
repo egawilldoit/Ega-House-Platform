@@ -62,7 +62,7 @@ export async function getMoneyCashPosition(
   actor: AuthenticatedActor,
   repository: MoneyPeriodRepository,
   period: MoneyPeriod,
-  opening: MoneyOpening | null,
+  opening: Pick<MoneyOpening, "amountMinor"> | null,
 ): Promise<ApplicationResult<MoneyCashPosition>> {
   const cutoffDate = period.activeDate;
 
@@ -160,7 +160,7 @@ export function projectMoneyReserves(input: Readonly<{
  * commitments are visible, then lifecycle state is evaluated at the active-date cutoff. */
 export async function getCurrentMoneyReserves(actor: AuthenticatedActor, input: Readonly<{
   period: MoneyPeriod;
-  opening: MoneyOpening | null;
+  opening: Pick<MoneyOpening, "amountMinor"> | null;
   periods: MoneyPeriodRepository;
   movements: MoneyMovementRepository;
   budgets: MoneyBudgetRepository;
