@@ -25,6 +25,14 @@ test("MONEY-08 keeps unknown historical values unavailable instead of backfillin
   assert.match(migration, /cash_minor integer/);
 });
 
+test("MONEY-08 setup remains unavailable until explicit rebase completes setup", () => {
+  assert.match(migration, /day_start_setup_completed boolean NOT NULL DEFAULT false/);
+  assert.match(migration, /IF NOT v_period\.day_start_setup_completed THEN/);
+  assert.match(migration, /day_start_setup_completed = true/);
+  assert.match(migration, /'initial_setup_incomplete'/);
+  assert.match(migration, /money_calculate_day_start_baseline\(p_period_id, v_period\.active_date, true\)/);
+});
+
 test("MONEY-08 write RPCs require explicit MCP finance write grant", () => {
   const grants = readFileSync(new URL("../../../drizzle/0102_money_08_baseline_write_grants.sql", import.meta.url), "utf8");
   assert.equal((grants.match(/mcp_finance_grant_allows\('personal_ops\.write'\)/g) ?? []).length, 2);
