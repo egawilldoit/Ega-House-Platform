@@ -70,6 +70,11 @@ const ALL_TOOLS: readonly McpToolDefinition[] = [
   { name: "ega_money_create_obligation_template", requiredPermission: "personal_ops.write", writesEnabledRequired: true },
   { name: "ega_money_update_obligation_template", requiredPermission: "personal_ops.write", writesEnabledRequired: true },
   { name: "ega_money_generate_obligations", requiredPermission: "personal_ops.write", writesEnabledRequired: true },
+  // Money obligation payments (MONEY-07): one atomic payment, correction or
+  // undo; the operation id is the retry identity of the write.
+  { name: "ega_money_pay_obligation", requiredPermission: "personal_ops.write", writesEnabledRequired: true },
+  { name: "ega_money_correct_obligation_payment", requiredPermission: "personal_ops.write", writesEnabledRequired: true },
+  { name: "ega_money_undo_obligation_payment", requiredPermission: "personal_ops.write", writesEnabledRequired: true },
   // Project writes
   { name: "ega_create_project", requiredPermission: "projects.create", writesEnabledRequired: true },
   { name: "ega_update_project_status", requiredPermission: "projects.update", writesEnabledRequired: true },

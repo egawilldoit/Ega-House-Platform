@@ -44,6 +44,7 @@ import { createMcpTimerModuleHandlers } from "@/lib/mcp/write/timer";
 import { createMcpPersonalOpsWriteHandlers } from "@/lib/mcp/write/personal-ops";
 import { createMcpMoneyHandlers } from "@/lib/mcp/money/handlers";
 import { createMcpObligationWriteHandlers } from "@/lib/mcp/write/obligations";
+import { createMcpObligationPaymentWriteHandlers } from "@/lib/mcp/write/obligation-payments";
 import {
   McpToolAuthorizationError,
   requireMcpPermission,
@@ -251,6 +252,8 @@ export function createMcpWriteToolHandlers(
   const personalOpsHandlers = createMcpPersonalOpsWriteHandlers(moduleDeps);
   const moneyHandlers = createMcpMoneyHandlers(moduleDeps);
   const obligationHandlers = createMcpObligationWriteHandlers(moduleDeps);
+  const obligationPaymentHandlers =
+    createMcpObligationPaymentWriteHandlers(moduleDeps);
 
   return {
     // Projects
@@ -1436,6 +1439,92 @@ export function createMcpWriteToolHandlers(
           throughDate: input.throughDate,
         }, () =>
           obligationHandlers.generateObligations(authInfo, input, input.operationId),
+        );
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+
+    // Money obligation payments (MONEY-07): one atomic payment, correction or
+    // undo. The receipt binds the full semantic input, and the operation id is
+    // the retry identity of the write.
+    async payMoneyObligation(
+      authInfo: AuthInfo | undefined,
+      input: {
+        obligationId: string;
+        version: number;
+        bookingDate: string;
+        needVsWant?: "need" | "want" | null;
+        countsInDaily?: boolean | null;
+        paymentMethod?: string | null;
+        operationId: string;
+      },
+    ): Promise<CallToolResult> {
+      try {
+        assertWritesEnabled(writesEnabled);
+        requireMcpPermission(authInfo, "personal_ops.write");
+        const client = dependencies.createUserClient(authInfo!.token);
+        return await withExclusiveMutation(client, "ega_money_pay_obligation", input.operationId, {
+          obligationId: input.obligationId,
+          version: input.version,
+          bookingDate: input.bookingDate,
+          needVsWant: input.needVsWant ?? null,
+          countsInDaily: input.countsInDaily ?? null,
+          paymentMethod: input.paymentMethod ?? null,
+        }, () =>
+          obligationPaymentHandlers.payObligation(authInfo, input as never, input.operationId),
+        );
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+
+    async correctMoneyObligationPayment(
+      authInfo: AuthInfo | undefined,
+      input: {
+        obligationId: string;
+        version: number;
+        amountMinor: number;
+        bookingDate: string;
+        countsInDaily?: boolean | null;
+        operationId: string;
+      },
+    ): Promise<CallToolResult> {
+      try {
+        assertWritesEnabled(writesEnabled);
+        requireMcpPermission(authInfo, "personal_ops.write");
+        const client = dependencies.createUserClient(authInfo!.token);
+        return await withExclusiveMutation(client, "ega_money_correct_obligation_payment", input.operationId, {
+          obligationId: input.obligationId,
+          version: input.version,
+          amountMinor: input.amountMinor,
+          bookingDate: input.bookingDate,
+          countsInDaily: input.countsInDaily ?? null,
+        }, () =>
+          obligationPaymentHandlers.correctObligationPayment(authInfo, input as never, input.operationId),
+        );
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+
+    async undoMoneyObligationPayment(
+      authInfo: AuthInfo | undefined,
+      input: {
+        obligationId: string;
+        version: number;
+        operationId: string;
+      },
+    ): Promise<CallToolResult> {
+      try {
+        assertWritesEnabled(writesEnabled);
+        requireMcpPermission(authInfo, "personal_ops.write");
+        const client = dependencies.createUserClient(authInfo!.token);
+        return await withExclusiveMutation(client, "ega_money_undo_obligation_payment", input.operationId, {
+          obligationId: input.obligationId,
+          version: input.version,
+        }, () =>
+          obligationPaymentHandlers.undoObligationPayment(authInfo, input as never, input.operationId),
         );
       } catch (error) {
         return errorResult(error);

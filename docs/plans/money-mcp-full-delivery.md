@@ -924,7 +924,7 @@ delivery report; never include credentials or private source exports.
 | MONEY-04 | Merged | PR #395 / merge `c6a5414f` | `0096_money_04_movements` is in the same reported applied set; movement/API proofs and the disposable authenticated Money journey pass | Runtime host/income/savings journey remains MONEY-14 |
 | MONEY-05 | Merged | PR #396 / merge `0c28a6ce` | `0097_money_05_budgets_coffee` applied through `npm run db:migrate` to the verified Supabase target (journal max `1787880000060`); schema/RLS/grants/functions re-read; web and server production deployments READY at `0c28a6ce`; DB proof, disposable authenticated Money journey, package/web/server suites and lint pass | Runtime OAuth/MCP coffee journey remains MONEY-14 |
 | MONEY-06 | Merged | PR #398 / merge `78b26c25` | `0098_money_06_obligations` applied through `npm run db:migrate` to the verified Supabase target (journal max `1787880000061`); schema, RLS, triggers and column grants re-read; obligation DB proof and package/web/server suites pass | Post-merge review hardening in follow-up PR; runtime app/MCP journey remains MONEY-14 |
-| MONEY-07 | Planned | — | — | — |
+| MONEY-07 | Implemented (branch) | PR pending / branch `feat/money-07-payment` | `0099_money_07_obligation_payments` committed, not applied; atomic pay/correct/undo proof (rollback, retry, double-pay refusal, correction, undo, cash/reserve coherence, owner isolation, grants) passes on disposable PostgreSQL 16 and is wired into `db-invariants`; MONEY-06 obligation proof still passes | PR checks and independent review; migration apply follows merge |
 | MONEY-08 | Planned | — | — | Exact workbook B15 formula not supplied |
 | MONEY-09 | Planned | — | — | — |
 | MONEY-10 | Planned | — | — | — |

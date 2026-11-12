@@ -51,7 +51,7 @@ const TEMPLATE_COLUMNS =
 
 const TEMPLATE_COLUMNS_WITH_FINGERPRINT = `${TEMPLATE_COLUMNS}, create_fingerprint`;
 
-type ObligationRow = {
+export type ObligationRow = {
   id: string;
   template_id: string | null;
   kind: string;
@@ -173,7 +173,12 @@ function toStateHistory(raw: unknown): ObligationStateEvent[] {
   return events;
 }
 
-function toOccurrence(row: ObligationRow): ObligationOccurrence {
+/**
+ * Map one stored occurrence row onto the canonical domain shape. Shared with
+ * the MONEY-07 payment adapter, which reads the occurrence back from the same
+ * atomic transaction that wrote it.
+ */
+export function toObligationOccurrence(row: ObligationRow): ObligationOccurrence {
   return {
     id: String(row.id),
     kind: String(row.kind) as ObligationKind,
@@ -358,7 +363,7 @@ export class SupabaseObligationRepository implements ObligationRepository {
     return {
       ok: true,
       value: {
-        occurrence: toOccurrence(row),
+        occurrence: toObligationOccurrence(row),
         createFingerprint: String(row.create_fingerprint),
       },
     };
@@ -376,7 +381,7 @@ export class SupabaseObligationRepository implements ObligationRepository {
 
     if (error) return { ok: false, error: obligationFailure(error) };
     if (!data) return { ok: false, error: { code: "unknown" } };
-    return { ok: true, value: toOccurrence(data as ObligationRow) };
+    return { ok: true, value: toObligationOccurrence(data as ObligationRow) };
   }
 
   async get(
@@ -392,7 +397,7 @@ export class SupabaseObligationRepository implements ObligationRepository {
 
     if (error) return { ok: false, error: obligationFailure(error) };
     if (!data) return { ok: true, value: null };
-    return { ok: true, value: toOccurrence(data as ObligationRow) };
+    return { ok: true, value: toObligationOccurrence(data as ObligationRow) };
   }
 
   async list(
@@ -416,7 +421,7 @@ export class SupabaseObligationRepository implements ObligationRepository {
 
     if (error) return { ok: false, error: obligationFailure(error) };
     const rows = (data ?? []) as ObligationRow[];
-    return { ok: true, value: rows.map(toOccurrence) };
+    return { ok: true, value: rows.map(toObligationOccurrence) };
   }
 
   async update(
@@ -434,7 +439,7 @@ export class SupabaseObligationRepository implements ObligationRepository {
       .maybeSingle();
 
     if (error) return { ok: false, error: obligationFailure(error) };
-    if (data) return { ok: true, value: toOccurrence(data as ObligationRow) };
+    if (data) return { ok: true, value: toObligationOccurrence(data as ObligationRow) };
     return { ok: false, error: await this.classifyWriteMiss(actor, id) };
   }
 
@@ -460,7 +465,7 @@ export class SupabaseObligationRepository implements ObligationRepository {
       .maybeSingle();
 
     if (error) return { ok: false, error: obligationFailure(error) };
-    if (data) return { ok: true, value: toOccurrence(data as ObligationRow) };
+    if (data) return { ok: true, value: toObligationOccurrence(data as ObligationRow) };
     return { ok: false, error: await this.classifyWriteMiss(actor, id) };
   }
 
