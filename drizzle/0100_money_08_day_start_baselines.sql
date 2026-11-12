@@ -51,6 +51,63 @@ CREATE TABLE IF NOT EXISTS public.money_day_start_baselines (
 CREATE INDEX IF NOT EXISTS money_day_start_baselines_date_idx
   ON public.money_day_start_baselines(owner_user_id, period_id, date DESC, version DESC);
 --> statement-breakpoint
+-- Extend the existing atomic period-creation boundary. The first-day snapshot
+-- is deliberately unavailable: settings/opening alone cannot establish the
+-- initial obligation lifecycle or funded/used reserve history.
+ALTER FUNCTION public.money_create_period(
+  date, date, text, date, text, integer, date, text, jsonb, jsonb, timestamp with time zone
+) RENAME TO money_create_period_v3;
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION public.money_create_period(
+  p_start_date date,
+  p_end_date date,
+  p_timezone text,
+  p_active_date date,
+  p_initialization text,
+  p_opening_amount_minor integer,
+  p_opening_booking_date date,
+  p_opening_create_fingerprint text,
+  p_provenance jsonb,
+  p_settings jsonb,
+  p_created_at timestamp with time zone
+)
+RETURNS public.money_periods
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $create_period$
+DECLARE
+  v_period public.money_periods;
+  v_policy_id uuid;
+BEGIN
+  v_period := public.money_create_period_v3(
+    p_start_date, p_end_date, p_timezone, p_active_date, p_initialization,
+    p_opening_amount_minor, p_opening_booking_date, p_opening_create_fingerprint,
+    p_provenance, p_settings, p_created_at
+  );
+  INSERT INTO public.money_policy_versions
+    (owner_user_id, period_id, version, effective_date, policy, created_at)
+  VALUES (auth.uid(), v_period.id, 1, p_start_date,
+    jsonb_build_object('settings', p_settings, 'algorithmVersion', 'safe-flexible-start-of-day-v1'), p_created_at)
+  RETURNING id INTO v_policy_id;
+  INSERT INTO public.money_day_start_baselines
+    (owner_user_id, period_id, date, version, policy_version_id, algorithm_version,
+     availability, unavailable_reason, inputs, created_at)
+  VALUES (auth.uid(), v_period.id, p_start_date, 1, v_policy_id,
+    'safe-flexible-start-of-day-v1', 'unavailable',
+    'initial_setup_history_unknown', '{}'::jsonb, p_created_at);
+  RETURN v_period;
+END
+$create_period$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION public.money_create_period(
+  date, date, text, date, text, integer, date, text, jsonb, jsonb, timestamp with time zone
+) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.money_create_period(
+  date, date, text, date, text, integer, date, text, jsonb, jsonb, timestamp with time zone
+) TO authenticated;
+--> statement-breakpoint
+--> statement-breakpoint
 ALTER TABLE public.money_policy_versions ENABLE ROW LEVEL SECURITY;
 --> statement-breakpoint
 ALTER TABLE public.money_policy_versions FORCE ROW LEVEL SECURITY;
