@@ -6,6 +6,7 @@ import postgres from "postgres";
 
 const A = "11111111-1111-4111-8111-111111111111";
 const B = "22222222-2222-4222-8222-222222222222";
+const C = "33333333-3333-4333-8333-333333333333";
 const tags = JSON.parse(await readFile(new URL("../../drizzle/meta/_journal.json", import.meta.url), "utf8")).entries.map(x => x.tag);
 const url = argv[argv.indexOf("--url") + 1];
 if (!url) throw new Error("Missing --url");
@@ -31,7 +32,7 @@ async function main() {
     await sql.unsafe("CREATE SCHEMA auth");
     await sql.unsafe("GRANT USAGE ON SCHEMA public, auth TO anon, authenticated");
     await sql.unsafe("CREATE TABLE auth.users (id uuid PRIMARY KEY, email text NOT NULL)");
-    await sql.unsafe("INSERT INTO auth.users VALUES ($1, 'a@example.test'), ($2, 'b@example.test')", [A,B]);
+    await sql.unsafe("INSERT INTO auth.users VALUES ($1, 'a@example.test'), ($2, 'b@example.test'), ($3, 'c@example.test')", [A,B,C]);
     await sql.unsafe("UPDATE auth.users SET email='ab.mortaki@gmail.com' WHERE id=$1", [A]);
     await sql.unsafe("CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$ SELECT NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid $$");
     await sql.unsafe("CREATE FUNCTION auth.jwt() RETURNS jsonb LANGUAGE sql STABLE AS $$ SELECT COALESCE(NULLIF(current_setting('request.jwt.claims', true), '')::jsonb, '{}'::jsonb) $$");
@@ -43,21 +44,28 @@ async function main() {
     }
     console.log(`[MIGRATE] ${tags.length} migrations through ${tags.at(-1)}`);
     const created = await user(A, tx => tx.unsafe(`SELECT (public.money_create_period(
-      '2026-11-12','2026-11-30','Africa/Casablanca','2026-11-12','uninitialized',50000,'2026-11-12',repeat('a',64),'{}','{"savingsTargetMinor":12000,"emergencyTargetMinor":3000}',now())).id AS id`));
+      '2026-11-12'::date,'2026-11-30'::date,'Africa/Casablanca'::text,
+      '2026-11-12'::date,'initialized'::text,50000::integer,'2026-11-12'::date,
+      repeat('a',64)::text,'{"opening":{"source":"user_entered"}}'::jsonb,
+      '{"savingsTargetMinor":12000,"emergencyTargetMinor":3000}'::jsonb,
+      now()::timestamptz)).id AS id`));
     const period = created[0].id;
     const rows = await sql.unsafe("SELECT p.id AS policy_id, p.version, p.policy, b.availability, b.unavailable_reason, b.policy_version_id FROM public.money_policy_versions p JOIN public.money_day_start_baselines b USING(owner_user_id, period_id) WHERE p.owner_user_id=$1 AND p.period_id=$2", [A,period]);
     const baseline = await sql.unsafe("SELECT availability, cash_minor, commitments_minor, savings_target_minor, savings_funded_minor, emergency_target_minor, emergency_used_minor, inputs FROM public.money_day_start_baselines WHERE owner_user_id=$1 AND period_id=$2", [A,period]);
     assert(rows.length===1 && rows[0].version===1 && rows[0].availability==="available" && rows[0].policy_version_id===rows[0].policy_id, "RPC created version-1 policy and available baseline");
     assert(baseline.length===1 && baseline[0].cash_minor===50000 && baseline[0].commitments_minor===0 && baseline[0].savings_target_minor===12000 && baseline[0].savings_funded_minor===0 && baseline[0].emergency_target_minor===3000 && baseline[0].emergency_used_minor===0, "setup snapshot preserves opening and configured targets");
-    const unknown = await user(A, tx => tx.unsafe(`SELECT (public.money_create_period(
-      '2026-12-01','2026-12-31','Africa/Casablanca','2026-12-01','uninitialized',NULL,NULL,NULL,'{}','{}',now())).id AS id`));
-    const unknownBaseline = await sql.unsafe("SELECT availability, unavailable_reason FROM public.money_day_start_baselines WHERE owner_user_id=$1 AND period_id=$2", [A,unknown[0].id]);
+    const unknown = await user(B, tx => tx.unsafe(`SELECT (public.money_create_period(
+      '2026-12-01'::date,'2026-12-31'::date,'Africa/Casablanca'::text,
+      '2026-12-01'::date,'uninitialized'::text,NULL::integer,NULL::date,NULL::text,
+      '{}'::jsonb,'{}'::jsonb,now()::timestamptz)).id AS id`));
+    const unknownBaseline = await sql.unsafe("SELECT availability, unavailable_reason FROM public.money_day_start_baselines WHERE owner_user_id=$1 AND period_id=$2", [B,unknown[0].id]);
     assert(unknownBaseline[0].availability==="unavailable" && unknownBaseline[0].unavailable_reason!==null, "unknown setup inputs remain explicitly unavailable");
     console.log("[RPC] policy and known first-day setup baseline are atomic; unknown inputs stay unavailable");
     const asA = await user(A, tx => tx.unsafe("SELECT count(*)::int n FROM public.money_day_start_baselines"));
     const asB = await user(B, tx => tx.unsafe("SELECT count(*)::int n FROM public.money_day_start_baselines"));
-    assert(asA[0].n===2 && asB[0].n===0, "RLS owner isolation");
-    console.log("[RLS] owner A sees baseline; owner B sees none");
+    const asC = await user(C, tx => tx.unsafe("SELECT count(*)::int n FROM public.money_day_start_baselines"));
+    assert(asA[0].n===1 && asB[0].n===1 && asC[0].n===0, "RLS owner isolation");
+    console.log("[RLS] owners A and B see their own baselines; owner C sees none");
     for (const [label, statement, params] of [
       ["cross-owner period", "INSERT INTO public.money_policy_versions(owner_user_id,period_id,version,effective_date,policy) VALUES($1,$2,1,'2026-11-12','{}')", [B,period]],
       ["cross-owner policy baseline", "INSERT INTO public.money_day_start_baselines(owner_user_id,period_id,date,version,policy_version_id,algorithm_version,availability,unavailable_reason) VALUES($1,$2,'2026-11-12',9,$3,'v1','unavailable','unknown')", [A,period,"ffffffff-ffff-4fff-8fff-ffffffffffff"]],
