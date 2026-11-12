@@ -285,7 +285,26 @@ export function createMcpMoneyBudgetHandlers(dependencies: {
         const result = await patchMoneyBudgetPlan(
           createAuthenticatedActor(principal.ownerUserId),
           budgetDependencies(client),
-          input,
+          {
+            periodStartDate: input.periodStartDate,
+            periodEndDate: input.periodEndDate,
+            version: input.version,
+            ...(input.allocations !== undefined
+              ? { allocations: input.allocations }
+              : {}),
+            ...(input.savingsTargetMinor !== undefined
+              ? { savingsTargetMinor: input.savingsTargetMinor }
+              : {}),
+            ...(input.emergencyTargetMinor !== undefined
+              ? { emergencyTargetMinor: input.emergencyTargetMinor }
+              : {}),
+            ...(input.coffeeWeeklySpendLimitMinor !== undefined
+              ? { coffeeWeeklySpendLimitMinor: input.coffeeWeeklySpendLimitMinor }
+              : {}),
+            ...(input.coffeeWeeklyVisitLimit !== undefined
+              ? { coffeeWeeklyVisitLimit: input.coffeeWeeklyVisitLimit }
+              : {}),
+          },
           { now: dependencies.now?.() ?? new Date() },
         );
         if (!result.ok) {
@@ -307,7 +326,15 @@ export function createMcpMoneyBudgetHandlers(dependencies: {
         const result = await classifyMoneyExpense(
           createAuthenticatedActor(principal.ownerUserId),
           coffeeDependencies(client),
-          input,
+          {
+            expenseId: input.expenseId,
+            version: input.version,
+            category: input.category,
+            ...(input.note !== undefined ? { note: input.note } : {}),
+            ...(input.needVsWant !== undefined
+              ? { needVsWant: input.needVsWant }
+              : {}),
+          },
           { now: dependencies.now?.() ?? new Date() },
         );
         if (!result.ok) {
@@ -336,7 +363,13 @@ export function createMcpMoneyBudgetHandlers(dependencies: {
         const result = await recordMoneyCoffeeVisit(
           createAuthenticatedActor(principal.ownerUserId),
           coffeeDependencies(client),
-          input,
+          {
+            visitKey: input.visitKey,
+            localDate: input.localDate,
+            timezone: input.timezone,
+            expenseIds: input.expenseIds,
+            note: input.note ?? null,
+          },
           { now: dependencies.now?.() ?? new Date() },
         );
         if (!result.ok) {

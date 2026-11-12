@@ -14,6 +14,7 @@ import type {
 import {
   classifyMoneyExpense,
   createAuthenticatedActor,
+  deleteMoneyCoffeeVisit,
   getMoneyCoffeeVisitUsage,
   getMoneyCoffeeWindow,
   getMoneyCoffeeWindowForPlan,
@@ -234,7 +235,7 @@ class FakeCoffeeRepository implements MoneyCoffeeVisitRepository {
   ): Promise<{ ok: true; value: MoneyCoffeeVisitRecord }> {
     const expenses = (input as unknown as { expenses?: PersonalExpense[] }).expenses ?? [];
     const visit: MoneyCoffeeVisitRecord = {
-      id: `visit-${this.visits.length + 1}`,
+      id: `00000000-0000-4000-8000-${String(this.visits.length + 1).padStart(12, "0")}`,
       visitKey: input.values.visitKey,
       visitFingerprint: input.visitFingerprint,
       localDate: input.values.localDate,
@@ -275,8 +276,22 @@ class FakeCoffeeRepository implements MoneyCoffeeVisitRepository {
     };
   }
 
-  async deleteVisit(): Promise<never> {
-    throw new Error("not used");
+  async deleteVisit(
+    _actor: AuthenticatedActor,
+    id: string,
+    expectedVersion: number,
+  ): Promise<
+    | { ok: true; value: { id: string; alreadyDeleted: boolean } }
+    | { ok: false; error: { code: "notFound" } }
+    | { ok: false; error: { code: "conflict" } }
+  > {
+    const index = this.visits.findIndex((visit) => visit.id === id);
+    if (index < 0) return { ok: false, error: { code: "notFound" } };
+    if (this.visits[index]!.version !== expectedVersion) {
+      return { ok: false, error: { code: "conflict" } };
+    }
+    this.visits.splice(index, 1);
+    return { ok: true, value: { id, alreadyDeleted: false } };
   }
 
   async listVisitIdsForExpense(
@@ -355,13 +370,30 @@ test("routine spending never changes an existing budget plan", async () => {
     ...PERIOD,
     version: 0,
     allocations: { coffee: 7_000 },
+    savingsTargetMinor: 20_000,
   });
   const before = JSON.parse(JSON.stringify(budgets.plan));
   const plan = budgets.plan;
   assert.ok(plan);
-  // Recording spends uses only the expense/coffee use cases; the budget port
-  // is not part of that path. Reading the plan again must be byte-identical.
-  assert.deepEqual(JSON.parse(JSON.stringify(budgets.plan)), before);
+
+  // Run real routine spend paths between the snapshot and the reread: counting
+  // a coffee visit and classifying the purchase. Neither may touch the plan.
+  const expenses = new FakeExpenseRepository();
+  const coffee = new FakeCoffeeRepository();
+  const purchase = expense("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "coffee", 2_500);
+  expenses.byId.set(purchase.id, purchase);
+  seedCoffeeRepository(coffee, [purchase]);
+  await recordMoneyCoffeeVisit(ACTOR, { expenses, coffee }, visitValues([purchase.id]));
+  await classifyMoneyExpense(ACTOR, { expenses, coffee }, {
+    expenseId: purchase.id,
+    version: 1,
+    category: "groceries",
+  });
+
+  const reread = await budgets.getPlan();
+  assert.equal(reread.ok, true);
+  if (!reread.ok) return;
+  assert.deepEqual(JSON.parse(JSON.stringify(reread.value)), before);
   assert.equal(plan.version, 1);
 });
 
@@ -476,9 +508,28 @@ test("category edit reports affected visit ids and reduces counted coffee usage"
   assert.equal(classified.data.countedCoffeeVisitIds.length, 1);
 
   // The stored line still references canonical spending, but a non-coffee
-  // category no longer contributes counted usage.
+  // category no longer contributes counted usage. The fake materializes the
+  // live joined category the SQL adapter would read.
   const updated = expenses.byId.get(purchase.id);
   assert.equal(updated?.category, "groceries");
+  coffee.visits[0]!.lines[0] = {
+    ...coffee.visits[0]!.lines[0]!,
+    category: "groceries",
+  };
+  const window = await getMoneyCoffeeWindow(
+    ACTOR,
+    { expenses, coffee },
+    {
+      localDate: "2026-11-09",
+      timezone: "Africa/Casablanca",
+      periodStartDate: PERIOD.periodStartDate,
+      periodEndDate: PERIOD.periodEndDate,
+    },
+  );
+  assert.equal(window.ok, true);
+  if (!window.ok) return;
+  assert.equal(window.data.countedVisitCount, 0);
+  assert.equal(window.data.countedVisitSpendMinor, 0);
 });
 
 test("coffee window clips to a partial week and asks only for in-period dates", async () => {
@@ -628,6 +679,41 @@ test("a counted line whose booking day no longer matches stops counting", async 
   if (!result.ok) return;
   assert.equal(result.data.countedVisitCount, 0);
   assert.equal(result.data.countedVisitSpendMinor, 0);
+});
+
+test("coffee visit delete is version-fenced and idempotent", async () => {
+  const expenses = new FakeExpenseRepository();
+  const coffee = new FakeCoffeeRepository();
+  const purchase = expense("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "coffee", 2_500);
+  expenses.byId.set(purchase.id, purchase);
+  seedCoffeeRepository(coffee, [purchase]);
+  await recordMoneyCoffeeVisit(ACTOR, { expenses, coffee }, visitValues([purchase.id]));
+  const visit = coffee.visits[0]!;
+
+  const stale = await deleteMoneyCoffeeVisit(ACTOR, coffee, {
+    id: visit.id,
+    version: visit.version + 1,
+  });
+  assert.equal(stale.ok, false);
+  if (!stale.ok) assert.equal(stale.code, "conflict");
+  assert.equal(coffee.visits.length, 1);
+
+  const removed = await deleteMoneyCoffeeVisit(ACTOR, coffee, {
+    id: visit.id,
+    version: visit.version,
+  });
+  assert.equal(removed.ok, true);
+  if (!removed.ok) return;
+  assert.equal(removed.data.alreadyDeleted, false);
+  assert.equal(coffee.visits.length, 0);
+
+  const retry = await deleteMoneyCoffeeVisit(ACTOR, coffee, {
+    id: visit.id,
+    version: visit.version,
+  });
+  assert.equal(retry.ok, true);
+  if (!retry.ok) return;
+  assert.equal(retry.data.alreadyDeleted, true);
 });
 
 test("period coffee usage is not limited to the current week", async () => {
