@@ -27,7 +27,7 @@ const VISITS = "money_coffee_visits";
 const LINES = "money_coffee_visit_lines";
 
 const COLUMNS =
-  "id, visit_key, visit_fingerprint, local_date, timezone, note, version, created_at, updated_at, lines:money_coffee_visit_lines(expense_id, expenses:personal_expenses(amount_minor, category, deleted_at))";
+  "id, visit_key, visit_fingerprint, local_date, timezone, note, version, created_at, updated_at, lines:money_coffee_visit_lines(expense_id, expenses:personal_expenses(amount_minor, category, booking_date, deleted_at))";
 
 type LineRow = {
   expense_id: string;
@@ -35,11 +35,13 @@ type LineRow = {
     | {
         amount_minor: number;
         category: string;
+        booking_date: string;
         deleted_at: string | null;
       }
     | Array<{
         amount_minor: number;
         category: string;
+        booking_date: string;
         deleted_at: string | null;
       }>
     | null;
@@ -84,6 +86,7 @@ function toLine(row: LineRow): MoneyCoffeeVisitLine | null {
     expenseId: String(row.expense_id),
     amountMinor: Number(expense.amount_minor),
     category: String(expense.category),
+    bookingDate: String(expense.booking_date),
     deletedAt: expense.deleted_at == null ? null : String(expense.deleted_at),
   };
 }

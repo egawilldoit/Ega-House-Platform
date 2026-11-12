@@ -165,6 +165,7 @@ test("coffee repository reads canonical amounts through the expense join", async
               expenses: {
                 amount_minor: 2_500,
                 category: "coffee",
+                booking_date: "2026-11-11",
                 deleted_at: null,
               },
             },

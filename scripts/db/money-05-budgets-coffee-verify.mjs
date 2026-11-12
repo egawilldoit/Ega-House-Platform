@@ -483,6 +483,20 @@ async function main() {
         [OWNER_A, PERIOD_A],
       ),
     );
+    await expectConstraint("ended period rejects a plan edit", () =>
+      sql.unsafe(
+        `UPDATE public.money_budget_plans
+           SET allocations = '{"coffee": 9000}'::jsonb, version = version + 1
+         WHERE id = $1::uuid`,
+        [budget[0].id],
+      ),
+    );
+    const endedPlan = await sql.unsafe(
+      `SELECT id, version FROM public.money_budget_plans WHERE id = $1::uuid`,
+      [budget[0].id],
+    );
+    assert(endedPlan.length === 1, "ended period plan stays readable");
+    assert(endedPlan[0].version === 2, "rejected edit leaves the version unchanged");
 
     // RLS -------------------------------------------------------------------
     await expectDenied("reader cannot insert a budget plan", () =>

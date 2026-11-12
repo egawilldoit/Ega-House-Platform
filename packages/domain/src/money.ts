@@ -1992,6 +1992,8 @@ export type MoneyCoffeeVisitLine = Readonly<{
   expenseId: string;
   amountMinor: number;
   category: string;
+  /** Current canonical booking day; must match the visit day to count. */
+  bookingDate: string;
   deletedAt: string | null;
 }>;
 
