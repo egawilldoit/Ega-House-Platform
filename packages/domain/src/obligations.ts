@@ -430,10 +430,12 @@ export function templateClassificationSource(
 ): ObligationClassificationSource | null {
   if (!template) return null;
   return {
-    needVsWant: template.needVsWant,
-    purpose: template.purpose,
-    countsInDaily: template.countsInDaily,
-    category: template.category,
+    ...(template.needVsWant !== null ? { needVsWant: template.needVsWant } : {}),
+    ...(template.purpose !== null ? { purpose: template.purpose } : {}),
+    ...(template.countsInDaily !== null
+      ? { countsInDaily: template.countsInDaily }
+      : {}),
+    ...(template.category !== null ? { category: template.category } : {}),
   };
 }
 
