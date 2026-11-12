@@ -1,4 +1,4 @@
-import type { MoneyOpening, MoneyPeriod } from "@ega/domain/money";
+import { calculateMoneyReserves, type MoneyOpening, type MoneyPeriod } from "@ega/domain/money";
 import type { MoneyDirection, MoneyKind } from "@ega/domain/money";
 import type { ExpenseCategory } from "@ega/domain/expenses";
 import {
@@ -114,6 +114,7 @@ export type MoneyMovementTotals = Readonly<{
   expenseTotalMinor: number;
   dailyIncludedSpendMinor: number;
   savingsFundedMinor: number;
+  emergencyUsedMinor: number;
   counts: Readonly<{
     movements: number;
     expenses: number;
@@ -121,9 +122,36 @@ export type MoneyMovementTotals = Readonly<{
     savingsTransfers: number;
     openingMovements: number;
   }>;
+
   /** True when the bounded aggregation stopped before the whole history. */
   truncated: boolean;
 }>;
+
+/** Current reserve read model. Missing or incomplete source data stays unavailable. */
+export type MoneyReserveProjection =
+  | Readonly<{ available: false; currency: "MAD"; reason: string; cutoffDate: string }>
+  | Readonly<{ available: true; currency: "MAD"; cutoffDate: string; reserves: ReturnType<typeof calculateMoneyReserves> }>;
+
+/** Compose canonical cash, obligation, and reserve totals in the application layer. */
+export function projectMoneyReserves(input: Readonly<{
+  cutoffDate: string;
+  recordedCashMinor: number | null;
+  unpaidCommitmentsMinor: number | null;
+  savingsTargetMinor: number | null;
+  savingsFundedMinor: number | null;
+  emergencyTargetMinor: number | null;
+  emergencyUsedMinor: number | null;
+  complete: boolean;
+}>): MoneyReserveProjection {
+  const values = [input.recordedCashMinor, input.unpaidCommitmentsMinor, input.savingsTargetMinor,
+    input.savingsFundedMinor, input.emergencyTargetMinor, input.emergencyUsedMinor];
+  if (!input.complete || values.some((value) => value === null)) {
+    return { available: false, currency: "MAD", reason: "reserve_inputs_incomplete", cutoffDate: input.cutoffDate };
+  }
+  const [recordedCashMinor, unpaidCommitmentsMinor, savingsTargetMinor, savingsFundedMinor, emergencyTargetMinor, emergencyUsedMinor] = values as number[];
+  return { available: true, currency: "MAD", cutoffDate: input.cutoffDate,
+    reserves: calculateMoneyReserves({ recordedCashMinor, unpaidCommitmentsMinor, savingsTargetMinor, savingsFundedMinor, emergencyTargetMinor, emergencyUsedMinor }) };
+}
 
 /**
  * Projection of the ledger rows through a cutoff. `truncated` is surfaced so a
@@ -136,6 +164,7 @@ export function computeMoneyMovementTotals(
   let expenseTotalMinor = 0;
   let dailyIncludedSpendMinor = 0;
   let savingsFundedMinor = 0;
+  let emergencyUsedMinor = 0;
   let openingMovements = 0;
   let savingsTransfers = 0;
   let dailyIncludedExpenses = 0;
@@ -145,6 +174,9 @@ export function computeMoneyMovementTotals(
     if (row.kind === "expense") {
       expenses += 1;
       expenseTotalMinor += row.amountMinor;
+      if (row.purpose === "emergency") {
+        emergencyUsedMinor += row.direction === "out" ? row.amountMinor : -row.amountMinor;
+      }
       if (row.countsInDaily) {
         dailyIncludedExpenses += 1;
         dailyIncludedSpendMinor += row.amountMinor;
@@ -162,6 +194,7 @@ export function computeMoneyMovementTotals(
     expenseTotalMinor,
     dailyIncludedSpendMinor,
     savingsFundedMinor,
+    emergencyUsedMinor,
     counts: {
       movements: rows.length,
       expenses,

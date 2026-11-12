@@ -10,6 +10,7 @@ import type {
 import {
   createAuthenticatedActor,
   getMoneyCashPosition,
+  projectMoneyReserves,
   type MoneyAggregate,
   type MoneyCreateRecordInput,
   type MoneyIdempotencyReceipt,
@@ -26,6 +27,25 @@ import {
 
 const ACTOR = createAuthenticatedActor("owner-1");
 const OTHER_ACTOR = createAuthenticatedActor("owner-2");
+
+test("MONEY-08 current reserve projection preserves disjoint protections and releases matching payments and savings", () => {
+  const base = { cutoffDate: "2026-11-12", recordedCashMinor: 68_900,
+    unpaidCommitmentsMinor: 10_000, savingsTargetMinor: 20_000,
+    savingsFundedMinor: 0, emergencyTargetMinor: 5_000,
+    emergencyUsedMinor: 0, complete: true } as const;
+  const before = projectMoneyReserves(base);
+  assert.equal(before.available, true);
+  if (before.available) assert.equal(before.reserves.safeFlexibleMinor, 33_900);
+  const paid = projectMoneyReserves({ ...base, recordedCashMinor: 58_900, unpaidCommitmentsMinor: 0 });
+  assert.equal(paid.available, true);
+  if (paid.available) assert.equal(paid.reserves.safeFlexibleMinor, 33_900);
+  const funded = projectMoneyReserves({ ...base, recordedCashMinor: 48_900, savingsFundedMinor: 20_000 });
+  assert.equal(funded.available, true);
+  if (funded.available) assert.equal(funded.reserves.safeFlexibleMinor, 33_900);
+  assert.equal(projectMoneyReserves({ ...base, emergencyUsedMinor: 5_000 }).available, true);
+  const incomplete = projectMoneyReserves({ ...base, savingsFundedMinor: null });
+  assert.deepEqual(incomplete, { available: false, currency: "MAD", reason: "reserve_inputs_incomplete", cutoffDate: base.cutoffDate });
+});
 
 type Stored = MoneyLedgerRow & {
   ownerUserId: string;
@@ -210,6 +230,7 @@ function makeRepository(options: { periods?: MoneyPeriod[] } = {}) {
             direction: row.direction,
             amountMinor: row.amountMinor,
             countsInDaily: row.countsInDaily,
+            purpose: row.purpose,
             bookingDate: row.bookingDate,
           })),
           truncated: false,
@@ -343,7 +364,8 @@ test("opening 500 + income 200 - coffee 11 gives recorded cash 689 and expense s
       bookingDate: "2026-11-09",
       idempotencyKey: "salary",
     }),
-    movement({ amountMinor: 1100, bookingDate: "2026-11-11", idempotencyKey: "coffee" }),
+    movement({ amountMinor: 1100, purpose: "emergency", bookingDate: "2026-11-11", idempotencyKey: "coffee" }),
+    movement({ amountMinor: 300, direction: "in", purpose: "emergency", bookingDate: "2026-11-11", idempotencyKey: "refund" }),
   );
 
   // Recorded cash is MONEY-03's canonical calculation.
@@ -353,9 +375,9 @@ test("opening 500 + income 200 - coffee 11 gives recorded cash 689 and expense s
   if (!cash.ok) return;
   assert.equal(cash.data.available, true);
   if (!cash.data.available) return;
-  assert.equal(cash.data.recordedCashMinor, 68_900);
+  assert.equal(cash.data.recordedCashMinor, 69_200);
   assert.equal(cash.data.openingMinor, 50_000);
-  assert.equal(cash.data.inflowsMinor, 20_000);
+  assert.equal(cash.data.inflowsMinor, 20_300);
   assert.equal(cash.data.outflowsMinor, 1100);
 
   // Movement totals are the disjoint MONEY-04 projection of the same rows.
@@ -367,9 +389,10 @@ test("opening 500 + income 200 - coffee 11 gives recorded cash 689 and expense s
   );
   assert.equal(totals.ok, true);
   if (!totals.ok) return;
-  assert.equal(totals.data.totals.expenseTotalMinor, 1100);
-  assert.equal(totals.data.totals.dailyIncludedSpendMinor, 1100);
-  assert.equal(totals.data.totals.counts.movements, 3);
+  assert.equal(totals.data.totals.expenseTotalMinor, 1400);
+  assert.equal(totals.data.totals.emergencyUsedMinor, 800);
+  assert.equal(totals.data.totals.dailyIncludedSpendMinor, 1400);
+  assert.equal(totals.data.totals.counts.movements, 4);
   assert.equal(totals.data.cutoff, "2026-11-11");
 });
 
@@ -696,6 +719,7 @@ test("a truncated aggregate is reported as an incomplete reading, not a full tot
                 direction: "out",
                 amountMinor: 1100,
                 countsInDaily: true,
+                purpose: "emergency",
                 bookingDate: "2026-11-11",
               },
             ],

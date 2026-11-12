@@ -14,6 +14,7 @@ import type {
   MoneyPeriodInitialization,
   MoneyPeriodProvenance,
   MoneyPeriodSettings,
+  MoneyPurpose,
   MoneyUpdateChanges,
 } from "@ega/domain/money";
 
@@ -173,6 +174,7 @@ export type MoneyAggregateRow = Readonly<{
   direction: MoneyDirection;
   amountMinor: number;
   countsInDaily: boolean;
+  purpose: MoneyPurpose | null;
   bookingDate: string;
 }>;
 
