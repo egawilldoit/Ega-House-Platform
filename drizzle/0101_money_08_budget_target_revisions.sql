@@ -27,7 +27,22 @@ BEGIN
    WHERE owner_user_id = NEW.owner_user_id AND period_id = NEW.period_id
    ORDER BY effective_date DESC, version DESC LIMIT 1;
   IF NOT FOUND THEN
-    RAISE EXCEPTION 'Money period has no policy baseline';
+    -- Pre-0100 periods intentionally have no reconstructable policy history.
+    -- A user edit establishes the policy only from the complete settings we
+    -- can observe now; otherwise keep the unknown settings explicitly absent.
+    IF NEW.savings_target_minor IS NULL OR NEW.emergency_target_minor IS NULL THEN
+      RETURN NEW;
+    END IF;
+    v_version := 1;
+    v_settings := jsonb_build_object(
+      'savingsTargetMinor', NEW.savings_target_minor,
+      'emergencyTargetMinor', NEW.emergency_target_minor
+    );
+    INSERT INTO public.money_policy_versions
+      (owner_user_id, period_id, version, effective_date, policy)
+    VALUES (NEW.owner_user_id, NEW.period_id, v_version, v_period.active_date,
+      jsonb_build_object('settings', v_settings, 'algorithmVersion', 'safe-flexible-start-of-day-v1'));
+    RETURN NEW;
   END IF;
   IF (v_policy.policy #>> '{settings,savingsTargetMinor}') IS NOT DISTINCT FROM NEW.savings_target_minor::text
      AND (v_policy.policy #>> '{settings,emergencyTargetMinor}') IS NOT DISTINCT FROM NEW.emergency_target_minor::text THEN
