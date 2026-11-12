@@ -249,6 +249,30 @@ export class SupabaseMoneyPeriodRepository implements MoneyPeriodRepository {
     } };
   }
 
+  async rebaseDayStartBaseline(actor: AuthenticatedActor, periodId: string) {
+    // The authenticated request client supplies auth.uid(); actor is retained
+    // in the port contract and the RPC enforces ownership itself.
+    void actor;
+    const { data, error } = await this.supabase.rpc("money_rebase_day_start_baseline", {
+      p_period_id: periodId,
+    });
+    if (error) return { ok: false as const, error: moneyFailure(error) };
+    const row = Array.isArray(data) ? data[0] : data;
+    if (!row) return { ok: false as const, error: { code: "unknown" as const } };
+    return { ok: true as const, value: {
+      date: row.date,
+      version: row.version,
+      availability: row.availability,
+      unavailableReason: row.unavailable_reason,
+      cashMinor: row.cash_minor,
+      commitmentsMinor: row.commitments_minor,
+      savingsTargetMinor: row.savings_target_minor,
+      savingsFundedMinor: row.savings_funded_minor,
+      emergencyTargetMinor: row.emergency_target_minor,
+      emergencyUsedMinor: row.emergency_used_minor,
+    } };
+  }
+
   async getDayStartBaseline(
     actor: AuthenticatedActor,
     periodId: string,

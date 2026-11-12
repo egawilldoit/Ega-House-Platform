@@ -47,6 +47,23 @@ export type MoneyStateOptions = Readonly<{
   timezone?: string | null;
 }>;
 
+/** Explicitly replace today's active day-start snapshot with current state. */
+export async function rebaseMoneyDayStartBaseline(
+  actor: AuthenticatedActor,
+  repository: Pick<MoneyPeriodRepository, "rebaseDayStartBaseline">,
+  rawPeriodId: unknown,
+): Promise<ApplicationResult<MoneyDayStartBaseline>> {
+  if (typeof rawPeriodId !== "string" || !isMoneyPeriodId(rawPeriodId.trim())) {
+    return applicationFailure("Use a valid Money period ID.", "validation");
+  }
+  if (!repository.rebaseDayStartBaseline) {
+    return applicationFailure("Day-start baseline rebasing is unavailable right now.", "unknown");
+  }
+  const result = await repository.rebaseDayStartBaseline(actor, rawPeriodId.trim());
+  if (!result.ok) return fromRepository(result, "Unable to rebase the day-start baseline right now.");
+  return applicationSuccess(result.value);
+}
+
 export type MoneyStateDateResolution = Readonly<{
   localToday: string;
   timezone: string;
