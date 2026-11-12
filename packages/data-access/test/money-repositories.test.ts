@@ -74,6 +74,7 @@ class FakeBuilder {
 
 function fakeClient(queue: QueryResult[]) {
   const calls: FakeBuilder[] = [];
+  const rpcCalls: Array<{ name: string; args: Record<string, unknown> }> = [];
   const client = {
     from(table: string) {
       const builder = new FakeBuilder(queue, calls);
@@ -81,8 +82,12 @@ function fakeClient(queue: QueryResult[]) {
       calls.push(builder);
       return builder;
     },
+    rpc(name: string, args: Record<string, unknown>) {
+      rpcCalls.push({ name, args });
+      return Promise.resolve(queue.shift() ?? { data: null, error: null });
+    },
   };
-  return { client: client as unknown as SupabaseClient, calls };
+  return { client: client as unknown as SupabaseClient, calls, rpcCalls };
 }
 
 const PLAN_ROW = {
@@ -143,6 +148,11 @@ test("budget update carries owner, id and expected version", async () => {
   assert.ok(steps.includes("eq:id=plan-1"));
   assert.ok(steps.includes("eq:version=2"));
   assert.ok(steps.some((step) => step.includes('"version":3')));
+  // Immutable/identity columns are not granted for UPDATE; assigning them would
+  // make every authenticated budget edit fail with permission denied.
+  const updateStep = steps.find((step) => step.startsWith("update:"))!;
+  assert.ok(!updateStep.includes("period_id"));
+  assert.ok(!updateStep.includes("currency"));
 });
 
 test("coffee repository reads canonical amounts through the expense join", async () => {
@@ -193,10 +203,9 @@ test("coffee repository reads canonical amounts through the expense join", async
   assert.ok(steps.includes("lte:local_date=2026-11-15"));
 });
 
-test("coffee visit creation writes owner-scoped visit then lines", async () => {
-  const { client, calls } = fakeClient([
-    { data: { id: VISIT_ID }, error: null },
-    { data: null, error: null },
+test("coffee visit creation commits identity and lines through one RPC", async () => {
+  const { client, calls, rpcCalls } = fakeClient([
+    { data: VISIT_ID, error: null },
     {
       data: {
         id: VISIT_ID,
@@ -208,7 +217,17 @@ test("coffee visit creation writes owner-scoped visit then lines", async () => {
         version: 1,
         created_at: "2026-11-11T09:00:00.000Z",
         updated_at: "2026-11-11T09:00:00.000Z",
-        lines: [],
+        lines: [
+          {
+            expense_id: EXPENSE_ID,
+            expenses: {
+              amount_minor: 2_500,
+              category: "coffee",
+              booking_date: "2026-11-11",
+              deleted_at: null,
+            },
+          },
+        ],
       },
       error: null,
     },
@@ -226,9 +245,13 @@ test("coffee visit creation writes owner-scoped visit then lines", async () => {
     createdAt: "2026-11-11T09:00:00.000Z",
   });
   assert.equal(result.ok, true);
-  assert.ok(calls[0]!.steps.some((step) => step.includes(ACTOR.userId)));
-  const lineInsert = calls[1]!.steps.find((step) => step.startsWith("insert:"));
-  assert.ok(lineInsert);
-  assert.ok(lineInsert!.includes(ACTOR.userId));
-  assert.ok(lineInsert!.includes(EXPENSE_ID));
+  if (!result.ok) return;
+  assert.equal(result.value.lines[0]!.expenseId, EXPENSE_ID);
+  assert.equal(rpcCalls.length, 1);
+  assert.equal(rpcCalls[0]!.name, "money_record_coffee_visit");
+  assert.deepEqual(rpcCalls[0]!.args.p_expense_ids, [EXPENSE_ID]);
+  assert.equal(rpcCalls[0]!.args.p_visit_key, "visit-1");
+  // Only the post-commit owner-scoped read follows the atomic RPC.
+  assert.equal(calls.length, 1);
+  assert.ok(calls[0]!.steps.includes(`eq:owner_user_id=${ACTOR.userId}`));
 });

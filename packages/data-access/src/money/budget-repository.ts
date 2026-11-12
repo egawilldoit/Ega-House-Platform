@@ -112,6 +112,24 @@ function toPayload(values: MoneyBudgetPlanValues): Record<string, unknown> {
   };
 }
 
+/** Updates may only assign columns granted to authenticated; period identity
+ * and currency are immutable and are not granted for UPDATE. */
+function toUpdatePayload(
+  values: MoneyBudgetPlanValues,
+  expectedVersion: number,
+  updatedAt: string,
+): Record<string, unknown> {
+  return {
+    allocations: values.allocations,
+    savings_target_minor: values.savingsTargetMinor,
+    emergency_target_minor: values.emergencyTargetMinor,
+    coffee_weekly_spend_limit_minor: values.coffeeWeeklySpendLimitMinor,
+    coffee_weekly_visit_limit: values.coffeeWeeklyVisitLimit,
+    version: expectedVersion + 1,
+    updated_at: updatedAt,
+  };
+}
+
 export class SupabaseMoneyBudgetRepository implements MoneyBudgetRepository {
   constructor(private readonly supabase: SupabaseClient) {}
 
@@ -162,9 +180,7 @@ export class SupabaseMoneyBudgetRepository implements MoneyBudgetRepository {
     const { data, error } = await this.supabase
       .from(TABLE)
       .update({
-        ...toPayload(input.values),
-        version: input.expectedVersion + 1,
-        updated_at: input.updatedAt,
+        ...toUpdatePayload(input.values, input.expectedVersion, input.updatedAt),
       })
       .eq("owner_user_id", actor.userId)
       .eq("id", id)

@@ -323,6 +323,55 @@ CREATE TRIGGER money_coffee_visit_lines_owner_guard
   FOR EACH ROW
   EXECUTE FUNCTION public.enforce_money_coffee_visit_line_owner();
 --> statement-breakpoint
+-- Atomic visit identity + line creation. Two independent client inserts could
+-- leave a visit without lines (or replay an incomplete visit under a concurrent
+-- retry); this function commits both or neither.
+CREATE OR REPLACE FUNCTION public.money_record_coffee_visit(
+  p_visit_key text,
+  p_visit_fingerprint text,
+  p_local_date date,
+  p_timezone text,
+  p_note text,
+  p_expense_ids uuid[]
+) RETURNS uuid
+LANGUAGE plpgsql
+SET search_path = ''
+AS $visit$
+DECLARE
+  v_owner uuid := auth.uid();
+  v_visit_id uuid;
+BEGIN
+  IF v_owner IS NULL THEN
+    RAISE EXCEPTION 'Authentication is required to record a coffee visit.'
+      USING ERRCODE = '42501';
+  END IF;
+  IF p_expense_ids IS NULL OR cardinality(p_expense_ids) = 0 THEN
+    RAISE EXCEPTION 'A coffee visit needs at least one expense.'
+      USING ERRCODE = '23514';
+  END IF;
+  IF (SELECT count(DISTINCT item) FROM unnest(p_expense_ids) AS item)
+     <> cardinality(p_expense_ids) THEN
+    RAISE EXCEPTION 'A coffee visit cannot repeat one expense.'
+      USING ERRCODE = '23514';
+  END IF;
+
+  INSERT INTO public.money_coffee_visits
+    (owner_user_id, visit_key, visit_fingerprint, local_date, timezone, note)
+  VALUES
+    (v_owner, p_visit_key, p_visit_fingerprint, p_local_date, p_timezone, p_note)
+  RETURNING id INTO v_visit_id;
+
+  INSERT INTO public.money_coffee_visit_lines (owner_user_id, visit_id, expense_id)
+  SELECT v_owner, v_visit_id, item FROM unnest(p_expense_ids) AS item;
+
+  RETURN v_visit_id;
+END
+$visit$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION public.money_record_coffee_visit(text, text, date, text, text, uuid[]) FROM PUBLIC;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION public.money_record_coffee_visit(text, text, date, text, text, uuid[]) TO authenticated;
+--> statement-breakpoint
 ALTER TABLE public.money_coffee_visits ENABLE ROW LEVEL SECURITY;
 --> statement-breakpoint
 ALTER TABLE public.money_coffee_visits FORCE ROW LEVEL SECURITY;
