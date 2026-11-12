@@ -352,6 +352,7 @@ export type McpWriteToolHandlers = {
     },
     context?: McpProtocolContext,
   ) => Promise<CallToolResult>;
+  rebaseMoneyDayStartBaseline: (authInfo: AuthInfo | undefined, periodId: string, context?: McpProtocolContext) => Promise<CallToolResult>;
   /** MONEY-04 movement writes on the one ledger. */
   createMoneyMovement: (
     authInfo: AuthInfo | undefined,
@@ -749,6 +750,8 @@ const moneyUpdateSettingsInputSchema = z.object({
   opening: moneyOpeningInputSchema.nullable().optional(),
   settings: z.record(z.string(), z.unknown()).optional(),
 }).strict();
+
+const moneyRebaseDayStartInputSchema = z.object({ periodId: uuidSchema }).strict();
 
 const moneyStateOutputSchema = z.object({
   ok: z.literal(true),
@@ -2060,6 +2063,14 @@ const WRITE_TOOL_REGISTRATIONS: readonly WriteToolRegistration[] = [
         async (input, ctx) =>
           handlers.updateMoneySettings(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
       ),
+  },
+  {
+    name: "ega_money_rebase_day_start_baseline",
+    register: (server, handlers) => server.registerTool(
+      "ega_money_rebase_day_start_baseline",
+      { title: "Rebase Money day-start baseline", description: "Explicitly rebase the selected Money period day-start baseline and return the stored baseline. Requires the explicit personal_ops.write grant.", inputSchema: moneyRebaseDayStartInputSchema, outputSchema: genericWriteOutputSchema, annotations: WRITE_ANNOTATIONS },
+      async (input, ctx) => handlers.rebaseMoneyDayStartBaseline(getAuthInfo(ctx as unknown as ServerContext), input.periodId, getProtocolContext(ctx as unknown as ServerContext)),
+    ),
   },
   {
     name: "ega_money_create_movement",

@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   getCurrentMoneyReserves: vi.fn(),
   createMoneyPeriod: vi.fn(),
   updateMoneySettings: vi.fn(),
+  rebaseMoneyDayStartBaseline: vi.fn(),
   timezoneGet: vi.fn(),
 }));
 
@@ -21,6 +22,7 @@ vi.mock("@ega/application", async (importOriginal) => {
     getCurrentMoneyReserves: mocks.getCurrentMoneyReserves,
     createMoneyPeriod: mocks.createMoneyPeriod,
     updateMoneySettings: mocks.updateMoneySettings,
+    rebaseMoneyDayStartBaseline: mocks.rebaseMoneyDayStartBaseline,
   };
 });
 
@@ -162,6 +164,24 @@ function handlers() {
 describe("Money MCP tools", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it("rebases day start only for finance writers and returns the canonical baseline", async () => {
+    const baseline = { periodId: PERIOD.id, dayStart: "2026-11-13T00:00:00.000Z" };
+    mocks.rebaseMoneyDayStartBaseline.mockResolvedValue({ ok: true, data: baseline });
+    const h = handlers();
+    const denied = await h.rebaseMoneyDayStartBaseline(authInfo(READER_PRINCIPAL), PERIOD.id);
+    expect(structured(denied).error?.code).toBe("PERMISSION_DENIED");
+    expect(mocks.rebaseMoneyDayStartBaseline).not.toHaveBeenCalled();
+    const success = await h.rebaseMoneyDayStartBaseline(authInfo(WRITER_PRINCIPAL), PERIOD.id);
+    expect(structured(success)).toMatchObject({ ok: true, baseline });
+    expect(mocks.rebaseMoneyDayStartBaseline).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns application rebase errors", async () => {
+    mocks.rebaseMoneyDayStartBaseline.mockResolvedValue({ ok: false, code: "conflict", errorMessage: "Conflict" });
+    const result = await handlers().rebaseMoneyDayStartBaseline(authInfo(WRITER_PRINCIPAL), PERIOD.id);
+    expect(structured(result).error?.code).toBe("CONFLICT");
   });
 
   it("denies state to legacy workspace-only grants and allows explicit readers", async () => {
