@@ -224,6 +224,36 @@ function toOpening(row: OpeningRow): MoneyOpening {
 export class SupabaseMoneyPeriodRepository implements MoneyPeriodRepository {
   constructor(private readonly supabase: SupabaseClient) {}
 
+  async getDayStartBaseline(
+    actor: AuthenticatedActor,
+    periodId: string,
+    date: string,
+  ) {
+    const { data, error } = await this.supabase
+      .from("money_day_start_baselines")
+      .select("date, version, availability, unavailable_reason, cash_minor, commitments_minor, savings_target_minor, savings_funded_minor, emergency_target_minor, emergency_used_minor")
+      .eq("owner_user_id", actor.userId)
+      .eq("period_id", periodId)
+      .eq("date", date)
+      .order("version", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error) return { ok: false as const, error: moneyFailure(error) };
+    if (!data) return { ok: true as const, value: null };
+    return { ok: true as const, value: {
+      date: data.date,
+      version: data.version,
+      availability: data.availability,
+      unavailableReason: data.unavailable_reason,
+      cashMinor: data.cash_minor,
+      commitmentsMinor: data.commitments_minor,
+      savingsTargetMinor: data.savings_target_minor,
+      savingsFundedMinor: data.savings_funded_minor,
+      emergencyTargetMinor: data.emergency_target_minor,
+      emergencyUsedMinor: data.emergency_used_minor,
+    } };
+  }
+
   async findTracking(
     actor: AuthenticatedActor,
   ): Promise<RepositoryResult<MoneyPeriod | null>> {

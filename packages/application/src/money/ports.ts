@@ -71,7 +71,25 @@ export type MoneyLedgerOverview = Readonly<{
   inPeriodUnassignedCount: number;
 }>;
 
+export type MoneyDayStartBaseline = Readonly<{
+  date: string;
+  version: number;
+  availability: "available" | "unavailable";
+  unavailableReason: string | null;
+  cashMinor: number | null;
+  commitmentsMinor: number | null;
+  savingsTargetMinor: number | null;
+  savingsFundedMinor: number | null;
+  emergencyTargetMinor: number | null;
+  emergencyUsedMinor: number | null;
+}>;
+
 export type MoneyPeriodRepository = {
+  getDayStartBaseline?(
+    actor: AuthenticatedActor,
+    periodId: string,
+    date: string,
+  ): Promise<RepositoryResult<MoneyDayStartBaseline | null>>;
   findTracking(
     actor: AuthenticatedActor,
   ): Promise<RepositoryResult<MoneyPeriod | null>>;

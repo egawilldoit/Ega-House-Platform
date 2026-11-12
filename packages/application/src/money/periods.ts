@@ -1,5 +1,6 @@
 import {
   MONEY_DEFAULT_TIMEZONE,
+  calculateMoneyDailyReference,
   canonicalMoneyOpeningPayload,
   classifyDateInPeriod,
   isMoneyPeriodId,
@@ -32,7 +33,7 @@ import {
   type RepositoryResult,
 } from "../shared/result";
 import { getMoneyCashPosition, type MoneyCashPosition } from "./summary";
-import type { MoneyPeriodRepository } from "./ports";
+import type { MoneyDayStartBaseline, MoneyPeriodRepository } from "./ports";
 
 export type MoneyStateQuery = Readonly<{
   periodId?: unknown;
@@ -111,6 +112,8 @@ export type MoneyState = Readonly<{
   period: MoneyPeriod | null;
   opening: MoneyOpeningState;
   cash: MoneyCashPosition;
+  dayStartBaseline: (MoneyDayStartBaseline & { dailyReference: ReturnType<typeof calculateMoneyDailyReference> | null }) | null;
+  dayStartBaselineUnavailable: boolean;
   dateResolution: MoneyStateDateResolution;
   history: readonly MoneyStatePeriodSummary[];
   historyUnavailable: boolean;
@@ -422,6 +425,38 @@ export async function getMoneyState(
     ? classifyDateInPeriod(resolvedDate, selected)
     : ("no_period" as const);
 
+  let dayStartBaseline: MoneyState["dayStartBaseline"] = null;
+  let dayStartBaselineUnavailable = false;
+  if (selected && repository.getDayStartBaseline) {
+    const baselineResult = await repository.getDayStartBaseline(actor, selected.id, resolvedDate);
+    if (!baselineResult.ok) return fromRepository(baselineResult, "Unable to load the day-start baseline right now.");
+    const baseline = baselineResult.value;
+    if (!baseline) {
+      dayStartBaselineUnavailable = true;
+    } else if (baseline.availability !== "available") {
+      dayStartBaselineUnavailable = true;
+      dayStartBaseline = { ...baseline, dailyReference: null };
+    } else {
+      dayStartBaseline = {
+        ...baseline,
+        dailyReference: calculateMoneyDailyReference({
+          startCashMinor: baseline.cashMinor,
+          startCommitmentsMinor: baseline.commitmentsMinor,
+          startSavingsTargetMinor: baseline.savingsTargetMinor,
+          savingsFundedBeforeMinor: baseline.savingsFundedMinor,
+          startEmergencyTargetMinor: baseline.emergencyTargetMinor,
+          emergencyUsedBeforeMinor: baseline.emergencyUsedMinor,
+          periodEnd: selected.endDate,
+          selectedDate: resolvedDate,
+          dailyIncludedExpenseMinor: 0,
+          periodLifecycle: selected.lifecycle,
+        }),
+      };
+    }
+  } else if (selected) {
+    dayStartBaselineUnavailable = true;
+  }
+
   const history = historyResult.value.map(summarizePeriod);
   if (selected && !history.some((entry) => entry.id === selected!.id)) {
     history.unshift(summarizePeriod(selected));
@@ -449,6 +484,8 @@ export async function getMoneyState(
             openingMovementId: opening.id,
           },
     cash,
+    dayStartBaseline,
+    dayStartBaselineUnavailable,
     dateResolution: {
       localToday,
       timezone,
