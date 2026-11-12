@@ -119,8 +119,6 @@ export type McpReadToolHandlers = {
       timezone: string;
       periodStartDate: string;
       periodEndDate: string;
-      spendLimitMinor?: number | null;
-      visitLimit?: number | null;
     },
     context?: McpProtocolContext,
   ) => Promise<CallToolResult>;
@@ -907,8 +905,6 @@ const moneyCoffeeWindowInputSchema = z.object({
   timezone: z.string().min(1).max(128),
   periodStartDate: moneyMovementDateSchema,
   periodEndDate: moneyMovementDateSchema,
-  spendLimitMinor: z.number().int().min(0).max(2147483647).nullable().optional(),
-  visitLimit: z.number().int().min(0).max(2147483647).nullable().optional(),
 }).strict();
 
 const moneyCoffeeVisitListInputSchema = z.object({
@@ -1217,7 +1213,7 @@ const READ_TOOL_REGISTRATIONS: readonly ReadToolRegistration[] = [
         {
           title: "Get counted coffee usage",
           description:
-            "Read counted coffee for the owner-local ISO week clipped to the selected period. Counted visits and counted visit spend come from canonical coffee expenses linked to counted visits; category coffee spending is a separate projection and uncounted purchases stay visible. Remaining limits and overshoot are distinct values. Requires the explicit personal_ops.read grant.",
+            "Read counted coffee for the owner-local ISO week clipped to the selected period. Counted visits and counted visit spend come from canonical coffee expenses linked to counted visits; category coffee spending is a separate projection and uncounted purchases stay visible. Remaining limits and overshoot are resolved from the canonical period budget plan, never caller-supplied values. Requires the explicit personal_ops.read grant.",
           inputSchema: moneyCoffeeWindowInputSchema,
           outputSchema: personalOpsListOutputSchema,
           annotations: READ_ONLY_ANNOTATIONS,

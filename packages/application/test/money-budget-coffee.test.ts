@@ -14,7 +14,9 @@ import type {
 import {
   classifyMoneyExpense,
   createAuthenticatedActor,
+  getMoneyCoffeeVisitUsage,
   getMoneyCoffeeWindow,
+  getMoneyCoffeeWindowForPlan,
   getMoneyPeriodSpending,
   patchMoneyBudgetPlan,
   recordMoneyCoffeeVisit,
@@ -544,4 +546,85 @@ test("period spending uses the inclusive period dates rather than the calendar m
     expenses.lastSummaryWindow?.endUtcExclusiveIso,
     "2026-11-30T23:00:00.000Z",
   );
+});
+
+test("coffee limits resolve from the canonical period plan, not caller input", async () => {
+  const expenses = new FakeExpenseRepository();
+  const coffee = new FakeCoffeeRepository();
+  const purchase = expense("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "coffee", 2_500);
+  expenses.byId.set(purchase.id, purchase);
+  seedCoffeeRepository(coffee, [purchase]);
+  await recordMoneyCoffeeVisit(ACTOR, { expenses, coffee }, visitValues([purchase.id]));
+
+  const result = await getMoneyCoffeeWindowForPlan(
+    ACTOR,
+    { expenses, coffee },
+    {
+      localDate: "2026-11-09",
+      timezone: "Africa/Casablanca",
+      periodStartDate: PERIOD.periodStartDate,
+      periodEndDate: PERIOD.periodEndDate,
+      plan: {
+        coffeeWeeklySpendLimitMinor: 2_000,
+        coffeeWeeklyVisitLimit: 1,
+      },
+    },
+  );
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.data.countedVisitSpendMinor, 2_500);
+  assert.equal(result.data.spendOvershootMinor, 500);
+  assert.equal(result.data.remainingVisits, 0);
+});
+
+test("a counted visit cannot move a purchase to another booking day", async () => {
+  const expenses = new FakeExpenseRepository();
+  const coffee = new FakeCoffeeRepository();
+  const purchase = {
+    ...expense("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "coffee", 2_500),
+    bookingDate: "2026-11-08",
+  };
+  expenses.byId.set(purchase.id, purchase);
+  seedCoffeeRepository(coffee, [purchase]);
+  const result = await recordMoneyCoffeeVisit(
+    ACTOR,
+    { expenses, coffee },
+    { ...visitValues([purchase.id]), localDate: "2026-11-09" },
+  );
+  assert.equal(result.ok, false);
+  if (result.ok) return;
+  assert.equal(result.code, "validation");
+  assert.equal(coffee.visits.length, 0);
+});
+
+test("period coffee usage is not limited to the current week", async () => {
+  const coffee = new FakeCoffeeRepository();
+  const purchase = expense("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "coffee", 2_500);
+  seedCoffeeRepository(coffee, [purchase]);
+  await recordMoneyCoffeeVisit(ACTOR, {
+    expenses: (() => {
+      const expenses = new FakeExpenseRepository();
+      expenses.byId.set(purchase.id, purchase);
+      return expenses;
+    })(),
+    coffee,
+  }, visitValues([purchase.id]));
+  coffee.visits[0] = { ...coffee.visits[0]!, localDate: "2026-11-02" };
+  coffee.visits.push({
+    ...coffee.visits[0]!,
+    id: "visit-2",
+    visitKey: "visit-key-2",
+    localDate: "2026-11-20",
+  });
+  const result = await getMoneyCoffeeVisitUsage(
+    ACTOR,
+    coffee,
+    { from: "2026-11-09", to: "2026-11-30" },
+  );
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.data.countedVisitCount, 1);
+  assert.equal(result.data.countedVisitSpendMinor, 2_500);
+  assert.equal(coffee.lastQuery?.from, "2026-11-09");
+  assert.equal(coffee.lastQuery?.to, "2026-11-30");
 });

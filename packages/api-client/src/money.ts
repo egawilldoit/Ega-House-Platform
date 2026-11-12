@@ -220,14 +220,6 @@ export function createMoneyApi(http: HttpClient): MoneyApi {
           timezone: query.timezone,
           periodStartDate: query.periodStartDate,
           periodEndDate: query.periodEndDate,
-          spendLimitMinor:
-            query.spendLimitMinor === undefined || query.spendLimitMinor === null
-              ? undefined
-              : String(query.spendLimitMinor),
-          visitLimit:
-            query.visitLimit === undefined || query.visitLimit === null
-              ? undefined
-              : String(query.visitLimit),
         },
       });
     },

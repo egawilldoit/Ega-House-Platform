@@ -140,8 +140,9 @@ BEGIN
     FROM public.money_periods AS period
     WHERE period.id = NEW.period_id
       AND period.owner_user_id = NEW.owner_user_id
+      AND period.lifecycle = 'tracking'
   ) THEN
-    RAISE EXCEPTION 'A budget plan must reference a period owned by the same owner.'
+    RAISE EXCEPTION 'A budget plan must reference a tracking period owned by the same owner.'
       USING ERRCODE = '23514';
   END IF;
   RETURN NEW;
