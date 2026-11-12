@@ -15,6 +15,9 @@ import {
   type ApplicationResult,
 } from "../shared/result";
 import type { ExpenseRepository } from "../expenses/ports";
+import { summarizeObligationOccurrences } from "@ega/domain/obligations";
+import type { MoneyBudgetRepository, MoneyMovementRepository } from "./ports";
+import type { ObligationRepository } from "./obligation-ports";
 import type {
   MoneyAggregate,
   MoneyAggregateRow,
@@ -151,6 +154,43 @@ export function projectMoneyReserves(input: Readonly<{
   const [recordedCashMinor, unpaidCommitmentsMinor, savingsTargetMinor, savingsFundedMinor, emergencyTargetMinor, emergencyUsedMinor] = values as number[];
   return { available: true, currency: "MAD", cutoffDate: input.cutoffDate,
     reserves: calculateMoneyReserves({ recordedCashMinor, unpaidCommitmentsMinor, savingsTargetMinor, savingsFundedMinor, emergencyTargetMinor, emergencyUsedMinor }) };
+}
+
+/** Shared current reserve read. Obligations are fetched through period end so future
+ * commitments are visible, then lifecycle state is evaluated at the active-date cutoff. */
+export async function getCurrentMoneyReserves(actor: AuthenticatedActor, input: Readonly<{
+  period: MoneyPeriod;
+  opening: MoneyOpening | null;
+  periods: MoneyPeriodRepository;
+  movements: MoneyMovementRepository;
+  budgets: MoneyBudgetRepository;
+  obligations: ObligationRepository;
+}>): Promise<ApplicationResult<MoneyReserveProjection>> {
+  const { period } = input;
+  const cash = await getMoneyCashPosition(actor, input.periods, period, input.opening);
+  if (!cash.ok) return applicationFailure(cash.errorMessage, cash.code);
+  if (!cash.data.available) return applicationSuccess({ available: false, currency: "MAD", reason: cash.data.reason, cutoffDate: period.activeDate });
+  const [movement, plan, occurrences] = await Promise.all([
+    input.movements.aggregate(actor, { cutoff: period.activeDate, startDate: period.startDate }),
+    input.budgets.getPlan(actor, { periodId: period.id, periodStartDate: period.startDate, periodEndDate: period.endDate }),
+    input.obligations.list(actor, { kind: null, state: null, dueFrom: period.startDate, dueTo: period.endDate, limit: 500, offset: 0 }),
+  ]);
+  if (!movement.ok) return applicationFailure("Unable to calculate current reserves right now.", movement.error.code);
+  if (!plan.ok) return applicationFailure("Unable to calculate current reserves right now.", plan.error.code);
+  if (!occurrences.ok) return applicationFailure("Unable to calculate current reserves right now.", occurrences.error.code);
+  if (!plan.value || movement.value.truncated || occurrences.value.length >= 500) {
+    return applicationSuccess({ available: false, currency: "MAD", reason: "reserve_inputs_incomplete", cutoffDate: period.activeDate });
+  }
+  const totals = computeMoneyMovementTotals(movement.value);
+  const commitmentTotals = summarizeObligationOccurrences(occurrences.value, period.activeDate);
+  return applicationSuccess(projectMoneyReserves({
+    cutoffDate: period.activeDate, recordedCashMinor: cash.data.recordedCashMinor,
+    unpaidCommitmentsMinor: commitmentTotals.outstandingMinor,
+    savingsTargetMinor: plan.value.savingsTargetMinor,
+    savingsFundedMinor: totals.savingsFundedMinor,
+    emergencyTargetMinor: plan.value.emergencyTargetMinor,
+    emergencyUsedMinor: totals.emergencyUsedMinor, complete: !totals.truncated,
+  }));
 }
 
 /**
