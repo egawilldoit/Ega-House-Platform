@@ -4,11 +4,15 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   createAuthenticatedActor,
   createMoneyPeriod,
+  getCurrentMoneyReserves,
   getMoneyState,
   updateMoneySettings,
 } from "@ega/application";
 import {
   SupabaseMoneyPeriodRepository,
+  SupabaseMoneyRepository,
+  SupabaseMoneyBudgetRepository,
+  SupabaseObligationRepository,
   SupabaseTimeContextRepository,
 } from "@ega/data-access";
 import type { MoneyOpeningInput } from "@ega/domain/money";
@@ -176,6 +180,19 @@ export function createMcpMoneyPeriodHandlers(
         );
         if (!result.ok) return mapApplicationError(result);
         const state = result.data;
+        const reserveResult = state.period
+          ? await getCurrentMoneyReserves(actor, {
+              period: state.period,
+              opening: state.opening,
+              periods: new SupabaseMoneyPeriodRepository(client as never),
+              movements: new SupabaseMoneyRepository(client as never),
+              budgets: new SupabaseMoneyBudgetRepository(client as never),
+              obligations: new SupabaseObligationRepository(client as never),
+            })
+          : null;
+        const reserves = reserveResult?.ok
+          ? reserveResult.data
+          : { available: false as const, currency: "MAD" as const, reason: "reserve_inputs_incomplete", cutoffDate: state.period?.activeDate ?? now.toISOString().slice(0, 10) };
         return resultFromPayload({
           ok: true,
           ...state,
@@ -190,6 +207,7 @@ export function createMcpMoneyPeriodHandlers(
             method: state.dayStartBaseline?.dailyReference?.available
               ? state.dayStartBaseline.dailyReference.algorithm
               : "safe-flexible-start-of-day-v1",
+            reserves,
           },
         });
       } catch (error) {

@@ -7,6 +7,7 @@ import { createMcpMoneyPeriodHandlers } from "./period-handlers";
 
 const mocks = vi.hoisted(() => ({
   getMoneyState: vi.fn(),
+  getCurrentMoneyReserves: vi.fn(),
   createMoneyPeriod: vi.fn(),
   updateMoneySettings: vi.fn(),
   timezoneGet: vi.fn(),
@@ -17,6 +18,7 @@ vi.mock("@ega/application", async (importOriginal) => {
   return {
     ...actual,
     getMoneyState: mocks.getMoneyState,
+    getCurrentMoneyReserves: mocks.getCurrentMoneyReserves,
     createMoneyPeriod: mocks.createMoneyPeriod,
     updateMoneySettings: mocks.updateMoneySettings,
   };
@@ -24,6 +26,9 @@ vi.mock("@ega/application", async (importOriginal) => {
 
 vi.mock("@ega/data-access", () => ({
   SupabaseMoneyPeriodRepository: class {},
+  SupabaseMoneyRepository: class {},
+  SupabaseMoneyBudgetRepository: class {},
+  SupabaseObligationRepository: class {},
   SupabaseTimeContextRepository: class {
     getTimezone = mocks.timezoneGet;
   },
@@ -162,6 +167,7 @@ describe("Money MCP tools", () => {
   it("denies state to legacy workspace-only grants and allows explicit readers", async () => {
     mocks.timezoneGet.mockResolvedValue({ ok: true, value: "Africa/Casablanca" });
     mocks.getMoneyState.mockResolvedValue({ ok: true, data: STATE });
+    mocks.getCurrentMoneyReserves.mockResolvedValue({ ok: true, data: { available: true, currency: "MAD", cutoffDate: PERIOD.activeDate, reserves: { recordedCashMinor: 48900 } } });
     const h = handlers();
 
     const denied = await h.moneyState(authInfo(WORKSPACE_PRINCIPAL), {});
@@ -181,7 +187,9 @@ describe("Money MCP tools", () => {
       available: true,
       method: "safe-flexible-start-of-day-v1",
       dayStartBaseline: { dailyReference: { referenceMinor: 2445 } },
+      reserves: { available: true, cutoffDate: PERIOD.activeDate },
     });
+    expect(mocks.getCurrentMoneyReserves).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ period: PERIOD, opening: STATE.opening }));
   });
 
   it("labels missing analytics unavailable without inventing values", async () => {
@@ -189,8 +197,9 @@ describe("Money MCP tools", () => {
     mocks.getMoneyState.mockResolvedValue({ ok: true, data: {
       ...STATE, dayStartBaseline: null, dayStartBaselineUnavailable: true,
     } });
+    mocks.getCurrentMoneyReserves.mockResolvedValue({ ok: true, data: { available: false, currency: "MAD", reason: "reserve_inputs_incomplete", cutoffDate: PERIOD.activeDate } });
     const result = structured(await handlers().moneyState(authInfo(READER_PRINCIPAL), {}));
-    expect(result.analytics).toMatchObject({ available: false, reason: "baseline_unavailable", method: "safe-flexible-start-of-day-v1", dayStartBaseline: null });
+    expect(result.analytics).toMatchObject({ available: false, reason: "baseline_unavailable", method: "safe-flexible-start-of-day-v1", dayStartBaseline: null, reserves: { available: false, reason: "reserve_inputs_incomplete" } });
   });
 
   it("passes the explicit today/active-day mode and owner timezone to the shared use case", async () => {
