@@ -353,18 +353,16 @@ test("counted visit create/delete and classification use the shared Money paths"
   });
 });
 
-test("coffee window keeps integer limits in the query string", async () => {
+test("coffee window resolves limits on the server, not from the query string", async () => {
   const { client, calls } = makeHarness(200, { ok: true, coffee: {} });
   await client.money.getCoffeeWindow({
     localDate: "2026-11-11",
     timezone: "Africa/Casablanca",
     periodStartDate: "2026-11-09",
     periodEndDate: "2026-11-30",
-    spendLimitMinor: 7_000,
-    visitLimit: 5,
   });
   assert.equal(
     calls[0]!.url,
-    "https://api.ega.example/api/money/coffee-window?localDate=2026-11-11&timezone=Africa%2FCasablanca&periodStartDate=2026-11-09&periodEndDate=2026-11-30&spendLimitMinor=7000&visitLimit=5",
+    "https://api.ega.example/api/money/coffee-window?localDate=2026-11-11&timezone=Africa%2FCasablanca&periodStartDate=2026-11-09&periodEndDate=2026-11-30",
   );
 });

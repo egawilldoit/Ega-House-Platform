@@ -46,6 +46,7 @@ const VISIT_1 = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
 const PERIOD_A = "99999999-9999-4999-8999-999999999991";
 const PERIOD_JAN = "99999999-9999-4999-8999-999999999992";
 const PERIOD_OWNER_B = "99999999-9999-4999-8999-999999999993";
+const PERIOD_FEB = "99999999-9999-4999-8999-999999999994";
 
 const READ_PERMISSIONS = ["today.read", "timer.read", "personal_ops.read"];
 const WRITE_PERMISSIONS = [...READ_PERMISSIONS, "personal_ops.write"];
@@ -398,12 +399,20 @@ async function main() {
         ),
       "23505",
     );
-    await expectConstraint("invalid allocation category", () =>
+    await expectConstraint("ended period rejects a plan", () =>
       sql.unsafe(
         `INSERT INTO public.money_budget_plans
-           (owner_user_id, period_id, allocations)
-         VALUES ($1::uuid, $2::uuid, '{"pet_supplies": 100}'::jsonb)`,
+           (owner_user_id, period_id)
+         VALUES ($1::uuid, $2::uuid)`,
         [OWNER_A, PERIOD_JAN],
+      ),
+    );
+    await expectConstraint("invalid allocation category", () =>
+      sql.unsafe(
+        `UPDATE public.money_budget_plans
+           SET allocations = '{"pet_supplies": 100}'::jsonb, version = version + 1
+         WHERE id = $1::uuid`,
+        [budget[0].id],
       ),
     );
     await expectConstraint("negative allocation", () =>
@@ -422,12 +431,12 @@ async function main() {
         [OWNER_A, PERIOD_OWNER_B],
       ),
     );
-    await expectConstraint("immutable plan period", () =>
+    await expectConstraint("immutable plan currency", () =>
       sql.unsafe(
         `UPDATE public.money_budget_plans
-           SET period_id = $2::uuid, version = version + 1
+           SET currency = 'USD', version = version + 1
          WHERE id = $1::uuid`,
-        [budget[0].id, PERIOD_JAN],
+        [budget[0].id],
       ),
     );
     await expectConstraint("plan version jump", () =>
@@ -450,6 +459,31 @@ async function main() {
     assert(updated[0].allocations.coffee === 8000, "updated allocation persisted");
     log("BUDGET", "one versioned plan per owner/period; invalid values rejected");
 
+    // Finishing the tracking period keeps its plan readable but prevents new or
+    // edited plans. A fresh tracking period is needed for the writer grant proof.
+    await sql.unsafe(
+      `UPDATE public.money_periods
+          SET lifecycle = 'ended', version = version + 1, updated_at = now()
+        WHERE id = $1::uuid`,
+      [PERIOD_A],
+    );
+    await asUser(sql, OWNER_A).run((tx) =>
+      insertPeriod(tx, {
+        id: PERIOD_FEB,
+        owner: OWNER_A,
+        start: "2027-02-01",
+        end: "2027-02-28",
+      }),
+    );
+    await expectConstraint("ended period rejects a new plan", () =>
+      sql.unsafe(
+        `INSERT INTO public.money_budget_plans
+           (owner_user_id, period_id)
+         VALUES ($1::uuid, $2::uuid)`,
+        [OWNER_A, PERIOD_A],
+      ),
+    );
+
     // RLS -------------------------------------------------------------------
     await expectDenied("reader cannot insert a budget plan", () =>
       asUser(sql, OWNER_A, { clientId: "reader-client" }).run((tx) =>
@@ -457,7 +491,7 @@ async function main() {
           `INSERT INTO public.money_budget_plans
              (period_id)
            VALUES ($1::uuid)`,
-          [PERIOD_A],
+          [PERIOD_FEB],
         ),
       ),
     );
@@ -469,7 +503,7 @@ async function main() {
            (period_id, allocations)
          VALUES ($1::uuid, '{"coffee": 100}'::jsonb)
          RETURNING id`,
-        [PERIOD_JAN],
+        [PERIOD_FEB],
       ),
     );
     assert(writerInsert.length === 1, "writer grant can create a plan");

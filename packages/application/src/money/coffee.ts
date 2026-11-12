@@ -101,6 +101,12 @@ export async function recordMoneyCoffeeVisit(
         "validation",
       );
     }
+    if (expense.value.bookingDate !== values.localDate) {
+      return applicationFailure(
+        `The visit date must match every linked coffee purchase's booking date (${expense.value.bookingDate}).`,
+        "validation",
+      );
+    }
   }
 
   const visitFingerprint = sha256Hex(canonicalCoffeeVisitPayload(values));
@@ -221,6 +227,73 @@ function countedVisitTotals(visits: readonly MoneyCoffeeVisitRecord[]): Readonly
  * distinct. Category-coffee spending not linked to a visit stays visible as
  * `uncountedCategoryCoffeeSpendMinor`.
  */
+/**
+ * Counted coffee usage over any inclusive owner-local date range. Budget
+ * allocation consumption uses the whole period; the weekly card keeps its own
+ * clipped week. Both read the same canonical visit lines.
+ */
+export type MoneyCoffeeUsage = Readonly<{
+  countedVisitCount: number;
+  countedVisitSpendMinor: number;
+  truncated: boolean;
+}>;
+
+const COFFEE_VISIT_PAGE_SIZE = 200;
+const MAX_COFFEE_VISITS = 5_000;
+
+async function loadCountedVisits(
+  actor: AuthenticatedActor,
+  coffee: MoneyCoffeeVisitRepository,
+  from: string,
+  to: string,
+): Promise<
+  ApplicationResult<Readonly<{ visits: MoneyCoffeeVisitRecord[]; truncated: boolean }>>
+> {
+  const visits: MoneyCoffeeVisitRecord[] = [];
+  let truncated = false;
+  for (let offset = 0; offset < MAX_COFFEE_VISITS; offset += COFFEE_VISIT_PAGE_SIZE) {
+    const page = await coffee.listVisits(actor, {
+      from,
+      to,
+      limit: COFFEE_VISIT_PAGE_SIZE,
+      offset,
+    });
+    if (!page.ok) {
+      return mapFailure(page.error.code, "Unable to load coffee visits right now.");
+    }
+    visits.push(...page.value);
+    if (page.value.length < COFFEE_VISIT_PAGE_SIZE) break;
+    if (visits.length >= MAX_COFFEE_VISITS) {
+      truncated = true;
+      break;
+    }
+  }
+  return applicationSuccess({ visits, truncated });
+}
+
+export async function getMoneyCoffeeVisitUsage(
+  actor: AuthenticatedActor,
+  repository: MoneyCoffeeVisitRepository,
+  input: unknown,
+): Promise<ApplicationResult<MoneyCoffeeUsage>> {
+  const parsed = parseMoneyCoffeeVisitListInput(input);
+  if (!parsed.ok) return applicationFailure(parsed.message, "validation");
+  const loaded = await loadCountedVisits(
+    actor,
+    repository,
+    parsed.value.from,
+    parsed.value.to,
+  );
+  if (!loaded.ok) return loaded;
+  const totals = countedVisitTotals(loaded.data.visits);
+  return applicationSuccess({
+    ...totals,
+    truncated:
+      loaded.data.truncated ||
+      loaded.data.visits.length >= MAX_COFFEE_VISITS,
+  });
+}
+
 export async function getMoneyCoffeeWindow(
   actor: AuthenticatedActor,
   dependencies: Readonly<{
@@ -242,27 +315,14 @@ export async function getMoneyCoffeeWindow(
     );
   }
 
-  const PAGE_SIZE = 200;
-  const MAX_VISITS = 5_000;
-  const visits: MoneyCoffeeVisitRecord[] = [];
-  let truncated = false;
-  for (let offset = 0; offset < MAX_VISITS; offset += PAGE_SIZE) {
-    const page = await dependencies.coffee.listVisits(actor, {
-      from: window.weekStart,
-      to: window.weekEnd,
-      limit: PAGE_SIZE,
-      offset,
-    });
-    if (!page.ok) {
-      return mapFailure(page.error.code, "Unable to load coffee visits right now.");
-    }
-    visits.push(...page.value);
-    if (page.value.length < PAGE_SIZE) break;
-    if (visits.length >= MAX_VISITS) {
-      truncated = true;
-      break;
-    }
-  }
+  const loaded = await loadCountedVisits(
+    actor,
+    dependencies.coffee,
+    window.weekStart,
+    window.weekEnd,
+  );
+  if (!loaded.ok) return loaded;
+  const totals = countedVisitTotals(loaded.data.visits);
 
   // Booking-date bounds are authoritative: they include date-only coffee rows
   // and stay stable across the owner timezone and DST boundaries.
@@ -278,12 +338,11 @@ export async function getMoneyCoffeeWindow(
       "Unable to load coffee spending right now.",
     );
   }
-  const totals = countedVisitTotals(visits);
 
   return applicationSuccess(
     summarizeCoffeeWindow({
       window,
-      truncated: truncated || category.value.truncated,
+      truncated: loaded.data.truncated || category.value.truncated,
       countedVisitCount: totals.countedVisitCount,
       countedVisitSpendMinor: totals.countedVisitSpendMinor,
       categoryCoffeeSpendMinor: category.value.totalsByCategory.coffee ?? 0,
@@ -291,6 +350,42 @@ export async function getMoneyCoffeeWindow(
       visitLimit: parsed.value.visitLimit,
     }),
   );
+}
+
+/**
+ * Coffee window with limits resolved from the one canonical period plan.
+ *
+ * External surfaces (web, Hono, MCP) must not accept caller-supplied limits:
+ * the plan is the single editable owner. An absent plan means "no limit", never
+ * an invented zero.
+ */
+export async function getMoneyCoffeeWindowForPlan(
+  actor: AuthenticatedActor,
+  dependencies: Readonly<{
+    expenses: ExpenseRepository;
+    coffee: MoneyCoffeeVisitRepository;
+  }>,
+  input: Readonly<{
+    localDate: string;
+    timezone: string;
+    periodStartDate: string;
+    periodEndDate: string;
+    plan:
+      | Readonly<{
+          coffeeWeeklySpendLimitMinor: number | null;
+          coffeeWeeklyVisitLimit: number | null;
+        }>
+      | null;
+  }>,
+): Promise<ApplicationResult<CoffeeWindowSummary>> {
+  return getMoneyCoffeeWindow(actor, dependencies, {
+    localDate: input.localDate,
+    timezone: input.timezone,
+    periodStartDate: input.periodStartDate,
+    periodEndDate: input.periodEndDate,
+    spendLimitMinor: input.plan?.coffeeWeeklySpendLimitMinor ?? null,
+    visitLimit: input.plan?.coffeeWeeklyVisitLimit ?? null,
+  });
 }
 
 export type ClassifyMoneyExpenseOutcome = Readonly<{

@@ -473,8 +473,6 @@ export function createMcpReadToolHandlers(
         timezone: string;
         periodStartDate: string;
         periodEndDate: string;
-        spendLimitMinor?: number | null;
-        visitLimit?: number | null;
       },
     ): Promise<CallToolResult> {
       return moneyHandlers.moneyCoffeeWindow(authInfo, input);

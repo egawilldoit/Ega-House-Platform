@@ -6,7 +6,7 @@ import {
   createAuthenticatedActor,
   deleteMoneyCoffeeVisit,
   getMoneyBudgetPlan,
-  getMoneyCoffeeWindow,
+  getMoneyCoffeeWindowForPlan,
   listMoneyCoffeeVisits,
   patchMoneyBudgetPlan,
   recordMoneyCoffeeVisit,
@@ -57,8 +57,6 @@ export type McpMoneyCoffeeWindowInput = Readonly<{
   timezone: string;
   periodStartDate: string;
   periodEndDate: string;
-  spendLimitMinor?: number | null;
-  visitLimit?: number | null;
 }>;
 
 export type McpMoneyCoffeeVisitListInput = Readonly<{
@@ -239,10 +237,24 @@ export function createMcpMoneyBudgetHandlers(dependencies: {
     async moneyCoffeeWindow(authInfo, input) {
       try {
         const { principal, client } = clientOf(authInfo, "personal_ops.read");
-        const result = await getMoneyCoffeeWindow(
-          createAuthenticatedActor(principal.ownerUserId),
+        const actor = createAuthenticatedActor(principal.ownerUserId);
+        const planResult = await getMoneyBudgetPlan(actor, budgetDependencies(client), {
+          periodStartDate: input?.periodStartDate,
+          periodEndDate: input?.periodEndDate,
+        });
+        if (!planResult.ok) {
+          return applicationError(planResult, "Permission denied.");
+        }
+        const result = await getMoneyCoffeeWindowForPlan(
+          actor,
           coffeeDependencies(client),
-          input,
+          {
+            localDate: input?.localDate,
+            timezone: input?.timezone,
+            periodStartDate: input?.periodStartDate,
+            periodEndDate: input?.periodEndDate,
+            plan: planResult.data,
+          },
         );
         if (!result.ok) return applicationError(result, "Permission denied.");
         return resultFromPayload({ ok: true, coffee: result.data });

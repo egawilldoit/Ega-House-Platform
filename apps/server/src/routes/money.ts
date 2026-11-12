@@ -7,7 +7,7 @@ import {
   createMovement,
   deleteMoneyCoffeeVisit,
   getMoneyBudgetPlan,
-  getMoneyCoffeeWindow,
+  getMoneyCoffeeWindowForPlan,
   getMoneyState,
   getMovement,
   getTimeContextTimezone,
@@ -434,10 +434,25 @@ export function createMoneyRoutes(
   });
 
   routes.get("/coffee-window", async (c) => {
-    const result = await getMoneyCoffeeWindow(
+    const plan = await getMoneyBudgetPlan(
+      c.var.actor,
+      budgetDependencies(c),
+      {
+        periodStartDate: c.req.query("periodStartDate"),
+        periodEndDate: c.req.query("periodEndDate"),
+      },
+    );
+    if (!plan.ok) return errorResponse(c, plan.code, plan.errorMessage);
+    const result = await getMoneyCoffeeWindowForPlan(
       c.var.actor,
       coffeeDependencies(c),
-      c.req.query(),
+      {
+        localDate: c.req.query("localDate") ?? "",
+        timezone: c.req.query("timezone") ?? "",
+        periodStartDate: c.req.query("periodStartDate") ?? "",
+        periodEndDate: c.req.query("periodEndDate") ?? "",
+        plan: plan.data,
+      },
     );
     if (!result.ok) return errorResponse(c, result.code, result.errorMessage);
     const response: MoneyCoffeeWindowResponse = { ok: true, coffee: result.data };

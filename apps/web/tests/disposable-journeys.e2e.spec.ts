@@ -63,6 +63,12 @@ test("Money survives reload, exports only the owner, then edits and deletes", as
   await page.reload();
   const row = page.getByRole("row").filter({ hasText: "E2E owner A coffee" });
   await expect(row).toHaveCount(1);
+  // MONEY-05 controls must be reachable from the expense table, not only in the
+  // non-expense movement ledger. Counting is metadata on the same row.
+  const countVisit = row.getByRole("button", { name: "Count visit", exact: true });
+  await expect(countVisit).toBeVisible();
+  await countVisit.click();
+  await expect(row.getByRole("status")).toContainText("Saved.");
   const a = await ownerClient(owners.ownerA);
   const expenses = await a.from("personal_expenses").select("id,amount_minor,occurred_at").is("deleted_at", null);
   expect(expenses.error).toBeNull();

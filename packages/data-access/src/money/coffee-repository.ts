@@ -223,13 +223,8 @@ export class SupabaseMoneyCoffeeRepository implements MoneyCoffeeVisitRepository
       return { ok: false, error: { code: "conflict" } };
     }
 
-    const lines = await this.supabase
-      .from(LINES)
-      .delete()
-      .eq("owner_user_id", actor.userId)
-      .eq("visit_id", id);
-    if (lines.error) return { ok: false, error: coffeeFailure(lines.error) };
-
+    // Deleting the visit cascades its lines in the same statement, so a
+    // concurrent conflict cannot leave a visit with missing lines.
     const removed = await this.supabase
       .from(VISITS)
       .delete()

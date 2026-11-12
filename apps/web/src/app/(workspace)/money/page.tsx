@@ -2,7 +2,8 @@ import { redirect } from "next/navigation";
 import {
   createAuthenticatedActor,
   getMoneyBudgetPlan,
-  getMoneyCoffeeWindow,
+  getMoneyCoffeeVisitUsage,
+  getMoneyCoffeeWindowForPlan,
   getMoneyMovementTotals,
   getMoneyPeriodSpending,
   getMoneyState,
@@ -10,6 +11,7 @@ import {
   listMovements,
   movementEffect,
   type MoneyMovementTotals,
+  type MoneyCoffeeUsage,
   type MoneyPeriodSpending,
   type MoneyState,
 } from "@ega/application";
@@ -87,6 +89,7 @@ export default async function MoneyPage({ searchParams }: Props) {
   let moneyState: MoneyState | null = null;
   let budgetResult: Awaited<ReturnType<typeof getMoneyBudgetPlan>> | null = null;
   let coffeeWindow: CoffeeWindowSummary | null = null;
+  let coffeeUsage: MoneyCoffeeUsage | null = null;
   let periodSpending: MoneyPeriodSpending | null = null;
   let movements: MoneyLedgerRow[] | null = null;
   let movementTotals: MoneyMovementTotals | null = null;
@@ -132,7 +135,7 @@ export default async function MoneyPage({ searchParams }: Props) {
         },
       ).catch(() => null);
       periodSpending = spendingResult?.ok ? spendingResult.data : null;
-      const coffeeResult = await getMoneyCoffeeWindow(
+      const coffeeResult = await getMoneyCoffeeWindowForPlan(
         actor,
         {
           expenses: new SupabaseExpenseRepository(client),
@@ -143,11 +146,18 @@ export default async function MoneyPage({ searchParams }: Props) {
           timezone,
           periodStartDate: period.startDate,
           periodEndDate: period.endDate,
-          spendLimitMinor: plan?.coffeeWeeklySpendLimitMinor ?? null,
-          visitLimit: plan?.coffeeWeeklyVisitLimit ?? null,
+          plan,
         },
       ).catch(() => null);
       coffeeWindow = coffeeResult?.ok ? coffeeResult.data : null;
+      // The period allocation consumes counted visits across the whole period;
+      // the weekly card above intentionally clips to the current week.
+      const usageResult = await getMoneyCoffeeVisitUsage(
+        actor,
+        new SupabaseMoneyCoffeeRepository(client),
+        { from: period.startDate, to: period.endDate },
+      ).catch(() => null);
+      coffeeUsage = usageResult?.ok ? usageResult.data : null;
     }
 
     // MONEY-04 movement ledger: the same canonical rows and totals as HTTP/MCP.
@@ -189,6 +199,7 @@ export default async function MoneyPage({ searchParams }: Props) {
     moneyState = null;
     budgetResult = null;
     coffeeWindow = null;
+    coffeeUsage = null;
     periodSpending = null;
     movements = null;
     movementTotals = null;
@@ -347,11 +358,12 @@ export default async function MoneyPage({ searchParams }: Props) {
                   .sort((a, b) => b[1] - a[1])
                   .map(([category, allocation]) => {
                     // Consumption uses this period's booking dates. Coffee
-                    // follows counted-visit amounts; category coffee remains a
-                    // separate projection. Unknown values stay unavailable.
+                    // follows counted-visit amounts for the whole period;
+                    // category coffee remains a separate projection. Unknown
+                    // values stay unavailable.
                     const spent =
                       category === "coffee"
-                        ? coffeeWindow?.countedVisitSpendMinor ?? null
+                        ? coffeeUsage?.countedVisitSpendMinor ?? null
                         : periodSpending?.totalsByCategory[category] ?? (periodSpending ? 0 : null);
                     return (
                       <li key={category} className="flex flex-wrap items-baseline gap-x-3 text-[length:var(--text-body)]">
@@ -557,7 +569,7 @@ export default async function MoneyPage({ searchParams }: Props) {
     </section> : result.data.expenses.length === 0 ? <section className="mt-6 rounded-lg border border-ega-border p-5"><p className="text-ega-text-secondary">{offset === 0 ? "No expenses yet." : "No expenses on this page."}</p>{offset > 0 && <a className="underline" href={`/money?offset=${Math.max(0, offset - 25)}`}>Previous page</a>}</section> : <>
       <div className="mt-6 overflow-x-auto rounded-lg border border-ega-border">
         <table className="w-full min-w-[50rem] text-left text-sm"><caption className="sr-only">Expenses</caption><thead><tr><th scope="col" className="p-3">Date</th><th scope="col" className="p-3">Merchant</th><th scope="col" className="p-3">Category</th><th scope="col" className="p-3">Need or want</th><th scope="col" className="p-3 text-right">Amount</th><th scope="col" className="p-3 text-right">Actions</th></tr></thead>
-          <tbody>{result.data.expenses.map((expense) => <tr key={expense.id} className="border-t border-ega-border"><td className="p-3">{expense.occurredAt ? new Intl.DateTimeFormat("en-GB", { dateStyle: "medium", timeZone: timezone }).format(new Date(expense.occurredAt)) : `${expense.bookingDate} (time unknown)`}</td><td className="p-3">{expense.merchant ?? "Expense"}{expense.note && <p className="mt-1 text-xs text-ega-text-secondary">{expense.note}</p>}</td><td className="p-3">{expense.category.replaceAll("_", " ")}</td><td className="p-3">{expense.needVsWant}</td><td className="p-3 text-right tabular-nums">{new Intl.NumberFormat("fr-MA", { style: "currency", currency: "MAD", minimumFractionDigits: 2 }).format(expense.amountMinor / 100)}</td><td className="p-3"><MoneyRowActions ownerKey={user.id} expense={expense} /></td></tr>)}</tbody>
+          <tbody>{result.data.expenses.map((expense) => <tr key={expense.id} className="border-t border-ega-border"><td className="p-3">{expense.occurredAt ? new Intl.DateTimeFormat("en-GB", { dateStyle: "medium", timeZone: timezone }).format(new Date(expense.occurredAt)) : `${expense.bookingDate} (time unknown)`}</td><td className="p-3">{expense.merchant ?? "Expense"}{expense.note && <p className="mt-1 text-xs text-ega-text-secondary">{expense.note}</p>}</td><td className="p-3">{expense.category.replaceAll("_", " ")}</td><td className="p-3">{expense.needVsWant}</td><td className="p-3 text-right tabular-nums">{new Intl.NumberFormat("fr-MA", { style: "currency", currency: "MAD", minimumFractionDigits: 2 }).format(expense.amountMinor / 100)}</td><td className="p-3"><div className="flex flex-col items-end gap-2"><MoneyRowActions ownerKey={user.id} expense={expense} />{expense.category === "coffee" ? <CoffeeVisitControls expenseId={expense.id} version={expense.version} recordVisit={recordCoffeeVisitAction} classifyAsGroceries={classifyExpenseCategoryAction} /> : null}</div></td></tr>)}</tbody>
         </table>
       </div>
       <nav aria-label="Expense pages" className="mt-4 flex justify-between"><span>{offset > 0 && <a className="underline" href={`/money?offset=${Math.max(0, offset - 25)}`}>Previous</a>}</span><span>{result.data.pagination.hasMore && <a className="underline" href={`/money?offset=${offset + 25}`}>Next</a>}</span></nav>
@@ -638,17 +650,7 @@ export default async function MoneyPage({ searchParams }: Props) {
                       {formatMad(effect.cashDeltaMinor)}
                     </td>
                     <td className="p-3 text-right">
-                      <div className="flex flex-col items-end gap-2">
-                        <MoneyMovementActions movement={movement} />
-                        {movement.kind === "expense" && movement.category === "coffee" ? (
-                          <CoffeeVisitControls
-                            expenseId={movement.id}
-                            version={movement.version}
-                            recordVisit={recordCoffeeVisitAction}
-                            classifyAsGroceries={classifyExpenseCategoryAction}
-                          />
-                        ) : null}
-                      </div>
+                      <MoneyMovementActions movement={movement} />
                     </td>
                   </tr>
                 );
