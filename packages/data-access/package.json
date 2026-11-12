@@ -16,6 +16,8 @@
     "./preferences": "./src/preferences/repository.ts",
     "./expenses": "./src/expenses/repository.ts",
     "./money": "./src/money/repository.ts",
+    "./money/budgets": "./src/money/budget-repository.ts",
+    "./money/coffee": "./src/money/coffee-repository.ts",
     "./execution-evidence": "./src/execution-evidence/repository.ts",
     "./operator": "./src/operator/repository.ts",
     "./weekly-review": "./src/weekly-review/repository.ts",

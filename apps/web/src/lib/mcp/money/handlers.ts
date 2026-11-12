@@ -9,6 +9,10 @@ import type {
 import type { McpDatabase } from "@/lib/mcp/mcp-database.types";
 
 import {
+  createMcpMoneyBudgetHandlers,
+  type McpMoneyBudgetHandlers,
+} from "./budget-handlers";
+import {
   createMcpMoneyExpenseHandlers,
   type McpMoneyExpenseHandlers,
 } from "./expense-handlers";
@@ -22,9 +26,10 @@ import {
 } from "./period-handlers";
 
 /**
- * One Money MCP surface composed from three disjoint tool families:
- * expense CRUD/reads (MONEY-02), period/settings state (MONEY-03) and movement
- * create/read/update (MONEY-04).
+ * One Money MCP surface composed from four disjoint tool families:
+ * expense CRUD/reads (MONEY-02), period/settings state (MONEY-03), movement
+ * create/read/update (MONEY-04) and budgets/categories/counted coffee
+ * (MONEY-05).
  *
  * Each family calls the same canonical application use cases and repositories;
  * this barrel only owns the shared dependency shape and the composed handler
@@ -44,7 +49,8 @@ export type McpMoneyDependencies = {
 
 export type McpMoneyHandlers = McpMoneyExpenseHandlers &
   McpMoneyPeriodHandlers &
-  McpMoneyMovementHandlers;
+  McpMoneyMovementHandlers &
+  McpMoneyBudgetHandlers;
 
 export function createMcpMoneyHandlers(
   dependencies: McpMoneyDependencies,
@@ -53,8 +59,19 @@ export function createMcpMoneyHandlers(
     ...createMcpMoneyExpenseHandlers(dependencies),
     ...createMcpMoneyPeriodHandlers(dependencies),
     ...createMcpMoneyMovementHandlers(dependencies),
+    ...createMcpMoneyBudgetHandlers(dependencies),
   };
 }
+
+export type {
+  McpMoneyBudgetGetInput,
+  McpMoneyClassifyExpenseInput,
+  McpMoneyCoffeeVisitListInput,
+  McpMoneyCoffeeWindowInput,
+  McpMoneyDeleteCoffeeVisitInput,
+  McpMoneyRecordCoffeeVisitInput,
+  McpMoneySetAllocationInput,
+} from "./budget-handlers";
 
 export type {
   McpMoneyCreateInput,

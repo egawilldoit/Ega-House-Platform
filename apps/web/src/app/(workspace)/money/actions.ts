@@ -3,21 +3,26 @@
 import { revalidatePath } from "next/cache";
 
 import {
+  classifyMoneyExpense,
   createAuthenticatedActor,
   createExpense,
   createMoneyPeriod,
   createMovement,
   deleteExpense,
   getExpense,
+  recordMoneyCoffeeVisit,
+  saveMoneyBudgetPlan,
   updateExpense,
   updateMoneySettings,
   updateMovement,
 } from "@ega/application";
 import type { ExpenseDto } from "@ega/contracts/expenses";
-import type { MoneyMovementDto } from "@ega/contracts/money";
+import type { MoneyBudgetPlanDto, MoneyMovementDto } from "@ega/contracts/money";
 import type { MoneyOpeningInput } from "@ega/domain/money";
 import {
   SupabaseExpenseRepository,
+  SupabaseMoneyBudgetRepository,
+  SupabaseMoneyCoffeeRepository,
   SupabaseMoneyPeriodRepository,
   SupabaseMoneyRepository,
 } from "@ega/data-access";
@@ -527,4 +532,161 @@ export async function updateMovementAction(
   revalidatePath("/money");
   revalidatePath("/today");
   return { ok: true, movement: result.data };
+}
+
+/* ------------------------------------------------------------------ */
+/* MONEY-05: period budget, counted visits and explicit classification */
+/* ------------------------------------------------------------------ */
+
+export type SaveBudgetPlanActionInput = {
+  periodStartDate: string;
+  periodEndDate: string;
+  version: number;
+  allocations: Partial<Record<ExpenseCategory, number>>;
+  savingsTargetMinor: number | null;
+  emergencyTargetMinor: number | null;
+  coffeeWeeklySpendLimitMinor: number | null;
+  coffeeWeeklyVisitLimit: number | null;
+};
+
+export type SaveBudgetPlanActionResult =
+  | { ok: true; plan: MoneyBudgetPlanDto }
+  | { ok: false; code: ExpenseMutationErrorCode; error: string };
+
+/**
+ * Versioned period budget save. The client submits only values and the current
+ * version; owner identity comes from the verified session and the plan is
+ * attached to the canonical period row. Spending never calls this action.
+ */
+export async function saveBudgetPlanAction(
+  input: SaveBudgetPlanActionInput,
+): Promise<SaveBudgetPlanActionResult> {
+  const user = await getCurrentUser();
+  if (!user) {
+    return { ok: false, code: "UNAUTHENTICATED", error: "Sign in to edit budgets." };
+  }
+  const client = await createClient();
+  const result = await saveMoneyBudgetPlan(
+    createAuthenticatedActor(user.id),
+    {
+      budgets: new SupabaseMoneyBudgetRepository(client),
+      periods: new SupabaseMoneyPeriodRepository(client),
+    },
+    {
+      periodStartDate: input.periodStartDate,
+      periodEndDate: input.periodEndDate,
+      allocations: input.allocations,
+      savingsTargetMinor: input.savingsTargetMinor,
+      emergencyTargetMinor: input.emergencyTargetMinor,
+      coffeeWeeklySpendLimitMinor: input.coffeeWeeklySpendLimitMinor,
+      coffeeWeeklyVisitLimit: input.coffeeWeeklyVisitLimit,
+      version: input.version,
+    },
+  );
+  if (!result.ok) {
+    return {
+      ok: false,
+      code: mapApplicationCode(result.code),
+      error: result.errorMessage,
+    };
+  }
+  revalidatePath("/money");
+  return { ok: true, plan: result.data };
+}
+
+export type RecordCoffeeVisitActionResult =
+  | { ok: true; replayed: boolean }
+  | { ok: false; code: ExpenseMutationErrorCode; error: string };
+
+/**
+ * Count one ordinary coffee purchase as one visit. The deterministic visit key
+ * is the canonical expense id, so a retry replays the same visit instead of
+ * inflating the count; the expense row remains the only cash effect.
+ */
+export async function recordCoffeeVisitAction(
+  expenseId: string,
+): Promise<RecordCoffeeVisitActionResult> {
+  const user = await getCurrentUser();
+  if (!user) {
+    return { ok: false, code: "UNAUTHENTICATED", error: "Sign in to count visits." };
+  }
+  const client = await createClient();
+  const actor = createAuthenticatedActor(user.id);
+  const expense = await getExpense(actor, new SupabaseExpenseRepository(client), expenseId);
+  if (!expense.ok || !expense.data) {
+    return {
+      ok: false,
+      code: expense.ok ? "NOT_FOUND" : mapApplicationCode(expense.code),
+      error: expense.ok ? "Expense was not found." : expense.errorMessage,
+    };
+  }
+  let timezone = "UTC";
+  try {
+    timezone = (await getWebTimeContext()).timezone;
+  } catch {
+    timezone = "UTC";
+  }
+  const result = await recordMoneyCoffeeVisit(
+    actor,
+    {
+      expenses: new SupabaseExpenseRepository(client),
+      coffee: new SupabaseMoneyCoffeeRepository(client),
+    },
+    {
+      visitKey: `coffee-expense-${expense.data.id}`,
+      // Booking date is the resolved owner-local day even for date-only rows.
+      localDate: expense.data.bookingDate,
+      timezone,
+      expenseIds: [expense.data.id],
+      note: null,
+    },
+  );
+  if (!result.ok) {
+    return {
+      ok: false,
+      code: mapApplicationCode(result.code),
+      error: result.errorMessage,
+    };
+  }
+  revalidatePath("/money");
+  return { ok: true, replayed: result.data.replayed };
+}
+
+export type ClassifyExpenseActionResult =
+  | { ok: true; countedCoffeeUsageChanged: boolean }
+  | { ok: false; code: ExpenseMutationErrorCode; error: string };
+
+/**
+ * Explicit classification control (for example "Coffee, classify as groceries
+ * for testing"). The description/note is preserved unless the caller supplies
+ * a replacement, groceries spending increases, and counted coffee usage stays
+ * unchanged because no visit is created.
+ */
+export async function classifyExpenseCategoryAction(
+  expenseId: string,
+  version: number,
+  category: ExpenseCategory,
+): Promise<ClassifyExpenseActionResult> {
+  const user = await getCurrentUser();
+  if (!user) {
+    return { ok: false, code: "UNAUTHENTICATED", error: "Sign in to edit expenses." };
+  }
+  const client = await createClient();
+  const result = await classifyMoneyExpense(
+    createAuthenticatedActor(user.id),
+    {
+      expenses: new SupabaseExpenseRepository(client),
+      coffee: new SupabaseMoneyCoffeeRepository(client),
+    },
+    { expenseId, version, category },
+  );
+  if (!result.ok) {
+    return {
+      ok: false,
+      code: mapApplicationCode(result.code),
+      error: result.errorMessage,
+    };
+  }
+  revalidatePath("/money");
+  return { ok: true, countedCoffeeUsageChanged: result.data.countedCoffeeUsageChanged };
 }

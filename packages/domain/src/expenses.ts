@@ -17,6 +17,12 @@ import {
 export const EXPENSE_CURRENCY = "MAD" as const;
 export type ExpenseCurrency = typeof EXPENSE_CURRENCY;
 
+/**
+ * Additive taxonomy (MONEY-05). The original nine values keep their order and
+ * meaning so persisted rows stay valid and callers keep working; the appended
+ * values are distinct reporting groups, never a replacement for an old one.
+ * Movement-only meanings (Start/Income/Saving) are money kinds, not categories.
+ */
 export const EXPENSE_CATEGORY_VALUES = [
   "coffee",
   "groceries",
@@ -27,6 +33,11 @@ export const EXPENSE_CATEGORY_VALUES = [
   "household",
   "health",
   "other",
+  "daily_usage",
+  "personal_care",
+  "work_tools",
+  "fun",
+  "emergency",
 ] as const;
 export type ExpenseCategory = (typeof EXPENSE_CATEGORY_VALUES)[number];
 
