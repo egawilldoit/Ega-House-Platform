@@ -237,14 +237,6 @@ export function createMoneyApi(http: HttpClient): MoneyApi {
           timezone: query.timezone,
           periodStartDate: query.periodStartDate,
           periodEndDate: query.periodEndDate,
-          spendLimitMinor:
-            query.spendLimitMinor === undefined || query.spendLimitMinor === null
-              ? undefined
-              : String(query.spendLimitMinor),
-          visitLimitMinor:
-            query.visitLimitMinor === undefined || query.visitLimitMinor === null
-              ? undefined
-              : String(query.visitLimitMinor),
         },
       });
     },

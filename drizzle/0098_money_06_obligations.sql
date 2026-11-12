@@ -424,6 +424,8 @@ DECLARE
   linked_amount integer;
   linked_currency text;
   linked_deleted_at timestamp with time zone;
+  linked_direction text;
+  linked_kind text;
   template_owner uuid;
 BEGIN
   IF NEW.template_id IS NOT NULL THEN
@@ -447,8 +449,10 @@ BEGIN
     RETURN NEW;
   END IF;
 
-  SELECT expense.owner_user_id, expense.amount_minor, expense.currency, expense.deleted_at
-    INTO linked_owner, linked_amount, linked_currency, linked_deleted_at
+  SELECT expense.owner_user_id, expense.amount_minor, expense.currency,
+         expense.deleted_at, expense.direction, expense.kind
+    INTO linked_owner, linked_amount, linked_currency, linked_deleted_at,
+         linked_direction, linked_kind
     FROM public.personal_expenses AS expense
     WHERE expense.id = NEW.payment_expense_id;
 
@@ -469,6 +473,11 @@ BEGIN
 
   IF linked_currency IS DISTINCT FROM 'MAD' THEN
     RAISE EXCEPTION 'The linked obligation payment must be MAD.'
+      USING ERRCODE = '23514';
+  END IF;
+
+  IF linked_direction IS DISTINCT FROM 'out' OR linked_kind IS DISTINCT FROM 'expense' THEN
+    RAISE EXCEPTION 'The linked obligation payment must be an expense outflow, not income, opening cash or a savings transfer.'
       USING ERRCODE = '23514';
   END IF;
 
@@ -561,7 +570,27 @@ GRANT UPDATE (
 --> statement-breakpoint
 GRANT SELECT ON TABLE "public"."money_obligations" TO authenticated;
 --> statement-breakpoint
-GRANT INSERT ON TABLE "public"."money_obligations" TO authenticated;
+GRANT INSERT (
+	"id",
+	"owner_user_id",
+	"template_id",
+	"kind",
+	"description",
+	"amount_minor",
+	"currency",
+	"period_start",
+	"period_end",
+	"due_date",
+	"need_vs_want",
+	"purpose",
+	"counts_in_daily",
+	"category",
+	"state_effective_date",
+	"idempotency_key",
+	"create_fingerprint",
+	"created_at",
+	"updated_at"
+) ON TABLE "public"."money_obligations" TO authenticated;
 --> statement-breakpoint
 GRANT UPDATE (
 	"description",
@@ -576,8 +605,6 @@ GRANT UPDATE (
 	"state",
 	"state_effective_date",
 	"state_reason",
-	"payment_expense_id",
-	"payment_evidence",
 	"version",
 	"updated_at"
 ) ON TABLE "public"."money_obligations" TO authenticated;

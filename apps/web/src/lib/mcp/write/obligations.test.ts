@@ -184,7 +184,7 @@ describe("MCP obligation write handlers", () => {
       "{}";
     const inserted = JSON.parse(payloadJson) as Record<string, unknown>;
     expect(inserted.owner_user_id).toBe(writer.ownerUserId);
-    expect(inserted.state).toBe("pending");
+    expect(inserted.state).toBeUndefined(); // DB default keeps new rows pending
   });
 
   it("refuses a status-only paid transition with a MONEY-07 conflict", async () => {

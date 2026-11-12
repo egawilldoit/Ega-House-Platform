@@ -57,6 +57,7 @@ function createHandlers() {
     moneyObligationsList: vi.fn().mockResolvedValue({ content: [] }),
     moneyObligationGet: vi.fn().mockResolvedValue({ content: [] }),
     moneyObligationTemplatesList: vi.fn().mockResolvedValue({ content: [] }),
+    moneyObligationsSummary: vi.fn().mockResolvedValue({ content: [] }),
   };
 }
 
@@ -91,6 +92,7 @@ describe("registerMcpReadTools", () => {
       "ega_money_obligations_list",
       "ega_money_obligation_get",
       "ega_money_obligation_templates_list",
+      "ega_money_obligation_summary",
       "ega_list_timer_sessions",
     ]);
   });

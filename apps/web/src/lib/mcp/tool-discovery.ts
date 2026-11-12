@@ -45,6 +45,7 @@ const ALL_TOOLS: readonly McpToolDefinition[] = [
   { name: "ega_money_obligations_list", requiredPermission: "personal_ops.read" },
   { name: "ega_money_obligation_get", requiredPermission: "personal_ops.read" },
   { name: "ega_money_obligation_templates_list", requiredPermission: "personal_ops.read" },
+  { name: "ega_money_obligation_summary", requiredPermission: "personal_ops.read" },
   // Personal Operations writes: explicit writer grant, never auto-upgraded.
   { name: "ega_create_personal_ops_expense", requiredPermission: "personal_ops.write", writesEnabledRequired: true },
   { name: "ega_save_personal_ops_checkin", requiredPermission: "personal_ops.write", writesEnabledRequired: true },

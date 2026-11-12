@@ -155,6 +155,11 @@ export type McpReadToolHandlers = {
     input: { kind?: string; includeArchived?: boolean },
     context?: McpProtocolContext,
   ) => Promise<CallToolResult>;
+  moneyObligationsSummary: (
+    authInfo: AuthInfo | undefined,
+    input: { cutoff: string },
+    context?: McpProtocolContext,
+  ) => Promise<CallToolResult>;
 };
 
 export type McpWriteToolHandlers = {
@@ -742,6 +747,10 @@ const moneyObligationGetInputSchema = z.object({
 const moneyObligationTemplatesInputSchema = z.object({
   kind: obligationKindSchema.optional(),
   includeArchived: z.boolean().default(false),
+}).strict();
+
+const moneyObligationSummaryInputSchema = z.object({
+  cutoff: obligationDateSchema,
 }).strict();
 
 const personalOpsSummaryOutputSchema = z.object({
@@ -1524,6 +1533,23 @@ const READ_TOOL_REGISTRATIONS: readonly ReadToolRegistration[] = [
         },
         async (input, ctx) =>
           handlers.moneyObligationTemplatesList(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
+      ),
+  },
+  {
+    name: "ega_money_obligation_summary",
+    register: (server, handlers) =>
+      server.registerTool(
+        "ega_money_obligation_summary",
+        {
+          title: "Read Money obligation totals",
+          description:
+            "Read due, overdue, outstanding, paid, waived and cancelled totals at an inclusive owner-local cutoff. Totals use complete occurrences and say when the bounded list was truncated. Requires the explicit personal_ops.read grant.",
+          inputSchema: moneyObligationSummaryInputSchema,
+          outputSchema: moneyObligationReadOutputSchema,
+          annotations: READ_ONLY_ANNOTATIONS,
+        },
+        async (input, ctx) =>
+          handlers.moneyObligationsSummary(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
       ),
   },
   {
