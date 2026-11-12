@@ -146,42 +146,22 @@ export class SupabaseMoneyCoffeeRepository implements MoneyCoffeeVisitRepository
     actor: AuthenticatedActor,
     input: MoneyCoffeeVisitCreateInput,
   ): Promise<RepositoryResult<MoneyCoffeeVisitRecord>> {
-    const { data, error } = await this.supabase
-      .from(VISITS)
-      .insert({
-        owner_user_id: actor.userId,
-        visit_key: input.values.visitKey,
-        visit_fingerprint: input.visitFingerprint,
-        local_date: input.values.localDate,
-        timezone: input.values.timezone,
-        note: input.values.note,
-        created_at: input.createdAt,
-        updated_at: input.createdAt,
-      })
-      .select("id")
-      .single();
+    // One authenticated transaction owns the visit identity and its lines, so a
+    // concurrent retry cannot replay a visit before its lines exist.
+    const { data, error } = await this.supabase.rpc("money_record_coffee_visit", {
+      p_visit_key: input.values.visitKey,
+      p_visit_fingerprint: input.visitFingerprint,
+      p_local_date: input.values.localDate,
+      p_timezone: input.values.timezone,
+      p_note: input.values.note,
+      p_expense_ids: input.values.expenseIds,
+    });
     if (error) return { ok: false, error: coffeeFailure(error) };
-    if (!data) return { ok: false, error: { code: "unknown" } };
-    const visitId = String((data as { id: string }).id);
-
-    const lines = input.values.expenseIds.map((expenseId) => ({
-      owner_user_id: actor.userId,
-      visit_id: visitId,
-      expense_id: expenseId,
-    }));
-    const { error: linesError } = await this.supabase.from(LINES).insert(lines);
-    if (linesError) {
-      // Compensate the partial insert: the ledger itself is untouched, but a
-      // visit without its lines would be a misleading counted visit.
-      await this.supabase
-        .from(VISITS)
-        .delete()
-        .eq("owner_user_id", actor.userId)
-        .eq("id", visitId);
-      return { ok: false, error: coffeeFailure(linesError) };
+    if (typeof data !== "string" || data.length === 0) {
+      return { ok: false, error: { code: "unknown" } };
     }
 
-    const created = await this.getVisit(actor, visitId);
+    const created = await this.getVisit(actor, data);
     if (!created.ok) return created;
     if (!created.value) return { ok: false, error: { code: "unknown" } };
     return { ok: true, value: created.value };

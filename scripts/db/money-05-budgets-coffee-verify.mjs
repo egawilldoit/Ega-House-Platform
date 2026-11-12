@@ -457,6 +457,23 @@ async function main() {
     );
     assert(updated[0].version === 2, "valid update increments version once");
     assert(updated[0].allocations.coffee === 8000, "updated allocation persisted");
+
+    // The authenticated column grants must allow a real budget edit. Sending
+    // immutable period/currency columns would fail even when values are equal.
+    const writerUpdate = await asUser(sql, OWNER_A, {
+      clientId: "writer-client",
+    }).run((tx) =>
+      tx.unsafe(
+        `UPDATE public.money_budget_plans
+            SET allocations = '{"coffee": 8500}'::jsonb, version = version + 1,
+                updated_at = now()
+          WHERE id = $1::uuid AND version = 2
+          RETURNING version`,
+        [budget[0].id],
+      ),
+    );
+    assert(writerUpdate.length === 1, "writer grant can update a plan");
+    assert(writerUpdate[0].version === 3, "authenticated update bumps the version");
     log("BUDGET", "one versioned plan per owner/period; invalid values rejected");
 
     // Finishing the tracking period keeps its plan readable but prevents new or
@@ -496,7 +513,7 @@ async function main() {
       [budget[0].id],
     );
     assert(endedPlan.length === 1, "ended period plan stays readable");
-    assert(endedPlan[0].version === 2, "rejected edit leaves the version unchanged");
+    assert(endedPlan[0].version === 3, "rejected edit leaves the version unchanged");
 
     // RLS -------------------------------------------------------------------
     await expectDenied("reader cannot insert a budget plan", () =>
@@ -639,6 +656,47 @@ async function main() {
     assert(afterDelete[0].lines === 0, "visit lines cascade with the visit");
     assert(afterDelete[0].expense === 1, "canonical expense survives visit deletion");
     log("COFFEE", "unique/replayable visit, multi-line count, delete keeps spending");
+
+    // Atomic visit identity + lines through one authenticated function.
+    const rpcVisit = await asUser(sql, OWNER_A, {
+      clientId: "writer-client",
+    }).run((tx) =>
+      tx.unsafe(
+        `SELECT public.money_record_coffee_visit(
+           'visit-atomic', $1, '2026-11-11'::date, 'Africa/Casablanca', NULL,
+           ARRAY[$2::uuid, $3::uuid]
+         ) AS id`,
+        [
+          receiptFingerprint("visit-atomic"),
+          EXPENSE_COFFEE,
+          EXPENSE_COFFEE_2,
+        ],
+      ),
+    );
+    assert(rpcVisit.length === 1, "atomic visit function returns the visit id");
+    const atomicLines = await sql.unsafe(
+      `SELECT count(*)::int AS lines FROM public.money_coffee_visit_lines
+        WHERE visit_id = $1::uuid`,
+      [rpcVisit[0].id],
+    );
+    assert(atomicLines[0].lines === 2, "atomic visit commits both lines");
+    await expectConstraint("atomic visit rejects repeated expense ids", () =>
+      asUser(sql, OWNER_A, { clientId: "writer-client" }).run((tx) =>
+        tx.unsafe(
+          `SELECT public.money_record_coffee_visit(
+             'visit-repeated', $1, '2026-11-11'::date, 'Africa/Casablanca', NULL,
+             ARRAY[$2::uuid, $2::uuid]
+           )`,
+          [receiptFingerprint("visit-repeated"), EXPENSE_COFFEE],
+        ),
+      ),
+    );
+    await asUser(sql, OWNER_A, { clientId: "writer-client" }).run((tx) =>
+      tx.unsafe(`DELETE FROM public.money_coffee_visits WHERE id = $1::uuid`, [
+        rpcVisit[0].id,
+      ]),
+    );
+    log("COFFEE", "atomic visit function commits identity and lines together");
 
     log("DONE", "MONEY-05 database proof passed");
   } finally {
