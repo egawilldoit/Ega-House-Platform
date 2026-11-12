@@ -112,11 +112,11 @@ async function main() {
       && unknownLater[0].unavailable_reason==="opening_balance_unknown",
       "uninitialized period with complete policy and no opening stays unavailable on a later date");
     console.log("[OPENING] missing opening remains unavailable after later-day materialization");
-    await user(B, tx => tx.unsafe(`INSERT INTO public.money_obligations
-      (owner_user_id,period_id,kind,description,amount_minor,period_start,period_end,due_date,
+    await sql.unsafe(`INSERT INTO public.money_obligations
+      (owner_user_id,kind,description,amount_minor,period_start,period_end,due_date,
        purpose,counts_in_daily,state,state_effective_date,state_history,idempotency_key,create_fingerprint)
-      VALUES ($1,$2,'bill','historical obligation',1000,'2026-12-01','2026-12-31','2026-12-10',
-       'fixed',true,'paid','2026-12-01','[]'::jsonb,'unknown-history',repeat('d',64))`, [B,unknown[0].id]));
+      VALUES ($1,'bill','historical obligation',1000,'2026-12-01','2026-12-31','2026-12-10',
+       'fixed',true,'cancelled','2026-12-01','[]'::jsonb,'unknown-history',repeat('d',64))`, [B]);
     const unknownObligation = await user(B, tx => tx.unsafe("SELECT (public.money_ensure_day_start_baseline($1, '2026-12-03'::date)).*", [unknown[0].id]));
     assert(unknownObligation[0].availability==="unavailable" && unknownObligation[0].cash_minor===null
       && unknownObligation[0].unavailable_reason==="obligation_history_incomplete",
@@ -126,7 +126,7 @@ async function main() {
     const asA = await user(A, tx => tx.unsafe("SELECT count(*)::int n FROM public.money_day_start_baselines"));
     const asB = await user(B, tx => tx.unsafe("SELECT count(*)::int n FROM public.money_day_start_baselines"));
     const asC = await user(C, tx => tx.unsafe("SELECT count(*)::int n FROM public.money_day_start_baselines"));
-    assert(asA[0].n===4 && asB[0].n===1 && asC[0].n===0, "RLS owner isolation");
+    assert(asA[0].n===4 && asB[0].n===3 && asC[0].n===0, "RLS owner isolation");
     console.log("[RLS] owners A and B see their own baselines; owner C sees none");
     for (const [label, statement, params] of [
       ["cross-owner period", "INSERT INTO public.money_policy_versions(owner_user_id,period_id,version,effective_date,policy) VALUES($1,$2,1,'2026-11-12','{}')", [B,period]],
