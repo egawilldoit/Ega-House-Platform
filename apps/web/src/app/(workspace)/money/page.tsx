@@ -286,8 +286,9 @@ export default async function MoneyPage({ searchParams }: Props) {
         <p className="mt-1 text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">Method: {moneyState.dayStartBaseline?.dailyReference?.available ? moneyState.dayStartBaseline.dailyReference.algorithm : "shared day-start daily reference"}</p>
         {moneyState.dayStartBaseline?.dailyReference?.available ? (
           <dl className="mt-3 grid gap-2 sm:grid-cols-2">
-            <div><dt>Daily reference</dt><dd className="font-semibold">{formatMad(moneyState.dayStartBaseline.dailyReference.referenceMinor)}</dd></div>
-            <div><dt>Daily remaining</dt><dd className="font-semibold">{formatMad(moneyState.dayStartBaseline.dailyReference.dailyRemainingMinor)}</dd></div>
+            <div><dt>{moneyState.dayStartBaseline.dailyReference.historical ? "Historical daily reference" : "Daily reference"}</dt><dd className="font-semibold">{formatMad(moneyState.dayStartBaseline.dailyReference.referenceMinor)}</dd></div>
+            <div><dt>{moneyState.dayStartBaseline.dailyReference.historical ? "Historical daily remaining" : "Daily remaining"}</dt><dd className="font-semibold">{formatMad(moneyState.dayStartBaseline.dailyReference.dailyRemainingMinor)}</dd></div>
+            {moneyState.dayStartBaseline.dailyReference.historical ? <p className="text-[color:var(--ega-text-secondary)]">Ended period — historical result only; no new-day spend allowance.</p> : null}
           </dl>
         ) : (
           <p role="status" className="mt-3 text-[color:var(--ega-text-secondary)]">Unavailable — baseline or complete daily expense data is missing.</p>

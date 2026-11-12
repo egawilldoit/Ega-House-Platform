@@ -98,7 +98,6 @@ export function calculateMoneyDailyReference(input: Readonly<{
   const values = [input.startCashMinor, input.startCommitmentsMinor, input.startSavingsTargetMinor, input.savingsFundedBeforeMinor, input.startEmergencyTargetMinor, input.emergencyUsedBeforeMinor];
   if (values.some((value) => value === null)) return { available: false as const, reason: "baseline_incomplete" as const };
   const days = Math.max(0, Math.floor((Date.parse(`${input.periodEnd}T00:00:00Z`) - Date.parse(`${input.selectedDate}T00:00:00Z`)) / 86_400_000) + 1);
-  if (input.periodLifecycle !== "tracking") return { available: false as const, reason: "period_ended" as const };
   if (days === 0) return { available: false as const, reason: "no_days_left" as const };
   const cash = input.startCashMinor as number;
   const commitments = input.startCommitmentsMinor as number;
@@ -106,7 +105,7 @@ export function calculateMoneyDailyReference(input: Readonly<{
   const emergency = Math.max(0, (input.startEmergencyTargetMinor as number) - (input.emergencyUsedBeforeMinor as number));
   const safePoolMinor = cash - commitments - savings - emergency;
   const referenceMinor = Math.floor(Math.max(0, safePoolMinor) / days);
-  return { available: true as const, algorithm: MONEY_DAILY_REFERENCE_ALGORITHM, daysRemaining: days, safePoolMinor, referenceMinor, dailyIncludedExpenseMinor: input.dailyIncludedExpenseMinor, dailyRemainingMinor: referenceMinor - input.dailyIncludedExpenseMinor };
+  return { available: true as const, historical: input.periodLifecycle !== "tracking", allowanceAvailable: input.periodLifecycle === "tracking", algorithm: MONEY_DAILY_REFERENCE_ALGORITHM, daysRemaining: days, safePoolMinor, referenceMinor, dailyIncludedExpenseMinor: input.dailyIncludedExpenseMinor, dailyRemainingMinor: referenceMinor - input.dailyIncludedExpenseMinor };
 }
 
 export const MONEY_CURRENCY = "MAD" as const;

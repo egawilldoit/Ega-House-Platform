@@ -43,6 +43,17 @@ test("MONEY-08 daily reference floors centimes and subtracts counted spending on
   assert.equal(calculateMoneyDailyReference({ startCashMinor: null, startCommitmentsMinor: 0, startSavingsTargetMinor: 0, savingsFundedBeforeMinor: 0, startEmergencyTargetMinor: 0, emergencyUsedBeforeMinor: 0, periodEnd: "2026-11-10", selectedDate: "2026-11-01", dailyIncludedExpenseMinor: 0, periodLifecycle: "tracking" }).available, false);
 });
 
+test("MONEY-08 ended periods retain historical daily results without a current allowance", () => {
+  const result = calculateMoneyDailyReference({ startCashMinor: 1_000, startCommitmentsMinor: 0, startSavingsTargetMinor: 0, savingsFundedBeforeMinor: 0, startEmergencyTargetMinor: 0, emergencyUsedBeforeMinor: 0, periodEnd: "2026-11-10", selectedDate: "2026-11-10", dailyIncludedExpenseMinor: 250, periodLifecycle: "ended" });
+  assert.equal(result.available, true);
+  if (result.available) {
+    assert.equal(result.historical, true);
+    assert.equal(result.allowanceAvailable, false);
+    assert.equal(result.referenceMinor, 1_000);
+    assert.equal(result.dailyRemainingMinor, 750);
+  }
+});
+
 const VALID_CREATE = {
   startDate: "2026-11-09",
   endDate: "2026-11-30",
