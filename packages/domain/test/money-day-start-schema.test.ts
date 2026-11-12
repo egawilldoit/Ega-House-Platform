@@ -24,3 +24,12 @@ test("MONEY-08 keeps unknown historical values unavailable instead of backfillin
   assert.doesNotMatch(migration, /UPDATE\s+public\.money_day_start_baselines/i);
   assert.match(migration, /cash_minor integer/);
 });
+
+test("MONEY-08 write RPCs require explicit MCP finance write grant", () => {
+  const grants = readFileSync(new URL("../../../drizzle/0102_money_08_baseline_write_grants.sql", import.meta.url), "utf8");
+  assert.equal((grants.match(/mcp_finance_grant_allows\('personal_ops\.write'\)/g) ?? []).length, 2);
+  assert.match(grants, /money_ensure_day_start_baseline[\s\S]*?Finance write grant required/);
+  assert.match(grants, /money_rebase_day_start_baseline[\s\S]*?Finance write grant required/);
+  assert.match(grants, /auth\.uid\(\) IS NULL/);
+  assert.match(grants, /ERRCODE = '42501'/);
+});
