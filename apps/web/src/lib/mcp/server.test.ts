@@ -51,9 +51,13 @@ function createHandlers() {
     moneyState: vi.fn().mockResolvedValue({ content: [] }),
     moneyMovementList: vi.fn().mockResolvedValue({ content: [] }),
     moneyMovementGet: vi.fn().mockResolvedValue({ content: [] }),
-  moneyBudgetGet: vi.fn().mockResolvedValue({ content: [] }),
-  moneyCoffeeWindow: vi.fn().mockResolvedValue({ content: [] }),
-  moneyCoffeeVisitList: vi.fn().mockResolvedValue({ content: [] }),
+    moneyBudgetGet: vi.fn().mockResolvedValue({ content: [] }),
+    moneyCoffeeWindow: vi.fn().mockResolvedValue({ content: [] }),
+    moneyCoffeeVisitList: vi.fn().mockResolvedValue({ content: [] }),
+    moneyObligationsList: vi.fn().mockResolvedValue({ content: [] }),
+    moneyObligationGet: vi.fn().mockResolvedValue({ content: [] }),
+    moneyObligationTemplatesList: vi.fn().mockResolvedValue({ content: [] }),
+    moneyObligationsSummary: vi.fn().mockResolvedValue({ content: [] }),
   };
 }
 
@@ -85,6 +89,10 @@ describe("registerMcpReadTools", () => {
       "ega_money_budget_get",
       "ega_money_coffee_window",
       "ega_money_coffee_visits_list",
+      "ega_money_obligations_list",
+      "ega_money_obligation_get",
+      "ega_money_obligation_templates_list",
+      "ega_money_obligation_summary",
       "ega_list_timer_sessions",
     ]);
   });

@@ -56,9 +56,13 @@ function createBaseHandlers() {
     moneyState: vi.fn().mockResolvedValue(successResult(0)),
     moneyMovementList: vi.fn().mockResolvedValue(successResult(0)),
     moneyMovementGet: vi.fn().mockResolvedValue(successResult(0)),
-  moneyBudgetGet: vi.fn().mockResolvedValue(successResult(0)),
-  moneyCoffeeWindow: vi.fn().mockResolvedValue(successResult(0)),
-  moneyCoffeeVisitList: vi.fn().mockResolvedValue(successResult(0)),
+    moneyBudgetGet: vi.fn().mockResolvedValue(successResult(0)),
+    moneyCoffeeWindow: vi.fn().mockResolvedValue(successResult(0)),
+    moneyCoffeeVisitList: vi.fn().mockResolvedValue(successResult(0)),
+    moneyObligationsList: vi.fn().mockResolvedValue(successResult(0)),
+    moneyObligationGet: vi.fn().mockResolvedValue(successResult()),
+    moneyObligationTemplatesList: vi.fn().mockResolvedValue(successResult(0)),
+    moneyObligationsSummary: vi.fn().mockResolvedValue(successResult(0)),
   };
 }
 

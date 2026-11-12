@@ -436,5 +436,57 @@ export function createAuditedMcpReadHandlers(
         () => handlers.moneyCoffeeVisitList(authInfo, input),
       );
     },
+
+    moneyObligationsList(
+      authInfo: AuthInfo | undefined,
+      input: Parameters<BaseReadHandlers["moneyObligationsList"]>[1],
+      context?: ProtocolContext,
+    ): Promise<CallToolResult> {
+      return execute(
+        "ega_money_obligations_list",
+        authInfo,
+        context,
+        () => handlers.moneyObligationsList(authInfo, input),
+      );
+    },
+
+    moneyObligationGet(
+      authInfo: AuthInfo | undefined,
+      input: Parameters<BaseReadHandlers["moneyObligationGet"]>[1],
+      context?: ProtocolContext,
+    ): Promise<CallToolResult> {
+      return execute(
+        "ega_money_obligation_get",
+        authInfo,
+        context,
+        () => handlers.moneyObligationGet(authInfo, input),
+      );
+    },
+
+    moneyObligationTemplatesList(
+      authInfo: AuthInfo | undefined,
+      input: Parameters<BaseReadHandlers["moneyObligationTemplatesList"]>[1],
+      context?: ProtocolContext,
+    ): Promise<CallToolResult> {
+      return execute(
+        "ega_money_obligation_templates_list",
+        authInfo,
+        context,
+        () => handlers.moneyObligationTemplatesList(authInfo, input),
+      );
+    },
+
+    moneyObligationsSummary(
+      authInfo: AuthInfo | undefined,
+      input: Parameters<BaseReadHandlers["moneyObligationsSummary"]>[1],
+      context?: ProtocolContext,
+    ): Promise<CallToolResult> {
+      return execute(
+        "ega_money_obligation_summary",
+        authInfo,
+        context,
+        () => handlers.moneyObligationsSummary(authInfo, input),
+      );
+    },
   };
 }

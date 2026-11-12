@@ -61,6 +61,32 @@ export type McpReadToolDependencies = {
   ) => Promise<unknown>;
   /** Deterministic clock injection for period/date resolution in tests. */
   now?: () => Date;
+  moneyObligationsList?: (
+    client: SupabaseClient<McpDatabase>,
+    ownerUserId: string,
+    query: {
+      kind?: string;
+      state?: string;
+      dueFrom?: string;
+      dueTo?: string;
+      limit?: number;
+    },
+  ) => Promise<unknown>;
+  moneyObligationGet?: (
+    client: SupabaseClient<McpDatabase>,
+    ownerUserId: string,
+    obligationId: string,
+  ) => Promise<unknown>;
+  moneyObligationTemplatesList?: (
+    client: SupabaseClient<McpDatabase>,
+    ownerUserId: string,
+    query: { kind?: string; includeArchived?: boolean },
+  ) => Promise<unknown>;
+  moneyObligationsSummary?: (
+    client: SupabaseClient<McpDatabase>,
+    ownerUserId: string,
+    query: { cutoff: string },
+  ) => Promise<unknown>;
 };
 
 const DEFAULT_DEPENDENCIES: McpReadToolDependencies = {
@@ -94,6 +120,14 @@ export class McpInvalidArgumentError extends Error {
   }
 }
 
+/** A valid request for a row that is not visible to this verified owner. */
+export class McpNotFoundError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "McpNotFoundError";
+  }
+}
+
 type ToolErrorPayload = {
   ok: false;
   error: {
@@ -121,6 +155,11 @@ function errorResult(error: unknown): CallToolResult {
     payload = {
       ok: false,
       error: { code: "INVALID_ARGUMENT", message: error.message },
+    };
+  } else if (error instanceof McpNotFoundError) {
+    payload = {
+      ok: false,
+      error: { code: "NOT_FOUND", message: error.message },
     };
   } else if (
     error instanceof Error
@@ -484,6 +523,99 @@ export function createMcpReadToolHandlers(
     ): Promise<CallToolResult> {
       return moneyHandlers.moneyCoffeeVisitList(authInfo, input);
     },
+
+    // Money obligation reads (MONEY-06): bills and subscriptions are the same
+    // occurrence rows, filtered by kind. Requires the explicit personal_ops.read
+    // grant; no profile gains it implicitly.
+    async moneyObligationsList(
+      authInfo: AuthInfo | undefined,
+      input: {
+        kind?: string;
+        state?: string;
+        dueFrom?: string;
+        dueTo?: string;
+        limit?: number;
+      },
+    ): Promise<CallToolResult> {
+      try {
+        const principal = requireMcpPermission(authInfo, "personal_ops.read");
+        const client = createClient(dependencies, authInfo!);
+        const data = await (dependencies.moneyObligationsList ?? defaultMoneyObligationsList)(
+          client,
+          principal.ownerUserId,
+          input ?? {},
+        );
+        return resultFromPayload({
+          ok: true,
+          ...((data as Record<string, unknown>) ?? {}),
+        });
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+
+    async moneyObligationGet(
+      authInfo: AuthInfo | undefined,
+      input: { obligationId: string },
+    ): Promise<CallToolResult> {
+      try {
+        const principal = requireMcpPermission(authInfo, "personal_ops.read");
+        const client = createClient(dependencies, authInfo!);
+        const data = await (dependencies.moneyObligationGet ?? defaultMoneyObligationGet)(
+          client,
+          principal.ownerUserId,
+          input.obligationId,
+        );
+        return resultFromPayload({
+          ok: true,
+          ...((data as Record<string, unknown>) ?? {}),
+        });
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+
+    async moneyObligationTemplatesList(
+      authInfo: AuthInfo | undefined,
+      input: { kind?: string; includeArchived?: boolean },
+    ): Promise<CallToolResult> {
+      try {
+        const principal = requireMcpPermission(authInfo, "personal_ops.read");
+        const client = createClient(dependencies, authInfo!);
+        const data = await (dependencies.moneyObligationTemplatesList ?? defaultMoneyObligationTemplatesList)(
+          client,
+          principal.ownerUserId,
+          input ?? {},
+        );
+        return resultFromPayload({
+          ok: true,
+          ...((data as Record<string, unknown>) ?? {}),
+        });
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+
+    async moneyObligationsSummary(
+      authInfo: AuthInfo | undefined,
+      input: { cutoff: string },
+    ): Promise<CallToolResult> {
+      try {
+        const principal = requireMcpPermission(authInfo, "personal_ops.read");
+        const client = createClient(dependencies, authInfo!);
+        const data = await (dependencies.moneyObligationsSummary ?? defaultMoneyObligationsSummary)(
+          client,
+          principal.ownerUserId,
+          input ?? { cutoff: "" },
+        );
+        return resultFromPayload({
+          ok: true,
+          ...((data as Record<string, unknown>) ?? {}),
+        });
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
   };
 }
 
@@ -662,4 +794,119 @@ async function defaultPersonalOpsCheckinGet(
     throw new Error("Failed to load EGA check-in.");
   }
   return { localDate, checkin: result.data };
+}
+
+async function defaultMoneyObligationsList(
+  client: SupabaseClient<McpDatabase>,
+  ownerUserId: string,
+  query: {
+    kind?: string;
+    state?: string;
+    dueFrom?: string;
+    dueTo?: string;
+    limit?: number;
+  },
+) {
+  const { listObligations } = await import("@ega/application");
+  const { SupabaseObligationRepository } = await import("@ega/data-access");
+  const result = await listObligations(
+    { userId: ownerUserId } as never,
+    new SupabaseObligationRepository(client as never),
+    {
+      kind: query.kind,
+      state: query.state,
+      dueFrom: query.dueFrom,
+      dueTo: query.dueTo,
+      limit: String(Math.min(Math.max(query.limit ?? 25, 1), 100)),
+    },
+  );
+  if (!result.ok) {
+    if (result.code === "validation") {
+      throw new McpInvalidArgumentError(result.errorMessage);
+    }
+    throw new Error("Failed to load EGA obligations.");
+  }
+  return {
+    obligations: result.data.occurrences,
+    pagination: result.data.pagination,
+    count: result.data.occurrences.length,
+    currency: "MAD",
+    note: "Bills and subscriptions are the same occurrence rows; a pending occurrence has no cash effect.",
+  };
+}
+
+async function defaultMoneyObligationGet(
+  client: SupabaseClient<McpDatabase>,
+  ownerUserId: string,
+  obligationId: string,
+) {
+  const { getObligation } = await import("@ega/application");
+  const { SupabaseObligationRepository } = await import("@ega/data-access");
+  const result = await getObligation(
+    { userId: ownerUserId } as never,
+    new SupabaseObligationRepository(client as never),
+    obligationId,
+  );
+  if (!result.ok) {
+    if (result.code === "notFound") {
+      throw new McpNotFoundError("Obligation was not found or is no longer available.");
+    }
+    if (result.code === "validation") {
+      throw new McpInvalidArgumentError(result.errorMessage);
+    }
+    throw new Error("Failed to load EGA obligation.");
+  }
+  return { obligation: result.data, currency: "MAD" };
+}
+
+async function defaultMoneyObligationTemplatesList(
+  client: SupabaseClient<McpDatabase>,
+  ownerUserId: string,
+  query: { kind?: string; includeArchived?: boolean },
+) {
+  const { listObligationTemplates } = await import("@ega/application");
+  const { SupabaseObligationRepository } = await import("@ega/data-access");
+  const result = await listObligationTemplates(
+    { userId: ownerUserId } as never,
+    new SupabaseObligationRepository(client as never),
+    {
+      kind: query.kind,
+      includeArchived: query.includeArchived,
+    },
+  );
+  if (!result.ok) {
+    if (result.code === "validation") {
+      throw new McpInvalidArgumentError(result.errorMessage);
+    }
+    throw new Error("Failed to load EGA obligation templates.");
+  }
+  return {
+    templates: result.data.templates,
+    count: result.data.templates.length,
+    note: "Templates supply recurrence and classification defaults; they never post cash.",
+  };
+}
+
+async function defaultMoneyObligationsSummary(
+  client: SupabaseClient<McpDatabase>,
+  ownerUserId: string,
+  query: { cutoff: string },
+) {
+  const { getObligationSummary } = await import("@ega/application");
+  const { SupabaseObligationRepository } = await import("@ega/data-access");
+  const result = await getObligationSummary(
+    { userId: ownerUserId } as never,
+    new SupabaseObligationRepository(client as never),
+    { cutoff: query.cutoff },
+  );
+  if (!result.ok) {
+    if (result.code === "validation") {
+      throw new McpInvalidArgumentError(result.errorMessage);
+    }
+    throw new Error("Failed to load EGA obligation totals.");
+  }
+  return {
+    summary: result.data,
+    note: "Totals cover complete occurrences at the inclusive cutoff; waived and cancelled hold zero reserve.",
+  };
 }

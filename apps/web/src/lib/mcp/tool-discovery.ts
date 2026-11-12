@@ -41,6 +41,11 @@ const ALL_TOOLS: readonly McpToolDefinition[] = [
   { name: "ega_money_budget_get", requiredPermission: "personal_ops.read" },
   { name: "ega_money_coffee_window", requiredPermission: "personal_ops.read" },
   { name: "ega_money_coffee_visits_list", requiredPermission: "personal_ops.read" },
+  // Money obligation reads (MONEY-06): bills and subscriptions share rows.
+  { name: "ega_money_obligations_list", requiredPermission: "personal_ops.read" },
+  { name: "ega_money_obligation_get", requiredPermission: "personal_ops.read" },
+  { name: "ega_money_obligation_templates_list", requiredPermission: "personal_ops.read" },
+  { name: "ega_money_obligation_summary", requiredPermission: "personal_ops.read" },
   // Personal Operations writes: explicit writer grant, never auto-upgraded.
   { name: "ega_create_personal_ops_expense", requiredPermission: "personal_ops.write", writesEnabledRequired: true },
   { name: "ega_save_personal_ops_checkin", requiredPermission: "personal_ops.write", writesEnabledRequired: true },
@@ -58,6 +63,13 @@ const ALL_TOOLS: readonly McpToolDefinition[] = [
   { name: "ega_money_classify_expense", requiredPermission: "personal_ops.write", writesEnabledRequired: true },
   { name: "ega_money_record_coffee_visit", requiredPermission: "personal_ops.write", writesEnabledRequired: true },
   { name: "ega_money_delete_coffee_visit", requiredPermission: "personal_ops.write", writesEnabledRequired: true },
+  // Money obligation writes (MONEY-06): scheduling/cancelling never posts cash.
+  { name: "ega_money_create_obligation", requiredPermission: "personal_ops.write", writesEnabledRequired: true },
+  { name: "ega_money_update_obligation", requiredPermission: "personal_ops.write", writesEnabledRequired: true },
+  { name: "ega_money_transition_obligation", requiredPermission: "personal_ops.write", writesEnabledRequired: true },
+  { name: "ega_money_create_obligation_template", requiredPermission: "personal_ops.write", writesEnabledRequired: true },
+  { name: "ega_money_update_obligation_template", requiredPermission: "personal_ops.write", writesEnabledRequired: true },
+  { name: "ega_money_generate_obligations", requiredPermission: "personal_ops.write", writesEnabledRequired: true },
   // Project writes
   { name: "ega_create_project", requiredPermission: "projects.create", writesEnabledRequired: true },
   { name: "ega_update_project_status", requiredPermission: "projects.update", writesEnabledRequired: true },
