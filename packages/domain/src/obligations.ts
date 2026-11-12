@@ -398,23 +398,30 @@ export function resolveObligationClassification(input: Readonly<{
   payment?: ObligationClassificationSource | null;
 }>): ResolvedObligationClassification {
   const defaults = OBLIGATION_KIND_DEFAULTS[input.kind];
-  const template = input.template ?? {};
-  const occurrence = input.occurrence ?? {};
-  const payment = input.payment ?? {};
+  const template = input.template ?? null;
+  const occurrence = input.occurrence ?? null;
+  const payment = input.payment ?? null;
 
-  const needVsWant =
-    payment.needVsWant ?? occurrence.needVsWant ?? template.needVsWant ?? null;
-  const purpose =
-    payment.purpose ?? occurrence.purpose ?? template.purpose ?? defaults.purpose;
-  const countsInDaily =
-    payment.countsInDaily ??
-    occurrence.countsInDaily ??
-    template.countsInDaily ??
-    defaults.countsInDaily;
-  const category =
-    payment.category ?? occurrence.category ?? template.category ?? defaults.category;
+  // Presence, not truthiness: an explicit `null` is a supplied "unknown" and
+  // must stop the chain instead of falling through to a live template.
+  function pick<K extends keyof ObligationClassificationSource>(
+    key: K,
+    fallback: ResolvedObligationClassification[K],
+  ): ResolvedObligationClassification[K] {
+    for (const source of [payment, occurrence, template]) {
+      if (source && Object.prototype.hasOwnProperty.call(source, key)) {
+        return (source[key] ?? null) as ResolvedObligationClassification[K];
+      }
+    }
+    return fallback;
+  }
 
-  return { needVsWant, purpose, countsInDaily, category };
+  return {
+    needVsWant: pick("needVsWant", null),
+    purpose: pick("purpose", defaults.purpose),
+    countsInDaily: pick("countsInDaily", defaults.countsInDaily),
+    category: pick("category", defaults.category),
+  };
 }
 
 /** Template row fields mapped to "supplied" classification sources. */
