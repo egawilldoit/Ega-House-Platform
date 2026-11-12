@@ -872,6 +872,19 @@ async function main() {
       "23514",
     );
     await expectDenied(
+      "a generic classification edit of a linked payment",
+      () =>
+        sql.unsafe(
+          `UPDATE public.personal_expenses
+           SET "purpose" = 'flexible', "counts_in_daily" = true,
+               "category" = 'groceries', "version" = "version" + 1,
+               "updated_at" = now()
+           WHERE "id" = $1::uuid`,
+          [sharedPayment.payment_expense_id],
+        ),
+      "23514",
+    );
+    await expectDenied(
       "a generic soft delete of a linked payment",
       () =>
         sql.unsafe(

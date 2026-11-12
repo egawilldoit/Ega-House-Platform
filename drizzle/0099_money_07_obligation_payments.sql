@@ -29,10 +29,15 @@
 --      update guard keep refusing generic expense edits of a linked payment;
 --      they accept the correction path only while that flag is on.
 --   5. Deferred coherence checks. At commit, a paid occurrence must still have
---      exactly one linked, undeleted, same-owner MAD outflow worth exactly the
---      occurrence amount, and a linked payment must not be deleted or
---      re-priced behind the occurrence's back. These hold even if the
---      transaction-local flag were set outside the payment path.
+--      exactly one linked, undeleted, same-owner MAD expense outflow worth
+--      exactly the occurrence amount, and a linked payment must not be deleted
+--      or re-priced behind the occurrence's back. The backstop covers identity,
+--      owner, kind/direction, amount, currency and deletion. It is defense in
+--      depth, not a substitute for the flag: raw SQL that forges the
+--      backend-local flag can still move non-mirrored classification fields,
+--      so the flag must remain transaction-local and is not exposed as an RPC.
+--      PostgREST exposes no set_config surface; direct database roles are the
+--      only channel that could forge it.
 -->
 --> statement-breakpoint
 ALTER TABLE "public"."money_obligations"
@@ -85,6 +90,10 @@ BEGIN
     OR NEW.currency IS DISTINCT FROM OLD.currency
     OR NEW.occurred_at IS DISTINCT FROM OLD.occurred_at
     OR NEW.booking_date IS DISTINCT FROM OLD.booking_date
+    OR NEW.purpose IS DISTINCT FROM OLD.purpose
+    OR NEW.counts_in_daily IS DISTINCT FROM OLD.counts_in_daily
+    OR NEW.category IS DISTINCT FROM OLD.category
+    OR NEW.need_vs_want IS DISTINCT FROM OLD.need_vs_want
     OR (OLD.deleted_at IS NULL AND NEW.deleted_at IS NOT NULL)
   ) AND EXISTS (
     SELECT 1
@@ -762,6 +771,15 @@ BEGIN
      SET "amount_minor" = p_amount_minor,
          "booking_date" = p_booking_date,
          "counts_in_daily" = v_counts_in_daily,
+         "period_id" = (
+           SELECT period."id"
+             FROM public.money_periods AS period
+            WHERE period."owner_user_id" = v_owner
+              AND p_booking_date BETWEEN period."start_date" AND period."end_date"
+            ORDER BY (period."lifecycle" = 'tracking') DESC,
+                     period."start_date" DESC
+            LIMIT 1
+         ),
          "version" = "version" + 1,
          "updated_at" = now()
    WHERE "id" = v_payment."id"

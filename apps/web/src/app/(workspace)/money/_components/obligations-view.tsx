@@ -764,7 +764,7 @@ function OccurrenceCard({
           <TransitionForm occurrence={occurrence} returnTo={returnTo} to="pending" label="Reopen to pending" localToday={localToday} />
         </div>
       ) : null}
-      {!isPaid ? (
+      {occurrence.state === "pending" ? (
         <PayForm occurrence={occurrence} returnTo={returnTo} localToday={localToday} />
       ) : null}
 
