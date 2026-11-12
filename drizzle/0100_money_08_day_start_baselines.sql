@@ -2,6 +2,9 @@
 -- Historical unknowns stay NULL and are marked unavailable; this migration
 -- deliberately does not synthesize snapshots for existing periods.
 --> statement-breakpoint
+CREATE UNIQUE INDEX IF NOT EXISTS money_periods_owner_id_unique
+  ON public.money_periods(owner_user_id, id);
+--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS public.money_policy_versions (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   owner_user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
@@ -11,6 +14,7 @@ CREATE TABLE IF NOT EXISTS public.money_policy_versions (
   policy jsonb NOT NULL CHECK (jsonb_typeof(policy) = 'object'),
   created_at timestamptz NOT NULL DEFAULT now(),
   UNIQUE (owner_user_id, period_id, version),
+  UNIQUE (owner_user_id, period_id, id),
   FOREIGN KEY (owner_user_id, period_id)
     REFERENCES public.money_periods(owner_user_id, id) ON DELETE RESTRICT
 );
