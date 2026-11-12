@@ -308,6 +308,7 @@ export default async function MoneyPage({ searchParams }: Props) {
         createAction={createMoneyPeriodAction}
         updateAction={updateMoneySettingsAction}
         rebaseAction={rebaseMoneyDayStartBaselineAction}
+        initialSetupIncomplete={moneyState.dayStartBaseline?.unavailableReason === "initial_setup_incomplete"}
       />
       </>
     ) : (

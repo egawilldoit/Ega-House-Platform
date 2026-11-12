@@ -109,6 +109,7 @@ const STATE = {
   },
   dayStartBaseline: {
     availability: "available",
+    unavailableReason: null,
     cashMinor: 48900,
     commitmentsMinor: 0,
     savingsTargetMinor: 0,
@@ -220,6 +221,19 @@ describe("Money MCP tools", () => {
     mocks.getCurrentMoneyReserves.mockResolvedValue({ ok: true, data: { available: false, currency: "MAD", reason: "reserve_inputs_incomplete", cutoffDate: PERIOD.activeDate } });
     const result = structured(await handlers().moneyState(authInfo(READER_PRINCIPAL), {}));
     expect(result.analytics).toMatchObject({ available: false, reason: "baseline_unavailable", method: "safe-flexible-start-of-day-v1", dayStartBaseline: null, reserves: { available: false, reason: "reserve_inputs_incomplete" } });
+  });
+
+  it("explains incomplete initial setup and the explicit completion step", async () => {
+    mocks.timezoneGet.mockResolvedValue({ ok: true, value: "Africa/Casablanca" });
+    mocks.getMoneyState.mockResolvedValue({ ok: true, data: {
+      ...STATE,
+      dayStartBaseline: { ...STATE.dayStartBaseline, availability: "unavailable", unavailableReason: "initial_setup_incomplete", dailyReference: null },
+      dayStartBaselineUnavailable: true,
+    } });
+    mocks.getCurrentMoneyReserves.mockResolvedValue({ ok: true, data: { available: false, currency: "MAD", reason: "reserve_inputs_incomplete", cutoffDate: PERIOD.activeDate } });
+    const result = structured(await handlers().moneyState(authInfo(READER_PRINCIPAL), {}));
+    expect(result.analytics).toMatchObject({ setupComplete: false, setupNextStep: expect.stringContaining("ega_money_rebase_day_start_baseline") });
+    expect(result.analytics).toMatchObject({ available: false, reason: "baseline_unavailable", dayStartBaseline: { unavailableReason: "initial_setup_incomplete" } });
   });
 
   it("passes the explicit today/active-day mode and owner timezone to the shared use case", async () => {

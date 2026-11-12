@@ -2068,7 +2068,7 @@ const WRITE_TOOL_REGISTRATIONS: readonly WriteToolRegistration[] = [
     name: "ega_money_rebase_day_start_baseline",
     register: (server, handlers) => server.registerTool(
       "ega_money_rebase_day_start_baseline",
-      { title: "Rebase Money day-start baseline", description: "Explicitly rebase the selected Money period day-start baseline and return the stored baseline. Requires the explicit personal_ops.write grant.", inputSchema: moneyRebaseDayStartInputSchema, outputSchema: genericWriteOutputSchema, annotations: WRITE_ANNOTATIONS },
+      { title: "Complete or rebase Money day-start baseline", description: "For initial setup, first add the period's initial obligations, then call this tool to explicitly complete setup and record the baseline (an empty list is valid if there are none). For completed setup, explicitly rebase the baseline to current state. The response returns the stored baseline and setup status. Requires the explicit personal_ops.write grant.", inputSchema: moneyRebaseDayStartInputSchema, outputSchema: genericWriteOutputSchema, annotations: WRITE_ANNOTATIONS },
       async (input, ctx) => handlers.rebaseMoneyDayStartBaseline(getAuthInfo(ctx as unknown as ServerContext), input.periodId, getProtocolContext(ctx as unknown as ServerContext)),
     ),
   },

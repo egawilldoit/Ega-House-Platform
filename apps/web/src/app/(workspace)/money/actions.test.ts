@@ -102,6 +102,9 @@ test("day-start rebase is explicit, authenticated and uses the request-scoped pe
   assert.match(actionsSource, /revalidatePath\("\/money"\)/);
   assert.match(pageSource, /rebaseAction=\{rebaseMoneyDayStartBaselineAction\}/);
   assert.match(periodPanelSource, /Rebase day-start baseline to current state/);
+  assert.match(periodPanelSource, /Add your initial obligations first/);
+  assert.match(periodPanelSource, /Complete day-start setup/);
+  assert.match(pageSource, /unavailableReason === "initial_setup_incomplete"/);
   assert.match(periodPanelSource, /role="alert"/);
   assert.doesNotMatch(actionsSource, /getSupabaseServiceClient/);
 });

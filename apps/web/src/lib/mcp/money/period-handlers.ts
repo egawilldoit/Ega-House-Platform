@@ -200,6 +200,12 @@ export function createMcpMoneyPeriodHandlers(
           ...state,
           analytics: {
             dayStartBaseline: state.dayStartBaseline,
+            setupComplete: state.dayStartBaseline
+              ? state.dayStartBaseline.unavailableReason !== "initial_setup_incomplete"
+              : null,
+            setupNextStep: state.dayStartBaseline?.unavailableReason === "initial_setup_incomplete"
+              ? "Add initial obligations, then explicitly call ega_money_rebase_day_start_baseline to complete setup and record the baseline. An empty obligation list is valid if there are none."
+              : null,
             available: state.dayStartBaseline?.dailyReference?.available === true,
             reason: state.dayStartBaselineUnavailable
               ? "baseline_unavailable"
