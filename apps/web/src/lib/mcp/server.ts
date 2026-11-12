@@ -352,7 +352,7 @@ export type McpWriteToolHandlers = {
     },
     context?: McpProtocolContext,
   ) => Promise<CallToolResult>;
-  rebaseMoneyDayStartBaseline: (authInfo: AuthInfo | undefined, periodId: string, context?: McpProtocolContext) => Promise<CallToolResult>;
+  rebaseMoneyDayStartBaseline: (authInfo: AuthInfo | undefined, input: { periodId: string; operationId: string }, context?: McpProtocolContext) => Promise<CallToolResult>;
   /** MONEY-04 movement writes on the one ledger. */
   createMoneyMovement: (
     authInfo: AuthInfo | undefined,
@@ -751,7 +751,7 @@ const moneyUpdateSettingsInputSchema = z.object({
   settings: z.record(z.string(), z.unknown()).optional(),
 }).strict();
 
-const moneyRebaseDayStartInputSchema = z.object({ periodId: uuidSchema }).strict();
+const moneyRebaseDayStartInputSchema = z.object({ periodId: uuidSchema, operationId: z.string().uuid() }).strict();
 
 const moneyStateOutputSchema = z.object({
   ok: z.literal(true),
@@ -2069,7 +2069,7 @@ const WRITE_TOOL_REGISTRATIONS: readonly WriteToolRegistration[] = [
     register: (server, handlers) => server.registerTool(
       "ega_money_rebase_day_start_baseline",
       { title: "Complete or rebase Money day-start baseline", description: "For initial setup, first add the period's initial obligations, then call this tool to explicitly complete setup and record the baseline (an empty list is valid if there are none). For completed setup, explicitly rebase the baseline to current state. The response returns the stored baseline and setup status. Requires the explicit personal_ops.write grant.", inputSchema: moneyRebaseDayStartInputSchema, outputSchema: genericWriteOutputSchema, annotations: WRITE_ANNOTATIONS },
-      async (input, ctx) => handlers.rebaseMoneyDayStartBaseline(getAuthInfo(ctx as unknown as ServerContext), input.periodId, getProtocolContext(ctx as unknown as ServerContext)),
+      async (input, ctx) => handlers.rebaseMoneyDayStartBaseline(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
     ),
   },
   {

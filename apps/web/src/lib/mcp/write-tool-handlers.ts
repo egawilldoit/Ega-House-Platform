@@ -952,6 +952,18 @@ export function createMcpWriteToolHandlers(
         return errorResult(error);
       }
     },
+    async rebaseMoneyDayStartBaseline(authInfo: AuthInfo | undefined, input: { periodId: string; operationId: string }): Promise<CallToolResult> {
+      try {
+        assertWritesEnabled(writesEnabled);
+        requireMcpPermission(authInfo, "personal_ops.write");
+        const client = dependencies.createUserClient(authInfo!.token);
+        return await withExclusiveMutation(client, "ega_money_rebase_day_start_baseline", input.operationId, { periodId: input.periodId }, () =>
+          moneyHandlers.rebaseMoneyDayStartBaseline(authInfo, input.periodId),
+        );
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
     // MONEY-04: one canonical ledger for income/savings/adjustment movements.
     async createMoneyMovement(
       authInfo: AuthInfo | undefined,

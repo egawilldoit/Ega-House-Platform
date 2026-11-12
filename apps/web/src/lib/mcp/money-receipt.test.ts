@@ -59,6 +59,19 @@ function handlerWithRecordedHashes(writesEnabled = true) {
   return { handlers, hashes };
 }
 
+describe("ega_money_rebase_day_start_baseline receipt", () => {
+  it("binds retries to the selected period", async () => {
+    const { handlers, hashes } = handlerWithRecordedHashes();
+    const input = { operationId: OPERATION_ID, periodId: "00000000-0000-4000-8000-000000000001" };
+    await handlers.rebaseMoneyDayStartBaseline(authInfo, input);
+    await handlers.rebaseMoneyDayStartBaseline(authInfo, input);
+    await handlers.rebaseMoneyDayStartBaseline(authInfo, { ...input, periodId: "00000000-0000-4000-8000-000000000002" });
+    expect(hashes).toHaveLength(3);
+    expect(hashes[0]).toBe(hashes[1]);
+    expect(hashes[2]).not.toBe(hashes[0]);
+  });
+});
+
 describe("ega_money_update_settings receipt fingerprint", () => {
   it("hashes an identical retry to the same value", async () => {
     const { handlers, hashes } = handlerWithRecordedHashes();
