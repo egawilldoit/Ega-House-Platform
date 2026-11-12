@@ -207,6 +207,8 @@ export function createMcpMoneyPeriodHandlers(
               ? "Add initial obligations, then explicitly call ega_money_rebase_day_start_baseline to complete setup and record the baseline. An empty obligation list is valid if there are none."
               : null,
             available: state.dayStartBaseline?.dailyReference?.available === true,
+            historical: state.dayStartBaseline?.dailyReference?.historical === true,
+            allowanceAvailable: state.dayStartBaseline?.dailyReference?.allowanceAvailable === true,
             reason: state.dayStartBaselineUnavailable
               ? "baseline_unavailable"
               : state.dayStartBaseline?.dailyReference && !state.dayStartBaseline.dailyReference.available
