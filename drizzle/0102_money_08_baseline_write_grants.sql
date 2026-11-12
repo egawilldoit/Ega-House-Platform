@@ -34,6 +34,10 @@ BEGIN
   IF NOT FOUND OR v_period.lifecycle <> 'tracking' THEN
     RAISE EXCEPTION 'Only the owner active tracking period can be rebased';
   END IF;
+  UPDATE public.money_periods
+     SET day_start_setup_completed = true, version = version + 1
+   WHERE id = p_period_id AND owner_user_id = auth.uid()
+     AND NOT day_start_setup_completed;
   RETURN public.money_calculate_day_start_baseline(p_period_id, v_period.active_date, true);
 END
 $rebase$;
