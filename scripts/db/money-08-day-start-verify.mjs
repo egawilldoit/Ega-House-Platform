@@ -55,6 +55,12 @@ async function main() {
         now()::timestamptz) AS p) created`));
     const period = created[0].id;
     const periodVersion = created[0].version;
+    const incompleteSetup = await sql.unsafe(`SELECT availability,unavailable_reason,inputs
+      FROM public.money_day_start_baselines WHERE owner_user_id=$1 AND period_id=$2 AND date='2026-11-12'`, [A,period]);
+    assert(incompleteSetup.length===1 && incompleteSetup[0].availability==="unavailable"
+      && incompleteSetup[0].unavailable_reason==="initial_setup_incomplete"
+      && incompleteSetup[0].inputs.setupComplete===false,
+      "period creation leaves the opening baseline unavailable until setup is explicitly completed");
     for (const [clientId, profile, permissions] of [["money-read", "personal_operations", READ], ["money-write", "personal_operations_writer", WRITE]]) {
       await sql`INSERT INTO public.mcp_authorization_grants
         (owner_user_id,oauth_client_id,resource_uri,client_name,status,permission_profile,permissions,permissions_version,approved_at)
@@ -63,6 +69,9 @@ async function main() {
     const readerEnsure = await user(A, tx => tx.unsafe("SELECT (public.money_ensure_day_start_baseline($1,'2026-11-13'::date)).*", [period]), "money-read").then(() => false, e => e.code === "42501");
     const readerRebase = await user(A, tx => tx.unsafe("SELECT (public.money_rebase_day_start_baseline($1)).*", [period]), "money-read").then(() => false, e => e.code === "42501");
     assert(readerEnsure && readerRebase, "MCP read grant cannot ensure or rebase a baseline");
+    const completedSetup = await user(A, tx => tx.unsafe("SELECT (public.money_rebase_day_start_baseline($1)).*", [period]));
+    assert(completedSetup[0].availability==="available" && completedSetup[0].version===2,
+      "owner rebase explicitly completes setup and replaces the incomplete baseline");
     const writerEnsure = await user(A, tx => tx.unsafe("SELECT (public.money_ensure_day_start_baseline($1,'2026-11-13'::date)).*", [period]), "money-write");
     assert(writerEnsure[0].availability === "available", "MCP write grant can ensure a baseline");
     const firstPartyEnsure = await user(A, tx => tx.unsafe("SELECT (public.money_ensure_day_start_baseline($1,'2026-11-14'::date)).*", [period]));
@@ -114,9 +123,13 @@ async function main() {
       && afterFailure[0].version===periodVersion+1 && failedDateBaseline[0].n===0,
       "baseline generation failure atomically rolls back active date, version, and snapshot");
     console.log("[ADVANCE] active date materializes baseline; generation failure rolls back period update");
-    const rows = await sql.unsafe("SELECT p.id AS policy_id, p.version, p.policy, b.availability, b.unavailable_reason, b.policy_version_id FROM public.money_policy_versions p JOIN public.money_day_start_baselines b USING(owner_user_id, period_id) WHERE p.owner_user_id=$1 AND p.period_id=$2 AND b.date='2026-11-12'", [A,period]);
-    const baseline = await sql.unsafe("SELECT availability, cash_minor, commitments_minor, savings_target_minor, savings_funded_minor, emergency_target_minor, emergency_used_minor, inputs FROM public.money_day_start_baselines WHERE owner_user_id=$1 AND period_id=$2 AND date='2026-11-12'", [A,period]);
-    assert(rows.length===1 && rows[0].version===1 && rows[0].availability==="available" && rows[0].policy_version_id===rows[0].policy_id, "RPC created version-1 policy and available baseline");
+    const rows = await sql.unsafe("SELECT p.id AS policy_id, p.version, p.policy, b.availability, b.unavailable_reason, b.policy_version_id FROM public.money_policy_versions p JOIN public.money_day_start_baselines b USING(owner_user_id, period_id) WHERE p.owner_user_id=$1 AND p.period_id=$2 AND b.date='2026-11-12' AND b.version=2", [A,period]);
+    const baseline = await sql.unsafe("SELECT availability, cash_minor, commitments_minor, savings_target_minor, savings_funded_minor, emergency_target_minor, emergency_used_minor, inputs FROM public.money_day_start_baselines WHERE owner_user_id=$1 AND period_id=$2 AND date='2026-11-12' AND version=2", [A,period]);
+    const preservedInitialBaseline = await sql.unsafe("SELECT availability,unavailable_reason,inputs FROM public.money_day_start_baselines WHERE owner_user_id=$1 AND period_id=$2 AND date='2026-11-12' AND version=1", [A,period]);
+    assert(rows.length===1 && rows[0].version===1 && rows[0].availability==="available" && rows[0].policy_version_id===rows[0].policy_id, "explicit setup rebase creates an available baseline against policy version 1");
+    assert(preservedInitialBaseline.length===1 && preservedInitialBaseline[0].availability==="unavailable"
+      && preservedInitialBaseline[0].unavailable_reason==="initial_setup_incomplete"
+      && preservedInitialBaseline[0].inputs.setupComplete===false, "setup rebase preserves the original unavailable baseline");
     assert(baseline.length===1 && baseline[0].cash_minor===50000 && baseline[0].commitments_minor===0 && baseline[0].savings_target_minor===12000 && baseline[0].savings_funded_minor===0 && baseline[0].emergency_target_minor===3000 && baseline[0].emergency_used_minor===0, "setup snapshot preserves opening and configured targets");
     await user(A, tx => tx.unsafe(`INSERT INTO public.money_budget_plans
       (owner_user_id,period_id,savings_target_minor,emergency_target_minor)
@@ -204,6 +217,11 @@ async function main() {
         'fixed',true,'cancelled','2026-12-01',jsonb_build_array(jsonb_build_object('state','cancelled','effectiveDate','2026-12-01','version',2)), 'same-day-transition',repeat('f',64),'2026-11-30T12:00:00Z'),
        ($1,'bill','future transition',4300,'2026-12-01','2026-12-31','2026-12-10',
         'fixed',true,'cancelled','2026-12-03',jsonb_build_array(jsonb_build_object('state','cancelled','effectiveDate','2026-12-03','version',2)), 'future-transition',repeat('1',64),'2026-11-30T12:00:00Z')`, [A]);
+    const initialObligationsBaseline = await sql.unsafe("SELECT availability,unavailable_reason,inputs FROM public.money_day_start_baselines WHERE owner_user_id=$1 AND period_id=$2 AND date='2026-12-01'", [A,nextPeriodId]);
+    assert(initialObligationsBaseline.length===1 && initialObligationsBaseline[0].availability==="unavailable"
+      && initialObligationsBaseline[0].unavailable_reason==="initial_setup_incomplete"
+      && initialObligationsBaseline[0].inputs.setupComplete===false,
+      "new period starts unavailable until obligation setup is explicitly completed");
     const openingObligations = await user(A, tx => tx.unsafe("SELECT (public.money_rebase_day_start_baseline($1)).*", [nextPeriodId]));
     assert(openingObligations[0].availability==="available" && openingObligations[0].commitments_minor===6400,
       "first-day baseline includes initial and future-transition pending obligations but excludes same-day cancellation");
@@ -248,7 +266,7 @@ async function main() {
     const asA = await user(A, tx => tx.unsafe("SELECT count(*)::int n FROM public.money_day_start_baselines"));
     const asB = await user(B, tx => tx.unsafe("SELECT count(*)::int n FROM public.money_day_start_baselines"));
     const asC = await user(C, tx => tx.unsafe("SELECT count(*)::int n FROM public.money_day_start_baselines"));
-    assert(asA[0].n===4 && asB[0].n===3 && asC[0].n===0, "RLS owner isolation");
+    assert(asA[0].n===6 && asB[0].n===3 && asC[0].n===0, "RLS owner isolation");
     console.log("[RLS] owners A and B see their own baselines; owner C sees none");
     for (const [label, statement, params] of [
       ["cross-owner period", "INSERT INTO public.money_policy_versions(owner_user_id,period_id,version,effective_date,policy) VALUES($1,$2,1,'2026-11-12','{}')", [B,period]],
