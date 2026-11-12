@@ -54,7 +54,6 @@ async function main() {
         '{"savingsTargetMinor":12000,"emergencyTargetMinor":3000}'::jsonb,
         now()::timestamptz) AS p) created`));
     const period = created[0].id;
-    const periodVersion = created[0].version;
     const incompleteSetup = await sql.unsafe(`SELECT availability,unavailable_reason,inputs
       FROM public.money_day_start_baselines WHERE owner_user_id=$1 AND period_id=$2 AND date='2026-11-12'`, [A,period]);
     assert(incompleteSetup.length===1 && incompleteSetup[0].availability==="unavailable"
@@ -67,11 +66,12 @@ async function main() {
         VALUES (${A}::uuid,${clientId},${RESOURCE},'proof','active',${profile},${sql.json(permissions)},1,now())`;
     }
     const readerEnsure = await user(A, tx => tx.unsafe("SELECT (public.money_ensure_day_start_baseline($1,'2026-11-13'::date)).*", [period]), "money-read").then(() => false, e => e.code === "42501");
-    const readerRebase = await user(A, tx => tx.unsafe("SELECT (public.money_rebase_day_start_baseline($1)).*", [period]), "money-read").then(() => false, e => e.code === "42501");
+    const readerRebase = await user(A, tx => tx.unsafe("SELECT * FROM public.money_rebase_day_start_baseline($1)", [period]), "money-read").then(() => false, e => e.code === "42501");
     assert(readerEnsure && readerRebase, "MCP read grant cannot ensure or rebase a baseline");
-    const completedSetup = await user(A, tx => tx.unsafe("SELECT (public.money_rebase_day_start_baseline($1)).*", [period]));
+    const completedSetup = await user(A, tx => tx.unsafe("SELECT * FROM public.money_rebase_day_start_baseline($1)", [period]));
     assert(completedSetup[0].availability==="available" && completedSetup[0].version===2,
       "owner rebase explicitly completes setup and replaces the incomplete baseline");
+    const periodVersion = (await sql.unsafe("SELECT version FROM public.money_periods WHERE id=$1", [period]))[0].version;
     const writerEnsure = await user(A, tx => tx.unsafe("SELECT (public.money_ensure_day_start_baseline($1,'2026-11-13'::date)).*", [period]), "money-write");
     assert(writerEnsure[0].availability === "available", "MCP write grant can ensure a baseline");
     const firstPartyEnsure = await user(A, tx => tx.unsafe("SELECT (public.money_ensure_day_start_baseline($1,'2026-11-14'::date)).*", [period]));
@@ -84,9 +84,9 @@ async function main() {
     assert(readerUpdateDenied, "MCP read grant cannot invoke the period update wrapper");
     // Migration 0103 wraps the full ten-argument period update RPC. Advancing
     // active_date must materialize that date's baseline in the same transaction.
-    const advance = await user(A, tx => tx.unsafe(`SELECT (public.money_update_period(
+    const advance = await user(A, tx => tx.unsafe(`SELECT * FROM public.money_update_period(
       $1,$2,'2026-11-15'::date,'{}'::jsonb,NULL::integer,NULL::text,NULL::text,
-      '{}'::jsonb,NULL::text,now()::timestamptz)).*`, [period,periodVersion]));
+      '{}'::jsonb,NULL::text,now()::timestamptz)`, [period,periodVersion]));
     assert(advance.length===1 && new Date(advance[0].active_date).toISOString().slice(0,10)==="2026-11-15"
       && advance[0].version===periodVersion+1, "period update advances active date and version");
     const advancedBaseline = await sql.unsafe(`SELECT availability,cash_minor,savings_target_minor,emergency_target_minor
@@ -148,7 +148,7 @@ async function main() {
     assert(unchanged.length===1 && unchanged[0].cash_minor===50000 && unchanged[0].savings_target_minor===12000
       && unchanged[0].emergency_target_minor===3000 && unchanged[0].policy_version_id===rows[0].policy_id,
       "target revision leaves the existing day-start baseline unchanged");
-    const rebased = await user(A, tx => tx.unsafe("SELECT (public.money_rebase_day_start_baseline($1)).*", [period]));
+    const rebased = await user(A, tx => tx.unsafe("SELECT * FROM public.money_rebase_day_start_baseline($1)", [period]));
     assert(new Date(rebased[0].date).toISOString().slice(0,10) === "2026-11-15", "owner can rebase a lagging active date independent of database current date");
     const baselineVersions = await sql.unsafe(`SELECT version,cash_minor,savings_target_minor,emergency_target_minor,policy_version_id
       FROM public.money_day_start_baselines WHERE owner_user_id=$1 AND period_id=$2 AND date='2026-11-15' ORDER BY version`, [A,period]);
@@ -191,7 +191,7 @@ async function main() {
     console.log("[REVISION] target update appends policy version 2; existing day-start baseline remains immutable");
     const endFirst = await user(A, tx => tx.unsafe("UPDATE public.money_periods SET lifecycle='ended', version=version+1 WHERE id=$1 RETURNING id", [period]));
     assert(endFirst.length===1, "first period ends before creating the next tracking period");
-    const endedRebaseDenied = await user(A, tx => tx.unsafe("SELECT (public.money_rebase_day_start_baseline($1)).*", [period]))
+    const endedRebaseDenied = await user(A, tx => tx.unsafe("SELECT * FROM public.money_rebase_day_start_baseline($1)", [period]))
       .then(() => false, e => e.code === "P0001");
     assert(endedRebaseDenied, "ended period cannot be rebased");
     const nextPeriod = await user(A, tx => tx.unsafe(`SELECT (public.money_create_period(
@@ -222,7 +222,7 @@ async function main() {
       && initialObligationsBaseline[0].unavailable_reason==="initial_setup_incomplete"
       && initialObligationsBaseline[0].inputs.setupComplete===false,
       "new period starts unavailable until obligation setup is explicitly completed");
-    const openingObligations = await user(A, tx => tx.unsafe("SELECT (public.money_rebase_day_start_baseline($1)).*", [nextPeriodId]));
+    const openingObligations = await user(A, tx => tx.unsafe("SELECT * FROM public.money_rebase_day_start_baseline($1)", [nextPeriodId]));
     assert(openingObligations[0].availability==="available" && openingObligations[0].commitments_minor===6400,
       "first-day baseline includes initial and future-transition pending obligations but excludes same-day cancellation");
     console.log("[OBLIGATIONS] first-day cutoff includes period-start obligations without applying same-day transitions");
