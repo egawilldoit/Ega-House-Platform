@@ -1,6 +1,8 @@
 -- MONEY-08 durable policy revisions and day-start calculation inputs.
 -- Historical unknowns stay NULL and are marked unavailable; this migration
 -- deliberately does not synthesize snapshots for existing periods.
+ALTER TABLE public.money_periods ADD COLUMN IF NOT EXISTS day_start_setup_completed boolean NOT NULL DEFAULT false;
+--> statement-breakpoint
 --> statement-breakpoint
 CREATE UNIQUE INDEX IF NOT EXISTS money_periods_owner_id_unique
   ON public.money_periods(owner_user_id, id);
@@ -86,6 +88,21 @@ BEGIN
     WHERE owner_user_id = auth.uid() AND period_id = p_period_id AND date = p_date
     ORDER BY version DESC LIMIT 1;
   IF FOUND AND NOT p_rebase THEN RETURN v_row; END IF;
+  -- Initial setup must be explicitly completed by the owner. Until then the
+  -- obligation set is unknown, even when it currently contains no rows.
+  IF NOT v_period.day_start_setup_completed THEN
+    SELECT COALESCE(max(version), 0) + 1 INTO v_version
+      FROM public.money_day_start_baselines
+      WHERE owner_user_id = auth.uid() AND period_id = p_period_id AND date = p_date;
+    INSERT INTO public.money_day_start_baselines
+      (owner_user_id, period_id, date, version, policy_version_id, algorithm_version,
+       availability, unavailable_reason, inputs)
+    VALUES (auth.uid(), p_period_id, p_date, v_version, NULL,
+      'safe-flexible-start-of-day-v1', 'unavailable', 'initial_setup_incomplete',
+      jsonb_build_object('setupComplete', false));
+    RETURN (SELECT b FROM public.money_day_start_baselines b WHERE b.owner_user_id = auth.uid()
+      AND b.period_id = p_period_id AND b.date = p_date AND b.version = v_version);
+  END IF;
   -- Serialize the version allocation for this period/date via the period lock.
   SELECT * INTO v_policy FROM public.money_policy_versions
     WHERE owner_user_id = auth.uid()
@@ -184,6 +201,8 @@ BEGIN
   IF NOT FOUND OR v_period.active_date <> CURRENT_DATE THEN
     RAISE EXCEPTION 'Only the owner current active date can be rebased';
   END IF;
+  UPDATE public.money_periods SET day_start_setup_completed = true, version = version + 1
+   WHERE id = p_period_id AND owner_user_id = auth.uid();
   RETURN public.money_calculate_day_start_baseline(p_period_id, v_period.active_date, true);
 END
 $rebase$;
