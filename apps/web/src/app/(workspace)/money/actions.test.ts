@@ -13,6 +13,7 @@ import type { AuthenticatedActor } from "@ega/application";
 import type {
   PersonalExpense,
 } from "@ega/domain/expenses";
+import { MONEY_ADVISORY_CAP_LABEL } from "@ega/domain/money";
 
 import { mapApplicationCode } from "@/lib/money/expense-action-codes";
 
@@ -66,6 +67,9 @@ test("category caps save through one validated preference patch without blocking
   assert.doesNotMatch(createBody, /categoryCaps/);
   assert.match(pageSource, /CategoryCapsForm/);
   assert.match(pageSource, /MONEY_ADVISORY_CAP_LABEL/);
+  // The rendered heading text itself, not only the identifier reference.
+  assert.equal(MONEY_ADVISORY_CAP_LABEL, "Advisory monthly category cap");
+  assert.match(pageSource, /\{MONEY_ADVISORY_CAP_LABEL\}/);
 });
 
 test("money period actions share the verified session, repository and centime parser", () => {

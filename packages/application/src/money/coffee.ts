@@ -198,6 +198,11 @@ export async function deleteMoneyCoffeeVisit(
     nowIso,
   );
   if (!result.ok) {
+    // DELETE is idempotent: a retry after a successful delete sees no row and
+    // reports it as already deleted instead of a spurious failure.
+    if (result.error.code === "notFound") {
+      return applicationSuccess({ id: input.id.trim(), alreadyDeleted: true });
+    }
     return mapFailure(result.error.code, "Unable to delete the coffee visit right now.");
   }
   return applicationSuccess(result.value);

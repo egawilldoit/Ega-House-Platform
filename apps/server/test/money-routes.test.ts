@@ -232,3 +232,20 @@ test("POST /api/money/coffee-visits rejects an empty line list before persistenc
   assert.equal(body.error.code, "VALIDATION");
   assert.equal(fake.calls.length, 0);
 });
+
+test("GET /api/money/coffee-visits normalizes numeric pagination query values", async () => {
+  const fake = new FakeSupabase();
+  fake.push("money_coffee_visits", { data: [], error: null });
+  const res = await makeApp(fake).request(
+    "/api/money/coffee-visits?from=2026-11-09&to=2026-11-15&limit=25&offset=0",
+    { headers: AUTH },
+  );
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  assert.deepEqual(body.visits, []);
+  assert.ok(
+    fake.calls[0]!.steps.some(
+      (step) => step.method === "range" && step.args[0] === 0 && step.args[1] === 24,
+    ),
+  );
+});

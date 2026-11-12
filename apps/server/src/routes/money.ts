@@ -400,10 +400,15 @@ export function createMoneyRoutes(
   });
 
   routes.get("/coffee-visits", async (c) => {
+    const query = c.req.query();
     const result = await listMoneyCoffeeVisits(
       c.var.actor,
       new SupabaseMoneyCoffeeRepository(c.var.client),
-      c.req.query(),
+      {
+        ...query,
+        limit: query.limit === undefined ? undefined : Number(query.limit),
+        offset: query.offset === undefined ? undefined : Number(query.offset),
+      },
     );
     if (!result.ok) return errorResponse(c, result.code, result.errorMessage);
     const response: ListMoneyCoffeeVisitsResponse = {
