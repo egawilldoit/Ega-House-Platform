@@ -42,7 +42,12 @@ test("MONEY-08 current reserve projection preserves disjoint protections and rel
   const funded = projectMoneyReserves({ ...base, recordedCashMinor: 48_900, savingsFundedMinor: 20_000 });
   assert.equal(funded.available, true);
   if (funded.available) assert.equal(funded.reserves.safeFlexibleMinor, 33_900);
-  assert.equal(projectMoneyReserves({ ...base, emergencyUsedMinor: 5_000 }).available, true);
+  const emergencySpent = projectMoneyReserves({ ...base, recordedCashMinor: 63_900, emergencyUsedMinor: 5_000 });
+  assert.equal(emergencySpent.available, true);
+  if (emergencySpent.available) {
+    assert.equal(emergencySpent.reserves.remainingEmergencyMinor, 0);
+    assert.equal(emergencySpent.reserves.safeFlexibleMinor, 33_900);
+  }
   const incomplete = projectMoneyReserves({ ...base, savingsFundedMinor: null });
   assert.deepEqual(incomplete, { available: false, currency: "MAD", reason: "reserve_inputs_incomplete", cutoffDate: base.cutoffDate });
 });
