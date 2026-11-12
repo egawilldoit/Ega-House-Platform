@@ -267,4 +267,56 @@ describe("MCP obligation write handlers", () => {
     expect(update).toContain('"state_effective_date":"2026-11-11"');
     expect(update).toContain('"version":2');
   });
+
+  it("generates occurrences through the outer handler without leaking operationId", async () => {
+    const { client } = fakeClient([
+      {
+        data: {
+          id: "44444444-4444-4444-8444-444444444444",
+          kind: "bill",
+          description: "Rent",
+          amount_minor: 350000,
+          currency: "MAD",
+          cadence: "monthly",
+          due_day_of_month: 5,
+          due_weekday: null,
+          start_date: "2026-11-01",
+          end_date: null,
+          need_vs_want: "need",
+          purpose: "fixed",
+          counts_in_daily: false,
+          category: "bills",
+          lifecycle: "active",
+          idempotency_key: "template-1",
+          version: 1,
+          created_at: "2026-11-01T09:00:00+00:00",
+          updated_at: "2026-11-01T09:00:00+00:00",
+        },
+        error: null,
+      },
+      { data: null, error: null },
+      { data: occurrenceRow(), error: null },
+    ]);
+    const handlers = handlersFor(client);
+
+    const result = await handlers.generateObligations(
+      writerAuth,
+      {
+        templateId: "44444444-4444-4444-8444-444444444444",
+        throughDate: "2026-11-30",
+        operationId: OPERATION_ID,
+      } as never,
+      OPERATION_ID,
+    );
+
+    expect(result.isError).toBeUndefined();
+    const payload = result.structuredContent as {
+      ok: boolean;
+      created: number;
+      cashEffect: string;
+    };
+    expect(payload.ok).toBe(true);
+    expect(payload.created).toBe(1);
+    expect(payload.cashEffect).toBe("none");
+  });
 });

@@ -1698,6 +1698,7 @@ export const moneyObligations = pgTable(
     state: varchar("state", { length: 16 }).default("pending").notNull(),
     stateEffectiveDate: date("state_effective_date").notNull(),
     stateReason: varchar("state_reason", { length: 200 }),
+    stateHistory: jsonb("state_history").default(sql`'[]'::jsonb`).notNull(),
     paymentExpenseId: uuid("payment_expense_id").references(
       () => personalExpenses.id,
       { onDelete: "restrict" },

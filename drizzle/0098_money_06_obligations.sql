@@ -120,6 +120,7 @@ CREATE TABLE IF NOT EXISTS "public"."money_obligations" (
 	"state" varchar(16) DEFAULT 'pending' NOT NULL,
 	"state_effective_date" date NOT NULL,
 	"state_reason" varchar(200),
+	"state_history" jsonb DEFAULT '[]'::jsonb NOT NULL,
 	"payment_expense_id" uuid REFERENCES "public"."personal_expenses"("id") ON DELETE RESTRICT,
 	"payment_evidence" jsonb,
 	"idempotency_key" varchar(128) NOT NULL,
@@ -140,9 +141,11 @@ CREATE TABLE IF NOT EXISTS "public"."money_obligations" (
 	CONSTRAINT "money_obligations_purpose_check"
 		CHECK ("purpose" in ('fixed', 'flexible', 'emergency')),
 	CONSTRAINT "money_obligations_category_check"
-		CHECK ("category" IS NULL OR "category" in ('coffee', 'groceries', 'eating_out', 'transport', 'bills', 'subscriptions', 'household', 'health', 'other')),
+		CHECK ("category" IS NULL OR "category" in ('coffee', 'groceries', 'eating_out', 'transport', 'bills', 'subscriptions', 'household', 'health', 'other', 'daily_usage', 'personal_care', 'work_tools', 'fun', 'emergency')),
 	CONSTRAINT "money_obligations_state_check"
 		CHECK ("state" in ('pending', 'paid', 'waived', 'cancelled')),
+	CONSTRAINT "money_obligations_state_history_check"
+		CHECK (jsonb_typeof("state_history") = 'array'),
 	CONSTRAINT "money_obligations_description_check"
 		CHECK (btrim("description") <> ''),
 	CONSTRAINT "money_obligations_idempotency_key_check"
@@ -380,6 +383,36 @@ CREATE TRIGGER "money_obligations_update_guard"
   FOR EACH ROW
   EXECUTE FUNCTION public.enforce_money_obligation_update();
 --> statement-breakpoint
+-- Append-only lifecycle history. `zz_` runs after the update guard so the guard
+-- validates the caller's payload before this trigger records the transition.
+CREATE OR REPLACE FUNCTION public.append_money_obligation_state_history()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = ''
+AS $history$
+BEGIN
+  IF NEW.state IS DISTINCT FROM OLD.state THEN
+    NEW.state_history := OLD.state_history || jsonb_build_array(
+      jsonb_build_object(
+        'state', NEW.state,
+        'effectiveDate', NEW.state_effective_date,
+        'reason', NEW.state_reason,
+        'version', NEW.version,
+        'recordedAt', to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
+      )
+    );
+  END IF;
+  RETURN NEW;
+END
+$history$;
+--> statement-breakpoint
+DROP TRIGGER IF EXISTS "zz_money_obligations_state_history" ON "public"."money_obligations";
+--> statement-breakpoint
+CREATE TRIGGER "zz_money_obligations_state_history"
+  BEFORE UPDATE ON "public"."money_obligations"
+  FOR EACH ROW
+  EXECUTE FUNCTION public.append_money_obligation_state_history();
+--> statement-breakpoint
 CREATE OR REPLACE FUNCTION public.enforce_money_obligation_payment_link()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -466,6 +499,7 @@ BEGIN
     NEW.amount_minor IS DISTINCT FROM OLD.amount_minor
     OR NEW.currency IS DISTINCT FROM OLD.currency
     OR NEW.occurred_at IS DISTINCT FROM OLD.occurred_at
+    OR NEW.booking_date IS DISTINCT FROM OLD.booking_date
     OR (OLD.deleted_at IS NULL AND NEW.deleted_at IS NOT NULL)
   ) AND EXISTS (
     SELECT 1
