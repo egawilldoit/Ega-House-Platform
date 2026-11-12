@@ -224,6 +224,31 @@ function toOpening(row: OpeningRow): MoneyOpening {
 export class SupabaseMoneyPeriodRepository implements MoneyPeriodRepository {
   constructor(private readonly supabase: SupabaseClient) {}
 
+  async ensureDayStartBaseline(actor: AuthenticatedActor, periodId: string, date: string) {
+    // RPC authorization is bound to auth.uid() by the database function; the
+    // request-scoped client carries the verified actor session.
+    void actor;
+    const { data, error } = await this.supabase.rpc("money_ensure_day_start_baseline", {
+      p_period_id: periodId,
+      p_date: date,
+    });
+    if (error) return { ok: false as const, error: moneyFailure(error) };
+    const row = Array.isArray(data) ? data[0] : data;
+    if (!row) return { ok: false as const, error: { code: "unknown" as const } };
+    return { ok: true as const, value: {
+      date: row.date,
+      version: row.version,
+      availability: row.availability,
+      unavailableReason: row.unavailable_reason,
+      cashMinor: row.cash_minor,
+      commitmentsMinor: row.commitments_minor,
+      savingsTargetMinor: row.savings_target_minor,
+      savingsFundedMinor: row.savings_funded_minor,
+      emergencyTargetMinor: row.emergency_target_minor,
+      emergencyUsedMinor: row.emergency_used_minor,
+    } };
+  }
+
   async getDayStartBaseline(
     actor: AuthenticatedActor,
     periodId: string,

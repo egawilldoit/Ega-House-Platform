@@ -33,6 +33,7 @@ function makeRepository() {
   const periods = new Map<string, { period: MoneyPeriod; ownerUserId: string }>();
   const openings = new Map<string, { opening: MoneyOpening; ownerUserId: string }>();
   const ledger: LedgerRow[] = [];
+  const ensured: Array<{ ownerUserId: string; periodId: string; date: string }> = [];
   let dailyTotal = { amountMinor: 0, complete: true };
   let sequence = 0;
 
@@ -48,6 +49,10 @@ function makeRepository() {
   }
 
   const repository: MoneyPeriodRepository = {
+    async ensureDayStartBaseline(actor, periodId, date) {
+      ensured.push({ ownerUserId: actor.userId, periodId, date });
+      return { ok: true as const, value: { date, version: 1, availability: "available" as const, unavailableReason: null, cashMinor: 50000, commitmentsMinor: 0, savingsTargetMinor: 0, savingsFundedMinor: 0, emergencyTargetMinor: 0, emergencyUsedMinor: 0 } };
+    },
     async getDayStartBaseline() {
       return { ok: true as const, value: { date: "2026-11-11", version: 1, availability: "available" as const, unavailableReason: null, cashMinor: 50000, commitmentsMinor: 0, savingsTargetMinor: 0, savingsFundedMinor: 0, emergencyTargetMinor: 0, emergencyUsedMinor: 0 } };
     },
@@ -294,7 +299,7 @@ function makeRepository() {
     });
   }
 
-  return { repository, addExpense, periods, ledger, setDailyTotal(value: { amountMinor: number; complete: boolean }) { dailyTotal = value; } };
+  return { repository, addExpense, periods, ledger, ensured, setDailyTotal(value: { amountMinor: number; complete: boolean }) { dailyTotal = value; } };
 }
 
 const CREATE_BODY = {
@@ -324,17 +329,26 @@ test("an empty account has no invented period or opening, and cash is unknown", 
 });
 
 test("selected-day reference subtracts counted outflows and becomes unavailable when the aggregate is incomplete", async () => {
-  const { repository, setDailyTotal } = makeRepository();
+  const { repository, setDailyTotal, ensured } = makeRepository();
   await createMoneyPeriod(ACTOR, repository, CREATE_BODY, { now: NOW });
   setDailyTotal({ amountMinor: 1250, complete: true });
   const state = await getMoneyState(ACTOR, repository, {}, { now: NOW, timezone: "Africa/Casablanca" });
   assert.equal(state.ok, true);
   if (!state.ok) return;
   assert.equal(state.data.dayStartBaseline?.dailyReference?.dailyRemainingMinor, 1250);
+  assert.deepEqual(ensured, [{ ownerUserId: ACTOR.userId, periodId: state.data.period!.id, date: state.data.period!.activeDate }]);
   setDailyTotal({ amountMinor: 1250, complete: false });
   const incomplete = await getMoneyState(ACTOR, repository, {}, { now: NOW, timezone: "Africa/Casablanca" });
   assert.equal(incomplete.ok && incomplete.data.dayStartBaseline?.dailyReference, null);
   assert.equal(incomplete.ok && incomplete.data.dayStartBaselineUnavailable, true);
+});
+
+test("historical explicit reads do not materialize missing day-start history", async () => {
+  const { repository, ensured } = makeRepository();
+  await createMoneyPeriod(ACTOR, repository, CREATE_BODY, { now: NOW });
+  const state = await getMoneyState(ACTOR, repository, { date: "2026-11-10" }, { now: NOW, timezone: "Africa/Casablanca" });
+  assert.equal(state.ok, true);
+  assert.deepEqual(ensured, []);
 });
 
 test("a partial period creates one known opening and reports cash through the active date", async () => {
