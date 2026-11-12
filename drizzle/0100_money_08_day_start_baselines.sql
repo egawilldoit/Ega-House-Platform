@@ -56,7 +56,7 @@ CREATE INDEX IF NOT EXISTS money_day_start_baselines_date_idx
   ON public.money_day_start_baselines(owner_user_id, period_id, date DESC, version DESC);
 --> statement-breakpoint
 -- Materialize from retained ledger and obligation lifecycle history. The period
--- row lock serializes concurrent callers; all inputs are read in this transaction.
+-- period row lock serializes concurrent callers; all inputs are read in this transaction.
 CREATE OR REPLACE FUNCTION public.money_ensure_day_start_baseline(
   p_period_id uuid, p_date date
 ) RETURNS public.money_day_start_baselines
@@ -78,26 +78,28 @@ DECLARE
 BEGIN
   SELECT * INTO v_period FROM public.money_periods
     WHERE id = p_period_id AND owner_user_id = auth.uid()
-      AND start_date <= p_date AND end_date >= p_date FOR SHARE;
+      AND start_date <= p_date AND end_date >= p_date FOR UPDATE;
   IF NOT FOUND THEN RAISE EXCEPTION 'Money period or date is unavailable'; END IF;
   SELECT * INTO v_row FROM public.money_day_start_baselines
-    WHERE owner_user_id = auth.uid() AND date = p_date
+    WHERE owner_user_id = auth.uid() AND period_id = p_period_id AND date = p_date
     ORDER BY version DESC LIMIT 1;
   IF FOUND THEN RETURN v_row; END IF;
   -- Serialize the version allocation for this period/date via the period lock.
   SELECT * INTO v_policy FROM public.money_policy_versions
     WHERE owner_user_id = auth.uid()
-      AND effective_date <= p_date ORDER BY effective_date DESC, version DESC LIMIT 1;
+      AND period_id = p_period_id AND effective_date <= p_date
+    ORDER BY effective_date DESC, version DESC LIMIT 1;
   SELECT COALESCE(max(version), 0) + 1 INTO v_version
     FROM public.money_day_start_baselines
-    WHERE owner_user_id = auth.uid() AND date = p_date;
+    WHERE owner_user_id = auth.uid() AND period_id = p_period_id AND date = p_date;
   v_savings_target := CASE WHEN v_policy.policy #> '{settings}' ? 'savingsTargetMinor'
     THEN (v_policy.policy #>> '{settings,savingsTargetMinor}')::integer END;
   v_emergency_target := CASE WHEN v_policy.policy #> '{settings}' ? 'emergencyTargetMinor'
     THEN (v_policy.policy #>> '{settings,emergencyTargetMinor}')::integer END;
   SELECT amount_minor INTO v_opening FROM public.personal_expenses
    WHERE owner_user_id = auth.uid()
-     AND id = v_period.opening_movement_id AND kind = 'opening' AND deleted_at IS NULL;
+     AND period_id = p_period_id AND id = v_period.opening_movement_id
+     AND kind = 'opening' AND deleted_at IS NULL;
   IF v_opening IS NULL THEN v_unknown := true; END IF;
   SELECT COALESCE(v_opening, 0) + COALESCE(sum(CASE
       WHEN kind = 'income' OR (kind = 'reconciliation_adjustment' AND direction = 'in') THEN amount_minor
@@ -105,13 +107,13 @@ BEGIN
       ELSE 0 END), 0)::integer
     INTO v_cash FROM public.personal_expenses
    WHERE owner_user_id = auth.uid()
-     AND booking_date < p_date AND deleted_at IS NULL AND kind <> 'opening';
+     AND period_id = p_period_id AND booking_date < p_date AND deleted_at IS NULL AND kind <> 'opening';
   SELECT COALESCE(sum(amount_minor), 0)::integer INTO v_savings
     FROM public.personal_expenses WHERE owner_user_id = auth.uid()
-      AND booking_date < p_date AND deleted_at IS NULL AND kind = 'savings_transfer';
+      AND period_id = p_period_id AND booking_date < p_date AND deleted_at IS NULL AND kind = 'savings_transfer';
   SELECT COALESCE(sum(amount_minor), 0)::integer INTO v_emergency
     FROM public.personal_expenses WHERE owner_user_id = auth.uid()
-      AND booking_date < p_date AND deleted_at IS NULL AND kind = 'expense' AND purpose = 'emergency';
+      AND period_id = p_period_id AND booking_date < p_date AND deleted_at IS NULL AND kind = 'expense' AND purpose = 'emergency';
   -- Current state alone cannot reconstruct prior days. Require history for any
   -- obligation whose state has changed; events effective on p_date are excluded.
   SELECT COALESCE(sum(o.amount_minor) FILTER (WHERE h.state = 'pending'), 0)::integer
@@ -122,10 +124,12 @@ BEGIN
          (e->>'version')::integer DESC LIMIT 1),
        CASE WHEN o.created_at::date < p_date THEN 'pending' END) AS state) h
    WHERE o.owner_user_id = auth.uid()
+     AND o.period_start >= v_period.start_date AND o.period_end <= v_period.end_date
      AND o.period_start < p_date AND o.period_end >= p_date;
   SELECT COALESCE(bool_or(state_history = '[]'::jsonb AND state_effective_date < p_date AND state <> 'pending'), false)
     INTO v_unknown FROM public.money_obligations
    WHERE owner_user_id = auth.uid()
+     AND period_start >= v_period.start_date AND period_end <= v_period.end_date
      AND period_start < p_date AND period_end >= p_date;
   IF v_savings_target IS NULL OR v_emergency_target IS NULL OR v_unknown THEN
     INSERT INTO public.money_day_start_baselines
@@ -147,7 +151,7 @@ BEGIN
         'openingAmountMinor', v_opening));
   END IF;
   SELECT * INTO v_row FROM public.money_day_start_baselines
-   WHERE owner_user_id = auth.uid() AND date = p_date AND version = v_version;
+   WHERE owner_user_id = auth.uid() AND period_id = p_period_id AND date = p_date AND version = v_version;
   RETURN v_row;
 END
 $baseline$;
