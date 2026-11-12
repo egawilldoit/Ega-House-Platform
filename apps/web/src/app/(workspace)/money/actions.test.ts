@@ -11,9 +11,9 @@ import {
 } from "@ega/application";
 import type { AuthenticatedActor } from "@ega/application";
 import type {
-  ExpenseCreateValues,
   PersonalExpense,
 } from "@ega/domain/expenses";
+import { MONEY_ADVISORY_CAP_LABEL } from "@ega/domain/money";
 
 import { mapApplicationCode } from "@/lib/money/expense-action-codes";
 
@@ -41,6 +41,22 @@ test("money actions derive the actor from the verified session and never accept 
   assert.doesNotMatch(actionsSource, /getSupabaseServiceClient/);
 });
 
+test("edit and delete invalidate both Money and Today projections", () => {
+  const updateBody = actionsSource.slice(
+    actionsSource.indexOf("updateExpenseAction"),
+    actionsSource.indexOf("deleteExpenseAction"),
+  );
+  assert.match(updateBody, /revalidatePath\("\/money"\)/);
+  assert.match(updateBody, /revalidatePath\("\/today"\)/);
+
+  const deleteBody = actionsSource.slice(
+    actionsSource.indexOf("deleteExpenseAction"),
+    actionsSource.indexOf("getExpenseAction"),
+  );
+  assert.match(deleteBody, /revalidatePath\("\/money"\)/);
+  assert.match(deleteBody, /revalidatePath\("\/today"\)/);
+});
+
 test("category caps save through one validated preference patch without blocking creation", () => {
   assert.match(actionsSource, /saveCategoryCapsAction/);
   assert.match(actionsSource, /updateWebUserPreferences\(\{ categoryCaps/);
@@ -50,7 +66,35 @@ test("category caps save through one validated preference patch without blocking
   const createBody = actionsSource.slice(actionsSource.indexOf("createExpenseAction"), actionsSource.indexOf("updateExpenseAction"));
   assert.doesNotMatch(createBody, /categoryCaps/);
   assert.match(pageSource, /CategoryCapsForm/);
-  assert.match(pageSource, /Monthly category caps/);
+  assert.match(pageSource, /MONEY_ADVISORY_CAP_LABEL/);
+  // The rendered heading text itself, not only the identifier reference.
+  assert.equal(MONEY_ADVISORY_CAP_LABEL, "Advisory monthly category cap");
+  assert.match(pageSource, /\{MONEY_ADVISORY_CAP_LABEL\}/);
+});
+
+test("money period actions share the verified session, repository and centime parser", () => {
+  assert.match(actionsSource, /createMoneyPeriodAction/);
+  assert.match(actionsSource, /updateMoneySettingsAction/);
+  assert.match(actionsSource, /getMoneyState|createMoneyPeriod|updateMoneySettings/);
+  assert.match(actionsSource, /getCurrentUser\(\)/);
+  assert.match(actionsSource, /createAuthenticatedActor\(user\.id\)/);
+  assert.match(actionsSource, /new SupabaseMoneyPeriodRepository\(client\)/);
+  assert.match(actionsSource, /parseOpeningAmountToMinor/);
+  assert.match(actionsSource, /getWebTimeContext\(\)/);
+  assert.match(actionsSource, /persistedTimezone/);
+  assert.match(actionsSource, /openingMode/);
+  assert.match(actionsSource, /version: Number\(rawVersion\)/);
+  assert.match(actionsSource, /periodId/);
+  assert.match(actionsSource, /revalidatePath\("\/money"\)/);
+  assert.doesNotMatch(actionsSource, /owner_user_id\s*:/);
+  assert.doesNotMatch(actionsSource, /getSupabaseServiceClient/);
+});
+
+test("expense creation carries the tracking-period guard on the shared repo", () => {
+  assert.match(
+    actionsSource,
+    /periods:\s*new SupabaseMoneyPeriodRepository\(client\)/,
+  );
 });
 
 test("money actions map application codes onto the component conflict contract", () => {
@@ -94,6 +138,9 @@ function makeRepository() {
     async summarize() {
       return { ok: true as const, value: { totalsByCategory: {}, countsByCategory: {}, recordCount: 0, truncated: false } };
     },
+    async count() {
+      return { ok: true as const, value: 0 };
+    },
     async findByIdempotencyKey(actor, idempotencyKey) {
       const receipt = byKey.get(`${actor.userId}::${idempotencyKey}`) ?? null;
       return { ok: true as const, value: receipt };
@@ -103,7 +150,10 @@ function makeRepository() {
       const now = new Date().toISOString();
       const expense = {
         id: `11111111-1111-4111-8111-1111111111${String(sequence).padStart(2, "0")}`,
+        kind: "expense",
+        direction: "out",
         occurredAt: input.values.occurredAt,
+        bookingDate: input.values.bookingDate,
         amountMinor: input.values.amountMinor,
         currency: "MAD",
         category: input.values.category,
@@ -111,6 +161,9 @@ function makeRepository() {
         merchant: input.values.merchant,
         needVsWant: input.values.needVsWant,
         paymentMethod: input.values.paymentMethod,
+        purpose: null,
+        countsInDaily: true,
+        periodId: null,
         idempotencyKey: input.values.idempotencyKey,
         version: 1,
         deletedAt: null,
@@ -190,7 +243,7 @@ function makeRepository() {
   return repository;
 }
 
-const CREATE_VALUES: ExpenseCreateValues = {
+const CREATE_VALUES = {
   occurredAt: "2026-11-08T10:00:00.000Z",
   amountMinor: 2250,
   category: "groceries",

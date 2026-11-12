@@ -17,11 +17,22 @@ test("money page derives actor from verified user and reads through expense appl
 
 test("money page honors owner timezone and formats stored integer centimes as MAD", () => {
   assert.match(source, /getWebTimeContext\(\)/);
-  assert.match(source, /timezone\s*=\s*time\.timezone/);
+  assert.match(source, /time\.persistedTimezone\s*\?\?\s*MONEY_DEFAULT_TIMEZONE/);
   assert.match(source, /timeZone:\s*timezone/);
   assert.match(source, /expense\.amountMinor\s*\/\s*100/);
   assert.match(source, /currency:\s*"MAD"/);
   assert.doesNotMatch(source, /Africa\/Casablanca/);
+});
+
+test("money page composes the shared period state and shows local today separately", () => {
+  assert.match(source, /getMoneyState\(/);
+  assert.match(source, /SupabaseMoneyPeriodRepository/);
+  assert.match(source, /MoneyPeriodPanel/);
+  assert.match(source, /localToday=\{moneyState\.localToday\}/);
+  assert.match(source, /period=\{moneyState\.period\}/);
+  assert.match(source, /legacyReviewRequired=/);
+  assert.match(source, /selectedPeriodId/);
+  assert.match(source, /Tracking period unavailable/);
 });
 
 test("money ledger displays need-vs-want and keeps notes visible beside merchants", () => {
@@ -32,6 +43,19 @@ test("money ledger displays need-vs-want and keeps notes visible beside merchant
   assert.doesNotMatch(source, /expense\.merchant\s*\?\?\s*expense\.note/);
 });
 
+test("money page renders recorded cash and the movement ledger through the shared use cases", () => {
+  assert.match(source, /getMoneyState\(/);
+  assert.match(source, /listMovements\(/);
+  // Recorded cash is rendered by the canonical period panel from the shared
+  // MONEY-03 cash position, never a second page-local calculation.
+  assert.match(source, /cash=\{moneyState\.cash\}/);
+  assert.match(source, /getMoneyMovementTotals\(/);
+  assert.match(source, /new SupabaseMoneyRepository\(client\)/);
+  assert.match(source, /MoneyMovementPanel/);
+  assert.match(source, /MoneyMovementActions/);
+  assert.doesNotMatch(source, /owner_user_id\s*:/);
+});
+
 test("money ledger has bounded URL pagination and accessible loading failure recovery", () => {
   assert.match(source, /limit:\s*"25"/);
   assert.match(source, /Math\.min\(parsedOffset,\s*100_000\)/);
@@ -40,6 +64,22 @@ test("money ledger has bounded URL pagination and accessible loading failure rec
   assert.match(source, /role="alert"/);
   assert.match(source, /Retry/);
   assert.match(source, /No expenses yet/);
+});
+
+test("money page exposes complete filtered CSV export and focus refresh", () => {
+  assert.match(source, /action="\/money\/export"/);
+  assert.match(source, /name="from"/);
+  assert.match(source, /name="to"/);
+  assert.match(source, /Download CSV/);
+  assert.match(source, /never silently cut off/);
+  assert.match(source, /RefreshOnFocus/);
+});
+
+test("unavailable or truncated spending is never shown as a complete zero", () => {
+  assert.match(source, /Progress unavailable — not shown as zero/);
+  assert.match(source, /Incomplete reading — not shown as zero/);
+  assert.match(source, /summary\.monthToDate\.truncated/);
+  assert.match(source, /Spending summaries unavailable right now/);
 });
 
 test("page query values succeed through the actual listExpenses parser and repository path", async () => {
@@ -63,5 +103,7 @@ test("page query values succeed through the actual listExpenses parser and repos
     offset: 50,
     startUtcIso: null,
     endUtcExclusiveIso: null,
+    startBookingDate: null,
+    endBookingDateExclusive: null,
   });
 });

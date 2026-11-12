@@ -70,12 +70,42 @@ export type McpReadToolHandlers = {
   ) => Promise<CallToolResult>;
   personalOpsExpensesList: (
     authInfo: AuthInfo | undefined,
-    input: { from?: string; to?: string; timezone?: string; limit?: number },
+    input: { from?: string; to?: string; timezone?: string; limit?: number; offset?: number },
     context?: McpProtocolContext,
   ) => Promise<CallToolResult>;
   personalOpsCheckinGet: (
     authInfo: AuthInfo | undefined,
     input: { localDate: string; timezone: string },
+    context?: McpProtocolContext,
+  ) => Promise<CallToolResult>;
+  /** MONEY-02 canonical Money reads. */
+  getMoneyExpense: (
+    authInfo: AuthInfo | undefined,
+    input: { expenseId: string },
+    context?: McpProtocolContext,
+  ) => Promise<CallToolResult>;
+  listMoneyLedger: (
+    authInfo: AuthInfo | undefined,
+    input: { from?: string; to?: string; timezone?: string; limit?: number; offset?: number },
+    context?: McpProtocolContext,
+  ) => Promise<CallToolResult>;
+  /** MONEY-03 period/active-date state. */
+  moneyState: (
+    authInfo: AuthInfo | undefined,
+    input: { periodId?: string; date?: string; mode?: "today" | "active_day" },
+    context?: McpProtocolContext,
+  ) => Promise<CallToolResult>;
+  /** MONEY-04 movement reads (distinct from the expense ledger reads). */
+  moneyMovementList: (
+    authInfo: AuthInfo | undefined,
+    input: {
+      from?: string;
+      to?: string;
+      cutoff?: string;
+      timezone?: string;
+      kind?: string;
+      limit?: number;
+    },
     context?: McpProtocolContext,
   ) => Promise<CallToolResult>;
   moneyObligationsList: (
@@ -87,6 +117,32 @@ export type McpReadToolHandlers = {
       dueTo?: string;
       limit?: number;
     },
+    context?: McpProtocolContext,
+  ) => Promise<CallToolResult>;
+  moneyMovementGet: (
+    authInfo: AuthInfo | undefined,
+    input: { movementId: string },
+    context?: McpProtocolContext,
+  ) => Promise<CallToolResult>;
+  /** MONEY-05 budget plan and counted coffee reads. */
+  moneyBudgetGet: (
+    authInfo: AuthInfo | undefined,
+    input: { periodStartDate: string; periodEndDate: string },
+    context?: McpProtocolContext,
+  ) => Promise<CallToolResult>;
+  moneyCoffeeWindow: (
+    authInfo: AuthInfo | undefined,
+    input: {
+      localDate: string;
+      timezone: string;
+      periodStartDate: string;
+      periodEndDate: string;
+    },
+    context?: McpProtocolContext,
+  ) => Promise<CallToolResult>;
+  moneyCoffeeVisitList: (
+    authInfo: AuthInfo | undefined,
+    input: { from: string; to: string; limit?: number; offset?: number },
     context?: McpProtocolContext,
   ) => Promise<CallToolResult>;
   moneyObligationGet: (
@@ -231,6 +287,149 @@ export type McpWriteToolHandlers = {
   savePersonalOpsCheckin: (
     authInfo: AuthInfo | undefined,
     input: { localDate: string; timezone: string; patch: Record<string, unknown>; operationId: string },
+    context?: McpProtocolContext,
+  ) => Promise<CallToolResult>;
+  /** MONEY-02 canonical Money writes. */
+  createMoneyExpense: (
+    authInfo: AuthInfo | undefined,
+    input: {
+      occurredAt: string;
+      amountMinor: number;
+      category: string;
+      needVsWant: "need" | "want";
+      note?: string | null;
+      merchant?: string | null;
+      paymentMethod?: string | null;
+      idempotencyKey: string;
+      operationId: string;
+    },
+    context?: McpProtocolContext,
+  ) => Promise<CallToolResult>;
+  updateMoneyExpense: (
+    authInfo: AuthInfo | undefined,
+    input: {
+      expenseId: string;
+      expectedVersion: number;
+      occurredAt?: string;
+      amountMinor?: number;
+      category?: string;
+      needVsWant?: "need" | "want";
+      note?: string | null;
+      merchant?: string | null;
+      paymentMethod?: string | null;
+      operationId: string;
+    },
+    context?: McpProtocolContext,
+  ) => Promise<CallToolResult>;
+  deleteMoneyExpense: (
+    authInfo: AuthInfo | undefined,
+    input: { expenseId: string; expectedVersion: number; operationId: string },
+    context?: McpProtocolContext,
+  ) => Promise<CallToolResult>;
+  updateMoneySettings: (
+    authInfo: AuthInfo | undefined,
+    input: {
+      operationId: string;
+      periodId?: string;
+      version?: number;
+      startDate?: string;
+      endDate?: string;
+      timezone?: string;
+      activeDate?: string;
+      opening?: {
+        amountMinor: number;
+        source: "user_entered" | "carry_forward" | "verified_source";
+        cutoffDate?: string | null;
+        evidence?: string | null;
+        note?: string | null;
+      } | null;
+      settings?: Record<string, unknown>;
+    },
+    context?: McpProtocolContext,
+  ) => Promise<CallToolResult>;
+  /** MONEY-04 movement writes on the one ledger. */
+  createMoneyMovement: (
+    authInfo: AuthInfo | undefined,
+    input: {
+      kind: string;
+      direction?: "in" | "out";
+      amountMinor: number;
+      category?: string | null;
+      note?: string | null;
+      merchant?: string | null;
+      needVsWant?: "need" | "want" | null;
+      paymentMethod?: string | null;
+      purpose?: "fixed" | "flexible" | "emergency" | null;
+      countsInDaily?: boolean;
+      bookingDate?: string;
+      occurredAt?: string | null;
+      idempotencyKey: string;
+      operationId: string;
+    },
+    context?: McpProtocolContext,
+  ) => Promise<CallToolResult>;
+  updateMoneyMovement: (
+    authInfo: AuthInfo | undefined,
+    input: {
+      movementId: string;
+      version: number;
+      bookingDate?: string;
+      occurredAt?: string | null;
+      amountMinor?: number;
+      category?: string;
+      note?: string | null;
+      merchant?: string | null;
+      needVsWant?: "need" | "want";
+      paymentMethod?: string | null;
+      purpose?: "fixed" | "flexible" | "emergency" | null;
+      countsInDaily?: boolean;
+      operationId: string;
+    },
+    context?: McpProtocolContext,
+  ) => Promise<CallToolResult>;
+  /** MONEY-05 budget, classification and counted coffee writes. */
+  setMoneyAllocation: (
+    authInfo: AuthInfo | undefined,
+    input: {
+      periodStartDate: string;
+      periodEndDate: string;
+      version: number;
+      allocations?: Record<string, number | null>;
+      savingsTargetMinor?: number | null;
+      emergencyTargetMinor?: number | null;
+      coffeeWeeklySpendLimitMinor?: number | null;
+      coffeeWeeklyVisitLimit?: number | null;
+      operationId: string;
+    },
+    context?: McpProtocolContext,
+  ) => Promise<CallToolResult>;
+  classifyMoneyExpense: (
+    authInfo: AuthInfo | undefined,
+    input: {
+      expenseId: string;
+      version: number;
+      category: string;
+      note?: string | null;
+      needVsWant?: "need" | "want";
+      operationId: string;
+    },
+    context?: McpProtocolContext,
+  ) => Promise<CallToolResult>;
+  recordCoffeeVisit: (
+    authInfo: AuthInfo | undefined,
+    input: {
+      visitKey: string;
+      localDate: string;
+      timezone: string;
+      expenseIds: string[];
+      note?: string | null;
+      operationId: string;
+    },
+    context?: McpProtocolContext,
+  ) => Promise<CallToolResult>;
+  deleteCoffeeVisit: (
+    authInfo: AuthInfo | undefined,
+    input: { visitId: string; version: number; operationId: string },
     context?: McpProtocolContext,
   ) => Promise<CallToolResult>;
   stopTimer: (
@@ -444,17 +643,81 @@ const personalOpsSummaryInputSchema = z.object({
   timezone: z.string().optional(),
 }).strict();
 
+const offsetSchema = z.number().int().min(0).max(1_000_000).default(0);
+
 const personalOpsExpensesInputSchema = z.object({
   from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   timezone: z.string().optional(),
   limit: limitSchema,
+  offset: offsetSchema,
+}).strict();
+
+const moneyLedgerListInputSchema = z.object({
+  from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  timezone: z.string().optional(),
+  limit: limitSchema,
+  offset: offsetSchema,
+}).strict();
+
+const moneyExpenseIdInputSchema = z.object({
+  expenseId: uuidSchema,
+}).strict();
+
+const moneyUpdateExpenseInputSchema = z.object({
+  expenseId: uuidSchema,
+  expectedVersion: z.number().int().positive(),
+  occurredAt: z.string().optional(),
+  amountMinor: z.number().int().positive().optional(),
+  category: z.string().optional(),
+  needVsWant: z.enum(["need", "want"]).optional(),
+  note: nullableStringSchema.optional(),
+  merchant: nullableStringSchema.optional(),
+  paymentMethod: nullableStringSchema.optional(),
+  operationId: z.string().uuid(),
+}).strict();
+
+const moneyDeleteExpenseInputSchema = z.object({
+  expenseId: uuidSchema,
+  expectedVersion: z.number().int().positive(),
+  operationId: z.string().uuid(),
 }).strict();
 
 const personalOpsCheckinInputSchema = z.object({
   localDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   timezone: z.string(),
 }).strict();
+
+const moneyStateInputSchema = z.object({
+  periodId: uuidSchema.optional(),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  mode: z.enum(["today", "active_day"]).optional(),
+}).strict();
+
+const moneyOpeningInputSchema = z.object({
+  amountMinor: z.number().int().min(0),
+  source: z.enum(["user_entered", "carry_forward", "verified_source"]),
+  cutoffDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+  evidence: z.string().max(500).nullable().optional(),
+  note: z.string().max(500).nullable().optional(),
+}).strict();
+
+const moneyUpdateSettingsInputSchema = z.object({
+  operationId: z.string().uuid(),
+  periodId: uuidSchema.optional(),
+  version: z.number().int().positive().optional(),
+  startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  timezone: z.string().min(1).max(128).optional(),
+  activeDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  opening: moneyOpeningInputSchema.nullable().optional(),
+  settings: z.record(z.string(), z.unknown()).optional(),
+}).strict();
+
+const moneyStateOutputSchema = z.object({
+  ok: z.literal(true),
+}).passthrough();
 
 const obligationDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const obligationKindSchema = z.enum(OBLIGATION_KINDS);
@@ -484,6 +747,7 @@ const moneyObligationTemplatesInputSchema = z.object({
 const personalOpsSummaryOutputSchema = z.object({
   ok: z.literal(true),
 }).passthrough();
+
 const personalOpsListOutputSchema = z.object({
   ok: z.literal(true),
 }).passthrough();
@@ -675,6 +939,128 @@ const personalOpsCheckinSaveInputSchema = z.object({
   timezone: z.string(),
   patch: z.record(z.string(), z.unknown()),
   operationId: z.string().uuid(),
+}).strict();
+
+const moneyCreateExpenseInputSchema = z.object({
+  occurredAt: z.string(),
+  amountMinor: z.number().int().positive(),
+  category: z.string(),
+  needVsWant: z.enum(["need", "want"]),
+  note: nullableStringSchema.optional(),
+  merchant: nullableStringSchema.optional(),
+  paymentMethod: nullableStringSchema.optional(),
+  idempotencyKey: z.string().min(1),
+  operationId: z.string().uuid(),
+}).strict();
+
+// MONEY-04 movement schemas. `opening` is owned by MONEY-03 period
+// initialization and is intentionally absent from the create enum.
+const moneyMovementDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+
+const moneyMovementListInputSchema = z.object({
+  from: moneyMovementDateSchema.optional(),
+  to: moneyMovementDateSchema.optional(),
+  cutoff: moneyMovementDateSchema.optional(),
+  timezone: z.string().optional(),
+  kind: z.enum(["expense", "income", "opening", "savings_transfer", "reconciliation_adjustment"]).optional(),
+  limit: limitSchema,
+}).strict();
+
+const moneyMovementGetInputSchema = z.object({
+  movementId: uuidSchema,
+}).strict();
+
+const moneyCreateMovementInputSchema = z.object({
+  kind: z.enum(["expense", "income", "savings_transfer", "reconciliation_adjustment"]),
+  direction: z.enum(["in", "out"]).optional(),
+  amountMinor: z.number().int().positive(),
+  category: nullableStringSchema.optional(),
+  note: nullableStringSchema.optional(),
+  merchant: nullableStringSchema.optional(),
+  needVsWant: z.enum(["need", "want"]).nullable().optional(),
+  paymentMethod: nullableStringSchema.optional(),
+  purpose: z.enum(["fixed", "flexible", "emergency"]).nullable().optional(),
+  countsInDaily: z.boolean().optional(),
+  bookingDate: moneyMovementDateSchema.optional(),
+  occurredAt: z.string().nullable().optional(),
+  idempotencyKey: z.string().min(1),
+  operationId: z.string().uuid(),
+}).strict();
+
+const moneyUpdateMovementInputSchema = z.object({
+  movementId: uuidSchema,
+  version: z.number().int().positive(),
+  bookingDate: moneyMovementDateSchema.optional(),
+  occurredAt: z.string().nullable().optional(),
+  amountMinor: z.number().int().positive().optional(),
+  category: z.string().optional(),
+  note: nullableStringSchema.optional(),
+  merchant: nullableStringSchema.optional(),
+  needVsWant: z.enum(["need", "want"]).optional(),
+  paymentMethod: nullableStringSchema.optional(),
+  purpose: z.enum(["fixed", "flexible", "emergency"]).nullable().optional(),
+  countsInDaily: z.boolean().optional(),
+  operationId: z.string().uuid(),
+}).strict();
+
+// MONEY-05 budget, classification and counted-visit schemas. Amounts stay
+// non-negative integer MAD centimes; category text is validated by the domain
+// so appended categories do not need a parallel MCP enum.
+const moneyBudgetPeriodSchema = z.object({
+  periodStartDate: moneyMovementDateSchema,
+  periodEndDate: moneyMovementDateSchema,
+}).strict();
+
+const moneyBudgetGetInputSchema = moneyBudgetPeriodSchema;
+
+const moneySetAllocationInputSchema = z.object({
+  periodStartDate: moneyMovementDateSchema,
+  periodEndDate: moneyMovementDateSchema,
+  version: z.number().int().min(0),
+  allocations: z.record(z.string(), z.number().int().min(0).max(2147483647).nullable()).optional(),
+  savingsTargetMinor: z.number().int().min(0).max(2147483647).nullable().optional(),
+  emergencyTargetMinor: z.number().int().min(0).max(2147483647).nullable().optional(),
+  coffeeWeeklySpendLimitMinor: z.number().int().min(0).max(2147483647).nullable().optional(),
+  coffeeWeeklyVisitLimit: z.number().int().min(0).max(2147483647).nullable().optional(),
+  operationId: z.string().uuid(),
+}).strict();
+
+const moneyClassifyExpenseInputSchema = z.object({
+  expenseId: uuidSchema,
+  version: z.number().int().positive(),
+  category: z.string().min(1),
+  note: nullableStringSchema.optional(),
+  needVsWant: z.enum(["need", "want"]).optional(),
+  operationId: z.string().uuid(),
+}).strict();
+
+const moneyRecordCoffeeVisitInputSchema = z.object({
+  visitKey: z.string().min(1).max(128),
+  localDate: moneyMovementDateSchema,
+  timezone: z.string().min(1).max(128),
+  expenseIds: z.array(uuidSchema).min(1).max(50),
+  note: nullableStringSchema.optional(),
+  operationId: z.string().uuid(),
+}).strict();
+
+const moneyDeleteCoffeeVisitInputSchema = z.object({
+  visitId: uuidSchema,
+  version: z.number().int().positive(),
+  operationId: z.string().uuid(),
+}).strict();
+
+const moneyCoffeeWindowInputSchema = z.object({
+  localDate: moneyMovementDateSchema,
+  timezone: z.string().min(1).max(128),
+  periodStartDate: moneyMovementDateSchema,
+  periodEndDate: moneyMovementDateSchema,
+}).strict();
+
+const moneyCoffeeVisitListInputSchema = z.object({
+  from: moneyMovementDateSchema,
+  to: moneyMovementDateSchema,
+  limit: limitSchema,
+  offset: offsetSchema,
 }).strict();
 
 const moneyObligationCreateInputSchema = z.object({
@@ -951,6 +1337,142 @@ const READ_TOOL_REGISTRATIONS: readonly ReadToolRegistration[] = [
         },
         async (input, ctx) =>
           handlers.personalOpsCheckinGet(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
+      ),
+  },
+  {
+    name: "ega_money_get",
+    register: (server, handlers) =>
+      server.registerTool(
+        "ega_money_get",
+        {
+          title: "Get one Money expense",
+          description:
+            "Read one identified, non-deleted expense owned by the authenticated user. `expenseId` is the canonical ledger id returned by create/list; amounts are integer MAD centimes (11.00 MAD = 1100). Unknown merchant, payment method or note stays null. Requires personal_ops.read.",
+          inputSchema: moneyExpenseIdInputSchema,
+          outputSchema: personalOpsListOutputSchema,
+          annotations: READ_ONLY_ANNOTATIONS,
+        },
+        async (input, ctx) =>
+          handlers.getMoneyExpense(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
+      ),
+  },
+  {
+    name: "ega_money_ledger_list",
+    register: (server, handlers) =>
+      server.registerTool(
+        "ega_money_ledger_list",
+        {
+          title: "List the Money ledger",
+          description:
+            "List active expenses newest first with stable (occurred_at, id) ordering. `from`/`to` are inclusive owner-local dates; when omitted, the owner's stored timezone resolves them. `offset` continues from `pagination.nextOffset` until null, so every page is reachable. Amounts are integer MAD centimes. Requires personal_ops.read.",
+          inputSchema: moneyLedgerListInputSchema,
+          outputSchema: personalOpsListOutputSchema,
+          annotations: READ_ONLY_ANNOTATIONS,
+        },
+        async (input, ctx) =>
+          handlers.listMoneyLedger(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
+      ),
+  },
+  {
+    name: "ega_money_state",
+    register: (server, handlers) =>
+      server.registerTool(
+        "ega_money_state",
+        {
+          title: "Get Money period state",
+          description:
+            "Owner Money context. Returns `localToday` (real owner-local date), `activeDate` (the tracking date, which may lag today), the owner timezone, the selected/current period, opening cash and recorded cash through the active date in integer MAD centimes (11.00 MAD = 1100). `datesDiffer=true` means today and the active day are different. Use mode:'today' for actual today and mode:'active_day' for the tracking date; a date outside the period is reported with `periodRelation` instead of being moved. `opening.status='unknown'` is not zero; `cash.available=false` means cash is unknown/unavailable, not zero. History and legacy row review counts are included; unassigned legacy rows are never claimed reconciled. Requires the explicit personal_ops.read grant.",
+          inputSchema: moneyStateInputSchema,
+          outputSchema: moneyStateOutputSchema,
+          annotations: READ_ONLY_ANNOTATIONS,
+        },
+        async (input, ctx) =>
+          handlers.moneyState(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
+      ),
+  },
+  {
+    name: "ega_money_movement_list",
+    register: (server, handlers) =>
+      server.registerTool(
+        "ega_money_movement_list",
+        {
+          title: "List money movements",
+          description:
+            "List owner money movements in integer MAD centimes, newest booking date first. Kinds are expense, income, opening, savings_transfer and reconciliation_adjustment; non-expense rows have null category/needVsWant. from/to/cutoff are inclusive booking dates (never UTC assumptions); occurredAt is null when only the day is known. Requires the explicit personal_ops.read grant.",
+          inputSchema: moneyMovementListInputSchema,
+          outputSchema: personalOpsListOutputSchema,
+          annotations: READ_ONLY_ANNOTATIONS,
+        },
+        async (input, ctx) =>
+          handlers.moneyMovementList(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
+      ),
+  },
+  {
+    name: "ega_money_movement_get",
+    register: (server, handlers) =>
+      server.registerTool(
+        "ega_money_movement_get",
+        {
+          title: "Get one money movement",
+          description:
+            "Read one identified, non-deleted money movement owned by the authenticated user, including kind, direction, booking date, the persisted countsInDaily flag, version and periodId. Requires the explicit personal_ops.read grant.",
+          inputSchema: moneyMovementGetInputSchema,
+          outputSchema: personalOpsListOutputSchema,
+          annotations: READ_ONLY_ANNOTATIONS,
+        },
+        async (input, ctx) =>
+          handlers.moneyMovementGet(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
+      ),
+  },
+  {
+    name: "ega_money_budget_get",
+    register: (server, handlers) =>
+      server.registerTool(
+        "ega_money_budget_get",
+        {
+          title: "Get the period budget plan",
+          description:
+            "Read the one explicit budget plan for a canonical Money period identified by inclusive periodStartDate/periodEndDate. Returns `plan: null` when none exists (not a zero budget). Allocations, savings/emergency targets and coffee weekly limits are integer MAD centimes; the period dates are read from the period row. Requires the explicit personal_ops.read grant.",
+          inputSchema: moneyBudgetGetInputSchema,
+          outputSchema: personalOpsListOutputSchema,
+          annotations: READ_ONLY_ANNOTATIONS,
+        },
+        async (input, ctx) =>
+          handlers.moneyBudgetGet(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
+      ),
+  },
+  {
+    name: "ega_money_coffee_window",
+    register: (server, handlers) =>
+      server.registerTool(
+        "ega_money_coffee_window",
+        {
+          title: "Get counted coffee usage",
+          description:
+            "Read counted coffee for the owner-local ISO week clipped to the selected period. Counted visits and counted visit spend come from canonical coffee expenses linked to counted visits; category coffee spending is a separate projection and uncounted purchases stay visible. Remaining limits and overshoot are resolved from the canonical period budget plan, never caller-supplied values. Requires the explicit personal_ops.read grant.",
+          inputSchema: moneyCoffeeWindowInputSchema,
+          outputSchema: personalOpsListOutputSchema,
+          annotations: READ_ONLY_ANNOTATIONS,
+        },
+        async (input, ctx) =>
+          handlers.moneyCoffeeWindow(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
+      ),
+  },
+  {
+    name: "ega_money_coffee_visits_list",
+    register: (server, handlers) =>
+      server.registerTool(
+        "ega_money_coffee_visits_list",
+        {
+          title: "List counted coffee visits",
+          description:
+            "List counted coffee visits with their canonical expense lines in inclusive owner-local from/to dates, newest first. Each line carries the canonical expense amount/category; the visit stores no second amount. Requires the explicit personal_ops.read grant.",
+          inputSchema: moneyCoffeeVisitListInputSchema,
+          outputSchema: personalOpsListOutputSchema,
+          annotations: READ_ONLY_ANNOTATIONS,
+        },
+        async (input, ctx) =>
+          handlers.moneyCoffeeVisitList(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
       ),
   },
   {
@@ -1375,6 +1897,57 @@ const WRITE_TOOL_REGISTRATIONS: readonly WriteToolRegistration[] = [
       ),
   },
   {
+    name: "ega_money_create_expense",
+    register: (server, handlers) =>
+      server.registerTool(
+        "ega_money_create_expense",
+        {
+          title: "Create a Money expense",
+          description:
+            "Create one MAD expense in the canonical ledger. amountMinor is integer centimes (11.00 MAD = 1100). occurredAt is an ISO timestamp; send an explicit local day's timestamp with an offset rather than guessing UTC. note, merchant and paymentMethod may be null when unknown. idempotencyKey identifies this purchase: the same key and full payload replays the original row (including after deletion); any changed field conflicts. Returns the stored id, resolved occurredAt and version. Requires the explicit personal_ops.write grant.",
+          inputSchema: moneyCreateExpenseInputSchema,
+          outputSchema: genericWriteOutputSchema,
+          annotations: WRITE_ANNOTATIONS,
+        },
+        async (input, ctx) =>
+          handlers.createMoneyExpense(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
+      ),
+  },
+  {
+    name: "ega_money_update_expense",
+    register: (server, handlers) =>
+      server.registerTool(
+        "ega_money_update_expense",
+        {
+          title: "Update a Money expense",
+          description:
+            "Edit one identified expense through the canonical use case. expectedVersion is the version from the latest get/list; a stale version returns CONFLICT and never overwrites newer data. Only supplied fields change; note/merchant/paymentMethod can be explicitly cleared with null and then stay unknown. Requires personal_ops.write.",
+          inputSchema: moneyUpdateExpenseInputSchema,
+          outputSchema: genericWriteOutputSchema,
+          annotations: WRITE_ANNOTATIONS,
+        },
+        async (input, ctx) =>
+          handlers.updateMoneyExpense(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
+      ),
+  },
+  {
+    name: "ega_money_delete_expense",
+    register: (server, handlers) =>
+      server.registerTool(
+        "ega_money_delete_expense",
+        {
+          title: "Delete a Money expense",
+          description:
+            "Soft-delete one identified expense with its expectedVersion. A stale version returns CONFLICT; repeating the delete returns alreadyDeleted=true and never recreates or restores the row. Requires personal_ops.write.",
+          inputSchema: moneyDeleteExpenseInputSchema,
+          outputSchema: genericWriteOutputSchema,
+          annotations: WRITE_ANNOTATIONS,
+        },
+        async (input, ctx) =>
+          handlers.deleteMoneyExpense(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
+      ),
+  },
+  {
     name: "ega_save_personal_ops_checkin",
     register: (server, handlers) =>
       server.registerTool(
@@ -1388,6 +1961,125 @@ const WRITE_TOOL_REGISTRATIONS: readonly WriteToolRegistration[] = [
         },
         async (input, ctx) =>
           handlers.savePersonalOpsCheckin(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
+      ),
+  },
+  {
+    name: "ega_money_update_settings",
+    register: (server, handlers) =>
+      server.registerTool(
+        "ega_money_update_settings",
+        {
+          title: "Create a Money period or update its settings",
+          description:
+            "Create a period when startDate and endDate are supplied; otherwise update the selected/tracking period. Updates require the current `version` and fail on a stale version without overwriting. `activeDate` is the tracking day: changing it never changes the period boundaries, closes a day or resets transactions. `opening.amountMinor` is integer MAD centimes and zero is a valid known opening; omit `opening` to keep unknown cash unknown. A verified opening needs `cutoffDate` and evidence. This tool returns the stored period and its version, preserving update provenance. Requires the explicit personal_ops.write grant.",
+          inputSchema: moneyUpdateSettingsInputSchema,
+          outputSchema: genericWriteOutputSchema,
+          annotations: WRITE_ANNOTATIONS,
+        },
+        async (input, ctx) =>
+          handlers.updateMoneySettings(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
+      ),
+  },
+  {
+    name: "ega_money_create_movement",
+    register: (server, handlers) =>
+      server.registerTool(
+        "ega_money_create_movement",
+        {
+          title: "Create money movement",
+          description:
+            "Record one money movement in the canonical ledger: received income, a savings transfer out of tracked spendable cash, a reconciliation adjustment, or an expense. amountMinor is positive integer MAD centimes (11.00 MAD = 1100); direction is derived from kind except for reconciliation_adjustment. bookingDate is the owner-local booking day; omit occurredAt when only the day is known. countsInDaily defaults true for expenses and false for other kinds; an explicit value persists. Unreceived income must not be posted. idempotencyKey identifies this movement: the same key and same full payload replays the original row; changing any field conflicts. Requires the explicit personal_ops.write grant.",
+          inputSchema: moneyCreateMovementInputSchema,
+          outputSchema: genericWriteOutputSchema,
+          annotations: WRITE_ANNOTATIONS,
+        },
+        async (input, ctx) =>
+          handlers.createMoneyMovement(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
+      ),
+  },
+  {
+    name: "ega_money_update_movement",
+    register: (server, handlers) =>
+      server.registerTool(
+        "ega_money_update_movement",
+        {
+          title: "Correct money movement",
+          description:
+            "Correct one owned money movement with optimistic concurrency: `version` must be the current positive version and must match the stored row. Kind and direction are immutable; category, need/want and purpose apply only to expenses. A corrected savings transfer or income restates recorded cash exactly once. Include countsInDaily to change the durable daily-inclusion flag. Requires the explicit personal_ops.write grant.",
+          inputSchema: moneyUpdateMovementInputSchema,
+          outputSchema: genericWriteOutputSchema,
+          annotations: WRITE_ANNOTATIONS,
+        },
+        async (input, ctx) =>
+          handlers.updateMoneyMovement(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
+      ),
+  },
+  {
+    name: "ega_money_set_allocation",
+    register: (server, handlers) =>
+      server.registerTool(
+        "ega_money_set_allocation",
+        {
+          title: "Set a period budget allocation",
+          description:
+            "Edit one canonical period budget plan with optimistic concurrency. `version: 0` creates the plan; any other value must match the current plan version. Omitted fields stay unchanged and explicit null clears an allocation or target. Allocations, savings/emergency targets and coffee weekly spend/visit limits are whole non-negative MAD centimes (visits are whole numbers). Routine spending never changes these values. Requires the explicit personal_ops.write grant.",
+          inputSchema: moneySetAllocationInputSchema,
+          outputSchema: genericWriteOutputSchema,
+          annotations: WRITE_ANNOTATIONS,
+        },
+        async (input, ctx) =>
+          handlers.setMoneyAllocation(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
+      ),
+  },
+  {
+    name: "ega_money_classify_expense",
+    register: (server, handlers) =>
+      server.registerTool(
+        "ega_money_classify_expense",
+        {
+          title: "Classify an expense category",
+          description:
+            "Explicitly reclassify one owned expense with optimistic concurrency. This is an ordinary versioned expense update: it increases the chosen category and never creates a counted coffee visit. 'Coffee, classify as groceries for testing' keeps its description/override, increases groceries spending and leaves counted coffee usage unchanged; the receipt reports affected counted visit ids. Requires the explicit personal_ops.write grant.",
+          inputSchema: moneyClassifyExpenseInputSchema,
+          outputSchema: genericWriteOutputSchema,
+          annotations: WRITE_ANNOTATIONS,
+        },
+        async (input, ctx) =>
+          handlers.classifyMoneyExpense(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
+      ),
+  },
+  {
+    name: "ega_money_record_coffee_visit",
+    register: (server, handlers) =>
+      server.registerTool(
+        "ega_money_record_coffee_visit",
+        {
+          title: "Count a coffee visit",
+          description:
+            "Link one or more canonical coffee-category expense ids to one counted visit. `visitKey` is the stable retry identity: the same key and same payload replays the stored visit; the same key with different lines conflicts. Several purchase lines count as one visit and never add a second cash effect. Requires the explicit personal_ops.write grant.",
+          inputSchema: moneyRecordCoffeeVisitInputSchema,
+          outputSchema: genericWriteOutputSchema,
+          annotations: WRITE_ANNOTATIONS,
+        },
+        async (input, ctx) =>
+          handlers.recordCoffeeVisit(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
+      ),
+  },
+  {
+    name: "ega_money_delete_coffee_visit",
+    register: (server, handlers) =>
+      server.registerTool(
+        "ega_money_delete_coffee_visit",
+        {
+          title: "Delete a counted coffee visit",
+          description:
+            "Delete one owned counted coffee visit and its lines with `version` fencing. The canonical expenses remain and keep their recorded cash effect; only the visit metadata is removed. Requires the explicit personal_ops.write grant.",
+          inputSchema: moneyDeleteCoffeeVisitInputSchema,
+          outputSchema: genericWriteOutputSchema,
+          annotations: WRITE_ANNOTATIONS,
+        },
+        async (input, ctx) =>
+          handlers.deleteCoffeeVisit(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
       ),
   },
   {

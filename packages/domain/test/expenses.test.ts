@@ -42,6 +42,11 @@ test("the fixed categories, need-vs-want and payment methods match PO-08", () =>
     "household",
     "health",
     "other",
+    "daily_usage",
+    "personal_care",
+    "work_tools",
+    "fun",
+    "emergency",
   ]);
   assert.deepEqual(EXPENSE_NEED_VS_WANT_VALUES, ["need", "want"]);
   assert.deepEqual(EXPENSE_PAYMENT_METHOD_VALUES, [
@@ -61,6 +66,7 @@ test("create normalizes centimes, trims metadata and canonicalizes the instant",
   if (!parsed.ok) return;
   assert.deepEqual(parsed.value, {
     occurredAt: "2026-11-07T08:30:00.000Z",
+    bookingDate: "2026-11-07",
     amountMinor: 2250,
     category: "coffee",
     note: "morning coffee",

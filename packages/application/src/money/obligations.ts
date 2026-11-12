@@ -46,7 +46,6 @@ import {
   type RepositoryResult,
 } from "../shared/result";
 import type {
-  ObligationPaymentSettlementInput,
   ObligationRepository,
   ObligationTemplateListRecordQuery,
 } from "./obligation-ports";

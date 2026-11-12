@@ -6,6 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 export type TodayMoneySummary = Readonly<{
   available: boolean;
   totalMinor: number | null;
+  /** True when the canonical summary hit its row cap; total is a lower bound. */
+  truncated?: boolean;
 }>;
 
 export type TodayRoutineSummary = Readonly<{
@@ -81,7 +83,16 @@ export function TodayWorkCard({ work, money, routine }: TodayWorkCardProps) {
 
         <section aria-label="Today spending">
           {money.available ? (
-            money.totalMinor !== null && money.totalMinor > 0 ? (
+            money.truncated ? (
+              <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+                <p className="text-[length:var(--text-meta-lg)] font-medium">
+                  At least {formatMad(money.totalMinor ?? 0)} recorded today (incomplete)
+                </p>
+                <Link className="underline" href="/money">
+                  Open Money
+                </Link>
+              </div>
+            ) : money.totalMinor !== null && money.totalMinor > 0 ? (
               <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
                 <p className="text-[length:var(--text-meta-lg)] font-medium">
                   {formatMad(money.totalMinor)} recorded today

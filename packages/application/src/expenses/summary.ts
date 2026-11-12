@@ -1,4 +1,5 @@
 import {
+  addDaysToIsoDate,
   getLocalDayWindow,
   getWeekWindow,
   isIsoDate,
@@ -76,10 +77,27 @@ export async function getExpenseSummary(
   const monthWindowStart = getLocalDayWindow(input.timezone, monthStart).startUtcIso;
   const endUtcExclusiveIso = dayWindow.endUtcIso;
 
+  // Booking-date windows include date-only rows and are timezone-stable.
+  const endBookingDateExclusive = addDaysToIsoDate(input.localDate, 1);
   const [dayResult, weekResult, monthResult] = await Promise.all([
-    repository.summarize(actor, { startUtcIso: dayWindow.startUtcIso, endUtcExclusiveIso }),
-    repository.summarize(actor, { startUtcIso: weekWindowStart, endUtcExclusiveIso }),
-    repository.summarize(actor, { startUtcIso: monthWindowStart, endUtcExclusiveIso }),
+    repository.summarize(actor, {
+      startUtcIso: dayWindow.startUtcIso,
+      endUtcExclusiveIso,
+      startBookingDate: input.localDate,
+      endBookingDateExclusive,
+    }),
+    repository.summarize(actor, {
+      startUtcIso: weekWindowStart,
+      endUtcExclusiveIso,
+      startBookingDate: weekStart,
+      endBookingDateExclusive,
+    }),
+    repository.summarize(actor, {
+      startUtcIso: monthWindowStart,
+      endUtcExclusiveIso,
+      startBookingDate: monthStart,
+      endBookingDateExclusive,
+    }),
   ]);
   if (!dayResult.ok || !weekResult.ok || !monthResult.ok) {
     return applicationFailure("Unable to load spending summaries right now.", "unknown");
