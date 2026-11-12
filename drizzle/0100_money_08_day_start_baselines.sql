@@ -127,12 +127,14 @@ BEGIN
        CASE WHEN o.created_at::date < p_date THEN 'pending' END) AS state) h
    WHERE o.owner_user_id = auth.uid()
      AND o.period_start >= v_period.start_date AND o.period_end <= v_period.end_date
-     AND o.period_start < p_date AND o.period_end >= p_date;
+     AND o.period_start <= p_date AND (p_date = v_period.start_date OR o.period_start < p_date)
+     AND o.period_end >= p_date;
   SELECT COALESCE(bool_or(state_history = '[]'::jsonb AND state_effective_date < p_date AND state <> 'pending'), false)
     INTO v_unknown_obligations FROM public.money_obligations
    WHERE owner_user_id = auth.uid()
      AND period_start >= v_period.start_date AND period_end <= v_period.end_date
-     AND period_start < p_date AND period_end >= p_date;
+     AND period_start <= p_date AND (p_date = v_period.start_date OR period_start < p_date)
+     AND period_end >= p_date;
   v_unknown := v_unknown_opening OR v_unknown_obligations;
   IF v_savings_target IS NULL OR v_emergency_target IS NULL OR v_unknown THEN
     INSERT INTO public.money_day_start_baselines
