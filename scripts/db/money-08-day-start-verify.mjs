@@ -78,10 +78,14 @@ async function main() {
     assert(firstPartyEnsure[0].availability === "available", "first-party session can ensure a baseline");
     const internalRpc = await sql.unsafe("SELECT to_regprocedure('public.money_update_period_v1(uuid,integer,date,jsonb,integer,text,text,jsonb,text,timestamp with time zone)') AS id");
     assert(internalRpc[0].id === null, "no separate period update RPC can bypass baseline creation");
-    const readerUpdateDenied = await user(A, tx => tx.unsafe(`SELECT * FROM public.money_update_period(
+    const readerUpdate = await user(A, tx => tx.unsafe(`SELECT * FROM public.money_update_period(
       $1,$2,'2026-11-15'::date,'{}'::jsonb,NULL::integer,NULL::text,NULL::text,
-      '{}'::jsonb,NULL::text,now()::timestamptz)`, [period,periodVersion], "money-read")).then(() => false, e => e.code === "42501");
-    assert(readerUpdateDenied, "MCP read grant cannot invoke the period update wrapper");
+      '{}'::jsonb,NULL::text,now()::timestamptz)`, [period,periodVersion]), "money-read")
+      .then(rows => rows.length === 0, e => e.code === "42501");
+    const afterReaderUpdate = await sql.unsafe("SELECT active_date,version FROM public.money_periods WHERE id=$1", [period]);
+    assert(readerUpdate && afterReaderUpdate[0].version===periodVersion
+      && new Date(afterReaderUpdate[0].active_date).toISOString().slice(0,10)==="2026-11-12",
+      "MCP read grant cannot update the period");
     // Migration 0103 wraps the full ten-argument period update RPC. Advancing
     // active_date must materialize that date's baseline in the same transaction.
     const advance = await user(A, tx => tx.unsafe(`SELECT * FROM public.money_update_period(
