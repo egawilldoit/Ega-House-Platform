@@ -240,7 +240,7 @@ async function main() {
     const cutoffObligations = await user(A, tx => tx.unsafe("SELECT (public.money_ensure_day_start_baseline($1, '2026-12-03'::date)).*", [nextPeriodId]));
     assert(cutoffObligations[0].commitments_minor===7600,
       "untouched pending and on-cutoff transition remain reserved; before-cutoff cancellation releases its reserve");
-    const legacyHistory = await sql.unsafe(`INSERT INTO public.money_obligations
+    await sql.unsafe(`INSERT INTO public.money_obligations
       (owner_user_id,kind,description,amount_minor,period_start,period_end,due_date,
        purpose,counts_in_daily,state,state_effective_date,state_history,idempotency_key,create_fingerprint,created_at)
       VALUES ($1,'bill','legacy missing history',1300,'2026-12-01','2026-12-31','2026-12-10',
