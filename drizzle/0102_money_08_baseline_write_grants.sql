@@ -31,8 +31,8 @@ BEGIN
   END IF;
   SELECT * INTO v_period FROM public.money_periods
    WHERE id = p_period_id AND owner_user_id = auth.uid() FOR UPDATE;
-  IF NOT FOUND OR v_period.active_date <> CURRENT_DATE THEN
-    RAISE EXCEPTION 'Only the owner current active date can be rebased';
+  IF NOT FOUND OR v_period.lifecycle <> 'tracking' THEN
+    RAISE EXCEPTION 'Only the owner active tracking period can be rebased';
   END IF;
   RETURN public.money_calculate_day_start_baseline(p_period_id, v_period.active_date, true);
 END
