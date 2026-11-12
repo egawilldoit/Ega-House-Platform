@@ -123,6 +123,23 @@ test("classification precedence is payment > occurrence > template > kind defaul
   assert.equal(fromPayment.category, "bills");
 });
 
+test("an occurrence's explicit unknown is not backfilled from a live template", () => {
+  const resolved = resolveObligationClassification({
+    kind: "bill",
+    template: {
+      needVsWant: "need",
+      purpose: "flexible",
+      countsInDaily: true,
+      category: "household",
+    },
+    occurrence: { needVsWant: null, category: null },
+  });
+  assert.equal(resolved.needVsWant, null);
+  assert.equal(resolved.category, null);
+  // Non-null occurrence snapshots still win.
+  assert.equal(resolved.purpose, "flexible");
+});
+
 test("need/want is never fabricated and kind defaults carry no need/want", () => {
   const resolved = resolveObligationClassification({ kind: "subscription" });
   assert.equal(resolved.needVsWant, null);

@@ -215,12 +215,16 @@ export async function getObligationSummary(
   }
 
   const truncated = result.value.length > OBLIGATION_SUMMARY_MAX_OCCURRENCES;
-  const occurrences = truncated
-    ? result.value.slice(0, OBLIGATION_SUMMARY_MAX_OCCURRENCES)
-    : result.value;
+  if (truncated) {
+    // A partial list cannot produce complete due/overdue/outstanding totals.
+    return applicationFailure(
+      "Too many obligations to total completely. Narrow the cutoff date and try again.",
+      "validation",
+    );
+  }
   return applicationSuccess(
-    summarizeObligationOccurrences(occurrences, parsed.value.cutoff, {
-      truncated,
+    summarizeObligationOccurrences(result.value, parsed.value.cutoff, {
+      truncated: false,
     }),
   );
 }

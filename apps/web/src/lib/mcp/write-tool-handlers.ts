@@ -1275,15 +1275,19 @@ export function createMcpWriteToolHandlers(
         return await withExclusiveMutation(client, "ega_money_update_obligation", input.operationId, {
           obligationId: input.obligationId,
           version: input.version,
-          description: input.description === undefined ? null : canonicalReceiptText(input.description),
-          amountMinor: input.amountMinor ?? null,
-          periodStart: input.periodStart ?? null,
-          periodEnd: input.periodEnd ?? null,
-          dueDate: input.dueDate ?? null,
-          needVsWant: input.needVsWant ?? null,
-          purpose: input.purpose ?? null,
-          countsInDaily: input.countsInDaily ?? null,
-          category: input.category ?? null,
+          ...(input.description !== undefined
+            ? { description: canonicalReceiptText(input.description) }
+            : {}),
+          ...(input.amountMinor !== undefined ? { amountMinor: input.amountMinor } : {}),
+          ...(input.periodStart !== undefined ? { periodStart: input.periodStart } : {}),
+          ...(input.periodEnd !== undefined ? { periodEnd: input.periodEnd } : {}),
+          ...(input.dueDate !== undefined ? { dueDate: input.dueDate } : {}),
+          ...(input.needVsWant !== undefined ? { needVsWant: input.needVsWant } : {}),
+          ...(input.purpose !== undefined ? { purpose: input.purpose } : {}),
+          ...(input.countsInDaily !== undefined
+            ? { countsInDaily: input.countsInDaily }
+            : {}),
+          ...(input.category !== undefined ? { category: input.category } : {}),
         }, () =>
           obligationHandlers.updateObligation(authInfo, input as never, input.operationId),
         );
@@ -1393,18 +1397,24 @@ export function createMcpWriteToolHandlers(
         return await withExclusiveMutation(client, "ega_money_update_obligation_template", input.operationId, {
           templateId: input.templateId,
           version: input.version,
-          description: input.description === undefined ? null : canonicalReceiptText(input.description),
-          amountMinor: input.amountMinor ?? null,
-          cadence: input.cadence ?? null,
-          dueDayOfMonth: input.dueDayOfMonth ?? null,
-          dueWeekday: input.dueWeekday ?? null,
-          startDate: input.startDate ?? null,
-          endDate: input.endDate ?? null,
-          needVsWant: input.needVsWant ?? null,
-          purpose: input.purpose ?? null,
-          countsInDaily: input.countsInDaily ?? null,
-          category: input.category ?? null,
-          lifecycle: input.lifecycle ?? null,
+          ...(input.description !== undefined
+            ? { description: canonicalReceiptText(input.description) }
+            : {}),
+          ...(input.amountMinor !== undefined ? { amountMinor: input.amountMinor } : {}),
+          ...(input.cadence !== undefined ? { cadence: input.cadence } : {}),
+          ...(input.dueDayOfMonth !== undefined
+            ? { dueDayOfMonth: input.dueDayOfMonth }
+            : {}),
+          ...(input.dueWeekday !== undefined ? { dueWeekday: input.dueWeekday } : {}),
+          ...(input.startDate !== undefined ? { startDate: input.startDate } : {}),
+          ...(input.endDate !== undefined ? { endDate: input.endDate } : {}),
+          ...(input.needVsWant !== undefined ? { needVsWant: input.needVsWant } : {}),
+          ...(input.purpose !== undefined ? { purpose: input.purpose } : {}),
+          ...(input.countsInDaily !== undefined
+            ? { countsInDaily: input.countsInDaily }
+            : {}),
+          ...(input.category !== undefined ? { category: input.category } : {}),
+          ...(input.lifecycle !== undefined ? { lifecycle: input.lifecycle } : {}),
         }, () =>
           obligationHandlers.updateObligationTemplate(authInfo, input as never, input.operationId),
         );

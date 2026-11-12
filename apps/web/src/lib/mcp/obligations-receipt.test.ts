@@ -200,4 +200,18 @@ describe("ega_money_create_obligation receipt fingerprint", () => {
     }
     expect(hashes).toHaveLength(0);
   });
+
+  it("distinguishes omitted fields from explicit null in update receipts", async () => {
+    const { handlers, hashes } = handlerWithRecordedHashes();
+    const base = {
+      obligationId: OBLIGATION_ID,
+      version: 1,
+      description: "Rent",
+      operationId: OPERATION_ID,
+    };
+    await handlers.updateMoneyObligation(authInfo, base);
+    await handlers.updateMoneyObligation(authInfo, { ...base, category: null });
+    expect(hashes).toHaveLength(2);
+    expect(hashes[1]).not.toBe(hashes[0]);
+  });
 });
