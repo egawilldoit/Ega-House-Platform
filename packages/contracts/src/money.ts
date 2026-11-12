@@ -485,8 +485,8 @@ export type CreateObligationRequest = Readonly<{
   templateId?: string | null;
   /** Omit while unknown; it is requested at payment, never fabricated. */
   needVsWant?: ExpenseNeedVsWant | null;
-  purpose?: MoneyPurpose | null;
-  countsInDaily?: boolean | null;
+  purpose?: MoneyPurpose;
+  countsInDaily?: boolean;
   category?: ExpenseCategory | null;
   /** Date the initial `pending` state takes effect (owner-local). */
   stateEffectiveDate: string;
