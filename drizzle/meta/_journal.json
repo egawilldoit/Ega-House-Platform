@@ -638,6 +638,13 @@
       "when": 1787880000061,
       "tag": "0098_money_06_obligations",
       "breakpoints": true
+    },
+    {
+      "idx": 112,
+      "version": "7",
+      "when": 1787880000062,
+      "tag": "0099_money_07_obligation_payments",
+      "breakpoints": true
     }
   ]
 }

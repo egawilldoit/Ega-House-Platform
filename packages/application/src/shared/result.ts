@@ -1,5 +1,5 @@
 export type RepositoryFailure = Readonly<{
-  code: "conflict" | "unknown" | "notFound" | "forbidden";
+  code: "conflict" | "unknown" | "notFound" | "forbidden" | "validation";
 }>;
 
 export type RepositoryResult<T> =

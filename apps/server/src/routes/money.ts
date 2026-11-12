@@ -3,6 +3,7 @@ import type { Context } from "hono";
 
 import {
   classifyMoneyExpense,
+  correctObligationPayment,
   createMoneyPeriod,
   createMovement,
   createObligation,
@@ -21,11 +22,13 @@ import {
   listMovements,
   listObligations,
   listObligationTemplates,
+  payObligation,
   patchMoneyBudgetPlan,
   recordMoneyCoffeeVisit,
   resolveTimeContext,
   saveMoneyBudgetPlan,
   transitionObligation,
+  undoObligationPayment,
   updateMoneySettings,
   updateMovement,
   updateObligation,
@@ -51,6 +54,7 @@ import type {
   ListObligationTemplatesResponse,
   MoneyBudgetMutationResponse,
   MoneyCoffeeWindowResponse,
+  ObligationPaymentResponse,
   ObligationSummaryResponse,
   ObligationTemplateResponse,
   RecordMoneyCoffeeVisitResponse,
@@ -64,6 +68,7 @@ import {
   SupabaseMoneyCoffeeRepository,
   SupabaseMoneyPeriodRepository,
   SupabaseMoneyRepository,
+  SupabaseObligationPaymentRepository,
   SupabaseObligationRepository,
   SupabaseTimeContextRepository,
 } from "@ega/data-access";
@@ -636,6 +641,120 @@ export function createMoneyRoutes(
     const response: UpdateObligationResponse = {
       ok: true,
       obligation: result.data,
+    };
+    return c.json(response);
+  });
+
+  /* ------------------------------ payments ------------------------------- */
+
+  // MONEY-07: one atomic payment per obligation. The operation id is the
+  // retry identity of the write and is carried beside the semantic payload,
+  // so it is never parsed as part of it.
+  function paymentDependencies(c: MoneyContext) {
+    return {
+      obligations: new SupabaseObligationRepository(c.var.client),
+      payments: new SupabaseObligationPaymentRepository(c.var.client),
+    };
+  }
+
+  function operationIdOf(body: Record<string, unknown>): string {
+    const value = body.operationId;
+    return typeof value === "string" ? value : "";
+  }
+
+  /**
+   * The operation id is the retry identity of the write, never a semantic
+   * field of the payload, so it is removed before the strict parser runs.
+   */
+  function payloadOf(body: Record<string, unknown>): Record<string, unknown> {
+    const payload: Record<string, unknown> = { ...body };
+    delete payload.operationId;
+    return payload;
+  }
+
+  routes.post("/obligations/:id/payment", async (c) => {
+    const { actor } = c.var;
+    const body = await readJsonBody(c);
+    if (!body) {
+      return c.json(
+        { error: { code: "VALIDATION", message: VALIDATION_MESSAGE } },
+        400,
+      );
+    }
+    const payload = payloadOf(body);
+    const result = await payObligation(
+      actor,
+      paymentDependencies(c),
+      c.req.param("id"),
+      payload,
+      { operationId: operationIdOf(body) },
+    );
+    if (!result.ok) {
+      return errorResponse(c, result.code, result.errorMessage);
+    }
+    const response: ObligationPaymentResponse = {
+      ok: true,
+      obligation: result.data.occurrence,
+      payment: result.data.payment,
+      replayed: result.data.replayed,
+    };
+    return c.json(response, result.data.replayed ? 200 : 201);
+  });
+
+  routes.post("/obligations/:id/payment/correction", async (c) => {
+    const { actor } = c.var;
+    const body = await readJsonBody(c);
+    if (!body) {
+      return c.json(
+        { error: { code: "VALIDATION", message: VALIDATION_MESSAGE } },
+        400,
+      );
+    }
+    const payload = payloadOf(body);
+    const result = await correctObligationPayment(
+      actor,
+      paymentDependencies(c),
+      c.req.param("id"),
+      payload,
+      { operationId: operationIdOf(body) },
+    );
+    if (!result.ok) {
+      return errorResponse(c, result.code, result.errorMessage);
+    }
+    const response: ObligationPaymentResponse = {
+      ok: true,
+      obligation: result.data.occurrence,
+      payment: result.data.payment,
+      replayed: result.data.replayed,
+    };
+    return c.json(response);
+  });
+
+  routes.post("/obligations/:id/payment/undo", async (c) => {
+    const { actor } = c.var;
+    const body = await readJsonBody(c);
+    if (!body) {
+      return c.json(
+        { error: { code: "VALIDATION", message: VALIDATION_MESSAGE } },
+        400,
+      );
+    }
+    const payload = payloadOf(body);
+    const result = await undoObligationPayment(
+      actor,
+      paymentDependencies(c),
+      c.req.param("id"),
+      payload,
+      { operationId: operationIdOf(body) },
+    );
+    if (!result.ok) {
+      return errorResponse(c, result.code, result.errorMessage);
+    }
+    const response: ObligationPaymentResponse = {
+      ok: true,
+      obligation: result.data.occurrence,
+      payment: result.data.payment,
+      replayed: result.data.replayed,
     };
     return c.json(response);
   });

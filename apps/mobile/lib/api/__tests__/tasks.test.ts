@@ -46,7 +46,7 @@ function makeFullFakeClient(): EgaApiClient {
     notifications: { list: jest.fn(), unreadCount: jest.fn(), markRead: jest.fn(), markOpened: jest.fn(), markAllRead: jest.fn(), registerDevice: jest.fn(), unregisterDevice: jest.fn(), preferences: jest.fn(), updatePreferences: jest.fn(), settings: jest.fn(), updateSettings: jest.fn() },
     expenses: { list: jest.fn(), create: jest.fn(), get: jest.fn(), update: jest.fn(), remove: jest.fn() },
     money: { state: jest.fn(), createPeriod: jest.fn(), updateSettings: jest.fn(), listMovements: jest.fn(), createMovement: jest.fn(), getMovement: jest.fn(), updateMovement: jest.fn(), getBudgetPlan: jest.fn(), saveBudgetPlan: jest.fn(), setAllocation: jest.fn(), recordCoffeeVisit: jest.fn(), listCoffeeVisits: jest.fn(), deleteCoffeeVisit: jest.fn(), getCoffeeWindow: jest.fn(), classifyExpense: jest.fn() },
-    obligations: { list: jest.fn(), create: jest.fn(), summary: jest.fn(), get: jest.fn(), update: jest.fn(), transition: jest.fn(), listTemplates: jest.fn(), createTemplate: jest.fn(), getTemplate: jest.fn(), updateTemplate: jest.fn(), generate: jest.fn() },
+    obligations: { list: jest.fn(), create: jest.fn(), summary: jest.fn(), get: jest.fn(), update: jest.fn(), transition: jest.fn(), pay: jest.fn(), correctPayment: jest.fn(), undoPayment: jest.fn(), listTemplates: jest.fn(), createTemplate: jest.fn(), getTemplate: jest.fn(), updateTemplate: jest.fn(), generate: jest.fn() },
     checkins: { get: jest.fn(), save: jest.fn() },
   };
 }
