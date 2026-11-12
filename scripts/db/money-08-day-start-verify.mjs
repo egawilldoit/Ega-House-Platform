@@ -54,6 +54,10 @@ async function main() {
     const baseline = await sql.unsafe("SELECT availability, cash_minor, commitments_minor, savings_target_minor, savings_funded_minor, emergency_target_minor, emergency_used_minor, inputs FROM public.money_day_start_baselines WHERE owner_user_id=$1 AND period_id=$2", [A,period]);
     assert(rows.length===1 && rows[0].version===1 && rows[0].availability==="available" && rows[0].policy_version_id===rows[0].policy_id, "RPC created version-1 policy and available baseline");
     assert(baseline.length===1 && baseline[0].cash_minor===50000 && baseline[0].commitments_minor===0 && baseline[0].savings_target_minor===12000 && baseline[0].savings_funded_minor===0 && baseline[0].emergency_target_minor===3000 && baseline[0].emergency_used_minor===0, "setup snapshot preserves opening and configured targets");
+    const later = await user(A, tx => tx.unsafe("SELECT (public.money_ensure_day_start_baseline($1, '2026-11-13'::date)).*", [period]));
+    const laterAgain = await user(A, tx => tx.unsafe("SELECT (public.money_ensure_day_start_baseline($1, '2026-11-13'::date)).*", [period]));
+    assert(later[0].availability==="unavailable" && later[0].unavailable_reason==="historical_inputs_not_reconstructable" && later[0].version===laterAgain[0].version, "later day is materialized idempotently and unknown history stays unavailable");
+    assert(later[0].policy_version_id===rows[0].policy_id && later[0].inputs.lifecycleCutoff==="2026-11-13", "later day binds effective policy and explicit lifecycle cutoff");
     const unknown = await user(B, tx => tx.unsafe(`SELECT (public.money_create_period(
       '2026-12-01'::date,'2026-12-31'::date,'Africa/Casablanca'::text,
       '2026-12-01'::date,'uninitialized'::text,NULL::integer,NULL::date,NULL::text,
