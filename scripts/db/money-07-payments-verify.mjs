@@ -678,7 +678,9 @@ async function main() {
       `SELECT o."amount_minor" AS occurrence_amount, e."amount_minor" AS payment_amount,
               e."booking_date"::text AS booking_date,
               o."counts_in_daily" AS occurrence_daily,
-              e."counts_in_daily" AS payment_daily
+              e."counts_in_daily" AS payment_daily,
+              o."state_effective_date" AS effective_date,
+              o."state_history" AS state_history
        FROM public.money_obligations o
        JOIN public.personal_expenses e ON e."id" = o."payment_expense_id"
        WHERE o."id" = $1::uuid`,
@@ -690,6 +692,18 @@ async function main() {
     );
     assert(correctedRows.booking_date === "2026-11-20", "the stored payment moved to the corrected day");
     assert(correctedRows.occurrence_daily === correctedRows.payment_daily, "both daily flags agree");
+    assert(
+      new Date(correctedRows.effective_date).toISOString().slice(0, 10) ===
+        "2026-11-20",
+      "the settlement effective date follows the corrected booking day",
+    );
+    const paidEvents = correctedRows.state_history.filter(
+      (event) => event.state === "paid",
+    );
+    assert(
+      paidEvents.at(-1)?.effectiveDate === "2026-11-20",
+      "the retained paid history reflects the corrected settlement day",
+    );
 
     const correctionReplay = await expectAccepted("retry the same correction", () =>
       owner.run((tx) =>

@@ -152,7 +152,8 @@ BEGIN
       RAISE EXCEPTION 'Obligation effective date cannot precede the current state date.'
         USING ERRCODE = '23514';
     END IF;
-  ELSIF NEW.state_effective_date IS DISTINCT FROM OLD.state_effective_date THEN
+  ELSIF NEW.state_effective_date IS DISTINCT FROM OLD.state_effective_date
+        AND NOT public.money_obligation_payment_path_active() THEN
     RAISE EXCEPTION 'Obligation effective date changes only with a lifecycle transition.'
       USING ERRCODE = '23514';
   END IF;
@@ -615,6 +616,7 @@ BEGIN
      SET "state" = 'paid',
          "state_effective_date" = p_booking_date,
          "state_reason" = 'payment recorded',
+         "counts_in_daily" = v_counts_in_daily,
          "payment_expense_id" = v_payment."id",
          "payment_operation_id" = p_operation_id,
          "payment_revision_operation_id" = NULL,
@@ -761,7 +763,7 @@ BEGIN
       USING ERRCODE = '23514';
   END IF;
 
-  v_counts_in_daily := COALESCE(p_counts_in_daily, v_occurrence."counts_in_daily");
+  v_counts_in_daily := COALESCE(p_counts_in_daily, v_payment."counts_in_daily");
 
   -- Only the MONEY-07 correction path may move a linked payment, and only
   -- inside this transaction.
@@ -789,6 +791,32 @@ BEGIN
   UPDATE public.money_obligations
      SET "amount_minor" = p_amount_minor,
          "counts_in_daily" = v_counts_in_daily,
+         "state_effective_date" = p_booking_date,
+         "state_reason" = 'payment corrected',
+         "state_history" = (
+           SELECT COALESCE(
+             jsonb_agg(
+               CASE
+                 WHEN entry.ordinality = (
+                   SELECT max(paid.ordinality)
+                     FROM jsonb_array_elements(v_occurrence."state_history")
+                          WITH ORDINALITY AS paid(value, ordinality)
+                    WHERE paid.value ->> 'state' = 'paid'
+                 )
+                 THEN jsonb_set(
+                   entry.value,
+                   '{effectiveDate}',
+                   to_jsonb(p_booking_date::text)
+                 )
+                 ELSE entry.value
+               END
+               ORDER BY entry.ordinality
+             ),
+             '[]'::jsonb
+           )
+           FROM jsonb_array_elements(v_occurrence."state_history")
+                WITH ORDINALITY AS entry(value, ordinality)
+         ),
          "payment_revision_operation_id" = p_operation_id,
          "version" = "version" + 1,
          "updated_at" = now()
