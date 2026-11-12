@@ -1,0 +1,242 @@
+import type {
+  AuthenticatedActor,
+  MoneyCoffeeVisitCreateInput,
+  MoneyCoffeeVisitListQuery,
+  MoneyCoffeeVisitRepository,
+  RepositoryFailure,
+  RepositoryResult,
+} from "@ega/application";
+import type {
+  MoneyCoffeeVisitLine,
+  MoneyCoffeeVisitRecord,
+} from "@ega/domain/money";
+import type { SupabaseClient } from "@supabase/supabase-js";
+
+import { sanitizeSupabaseError } from "../supabase/errors";
+
+/**
+ * Request-scoped Supabase adapter for counted coffee visits.
+ *
+ * `money_coffee_visits` holds visit identity; `money_coffee_visit_lines` links
+ * canonical `personal_expenses` rows. Amounts are read from the expense ledger,
+ * never duplicated here. One expense can belong to at most one visit, and one
+ * visit counts once no matter how many lines it has.
+ */
+
+const VISITS = "money_coffee_visits";
+const LINES = "money_coffee_visit_lines";
+
+const COLUMNS =
+  "id, visit_key, visit_fingerprint, local_date, timezone, note, version, created_at, updated_at, lines:money_coffee_visit_lines(expense_id, expenses:personal_expenses(amount_minor, category, booking_date, deleted_at))";
+
+type LineRow = {
+  expense_id: string;
+  expenses:
+    | {
+        amount_minor: number;
+        category: string;
+        booking_date: string;
+        deleted_at: string | null;
+      }
+    | Array<{
+        amount_minor: number;
+        category: string;
+        booking_date: string;
+        deleted_at: string | null;
+      }>
+    | null;
+};
+
+type VisitRow = {
+  id: string;
+  visit_key: string;
+  visit_fingerprint: string;
+  local_date: string;
+  timezone: string;
+  note: string | null;
+  version: number;
+  created_at: string;
+  updated_at: string;
+  lines: LineRow[] | null;
+};
+
+function coffeeFailure(error: {
+  code?: string;
+  message?: string;
+  details?: string;
+  hint?: string;
+} | null): RepositoryFailure {
+  if (!error) return { code: "unknown" };
+  if (error.code === "42501") return { code: "forbidden" };
+  if (
+    error.code === "23505" ||
+    error.code === "23503" ||
+    error.code === "23514" ||
+    error.code === "23P01"
+  ) {
+    return { code: "conflict" };
+  }
+  return sanitizeSupabaseError(error, { conflictCode: "__none__" });
+}
+
+function toLine(row: LineRow): MoneyCoffeeVisitLine | null {
+  const expense = Array.isArray(row.expenses) ? row.expenses[0] : row.expenses;
+  if (!expense) return null;
+  return {
+    expenseId: String(row.expense_id),
+    amountMinor: Number(expense.amount_minor),
+    category: String(expense.category),
+    bookingDate: String(expense.booking_date),
+    deletedAt: expense.deleted_at == null ? null : String(expense.deleted_at),
+  };
+}
+
+function toRecord(row: VisitRow): MoneyCoffeeVisitRecord {
+  const lines = (row.lines ?? [])
+    .map(toLine)
+    .filter((line): line is MoneyCoffeeVisitLine => line !== null);
+  return {
+    id: String(row.id),
+    visitKey: String(row.visit_key),
+    visitFingerprint: String(row.visit_fingerprint),
+    localDate: String(row.local_date),
+    timezone: String(row.timezone),
+    note: row.note == null ? null : String(row.note),
+    version: Number(row.version),
+    createdAt: String(row.created_at),
+    updatedAt: String(row.updated_at),
+    lines,
+  };
+}
+
+export class SupabaseMoneyCoffeeRepository implements MoneyCoffeeVisitRepository {
+  constructor(private readonly supabase: SupabaseClient) {}
+
+  async findByVisitKey(
+    actor: AuthenticatedActor,
+    visitKey: string,
+  ): Promise<RepositoryResult<MoneyCoffeeVisitRecord | null>> {
+    const { data, error } = await this.supabase
+      .from(VISITS)
+      .select(COLUMNS)
+      .eq("owner_user_id", actor.userId)
+      .eq("visit_key", visitKey)
+      .maybeSingle();
+    if (error) return { ok: false, error: coffeeFailure(error) };
+    if (!data) return { ok: true, value: null };
+    return { ok: true, value: toRecord(data as VisitRow) };
+  }
+
+  async getVisit(
+    actor: AuthenticatedActor,
+    id: string,
+  ): Promise<RepositoryResult<MoneyCoffeeVisitRecord | null>> {
+    const { data, error } = await this.supabase
+      .from(VISITS)
+      .select(COLUMNS)
+      .eq("owner_user_id", actor.userId)
+      .eq("id", id)
+      .maybeSingle();
+    if (error) return { ok: false, error: coffeeFailure(error) };
+    if (!data) return { ok: true, value: null };
+    return { ok: true, value: toRecord(data as VisitRow) };
+  }
+
+  async createVisit(
+    actor: AuthenticatedActor,
+    input: MoneyCoffeeVisitCreateInput,
+  ): Promise<RepositoryResult<MoneyCoffeeVisitRecord>> {
+    // One authenticated transaction owns the visit identity and its lines, so a
+    // concurrent retry cannot replay a visit before its lines exist.
+    const { data, error } = await this.supabase.rpc("money_record_coffee_visit", {
+      p_visit_key: input.values.visitKey,
+      p_visit_fingerprint: input.visitFingerprint,
+      p_local_date: input.values.localDate,
+      p_timezone: input.values.timezone,
+      p_note: input.values.note,
+      p_expense_ids: input.values.expenseIds,
+    });
+    if (error) return { ok: false, error: coffeeFailure(error) };
+    if (typeof data !== "string" || data.length === 0) {
+      return { ok: false, error: { code: "unknown" } };
+    }
+
+    const created = await this.getVisit(actor, data);
+    if (!created.ok) return created;
+    if (!created.value) return { ok: false, error: { code: "unknown" } };
+    return { ok: true, value: created.value };
+  }
+
+  async listVisits(
+    actor: AuthenticatedActor,
+    query: MoneyCoffeeVisitListQuery,
+  ): Promise<RepositoryResult<MoneyCoffeeVisitRecord[]>> {
+    const { data, error } = await this.supabase
+      .from(VISITS)
+      .select(COLUMNS)
+      .eq("owner_user_id", actor.userId)
+      .gte("local_date", query.from)
+      .lte("local_date", query.to)
+      .order("local_date", { ascending: false })
+      .order("id", { ascending: false })
+      .range(query.offset, query.offset + query.limit - 1);
+    if (error) return { ok: false, error: coffeeFailure(error) };
+    return {
+      ok: true,
+      value: ((data ?? []) as VisitRow[]).map(toRecord),
+    };
+  }
+
+  async deleteVisit(
+    actor: AuthenticatedActor,
+    id: string,
+    expectedVersion: number,
+    deletedAt: string,
+  ): Promise<RepositoryResult<Readonly<{ id: string; alreadyDeleted: boolean }>>> {
+    const current = await this.supabase
+      .from(VISITS)
+      .select("version")
+      .eq("owner_user_id", actor.userId)
+      .eq("id", id)
+      .maybeSingle();
+    if (current.error) return { ok: false, error: coffeeFailure(current.error) };
+    if (!current.data) return { ok: false, error: { code: "notFound" } };
+    const version = Number((current.data as { version: number }).version);
+    if (version !== expectedVersion) {
+      return { ok: false, error: { code: "conflict" } };
+    }
+
+    // Deleting the visit cascades its lines in the same statement, so a
+    // concurrent conflict cannot leave a visit with missing lines.
+    const removed = await this.supabase
+      .from(VISITS)
+      .delete()
+      .eq("owner_user_id", actor.userId)
+      .eq("id", id)
+      .eq("version", expectedVersion)
+      .select("id")
+      .maybeSingle();
+    if (removed.error) return { ok: false, error: coffeeFailure(removed.error) };
+    if (!removed.data) return { ok: false, error: { code: "conflict" } };
+    void deletedAt;
+    return { ok: true, value: { id, alreadyDeleted: false } };
+  }
+
+  async listVisitIdsForExpense(
+    actor: AuthenticatedActor,
+    expenseId: string,
+  ): Promise<RepositoryResult<string[]>> {
+    const { data, error } = await this.supabase
+      .from(LINES)
+      .select("visit_id")
+      .eq("owner_user_id", actor.userId)
+      .eq("expense_id", expenseId);
+    if (error) return { ok: false, error: coffeeFailure(error) };
+    return {
+      ok: true,
+      value: ((data ?? []) as Array<{ visit_id: string }>).map((row) =>
+        String(row.visit_id),
+      ),
+    };
+  }
+}

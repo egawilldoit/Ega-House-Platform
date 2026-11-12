@@ -27,6 +27,20 @@ const ALL_TOOLS: readonly McpToolDefinition[] = [
   { name: "ega_personal_ops_summary", requiredPermission: "personal_ops.read" },
   { name: "ega_personal_ops_expenses_list", requiredPermission: "personal_ops.read" },
   { name: "ega_personal_ops_checkin_get", requiredPermission: "personal_ops.read" },
+  // Canonical Money reads (MONEY-02). Compatibility names above stay listed.
+  { name: "ega_money_get", requiredPermission: "personal_ops.read" },
+  { name: "ega_money_ledger_list", requiredPermission: "personal_ops.read" },
+  // Money period context (MONEY-03): explicit finance read grant only.
+  { name: "ega_money_state", requiredPermission: "personal_ops.read" },
+  // Money movements (MONEY-04): a distinct read/write family, never a rename
+  // of the expense reads above.
+  { name: "ega_money_movement_list", requiredPermission: "personal_ops.read" },
+  { name: "ega_money_movement_get", requiredPermission: "personal_ops.read" },
+  // Budgets/categories/counted coffee (MONEY-05): names never collide with the
+  // expense, state or movement tools above.
+  { name: "ega_money_budget_get", requiredPermission: "personal_ops.read" },
+  { name: "ega_money_coffee_window", requiredPermission: "personal_ops.read" },
+  { name: "ega_money_coffee_visits_list", requiredPermission: "personal_ops.read" },
   // Money obligation reads (MONEY-06): bills and subscriptions share rows.
   { name: "ega_money_obligations_list", requiredPermission: "personal_ops.read" },
   { name: "ega_money_obligation_get", requiredPermission: "personal_ops.read" },
@@ -34,6 +48,20 @@ const ALL_TOOLS: readonly McpToolDefinition[] = [
   // Personal Operations writes: explicit writer grant, never auto-upgraded.
   { name: "ega_create_personal_ops_expense", requiredPermission: "personal_ops.write", writesEnabledRequired: true },
   { name: "ega_save_personal_ops_checkin", requiredPermission: "personal_ops.write", writesEnabledRequired: true },
+  // Canonical Money writes (MONEY-02).
+  { name: "ega_money_create_expense", requiredPermission: "personal_ops.write", writesEnabledRequired: true },
+  { name: "ega_money_update_expense", requiredPermission: "personal_ops.write", writesEnabledRequired: true },
+  { name: "ega_money_delete_expense", requiredPermission: "personal_ops.write", writesEnabledRequired: true },
+  // Money settings (MONEY-03).
+  { name: "ega_money_update_settings", requiredPermission: "personal_ops.write", writesEnabledRequired: true },
+  // Money movement writes (MONEY-04).
+  { name: "ega_money_create_movement", requiredPermission: "personal_ops.write", writesEnabledRequired: true },
+  { name: "ega_money_update_movement", requiredPermission: "personal_ops.write", writesEnabledRequired: true },
+  // Budget/category/counted-coffee writes (MONEY-05).
+  { name: "ega_money_set_allocation", requiredPermission: "personal_ops.write", writesEnabledRequired: true },
+  { name: "ega_money_classify_expense", requiredPermission: "personal_ops.write", writesEnabledRequired: true },
+  { name: "ega_money_record_coffee_visit", requiredPermission: "personal_ops.write", writesEnabledRequired: true },
+  { name: "ega_money_delete_coffee_visit", requiredPermission: "personal_ops.write", writesEnabledRequired: true },
   // Money obligation writes (MONEY-06): scheduling/cancelling never posts cash.
   { name: "ega_money_create_obligation", requiredPermission: "personal_ops.write", writesEnabledRequired: true },
   { name: "ega_money_update_obligation", requiredPermission: "personal_ops.write", writesEnabledRequired: true },

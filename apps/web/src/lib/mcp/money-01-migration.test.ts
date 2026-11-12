@@ -21,13 +21,20 @@ const journal = JSON.parse(
 ) as { entries: Array<{ tag: string; when: number }> };
 
 describe("MONEY-01 finance grant migration", () => {
-  it("is in the journal after 0092 with a later timestamp", () => {
+  it("is present after 0092 with a later timestamp", () => {
     const tags = journal.entries.map((entry) => entry.tag);
     const index = tags.indexOf("0093_money_01_finance_grants");
-    expect(index).toBeGreaterThan(tags.indexOf("0092_routine_metrics"));
+    expect(index).toBeGreaterThan(0);
+    // Later Money issues append migrations after 0093; what matters is that it
+    // follows 0092 with a strictly greater timestamp and every later additive
+    // migration keeps a strictly increasing timestamp.
+    expect(tags[index - 1]).toBe("0092_routine_metrics");
     expect(journal.entries[index].when).toBeGreaterThan(
       journal.entries[index - 1].when,
     );
+    for (const later of journal.entries.slice(index + 1)) {
+      expect(later.when).toBeGreaterThan(journal.entries[index].when);
+    }
   });
 
   it("stores every runtime profile union exactly as the code advertises it", () => {
@@ -89,6 +96,42 @@ describe("MONEY-01 finance grant migration", () => {
     expect(selectPolicy).not.toContain("personal_ops.write");
   });
 
+  it("extends the same grant to daily check-ins so the profile is truthful", () => {
+    const checkinSelect = migration.slice(
+      migration.indexOf('CREATE POLICY "daily_checkins_direct_user_select"'),
+      migration.indexOf('CREATE POLICY "daily_checkins_direct_user_insert"'),
+    );
+    expect(checkinSelect).toContain(
+      "public.mcp_finance_grant_allows('personal_ops.read')",
+    );
+    expect(checkinSelect).toContain(
+      "((SELECT auth.jwt()) ->> 'client_id') IS NULL",
+    );
+
+    const checkinWrite = migration.slice(
+      migration.indexOf('CREATE POLICY "daily_checkins_direct_user_insert"'),
+    );
+    expect(checkinWrite.match(/personal_ops\.write/g)?.length).toBeGreaterThanOrEqual(3);
+
+    // 0090 declared policies but no table privileges; a bare Postgres (and the
+    // CI proof) needs the explicit verbs.
+    expect(migration).toContain(
+      'GRANT SELECT ON TABLE "public"."daily_checkins" TO authenticated',
+    );
+    expect(migration).toContain(
+      'GRANT INSERT ON TABLE "public"."daily_checkins" TO authenticated',
+    );
+    expect(migration).toContain(
+      'GRANT UPDATE ON TABLE "public"."daily_checkins" TO authenticated',
+    );
+    expect(migration).toContain(
+      'REVOKE ALL ON TABLE "public"."daily_checkins" FROM authenticated',
+    );
+    expect(migration).toContain(
+      'REVOKE ALL ON TABLE "public"."daily_checkins" FROM anon',
+    );
+  });
+
   it("requires the write grant for insert and update and never adds DELETE", () => {
     const insertPolicy = migration.slice(
       migration.indexOf('CREATE POLICY "personal_expenses_direct_user_insert"'),
@@ -100,6 +143,7 @@ describe("MONEY-01 finance grant migration", () => {
 
     const updatePolicy = migration.slice(
       migration.indexOf('CREATE POLICY "personal_expenses_direct_user_update"'),
+      migration.indexOf("-- 4. Daily check-ins"),
     );
     expect(updatePolicy.match(/personal_ops\.write/g)).toHaveLength(2);
 

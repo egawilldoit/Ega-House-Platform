@@ -4,6 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { readPrincipalFromAuthInfo } from "@/lib/mcp/auth-info";
 import type { McpDatabase } from "@/lib/mcp/mcp-database.types";
+import { createMcpMoneyHandlers } from "@/lib/mcp/money/handlers";
 import {
   listMcpGoals,
   listMcpProjects,
@@ -50,7 +51,7 @@ export type McpReadToolDependencies = {
   personalOpsExpensesList?: (
     client: SupabaseClient<McpDatabase>,
     ownerUserId: string,
-    query: { from?: string; to?: string; timezone?: string; limit?: number },
+    query: { from?: string; to?: string; timezone?: string; limit?: number; offset?: number },
   ) => Promise<unknown>;
   personalOpsCheckinGet?: (
     client: SupabaseClient<McpDatabase>,
@@ -58,6 +59,8 @@ export type McpReadToolDependencies = {
     localDate: string,
     timezone: string,
   ) => Promise<unknown>;
+  /** Deterministic clock injection for period/date resolution in tests. */
+  now?: () => Date;
   moneyObligationsList?: (
     client: SupabaseClient<McpDatabase>,
     ownerUserId: string,
@@ -209,6 +212,11 @@ export function createMcpReadToolHandlers(
   dependencies: McpReadToolDependencies = DEFAULT_DEPENDENCIES,
   writesEnabled = false,
 ) {
+  const moneyHandlers = createMcpMoneyHandlers({
+    createUserClient: dependencies.createUserClient,
+    now: dependencies.now,
+  });
+
   return {
     async getCapabilities(
       authInfo: AuthInfo | undefined,
@@ -398,7 +406,7 @@ export function createMcpReadToolHandlers(
 
     async personalOpsExpensesList(
       authInfo: AuthInfo | undefined,
-      input: { from?: string; to?: string; timezone?: string; limit?: number },
+      input: { from?: string; to?: string; timezone?: string; limit?: number; offset?: number },
     ): Promise<CallToolResult> {
       try {
         const principal = requireMcpPermission(authInfo, "personal_ops.read");
@@ -431,6 +439,84 @@ export function createMcpReadToolHandlers(
       } catch (error) {
         return errorResult(error);
       }
+    },
+
+    // MONEY-02 contract names. Both delegate to the canonical expense use
+    // cases; `ega_personal_ops_*` names remain for compatibility.
+    async getMoneyExpense(
+      authInfo: AuthInfo | undefined,
+      input: { expenseId: string },
+    ): Promise<CallToolResult> {
+      return moneyHandlers.getMoneyExpense(authInfo, input);
+    },
+
+    async listMoneyLedger(
+      authInfo: AuthInfo | undefined,
+      input: { from?: string; to?: string; timezone?: string; limit?: number; offset?: number },
+    ): Promise<CallToolResult> {
+      return moneyHandlers.listMoneyLedger(authInfo, input);
+    },
+
+    // Money period context (MONEY-03): the same application state read used by
+    // the web surface, fenced by the explicit personal_ops.read grant.
+    async moneyState(
+      authInfo: AuthInfo | undefined,
+      input: { periodId?: string; date?: string; mode?: "today" | "active_day" },
+    ): Promise<CallToolResult> {
+      return moneyHandlers.moneyState(authInfo, input);
+    },
+
+    // MONEY-04 movement reads. These are deliberately separate tools from the
+    // MONEY-02 expense ledger reads so neither surface can silently widen the
+    // other's kind filter.
+    async moneyMovementList(
+      authInfo: AuthInfo | undefined,
+      input: {
+        from?: string;
+        to?: string;
+        cutoff?: string;
+        timezone?: string;
+        kind?: string;
+        limit?: number;
+      },
+    ): Promise<CallToolResult> {
+      return moneyHandlers.moneyMovementList(authInfo, input ?? {});
+    },
+
+    async moneyMovementGet(
+      authInfo: AuthInfo | undefined,
+      input: { movementId: string },
+    ): Promise<CallToolResult> {
+      return moneyHandlers.moneyMovementGet(authInfo, input);
+    },
+
+    // MONEY-05 plan and counted-coffee reads. The budget plan belongs to the
+    // canonical period; the coffee window keeps counted and category totals
+    // distinct instead of forcing them equal.
+    async moneyBudgetGet(
+      authInfo: AuthInfo | undefined,
+      input: { periodStartDate: string; periodEndDate: string },
+    ): Promise<CallToolResult> {
+      return moneyHandlers.moneyBudgetGet(authInfo, input);
+    },
+
+    async moneyCoffeeWindow(
+      authInfo: AuthInfo | undefined,
+      input: {
+        localDate: string;
+        timezone: string;
+        periodStartDate: string;
+        periodEndDate: string;
+      },
+    ): Promise<CallToolResult> {
+      return moneyHandlers.moneyCoffeeWindow(authInfo, input);
+    },
+
+    async moneyCoffeeVisitList(
+      authInfo: AuthInfo | undefined,
+      input: { from: string; to: string; limit?: number; offset?: number },
+    ): Promise<CallToolResult> {
+      return moneyHandlers.moneyCoffeeVisitList(authInfo, input);
     },
 
     // Money obligation reads (MONEY-06): bills and subscriptions are the same
@@ -622,19 +708,39 @@ export async function defaultPersonalOpsSummary(
 async function defaultPersonalOpsExpensesList(
   client: SupabaseClient<McpDatabase>,
   ownerUserId: string,
-  query: { from?: string; to?: string; timezone?: string; limit?: number },
+  query: { from?: string; to?: string; timezone?: string; limit?: number; offset?: number },
 ) {
-  const { listExpenses } = await import("@ega/application");
-  const { SupabaseExpenseRepository } = await import("@ega/data-access");
+  const { listExpenses, resolveEffectiveTimezone } = await import("@ega/application");
+  const { SupabaseExpenseRepository, SupabaseTimeContextRepository } = await import("@ega/data-access");
+  const actor = { userId: ownerUserId } as never;
+
+  // Keep the compatibility tool reachable and consistent with the Money page:
+  // a dated request without an explicit timezone uses the owner's stored
+  // timezone instead of erroring or silently assuming UTC.
+  let timezone = query.timezone ?? null;
+  if (timezone === null && (query.from !== undefined || query.to !== undefined)) {
+    const effective = await resolveEffectiveTimezone(
+      actor,
+      new SupabaseTimeContextRepository(client as never),
+      undefined,
+    );
+    if (!effective.ok) {
+      throw new Error("Failed to resolve the owner timezone.");
+    }
+    timezone = effective.data.timezone;
+  }
+
   const result = await listExpenses(
-    { userId: ownerUserId } as never,
+    actor,
     new SupabaseExpenseRepository(client as never),
     {
-      from: query.from,
-      to: query.to,
+      ...(query.from !== undefined ? { from: query.from } : {}),
+      ...(query.to !== undefined ? { to: query.to } : {}),
+      ...(timezone !== null ? { timezone } : {}),
       limit: String(Math.min(Math.max(query.limit ?? 25, 1), 100)),
+      offset: String(Math.max(query.offset ?? 0, 0)),
     },
-    { timezone: query.timezone ?? null },
+    { timezone },
   );
   if (!result.ok) {
     if (result.code === "validation") {

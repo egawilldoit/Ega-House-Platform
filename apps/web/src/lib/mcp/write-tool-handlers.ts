@@ -42,6 +42,7 @@ import {
 import { createTaskMcpWriteHandlers } from "@/lib/mcp/write/tasks";
 import { createMcpTimerModuleHandlers } from "@/lib/mcp/write/timer";
 import { createMcpPersonalOpsWriteHandlers } from "@/lib/mcp/write/personal-ops";
+import { createMcpMoneyHandlers } from "@/lib/mcp/money/handlers";
 import { createMcpObligationWriteHandlers } from "@/lib/mcp/write/obligations";
 import {
   McpToolAuthorizationError,
@@ -248,6 +249,7 @@ export function createMcpWriteToolHandlers(
   const taskHandlers = createTaskMcpWriteHandlers(moduleDeps);
   const timerHandlers = createMcpTimerModuleHandlers(moduleDeps, writesEnabled);
   const personalOpsHandlers = createMcpPersonalOpsWriteHandlers(moduleDeps);
+  const moneyHandlers = createMcpMoneyHandlers(moduleDeps);
   const obligationHandlers = createMcpObligationWriteHandlers(moduleDeps);
 
   return {
@@ -742,6 +744,131 @@ export function createMcpWriteToolHandlers(
       }
     },
 
+    // MONEY-02 contract write names. They share the same canonical use cases
+    // and full-input outer receipts as the compatibility create tool.
+    async createMoneyExpense(
+      authInfo: AuthInfo | undefined,
+      input: {
+        occurredAt: string;
+        amountMinor: number;
+        category: string;
+        needVsWant: "need" | "want";
+        note?: string | null;
+        merchant?: string | null;
+        paymentMethod?: string | null;
+        idempotencyKey: string;
+        operationId: string;
+      },
+    ): Promise<CallToolResult> {
+      try {
+        assertWritesEnabled(writesEnabled);
+        requireMcpPermission(authInfo, "personal_ops.write");
+        const client = dependencies.createUserClient(authInfo!.token);
+        return await withExclusiveMutation(client, "ega_money_create_expense", input.operationId, {
+          occurredAt: canonicalReceiptInstant(input.occurredAt),
+          amountMinor: input.amountMinor,
+          category: input.category,
+          needVsWant: input.needVsWant,
+          note: canonicalReceiptText(input.note),
+          merchant: canonicalReceiptText(input.merchant),
+          paymentMethod: input.paymentMethod ?? null,
+          idempotencyKey: input.idempotencyKey,
+        }, () =>
+          moneyHandlers.createMoneyExpense(authInfo, {
+            occurredAt: input.occurredAt,
+            amountMinor: input.amountMinor,
+            category: input.category as never,
+            needVsWant: input.needVsWant,
+            note: input.note ?? null,
+            merchant: input.merchant ?? null,
+            paymentMethod: (input.paymentMethod as never) ?? null,
+            idempotencyKey: input.idempotencyKey,
+            operationId: input.operationId,
+          }),
+        );
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+
+    async updateMoneyExpense(
+      authInfo: AuthInfo | undefined,
+      input: {
+        expenseId: string;
+        expectedVersion: number;
+        occurredAt?: string;
+        amountMinor?: number;
+        category?: string;
+        needVsWant?: "need" | "want";
+        note?: string | null;
+        merchant?: string | null;
+        paymentMethod?: string | null;
+        operationId: string;
+      },
+    ): Promise<CallToolResult> {
+      try {
+        assertWritesEnabled(writesEnabled);
+        requireMcpPermission(authInfo, "personal_ops.write");
+        const client = dependencies.createUserClient(authInfo!.token);
+        // Bind only provided fields so "clear the note" (null) and "leave the
+        // note alone" (omitted) remain distinct semantic inputs.
+        const semantic: Record<string, unknown> = {
+          expenseId: input.expenseId,
+          expectedVersion: input.expectedVersion,
+        };
+        if (input.occurredAt !== undefined) {
+          semantic.occurredAt = canonicalReceiptInstant(input.occurredAt);
+        }
+        if (input.amountMinor !== undefined) semantic.amountMinor = input.amountMinor;
+        if (input.category !== undefined) semantic.category = input.category;
+        if (input.needVsWant !== undefined) semantic.needVsWant = input.needVsWant;
+        if (input.note !== undefined) semantic.note = canonicalReceiptText(input.note);
+        if (input.merchant !== undefined) semantic.merchant = canonicalReceiptText(input.merchant);
+        if (input.paymentMethod !== undefined) {
+          semantic.paymentMethod = input.paymentMethod ?? null;
+        }
+        return await withExclusiveMutation(client, "ega_money_update_expense", input.operationId, semantic, () =>
+          moneyHandlers.updateMoneyExpense(authInfo, {
+            expenseId: input.expenseId,
+            expectedVersion: input.expectedVersion,
+            occurredAt: input.occurredAt,
+            amountMinor: input.amountMinor,
+            category: input.category as never,
+            needVsWant: input.needVsWant,
+            note: input.note,
+            merchant: input.merchant,
+            paymentMethod: (input.paymentMethod as never),
+            operationId: input.operationId,
+          }),
+        );
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+
+    async deleteMoneyExpense(
+      authInfo: AuthInfo | undefined,
+      input: { expenseId: string; expectedVersion: number; operationId: string },
+    ): Promise<CallToolResult> {
+      try {
+        assertWritesEnabled(writesEnabled);
+        requireMcpPermission(authInfo, "personal_ops.write");
+        const client = dependencies.createUserClient(authInfo!.token);
+        return await withExclusiveMutation(
+          client,
+          "ega_money_delete_expense",
+          input.operationId,
+          {
+            expenseId: input.expenseId,
+            expectedVersion: input.expectedVersion,
+          },
+          () => moneyHandlers.deleteMoneyExpense(authInfo, input),
+        );
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+
     async savePersonalOpsCheckin(
       authInfo: AuthInfo | undefined,
       input: { localDate: string; timezone: string; patch: Record<string, unknown>; operationId: string },
@@ -756,6 +883,321 @@ export function createMcpWriteToolHandlers(
         }, () =>
           personalOpsHandlers.savePersonalOpsCheckin(authInfo, input, input.operationId),
         );
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+
+    // Money period/settings writes (MONEY-03): the full normalized input is in
+    // the outer receipt, so a changed active date, opening, source, evidence,
+    // settings or target period conflicts instead of replaying.
+    async updateMoneySettings(
+      authInfo: AuthInfo | undefined,
+      input: {
+        operationId: string;
+        periodId?: string;
+        version?: number;
+        startDate?: string;
+        endDate?: string;
+        timezone?: string;
+        activeDate?: string;
+        opening?: {
+          amountMinor: number;
+          source: "user_entered" | "carry_forward" | "verified_source";
+          cutoffDate?: string | null;
+          evidence?: string | null;
+          note?: string | null;
+        } | null;
+        settings?: Record<string, unknown>;
+      },
+    ): Promise<CallToolResult> {
+      try {
+        assertWritesEnabled(writesEnabled);
+        requireMcpPermission(authInfo, "personal_ops.write");
+        const client = dependencies.createUserClient(authInfo!.token);
+        const semantic = {
+          periodId: input.periodId ?? null,
+          version: input.version ?? null,
+          startDate: input.startDate ?? null,
+          endDate: input.endDate ?? null,
+          timezone: input.timezone ?? null,
+          activeDate: input.activeDate ?? null,
+          opening: input.opening
+            ? {
+                amountMinor: input.opening.amountMinor,
+                source: input.opening.source,
+                cutoffDate: input.opening.cutoffDate ?? null,
+                evidence: input.opening.evidence ?? null,
+                note: input.opening.note ?? null,
+              }
+            : null,
+          settings: input.settings ?? null,
+        };
+        return await withExclusiveMutation(
+          client,
+          "ega_money_update_settings",
+          input.operationId,
+          semantic,
+          () =>
+            moneyHandlers.updateMoneySettings(
+              authInfo,
+              input,
+              input.operationId,
+            ),
+        );
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+    // MONEY-04: one canonical ledger for income/savings/adjustment movements.
+    async createMoneyMovement(
+      authInfo: AuthInfo | undefined,
+      input: {
+        kind: string;
+        direction?: "in" | "out";
+        amountMinor: number;
+        category?: string | null;
+        note?: string | null;
+        merchant?: string | null;
+        needVsWant?: "need" | "want" | null;
+        paymentMethod?: string | null;
+        purpose?: "fixed" | "flexible" | "emergency" | null;
+        countsInDaily?: boolean;
+        bookingDate?: string;
+        occurredAt?: string | null;
+        idempotencyKey: string;
+        operationId: string;
+      },
+    ): Promise<CallToolResult> {
+      try {
+        assertWritesEnabled(writesEnabled);
+        requireMcpPermission(authInfo, "personal_ops.write");
+        const client = dependencies.createUserClient(authInfo!.token);
+        // The outer receipt binds every semantic field, including the daily
+        // inclusion flag and the date-only occurrence state, so a changed
+        // request cannot replay an earlier movement.
+        return await withExclusiveMutation(client, "ega_money_create_movement", input.operationId, {
+          kind: input.kind,
+          direction: input.direction ?? null,
+          amountMinor: input.amountMinor,
+          category: input.category ?? null,
+          note: canonicalReceiptText(input.note),
+          merchant: canonicalReceiptText(input.merchant),
+          needVsWant: input.needVsWant ?? null,
+          paymentMethod: input.paymentMethod ?? null,
+          purpose: input.purpose ?? null,
+          countsInDaily: input.countsInDaily ?? null,
+          bookingDate: input.bookingDate ?? null,
+          occurredAt:
+            input.occurredAt == null ? null : canonicalReceiptInstant(input.occurredAt),
+          idempotencyKey: input.idempotencyKey,
+        }, () =>
+          moneyHandlers.createMoneyMovement(
+            authInfo,
+            {
+              ...input,
+              kind: input.kind as never,
+              category: input.category ?? null,
+              needVsWant: input.needVsWant ?? null,
+              purpose: input.purpose ?? null,
+              ...(input.countsInDaily !== undefined
+                ? { countsInDaily: input.countsInDaily }
+                : {}),
+              ...(input.bookingDate !== undefined ? { bookingDate: input.bookingDate } : {}),
+              occurredAt: input.occurredAt ?? null,
+            },
+            input.operationId,
+          ),
+        );
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+
+    async updateMoneyMovement(
+      authInfo: AuthInfo | undefined,
+      input: {
+        movementId: string;
+        version: number;
+        bookingDate?: string;
+        occurredAt?: string | null;
+        amountMinor?: number;
+        category?: string;
+        note?: string | null;
+        merchant?: string | null;
+        needVsWant?: "need" | "want";
+        paymentMethod?: string | null;
+        purpose?: "fixed" | "flexible" | "emergency" | null;
+        countsInDaily?: boolean;
+        operationId: string;
+      },
+    ): Promise<CallToolResult> {
+      try {
+        assertWritesEnabled(writesEnabled);
+        requireMcpPermission(authInfo, "personal_ops.write");
+        const client = dependencies.createUserClient(authInfo!.token);
+        // Bind presence, not just value: omitting a field means "unchanged",
+        // while an explicit null clears it. The two must not share a receipt.
+        const semanticInput: Record<string, unknown> = {
+          movementId: input.movementId,
+          expectedVersion: input.version,
+        };
+        if (input.bookingDate !== undefined) semanticInput.bookingDate = input.bookingDate;
+        if (input.occurredAt !== undefined) {
+          semanticInput.occurredAt =
+            input.occurredAt === null ? null : canonicalReceiptInstant(input.occurredAt);
+        }
+        if (input.amountMinor !== undefined) semanticInput.amountMinor = input.amountMinor;
+        if (input.category !== undefined) semanticInput.category = input.category;
+        if (input.note !== undefined) semanticInput.note = canonicalReceiptText(input.note);
+        if (input.merchant !== undefined) semanticInput.merchant = canonicalReceiptText(input.merchant);
+        if (input.needVsWant !== undefined) semanticInput.needVsWant = input.needVsWant;
+        if (input.paymentMethod !== undefined) semanticInput.paymentMethod = input.paymentMethod;
+        if (input.purpose !== undefined) semanticInput.purpose = input.purpose;
+        if (input.countsInDaily !== undefined) semanticInput.countsInDaily = input.countsInDaily;
+        return await withExclusiveMutation(client, "ega_money_update_movement", input.operationId, semanticInput, () =>
+          moneyHandlers.updateMoneyMovement(
+            authInfo,
+            {
+              ...input,
+              category: input.category,
+              note: input.note,
+              merchant: input.merchant,
+              needVsWant: input.needVsWant,
+              paymentMethod: input.paymentMethod,
+              purpose: input.purpose,
+            },
+            input.operationId,
+          ),
+        );
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+
+    // MONEY-05 writes: the full normalized input is stored in the outer
+    // receipt, and each mutation calls the canonical application use case.
+    async setMoneyAllocation(
+      authInfo: AuthInfo | undefined,
+      input: {
+        periodStartDate: string;
+        periodEndDate: string;
+        version: number;
+        allocations?: Record<string, number | null>;
+        savingsTargetMinor?: number | null;
+        emergencyTargetMinor?: number | null;
+        coffeeWeeklySpendLimitMinor?: number | null;
+        coffeeWeeklyVisitLimit?: number | null;
+        operationId: string;
+      },
+    ): Promise<CallToolResult> {
+      try {
+        assertWritesEnabled(writesEnabled);
+        requireMcpPermission(authInfo, "personal_ops.write");
+        const client = dependencies.createUserClient(authInfo!.token);
+        const semanticInput: Record<string, unknown> = {
+          periodStartDate: input.periodStartDate,
+          periodEndDate: input.periodEndDate,
+          expectedVersion: input.version,
+        };
+        if (input.allocations !== undefined) {
+          semanticInput.allocations = Object.fromEntries(
+            Object.entries(input.allocations).sort(([a], [b]) => a.localeCompare(b)),
+          );
+        }
+        if (input.savingsTargetMinor !== undefined) {
+          semanticInput.savingsTargetMinor = input.savingsTargetMinor;
+        }
+        if (input.emergencyTargetMinor !== undefined) {
+          semanticInput.emergencyTargetMinor = input.emergencyTargetMinor;
+        }
+        if (input.coffeeWeeklySpendLimitMinor !== undefined) {
+          semanticInput.coffeeWeeklySpendLimitMinor = input.coffeeWeeklySpendLimitMinor;
+        }
+        if (input.coffeeWeeklyVisitLimit !== undefined) {
+          semanticInput.coffeeWeeklyVisitLimit = input.coffeeWeeklyVisitLimit;
+        }
+        return await withExclusiveMutation(client, "ega_money_set_allocation", input.operationId, semanticInput, () =>
+          moneyHandlers.setMoneyAllocation(authInfo, input, input.operationId),
+        );
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+
+    async classifyMoneyExpense(
+      authInfo: AuthInfo | undefined,
+      input: {
+        expenseId: string;
+        version: number;
+        category: string;
+        note?: string | null;
+        needVsWant?: "need" | "want";
+        operationId: string;
+      },
+    ): Promise<CallToolResult> {
+      try {
+        assertWritesEnabled(writesEnabled);
+        requireMcpPermission(authInfo, "personal_ops.write");
+        const client = dependencies.createUserClient(authInfo!.token);
+        const semanticInput: Record<string, unknown> = {
+          expenseId: input.expenseId,
+          expectedVersion: input.version,
+          category: input.category,
+        };
+        if (input.note !== undefined) semanticInput.note = canonicalReceiptText(input.note);
+        if (input.needVsWant !== undefined) semanticInput.needVsWant = input.needVsWant;
+        return await withExclusiveMutation(client, "ega_money_classify_expense", input.operationId, semanticInput, () =>
+          moneyHandlers.classifyMoneyExpense(authInfo, input, input.operationId),
+        );
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+
+    async recordCoffeeVisit(
+      authInfo: AuthInfo | undefined,
+      input: {
+        visitKey: string;
+        localDate: string;
+        timezone: string;
+        expenseIds: string[];
+        note?: string | null;
+        operationId: string;
+      },
+    ): Promise<CallToolResult> {
+      try {
+        assertWritesEnabled(writesEnabled);
+        requireMcpPermission(authInfo, "personal_ops.write");
+        const client = dependencies.createUserClient(authInfo!.token);
+        return await withExclusiveMutation(client, "ega_money_record_coffee_visit", input.operationId, {
+          // Match the domain visit parser's identity: trimmed text, lowercase
+          // canonical UUIDs, duplicate lines collapsed, sorted for stable hashing.
+          visitKey: input.visitKey.trim(),
+          localDate: input.localDate.trim(),
+          timezone: input.timezone.trim(),
+          expenseIds: [
+            ...new Set(input.expenseIds.map((id) => id.trim().toLowerCase())),
+          ].sort(),
+          note: canonicalReceiptText(input.note ?? null),
+        }, () => moneyHandlers.recordCoffeeVisit(authInfo, input, input.operationId));
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+
+    async deleteCoffeeVisit(
+      authInfo: AuthInfo | undefined,
+      input: { visitId: string; version: number; operationId: string },
+    ): Promise<CallToolResult> {
+      try {
+        assertWritesEnabled(writesEnabled);
+        requireMcpPermission(authInfo, "personal_ops.write");
+        const client = dependencies.createUserClient(authInfo!.token);
+        return await withExclusiveMutation(client, "ega_money_delete_coffee_visit", input.operationId, {
+          visitId: input.visitId,
+          expectedVersion: input.version,
+        }, () => moneyHandlers.deleteCoffeeVisit(authInfo, input, input.operationId));
       } catch (error) {
         return errorResult(error);
       }

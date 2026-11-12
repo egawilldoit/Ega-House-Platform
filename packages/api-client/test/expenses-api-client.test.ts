@@ -56,7 +56,7 @@ test("list maps GET /api/expenses with bounded query options and auth", async ()
   const response = {
     ok: true,
     expenses: [EXPENSE],
-    pagination: { limit: 10, offset: 20, hasMore: false },
+    pagination: { limit: 10, offset: 20, hasMore: false, nextOffset: null },
   };
   const { client, calls } = makeHarness(200, response);
   const result = await client.expenses.list({
@@ -84,7 +84,7 @@ test("list omits blank and absent options", async () => {
   const { client, calls } = makeHarness(200, {
     ok: true,
     expenses: [],
-    pagination: { limit: 50, offset: 0, hasMore: false },
+    pagination: { limit: 50, offset: 0, hasMore: false, nextOffset: null },
   });
   await client.expenses.list({ from: "  ", to: null, timezone: null });
   assert.equal(new URL(calls[0].url).search, "");

@@ -36,14 +36,17 @@ const TABLE = "personal_expenses";
 const IDEMPOTENCY_CONSTRAINT = "personal_expenses_owner_idempotency_key_unique";
 
 const EXPENSE_COLUMNS =
-  "id, occurred_at, amount_minor, currency, category, note, merchant, need_vs_want, payment_method, idempotency_key, version, deleted_at, created_at, updated_at";
+  "id, kind, direction, occurred_at, booking_date, amount_minor, currency, category, note, merchant, need_vs_want, payment_method, purpose, counts_in_daily, period_id, idempotency_key, version, deleted_at, created_at, updated_at";
 
 const EXPENSE_COLUMNS_WITH_FINGERPRINT =
-  "id, occurred_at, amount_minor, currency, category, note, merchant, need_vs_want, payment_method, idempotency_key, version, deleted_at, created_at, updated_at, create_fingerprint";
+  "id, kind, direction, occurred_at, booking_date, amount_minor, currency, category, note, merchant, need_vs_want, payment_method, purpose, counts_in_daily, period_id, idempotency_key, version, deleted_at, created_at, updated_at, create_fingerprint";
 
 type ExpenseRow = {
   id: string;
-  occurred_at: string;
+  kind: string;
+  direction: string;
+  occurred_at: string | null;
+  booking_date: string;
   amount_minor: number;
   currency: string;
   category: string;
@@ -51,6 +54,9 @@ type ExpenseRow = {
   merchant: string | null;
   need_vs_want: string;
   payment_method: string | null;
+  purpose: string | null;
+  counts_in_daily: boolean;
+  period_id: string | null;
   idempotency_key: string;
   version: number;
   deleted_at: string | null;
@@ -91,7 +97,10 @@ type ExpenseVersionRow = {
 function toRecord(row: ExpenseRow): PersonalExpense {
   return {
     id: String(row.id),
-    occurredAt: String(row.occurred_at),
+    kind: "expense",
+    direction: "out",
+    occurredAt: row.occurred_at == null ? null : String(row.occurred_at),
+    bookingDate: String(row.booking_date),
     amountMinor: Number(row.amount_minor),
     currency: EXPENSE_CURRENCY,
     category: String(row.category) as ExpenseCategory,
@@ -102,6 +111,9 @@ function toRecord(row: ExpenseRow): PersonalExpense {
       row.payment_method == null
         ? null
         : (String(row.payment_method) as ExpensePaymentMethod),
+    purpose: row.purpose == null ? null : (String(row.purpose) as PersonalExpense["purpose"]),
+    countsInDaily: Boolean(row.counts_in_daily),
+    periodId: row.period_id == null ? null : String(row.period_id),
     idempotencyKey: String(row.idempotency_key),
     version: Number(row.version),
     deletedAt: row.deleted_at == null ? null : String(row.deleted_at),
@@ -117,7 +129,10 @@ function toInsertPayload(
   const values = input.values;
   return {
     owner_user_id: actor.userId,
+    kind: "expense",
+    direction: "out",
     occurred_at: values.occurredAt,
+    // booking_date is derived by the DB in the owner/period timezone.
     amount_minor: values.amountMinor,
     currency: EXPENSE_CURRENCY,
     category: values.category,
@@ -125,6 +140,9 @@ function toInsertPayload(
     merchant: values.merchant,
     need_vs_want: values.needVsWant,
     payment_method: values.paymentMethod,
+    purpose: null,
+    counts_in_daily: true,
+    period_id: null,
     idempotency_key: values.idempotencyKey,
     create_fingerprint: input.createFingerprint,
   };
@@ -139,6 +157,9 @@ function toUpdatePayload(
   };
   const changes = input.changes;
   if (changes.occurredAt !== undefined) payload.occurred_at = changes.occurredAt;
+  // A timestamp change re-derives booking_date in the DB (owner/period zone).
+  // A date-only change writes the explicit day.
+  else if (changes.bookingDate !== undefined) payload.booking_date = changes.bookingDate;
   if (changes.amountMinor !== undefined) payload.amount_minor = changes.amountMinor;
   if (changes.category !== undefined) payload.category = changes.category;
   if (changes.note !== undefined) payload.note = changes.note;
@@ -146,6 +167,10 @@ function toUpdatePayload(
   if (changes.needVsWant !== undefined) payload.need_vs_want = changes.needVsWant;
   if (changes.paymentMethod !== undefined) {
     payload.payment_method = changes.paymentMethod;
+  }
+  if (changes.purpose !== undefined) payload.purpose = changes.purpose;
+  if (changes.countsInDaily !== undefined) {
+    payload.counts_in_daily = changes.countsInDaily;
   }
   return payload;
 }
@@ -161,6 +186,7 @@ export class SupabaseExpenseRepository implements ExpenseRepository {
       .from(TABLE)
       .select(EXPENSE_COLUMNS_WITH_FINGERPRINT)
       .eq("owner_user_id", actor.userId)
+      .eq("kind", "expense")
       .eq("idempotency_key", idempotencyKey)
       .maybeSingle();
 
@@ -204,7 +230,9 @@ export class SupabaseExpenseRepository implements ExpenseRepository {
       .from(TABLE)
       .select(EXPENSE_COLUMNS)
       .eq("owner_user_id", actor.userId)
+      .eq("kind", "expense")
       .eq("id", id)
+      .eq("kind", "expense")
       .is("deleted_at", null)
       .maybeSingle();
 
@@ -221,17 +249,39 @@ export class SupabaseExpenseRepository implements ExpenseRepository {
       .from(TABLE)
       .select(EXPENSE_COLUMNS)
       .eq("owner_user_id", actor.userId)
+      .eq("kind", "expense")
       .is("deleted_at", null);
 
-    if (query.startUtcIso) {
+    // Dated reads use the resolved owner-local booking day so date-only rows
+    // are included and timestamped rows cannot shift by timezone.
+    if (query.startBookingDate) {
+      request = request.gte("booking_date", query.startBookingDate);
+    } else if (query.startUtcIso) {
       request = request.gte("occurred_at", query.startUtcIso);
     }
-    if (query.endUtcExclusiveIso) {
+    if (query.endBookingDateExclusive) {
+      request = request.lt("booking_date", query.endBookingDateExclusive);
+    } else if (query.endUtcExclusiveIso) {
       request = request.lt("occurred_at", query.endUtcExclusiveIso);
+    }
+    // Keyset continuation keeps an export from shifting under concurrent
+    // inserts/deletes. Booking-date windows use a booking-date cursor so
+    // date-only rows (null occurred_at) are still reachable.
+    const byBookingDate = Boolean(
+      query.startBookingDate || query.endBookingDateExclusive,
+    );
+    if (byBookingDate && query.beforeBookingDate && query.beforeId) {
+      request = request.or(
+        `booking_date.lt.${query.beforeBookingDate},and(booking_date.eq.${query.beforeBookingDate},id.lt.${query.beforeId})`,
+      );
+    } else if (!byBookingDate && query.beforeOccurredAt && query.beforeId) {
+      request = request.or(
+        `occurred_at.lt.${query.beforeOccurredAt},and(occurred_at.eq.${query.beforeOccurredAt},id.lt.${query.beforeId})`,
+      );
     }
 
     const { data, error } = await request
-      .order("occurred_at", { ascending: false })
+      .order(byBookingDate ? "booking_date" : "occurred_at", { ascending: false })
       .order("id", { ascending: false })
       .range(query.offset, query.offset + query.limit - 1);
 
@@ -249,7 +299,9 @@ export class SupabaseExpenseRepository implements ExpenseRepository {
       .from(TABLE)
       .update(toUpdatePayload(input))
       .eq("owner_user_id", actor.userId)
+      .eq("kind", "expense")
       .eq("id", id)
+      .eq("kind", "expense")
       .eq("version", input.expectedVersion)
       .is("deleted_at", null)
       .select(EXPENSE_COLUMNS)
@@ -264,7 +316,9 @@ export class SupabaseExpenseRepository implements ExpenseRepository {
       .from(TABLE)
       .select("version, deleted_at")
       .eq("owner_user_id", actor.userId)
+      .eq("kind", "expense")
       .eq("id", id)
+      .eq("kind", "expense")
       .maybeSingle();
 
     if (current.error) {
@@ -294,13 +348,19 @@ export class SupabaseExpenseRepository implements ExpenseRepository {
     let truncated = false;
 
     for (let offset = 0; offset < MAX_ROWS; offset += PAGE_SIZE) {
-      const { data, error } = await this.supabase
+      let request = this.supabase
         .from(TABLE)
         .select("category, amount_minor")
         .eq("owner_user_id", actor.userId)
-        .is("deleted_at", null)
-        .gte("occurred_at", window.startUtcIso)
-        .lt("occurred_at", window.endUtcExclusiveIso)
+        .eq("kind", "expense")
+        .is("deleted_at", null);
+      request = window.startBookingDate
+        ? request.gte("booking_date", window.startBookingDate)
+        : request.gte("occurred_at", window.startUtcIso);
+      request = window.endBookingDateExclusive
+        ? request.lt("booking_date", window.endBookingDateExclusive)
+        : request.lt("occurred_at", window.endUtcExclusiveIso);
+      const { data, error } = await request
         .order("occurred_at", { ascending: false })
         .order("id", { ascending: false })
         .range(offset, offset + PAGE_SIZE - 1);
@@ -322,16 +382,42 @@ export class SupabaseExpenseRepository implements ExpenseRepository {
     return { ok: true, value: { totalsByCategory: totals, countsByCategory: counts, recordCount, truncated } };
   }
 
+  async count(
+    actor: AuthenticatedActor,
+    window: ExpenseSummaryWindow,
+  ): Promise<RepositoryResult<number>> {
+    let request = this.supabase
+      .from(TABLE)
+      .select("id", { count: "exact", head: true })
+      .eq("owner_user_id", actor.userId)
+      .eq("kind", "expense")
+      .is("deleted_at", null);
+    request = window.startBookingDate
+      ? request.gte("booking_date", window.startBookingDate)
+      : request.gte("occurred_at", window.startUtcIso);
+    request = window.endBookingDateExclusive
+      ? request.lt("booking_date", window.endBookingDateExclusive)
+      : request.lt("occurred_at", window.endUtcExclusiveIso);
+    const { count, error } = await request;
+
+    if (error) return { ok: false, error: expenseFailure(error) };
+    if (typeof count !== "number") return { ok: false, error: { code: "unknown" } };
+    return { ok: true, value: count };
+  }
+
   async softDelete(
     actor: AuthenticatedActor,
     id: string,
     nowIso: string,
+    expectedVersion?: number,
   ): Promise<RepositoryResult<ExpenseDeleteOutcome>> {
     const current = await this.supabase
       .from(TABLE)
       .select("version, deleted_at")
       .eq("owner_user_id", actor.userId)
+      .eq("kind", "expense")
       .eq("id", id)
+      .eq("kind", "expense")
       .maybeSingle();
 
     if (current.error) {
@@ -341,6 +427,8 @@ export class SupabaseExpenseRepository implements ExpenseRepository {
 
     const row = current.data as ExpenseVersionRow;
     if (row.deleted_at !== null) {
+      // A repeat delete stays an idempotent success even when a caller pinned
+      // an older version: the row is already in the requested terminal state.
       return {
         ok: true,
         value: {
@@ -349,6 +437,9 @@ export class SupabaseExpenseRepository implements ExpenseRepository {
           alreadyDeleted: true,
         },
       };
+    }
+    if (expectedVersion !== undefined && Number(row.version) !== expectedVersion) {
+      return { ok: false, error: { code: "conflict" } };
     }
 
     const { data, error } = await this.supabase
@@ -359,7 +450,9 @@ export class SupabaseExpenseRepository implements ExpenseRepository {
         version: Number(row.version) + 1,
       })
       .eq("owner_user_id", actor.userId)
+      .eq("kind", "expense")
       .eq("id", id)
+      .eq("kind", "expense")
       .eq("version", row.version)
       .is("deleted_at", null)
       .select("id, deleted_at")
@@ -384,7 +477,9 @@ export class SupabaseExpenseRepository implements ExpenseRepository {
       .from(TABLE)
       .select("version, deleted_at")
       .eq("owner_user_id", actor.userId)
+      .eq("kind", "expense")
       .eq("id", id)
+      .eq("kind", "expense")
       .maybeSingle();
     if (raced.error) {
       return { ok: false, error: expenseFailure(raced.error) };

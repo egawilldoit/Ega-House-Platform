@@ -70,11 +70,15 @@ export function ExpenseEditForm({
   onUpdated,
 }: ExpenseEditFormProps) {
   const captureRequestScope = useExpenseRequestScope(`${expense.id}::${ownerKey}`);
+  // A date-only booking has no instant; use noon for the editor without
+  // claiming that time until the user explicitly saves a timestamped change.
+  const initialOccurredAt =
+    expense.occurredAt ?? `${expense.bookingDate}T12:00:00`;
   const [amountInput, setAmountInput] = useState(() =>
     formatMinorToMadInput(expense.amountMinor),
   );
   const [occurredAtInput, setOccurredAtInput] = useState(() =>
-    toDatetimeLocalValue(expense.occurredAt),
+    toDatetimeLocalValue(initialOccurredAt),
   );
   const [category, setCategory] = useState<string>(expense.category);
   const [needVsWant, setNeedVsWant] = useState<string>(expense.needVsWant);
@@ -100,7 +104,7 @@ export function ExpenseEditForm({
   if (draftScope !== scope) {
     setDraftScope(scope);
     setAmountInput(formatMinorToMadInput(expense.amountMinor));
-    setOccurredAtInput(toDatetimeLocalValue(expense.occurredAt));
+    setOccurredAtInput(toDatetimeLocalValue(initialOccurredAt));
     setCategory(expense.category);
     setNeedVsWant(expense.needVsWant);
     setMerchant(expense.merchant ?? "");
@@ -144,7 +148,7 @@ export function ExpenseEditForm({
       const result = await submitUpdate(expense.id, {
         version,
         // An unrelated edit must preserve seconds and DST-fold identity.
-        ...(occurredAtInput === toDatetimeLocalValue(expense.occurredAt)
+        ...(occurredAtInput === toDatetimeLocalValue(initialOccurredAt)
           ? {}
           : { occurredAt: validation.value.occurredAt }),
         amountMinor: validation.value.amountMinor,

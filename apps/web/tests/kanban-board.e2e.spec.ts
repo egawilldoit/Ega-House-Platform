@@ -94,7 +94,13 @@ test.describe("kanban drag and manual order", () => {
     await expect(handle).toHaveAttribute("aria-pressed", "true");
     // Pickup precedes dnd-kit's target measurements; wait for the initial collision.
     await expect(page.getByRole("status").filter({ hasText: /^Not over a column\.$/ })).toHaveCount(1);
-    await page.keyboard.press(initialFirstBox.y < initialSecondBox.y ? "ArrowDown" : "ArrowUp");
+    // KeyboardSensor moves by a fixed step, so one arrow does not always reach
+    // the next card. Step until the collision announcement names the column.
+    const direction = initialFirstBox.y < initialSecondBox.y ? "ArrowDown" : "ArrowUp";
+    for (let step = 0; step < 6; step += 1) {
+      await page.keyboard.press(direction);
+      if (await page.getByRole("status").filter({ hasText: /Over Todo at position/ }).count()) break;
+    }
     await expect(page.getByRole("status").filter({ hasText: /Over Todo at position/ })).toHaveCount(1);
     const persistedOrder = page.waitForResponse(response =>
       response.request().method() === "POST" && new URL(response.url()).pathname === "/tasks" && Boolean(response.request().headers()["next-action"]),

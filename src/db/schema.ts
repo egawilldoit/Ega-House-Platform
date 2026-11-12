@@ -1331,14 +1331,20 @@ export const personalExpenses = pgTable(
   {
     id: uuid("id").defaultRandom().primaryKey(),
     ownerUserId: uuid("owner_user_id").default(sql`auth.uid()`).notNull(),
-    occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull(),
+    kind: varchar("kind", { length: 32 }).default("expense").notNull(),
+    direction: varchar("direction", { length: 8 }).default("out").notNull(),
+    occurredAt: timestamp("occurred_at", { withTimezone: true }),
+    bookingDate: date("booking_date").notNull(),
     amountMinor: integer("amount_minor").notNull(),
     currency: varchar("currency", { length: 3 }).default("MAD").notNull(),
-    category: varchar("category", { length: 32 }).notNull(),
+    category: varchar("category", { length: 32 }),
     note: varchar("note", { length: 500 }),
     merchant: varchar("merchant", { length: 120 }),
-    needVsWant: varchar("need_vs_want", { length: 8 }).notNull(),
+    needVsWant: varchar("need_vs_want", { length: 8 }),
     paymentMethod: varchar("payment_method", { length: 32 }),
+    purpose: varchar("purpose", { length: 16 }),
+    countsInDaily: boolean("counts_in_daily").notNull(),
+    periodId: uuid("period_id"),
     idempotencyKey: varchar("idempotency_key", { length: 128 }).notNull(),
     createFingerprint: varchar("create_fingerprint", { length: 64 }).notNull(),
     version: integer("version").default(1).notNull(),
@@ -1356,18 +1362,44 @@ export const personalExpenses = pgTable(
       table.occurredAt.desc(),
       table.id.desc(),
     ),
+    index("personal_expenses_owner_booking_date_idx").on(
+      table.ownerUserId,
+      table.bookingDate.desc(),
+      table.id.desc(),
+    ),
     check(
       "personal_expenses_amount_minor_check",
-      sql`${table.amountMinor} >= 1 and ${table.amountMinor} <= 2147483647`,
+      sql`${table.amountMinor} <= 2147483647 and ((${table.kind} = 'opening' and ${table.amountMinor} >= 0) or (${table.kind} <> 'opening' and ${table.amountMinor} >= 1))`,
     ),
     check("personal_expenses_currency_check", sql`${table.currency} = 'MAD'`),
     check(
+      "personal_expenses_kind_check",
+      sql`${table.kind} in ('expense','income','opening','savings_transfer','reconciliation_adjustment')`,
+    ),
+    check(
+      "personal_expenses_direction_check",
+      sql`${table.direction} in ('in','out')`,
+    ),
+    check(
+      "personal_expenses_purpose_check",
+      sql`${table.purpose} is null or ${table.purpose} in ('fixed','flexible','emergency')`,
+    ),
+    check(
+      "personal_expenses_kind_shape_check",
+      sql`(
+        (${table.kind} = 'expense' and ${table.direction} = 'out' and ${table.category} is not null and ${table.needVsWant} is not null)
+        or (${table.kind} in ('income','opening') and ${table.direction} = 'in' and ${table.category} is null and ${table.needVsWant} is null and ${table.purpose} is null)
+        or (${table.kind} = 'savings_transfer' and ${table.direction} = 'out' and ${table.category} is null and ${table.needVsWant} is null and ${table.purpose} is null)
+        or (${table.kind} = 'reconciliation_adjustment' and ${table.direction} in ('in','out') and ${table.category} is null and ${table.needVsWant} is null and ${table.purpose} is null)
+      )`,
+    ),
+    check(
       "personal_expenses_category_check",
-      sql`${table.category} in ('coffee','groceries','eating_out','transport','bills','subscriptions','household','health','other')`,
+      sql`${table.category} is null or ${table.category} in ('coffee','groceries','eating_out','transport','bills','subscriptions','household','health','other','daily_usage','personal_care','work_tools','fun','emergency')`,
     ),
     check(
       "personal_expenses_need_vs_want_check",
-      sql`${table.needVsWant} in ('need','want')`,
+      sql`${table.needVsWant} is null or ${table.needVsWant} in ('need','want')`,
     ),
     check(
       "personal_expenses_payment_method_check",
@@ -1389,6 +1421,160 @@ export const personalExpenses = pgTable(
     check(
       "personal_expenses_merchant_check",
       sql`${table.merchant} is null or length(btrim(${table.merchant})) > 0`,
+    ),
+  ],
+);
+
+/**
+ * Canonical Money period (MONEY-03). One owner may have at most one tracking
+ * period and one row per inclusive date range; the opening movement is
+ * referenced, never duplicated.
+ */
+export const moneyPeriods = pgTable(
+  "money_periods",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    ownerUserId: uuid("owner_user_id").default(sql`auth.uid()`).notNull(),
+    startDate: date("start_date").notNull(),
+    endDate: date("end_date").notNull(),
+    currency: varchar("currency", { length: 3 }).default("MAD").notNull(),
+    timezone: varchar("timezone", { length: 128 }).notNull(),
+    activeDate: date("active_date").notNull(),
+    lifecycle: varchar("lifecycle", { length: 16 }).default("tracking").notNull(),
+    initialization: varchar("initialization", { length: 16 })
+      .default("uninitialized")
+      .notNull(),
+    openingMovementId: uuid("opening_movement_id"),
+    provenance: jsonb("provenance").default(sql`'{}'::jsonb`).notNull(),
+    settings: jsonb("settings").default(sql`'{}'::jsonb`).notNull(),
+    version: integer("version").default(1).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("money_periods_owner_tracking_unique")
+      .on(table.ownerUserId)
+      .where(sql`lifecycle = 'tracking'`),
+    uniqueIndex("money_periods_owner_range_unique").on(
+      table.ownerUserId,
+      table.startDate,
+      table.endDate,
+    ),
+    index("money_periods_owner_history_idx").on(
+      table.ownerUserId,
+      table.startDate.desc(),
+      table.id.desc(),
+    ),
+    check("money_periods_range_check", sql`${table.startDate} <= ${table.endDate}`),
+    check("money_periods_currency_check", sql`${table.currency} = 'MAD'`),
+    check(
+      "money_periods_active_date_check",
+      sql`${table.activeDate} >= ${table.startDate} and ${table.activeDate} <= ${table.endDate}`,
+    ),
+    check("money_periods_timezone_check", sql`btrim(${table.timezone}) <> ''`),
+    check(
+      "money_periods_lifecycle_check",
+      sql`${table.lifecycle} in ('tracking','ended','rolled_over')`,
+    ),
+    check(
+      "money_periods_initialization_check",
+      sql`${table.initialization} in ('uninitialized','initialized','reconciled')`,
+    ),
+    check("money_periods_version_check", sql`${table.version} > 0`),
+  ],
+);
+
+/**
+ * MONEY-05 budget plan: exactly one editable allocation/target/coffee-limit
+ * owner per canonical period. Routine spending never writes these values.
+ */
+export const moneyBudgetPlans = pgTable(
+  "money_budget_plans",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    ownerUserId: uuid("owner_user_id").default(sql`auth.uid()`).notNull(),
+    periodId: uuid("period_id")
+      .notNull()
+      .references(() => moneyPeriods.id, { onDelete: "cascade" }),
+    currency: varchar("currency", { length: 3 }).default("MAD").notNull(),
+    allocations: jsonb("allocations").default(sql`'{}'::jsonb`).notNull(),
+    savingsTargetMinor: integer("savings_target_minor"),
+    emergencyTargetMinor: integer("emergency_target_minor"),
+    coffeeWeeklySpendLimitMinor: integer("coffee_weekly_spend_limit_minor"),
+    coffeeWeeklyVisitLimit: integer("coffee_weekly_visit_limit"),
+    version: integer("version").default(1).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("money_budget_plans_owner_period_unique").on(
+      table.ownerUserId,
+      table.periodId,
+    ),
+    check("money_budget_plans_currency_check", sql`${table.currency} = 'MAD'`),
+    check("money_budget_plans_version_check", sql`${table.version} > 0`),
+  ],
+);
+
+/**
+ * MONEY-05 counted coffee visit. The visit stores identity and owner-local
+ * date only; its lines reference canonical ledger rows and never duplicate an
+ * amount or create a cash movement.
+ */
+export const moneyCoffeeVisits = pgTable(
+  "money_coffee_visits",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    ownerUserId: uuid("owner_user_id").default(sql`auth.uid()`).notNull(),
+    visitKey: varchar("visit_key", { length: 128 }).notNull(),
+    visitFingerprint: varchar("visit_fingerprint", { length: 64 }).notNull(),
+    localDate: date("local_date").notNull(),
+    timezone: varchar("timezone", { length: 64 }).notNull(),
+    note: varchar("note", { length: 500 }),
+    version: integer("version").default(1).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("money_coffee_visits_owner_key_unique").on(
+      table.ownerUserId,
+      table.visitKey,
+    ),
+    index("money_coffee_visits_owner_local_date_idx").on(
+      table.ownerUserId,
+      table.localDate.desc(),
+      table.id.desc(),
+    ),
+    check("money_coffee_visits_key_check", sql`btrim(${table.visitKey}) <> ''`),
+    check(
+      "money_coffee_visits_fingerprint_check",
+      sql`${table.visitFingerprint} ~ '^[0-9a-f]{64}$'`,
+    ),
+    check("money_coffee_visits_version_check", sql`${table.version} > 0`),
+  ],
+);
+
+export const moneyCoffeeVisitLines = pgTable(
+  "money_coffee_visit_lines",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    ownerUserId: uuid("owner_user_id").default(sql`auth.uid()`).notNull(),
+    visitId: uuid("visit_id")
+      .notNull()
+      .references(() => moneyCoffeeVisits.id, { onDelete: "cascade" }),
+    expenseId: uuid("expense_id")
+      .notNull()
+      .references(() => personalExpenses.id, { onDelete: "restrict" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("money_coffee_visit_lines_owner_expense_unique").on(
+      table.ownerUserId,
+      table.expenseId,
+    ),
+    index("money_coffee_visit_lines_owner_visit_idx").on(
+      table.ownerUserId,
+      table.visitId,
     ),
   ],
 );

@@ -333,6 +333,110 @@ export function createAuditedMcpReadHandlers(
       );
     },
 
+    getMoneyExpense(
+      authInfo: AuthInfo | undefined,
+      input: Parameters<BaseReadHandlers["getMoneyExpense"]>[1],
+      context?: ProtocolContext,
+    ): Promise<CallToolResult> {
+      return execute(
+        "ega_money_get",
+        authInfo,
+        context,
+        () => handlers.getMoneyExpense(authInfo, input),
+      );
+    },
+
+    listMoneyLedger(
+      authInfo: AuthInfo | undefined,
+      input: Parameters<BaseReadHandlers["listMoneyLedger"]>[1],
+      context?: ProtocolContext,
+    ): Promise<CallToolResult> {
+      return execute(
+        "ega_money_ledger_list",
+        authInfo,
+        context,
+        () => handlers.listMoneyLedger(authInfo, input),
+      );
+    },
+
+    moneyState(
+      authInfo: AuthInfo | undefined,
+      input: Parameters<BaseReadHandlers["moneyState"]>[1],
+      context?: ProtocolContext,
+    ): Promise<CallToolResult> {
+      return execute(
+        "ega_money_state",
+        authInfo,
+        context,
+        () => handlers.moneyState(authInfo, input),
+      );
+    },
+
+    moneyMovementList(
+      authInfo: AuthInfo | undefined,
+      input: Parameters<BaseReadHandlers["moneyMovementList"]>[1],
+      context?: ProtocolContext,
+    ): Promise<CallToolResult> {
+      return execute(
+        "ega_money_movement_list",
+        authInfo,
+        context,
+        () => handlers.moneyMovementList(authInfo, input),
+      );
+    },
+
+    moneyMovementGet(
+      authInfo: AuthInfo | undefined,
+      input: Parameters<BaseReadHandlers["moneyMovementGet"]>[1],
+      context?: ProtocolContext,
+    ): Promise<CallToolResult> {
+      return execute(
+        "ega_money_movement_get",
+        authInfo,
+        context,
+        () => handlers.moneyMovementGet(authInfo, input),
+      );
+    },
+
+    moneyBudgetGet(
+      authInfo: AuthInfo | undefined,
+      input: Parameters<BaseReadHandlers["moneyBudgetGet"]>[1],
+      context?: ProtocolContext,
+    ): Promise<CallToolResult> {
+      return execute(
+        "ega_money_budget_get",
+        authInfo,
+        context,
+        () => handlers.moneyBudgetGet(authInfo, input),
+      );
+    },
+
+    moneyCoffeeWindow(
+      authInfo: AuthInfo | undefined,
+      input: Parameters<BaseReadHandlers["moneyCoffeeWindow"]>[1],
+      context?: ProtocolContext,
+    ): Promise<CallToolResult> {
+      return execute(
+        "ega_money_coffee_window",
+        authInfo,
+        context,
+        () => handlers.moneyCoffeeWindow(authInfo, input),
+      );
+    },
+
+    moneyCoffeeVisitList(
+      authInfo: AuthInfo | undefined,
+      input: Parameters<BaseReadHandlers["moneyCoffeeVisitList"]>[1],
+      context?: ProtocolContext,
+    ): Promise<CallToolResult> {
+      return execute(
+        "ega_money_coffee_visits_list",
+        authInfo,
+        context,
+        () => handlers.moneyCoffeeVisitList(authInfo, input),
+      );
+    },
+
     moneyObligationsList(
       authInfo: AuthInfo | undefined,
       input: Parameters<BaseReadHandlers["moneyObligationsList"]>[1],

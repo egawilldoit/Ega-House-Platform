@@ -105,7 +105,10 @@ const EXPENSE_ID = "00000000-0000-4000-8000-000000000001";
 function row(overrides: Record<string, unknown> = {}) {
   return {
     id: EXPENSE_ID,
+    kind: "expense",
+    direction: "out",
     occurred_at: "2026-11-07T08:30:00+00:00",
+    booking_date: "2026-11-07",
     amount_minor: 2250,
     currency: "MAD",
     category: "coffee",
@@ -113,6 +116,9 @@ function row(overrides: Record<string, unknown> = {}) {
     merchant: "Cafe Atlas",
     need_vs_want: "want",
     payment_method: "card",
+    purpose: null,
+    counts_in_daily: true,
+    period_id: null,
     idempotency_key: "key-1",
     create_fingerprint: FINGERPRINT,
     version: 1,
@@ -136,6 +142,7 @@ const BODY = {
 
 const FINGERPRINT = expenseReceiptFingerprint({
   occurredAt: "2026-11-07T08:30:00.000Z",
+  bookingDate: "2026-11-07",
   amountMinor: 2250,
   category: "coffee",
   note: "morning coffee",
@@ -331,13 +338,18 @@ test("GET /api/expenses resolves the owner timezone and returns a bounded page",
   const body = await res.json();
   assert.equal(body.ok, true);
   assert.equal(body.expenses.length, 1);
-  assert.deepEqual(body.pagination, { limit: 10, offset: 0, hasMore: false });
+  assert.deepEqual(body.pagination, {
+    limit: 10,
+    offset: 0,
+    hasMore: false,
+    nextOffset: null,
+  });
 
   const listSteps = tableCall(fake, "personal_expenses")?.steps ?? [];
   assert.ok(listSteps.some((step) => step.method === "eq" && step.args[0] === "owner_user_id" && step.args[1] === "user-123"));
   assert.ok(listSteps.some((step) => step.method === "is" && step.args[0] === "deleted_at" && step.args[1] === null));
-  assert.ok(listSteps.some((step) => step.method === "gte" && step.args[0] === "occurred_at" && step.args[1] === "2026-03-08T05:00:00.000Z"));
-  assert.ok(listSteps.some((step) => step.method === "lt" && step.args[0] === "occurred_at" && step.args[1] === "2026-03-09T04:00:00.000Z"));
+  assert.ok(listSteps.some((step) => step.method === "gte" && step.args[0] === "booking_date" && step.args[1] === "2026-03-08"));
+  assert.ok(listSteps.some((step) => step.method === "lt" && step.args[0] === "booking_date" && step.args[1] === "2026-03-09"));
   assert.ok(listSteps.some((step) => step.method === "range" && step.args[0] === 0 && step.args[1] === 10));
 });
 
@@ -353,8 +365,8 @@ test("GET /api/expenses uses an explicit IANA timezone without reading time cont
   assert.equal(res.status, 200);
   assert.equal(tableCall(fake, "user_time_context"), undefined);
   const listSteps = tableCall(fake, "personal_expenses")?.steps ?? [];
-  assert.ok(listSteps.some((step) => step.method === "gte" && step.args[1] === "2026-03-08T05:00:00.000Z"));
-  assert.ok(listSteps.some((step) => step.method === "lt" && step.args[1] === "2026-03-09T04:00:00.000Z"));
+  assert.ok(listSteps.some((step) => step.method === "gte" && step.args[1] === "2026-03-08"));
+  assert.ok(listSteps.some((step) => step.method === "lt" && step.args[1] === "2026-03-09"));
 });
 
 test("GET /api/expenses rejects invalid timezones and pagination with 400", async () => {

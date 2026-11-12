@@ -918,12 +918,12 @@ delivery report; never include credentials or private source exports.
 
 | Issue | State | PR / head / merge SHA | Migrations / runtime evidence | Remaining blocker |
 | --- | --- | --- | --- | --- |
-| MONEY-01 | Planned | — | — | — |
-| MONEY-02 | Planned | — | — | — |
-| MONEY-03 | Planned | — | — | — |
-| MONEY-04 | Planned | — | — | — |
-| MONEY-05 | Planned | — | — | — |
-| MONEY-06 | Planned | — | — | — |
+| MONEY-01 | Merged | PR #392 / reviewed `c491e50b` / merge `70a1709a` | Migrations `0089`–`0092` (pre-existing pending) and `0093_money_01_finance_grants` applied to the verified Supabase target; grant/check-in RLS and both DB proofs pass locally and in `db-invariants` | Runtime OAuth/MCP same-row readback awaits the real connector at MONEY-14 |
+| MONEY-02 | Merged | PR #393 / reviewed `aa8793b7` / merge `c0a5d0fe` | `0094_money_02_expense_management` applied after merge; RLS/API proofs pass on disposable PostgreSQL 18 | Snapshot-safe keyset export added in `29272f7a`; runtime UI journey remains MONEY-14 |
+| MONEY-03 | Merged | PR #394 / merge `9ed51d53` | `0095_money_03_periods` is in the `0089`–`0096` set reported applied to the verified Supabase target; periods/openings proof passes on disposable PostgreSQL; hosted journal is re-verified at MONEY-14 | Runtime app/MCP period journey remains MONEY-14 |
+| MONEY-04 | Merged | PR #395 / merge `c6a5414f` | `0096_money_04_movements` is in the same reported applied set; movement/API proofs and the disposable authenticated Money journey pass | Runtime host/income/savings journey remains MONEY-14 |
+| MONEY-05 | Merged | PR #396 / merge `0c28a6ce` | `0097_money_05_budgets_coffee` applied through `npm run db:migrate` to the verified Supabase target (journal max `1787880000060`); schema/RLS/grants/functions re-read; web and server production deployments READY at `0c28a6ce`; DB proof, disposable authenticated Money journey, package/web/server suites and lint pass | Runtime OAuth/MCP coffee journey remains MONEY-14 |
+| MONEY-06 | In review | PR pending / branch `feat/money-06-reconcile` | `0098_money_06_obligations` committed, not applied; obligation recurrence/lifecycle/payment-link/RLS proof passes on disposable PostgreSQL 16 and is wired into `db-invariants` | PR checks and independent review; migration apply follows merge |
 | MONEY-07 | Planned | — | — | — |
 | MONEY-08 | Planned | — | — | Exact workbook B15 formula not supplied |
 | MONEY-09 | Planned | — | — | — |
