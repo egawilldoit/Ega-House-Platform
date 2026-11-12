@@ -684,6 +684,10 @@ jobs:
         env:
           PROOF_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ega_proof
         run: node scripts/db/money-06-obligations-verify.mjs --url "$PROOF_DATABASE_URL"
+      - name: Prove MONEY-07 atomic obligation payment, correction, undo and coherence
+        env:
+          PROOF_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ega_proof
+        run: node scripts/db/money-07-payments-verify.mjs --url "$PROOF_DATABASE_URL"
   hygiene:
     needs: [changes, workspace, contracts, domain, application, data-access, regressions, lint-changed, lint-report, web, web-typecheck, web-tests, mobile, server, api-client, db-invariants]
     if: always()

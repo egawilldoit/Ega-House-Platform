@@ -277,3 +277,60 @@ test("a 403 FORBIDDEN from the template route stays typed", async () => {
   assert.equal(result.ok, false);
   if (!result.ok) assert.equal(result.error.code, "FORBIDDEN");
 });
+
+test("the payment, correction and undo target the same occurrence", async () => {
+  const response = {
+    ok: true,
+    obligation: { ...OCCURRENCE, state: "paid" },
+    payment: {
+      expenseId: "33333333-3333-4333-8333-333333333333",
+      amountMinor: 350000,
+      currency: "MAD",
+      bookingDate: "2026-11-05",
+      countsInDaily: false,
+      needVsWant: "need",
+      paymentMethod: "cash",
+      purpose: "fixed",
+      category: "bills",
+    },
+    replayed: false,
+  };
+  const { client, calls } = makeHarness(201, response);
+
+  const paid = await client.obligations.pay(OCCURRENCE.id, {
+    version: 1,
+    bookingDate: "2026-11-05",
+    idempotencyKey: "obligation-payment:op-1",
+    needVsWant: "need",
+    operationId: "op-1",
+  });
+  assert.deepEqual(paid, { ok: true, data: response });
+
+  await client.obligations.correctPayment(OCCURRENCE.id, {
+    version: 2,
+    amountMinor: 355000,
+    bookingDate: "2026-11-06",
+    operationId: "op-2",
+  });
+  await client.obligations.undoPayment(OCCURRENCE.id, {
+    version: 3,
+    operationId: "op-3",
+  });
+
+  assert.deepEqual(
+    calls.map((call) => `${call.method} ${new URL(call.url).pathname}`),
+    [
+      `POST /api/money/obligations/${OCCURRENCE.id}/payment`,
+      `POST /api/money/obligations/${OCCURRENCE.id}/payment/correction`,
+      `POST /api/money/obligations/${OCCURRENCE.id}/payment/undo`,
+    ],
+  );
+  assert.deepEqual(calls[0].body, {
+    version: 1,
+    bookingDate: "2026-11-05",
+    idempotencyKey: "obligation-payment:op-1",
+    needVsWant: "need",
+    operationId: "op-1",
+  });
+  assert.deepEqual(calls[2].body, { version: 3, operationId: "op-3" });
+});
