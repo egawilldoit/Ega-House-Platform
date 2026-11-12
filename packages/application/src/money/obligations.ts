@@ -653,6 +653,8 @@ export async function updateObligationTemplate(
  * idempotent per template period and bounded; a template edit never rewrites
  * occurrences already generated.
  */
+const OBLIGATION_GENERATION_MAX_CREATED = 120;
+
 export async function generateObligations(
   actor: AuthenticatedActor,
   repository: ObligationRepository,
@@ -691,6 +693,18 @@ export async function generateObligations(
   let existing = 0;
 
   for (const periodStart of plan.periodStarts) {
+    if (created >= OBLIGATION_GENERATION_MAX_CREATED) {
+      // Existing periods are skipped cheaply; a later request continues from
+      // the first uncreated period instead of stopping at the original cap.
+      return applicationSuccess({
+        templateId: template.id,
+        throughDate: parsed.value.throughDate,
+        created,
+        existing,
+        occurrences,
+        truncated: true,
+      });
+    }
     const periodEnd = endOfObligationPeriod(periodStart, template.cadence);
     const dueDate = dueDateForObligationPeriod(
       {

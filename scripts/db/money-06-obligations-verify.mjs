@@ -449,6 +449,14 @@ async function main() {
         [OCCURRENCE_CANCEL],
       ),
     );
+    const [history] = await sql.unsafe(
+      `SELECT state_history FROM public.money_obligations WHERE id = $1::uuid`,
+      [OCCURRENCE_CANCEL],
+    );
+    assert(Array.isArray(history.state_history), "state history is an array");
+    assert(history.state_history.length === 2, "waive/cancel and reopen are retained");
+    assert(history.state_history[0].state === "cancelled", "first transition retained");
+    assert(history.state_history[1].state === "pending", "reopen transition retained");
     await expectDenied(
       "status-only paid without a payment link",
       () =>
@@ -611,6 +619,17 @@ async function main() {
         sql.unsafe(
           `UPDATE public.personal_expenses
            SET deleted_at = now(), version = version + 1, updated_at = now()
+           WHERE id = $1::uuid`,
+          [EXPENSE_EXACT],
+        ),
+      "23514",
+    );
+    await expectDenied(
+      "re-dating a linked ledger payment",
+      () =>
+        sql.unsafe(
+          `UPDATE public.personal_expenses
+           SET booking_date = '2026-11-30', version = version + 1, updated_at = now()
            WHERE id = $1::uuid`,
           [EXPENSE_EXACT],
         ),

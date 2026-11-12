@@ -505,6 +505,43 @@ test("generation is bounded, idempotent and copies template defaults", async () 
   assert.equal(blocked.ok === false && blocked.code, "validation");
 });
 
+test("successive generation calls advance past the first created batch", async () => {
+  const { repository } = createFakeRepository({
+    templates: new Map([
+      [
+        TEMPLATE_ID,
+        template({
+          startDate: "2024-01-01",
+          cadence: "weekly",
+          dueWeekday: 1,
+          dueDayOfMonth: null,
+        }),
+      ],
+    ]),
+  });
+
+  const first = await generateObligations(OWNER, repository, {
+    templateId: TEMPLATE_ID,
+    throughDate: "2026-11-30",
+  });
+  assert.equal(first.ok, true);
+  assert.equal(first.ok && first.data.created, 120);
+  assert.equal(first.ok && first.data.truncated, true);
+
+  const second = await generateObligations(OWNER, repository, {
+    templateId: TEMPLATE_ID,
+    throughDate: "2026-11-30",
+  });
+  assert.equal(second.ok, true);
+  assert.equal(second.ok && second.data.existing, 120);
+  assert.ok(second.ok && second.data.created > 0);
+  assert.equal(second.ok && second.data.truncated, false);
+  const latest = second.ok
+    ? second.data.occurrences.at(-1)?.periodStart
+    : undefined;
+  assert.ok(latest && latest > "2026-04-15");
+});
+
 test("summary reports due, overdue and outstanding at an inclusive cutoff", async () => {
   const { repository } = createFakeRepository();
   await createObligation(OWNER, repository, {

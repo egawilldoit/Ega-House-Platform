@@ -55,7 +55,7 @@ export const OBLIGATION_LIST_DEFAULT_LIMIT = 50;
 export const OBLIGATION_LIST_MAX_LIMIT = 100;
 export const OBLIGATION_LIST_MAX_OFFSET = 1_000_000;
 /** Bounded generation keeps one request from materialising unbounded history. */
-export const OBLIGATION_GENERATION_MAX_PERIODS = 120;
+export const OBLIGATION_GENERATION_MAX_PERIODS = 5000;
 
 /** The issue that owns atomic payment/correction. */
 export const OBLIGATION_PAYMENT_TRANSACTION_OWNER = "MONEY-07" as const;
@@ -117,6 +117,14 @@ export type ObligationHistoricalImportEvidence = Readonly<{
   importedAt: string;
 }>;
 
+export type ObligationStateEvent = Readonly<{
+  state: ObligationState;
+  effectiveDate: string;
+  reason: string | null;
+  version: number;
+  recordedAt: string;
+}>;
+
 export type ObligationOccurrence = Readonly<{
   id: string;
   kind: ObligationKind;
@@ -133,6 +141,8 @@ export type ObligationOccurrence = Readonly<{
   state: ObligationState;
   stateEffectiveDate: string;
   stateReason: string | null;
+  /** Append-only lifecycle transitions, oldest first. */
+  stateHistory?: readonly ObligationStateEvent[];
   paymentExpenseId: string | null;
   paymentEvidence: ObligationHistoricalImportEvidence | null;
   templateId: string | null;
@@ -686,9 +696,20 @@ export function decideObligationTransition(input: Readonly<{
  * postdates the cutoff was still pending then.
  */
 export function obligationStateAtCutoff(
-  occurrence: Pick<ObligationOccurrence, "state" | "stateEffectiveDate">,
+  occurrence: Pick<
+    ObligationOccurrence,
+    "state" | "stateEffectiveDate" | "stateHistory"
+  >,
   cutoffDate: string,
 ): ObligationState {
+  const history = occurrence.stateHistory ?? [];
+  if (history.length > 0) {
+    let state: ObligationState = "pending";
+    for (const event of history) {
+      if (event.effectiveDate <= cutoffDate) state = event.state;
+    }
+    return state;
+  }
   if (occurrence.state === "pending") return "pending";
   return occurrence.stateEffectiveDate <= cutoffDate
     ? occurrence.state

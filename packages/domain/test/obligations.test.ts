@@ -324,6 +324,37 @@ test("cutoff totals use complete occurrences and reconstruct effective state", (
   assert.equal(earlier.outstandingMinor, 0);
   assert.equal(earlier.occurrenceCount, 0);
 
+  // A waive on Nov 10 and reopen on Nov 20 must reconstruct correctly: the
+  // Nov 15 cutoff is waived (zero reserve), while the live state is pending.
+  const reopened = occurrence({
+    id: "77777777-7777-4777-8777-777777777777",
+    dueDate: "2026-11-11",
+    amountMinor: 12000,
+    state: "pending",
+    stateEffectiveDate: "2026-11-20",
+    stateHistory: [
+      {
+        state: "waived",
+        effectiveDate: "2026-11-10",
+        reason: "Temporary waiver",
+        version: 2,
+        recordedAt: "2026-11-10T10:00:00.000Z",
+      },
+      {
+        state: "pending",
+        effectiveDate: "2026-11-20",
+        reason: "Reopened",
+        version: 3,
+        recordedAt: "2026-11-20T10:00:00.000Z",
+      },
+    ],
+  });
+  assert.equal(obligationStateAtCutoff(reopened, "2026-11-15"), "waived");
+  assert.equal(obligationStateAtCutoff(reopened, "2026-11-25"), "pending");
+  const atWaiver = summarizeObligationOccurrences([reopened], "2026-11-15");
+  assert.equal(atWaiver.outstandingMinor, 0);
+  assert.equal(atWaiver.waivedCount, 1);
+
   assert.equal(
     obligationStateAtCutoff(
       occurrence({ state: "paid", stateEffectiveDate: "2026-11-09" }),

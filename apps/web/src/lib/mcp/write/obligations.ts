@@ -430,7 +430,10 @@ export function createMcpObligationWriteHandlers(
       try {
         if (!operationId) return invalidArgument("An operation id is required.");
         const { actor, repository } = context(authInfo);
-        const result = await generateObligations(actor, repository, input);
+        const result = await generateObligations(actor, repository, {
+          templateId: input.templateId,
+          throughDate: input.throughDate,
+        });
         if (!result.ok) return failure(result.code, result.errorMessage);
         return resultFromPayload({
           ok: true,

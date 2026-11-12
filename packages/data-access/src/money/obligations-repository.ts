@@ -20,6 +20,7 @@ import {
   type ObligationKind,
   type ObligationOccurrence,
   type ObligationState,
+  type ObligationStateEvent,
   type ObligationTemplate,
   type ObligationTemplateLifecycle,
 } from "@ega/domain/obligations";
@@ -41,7 +42,7 @@ const OCCURRENCES = "money_obligations";
 const TEMPLATES = "money_obligation_templates";
 
 const OCCURRENCE_COLUMNS =
-  "id, template_id, kind, description, amount_minor, currency, period_start, period_end, due_date, need_vs_want, purpose, counts_in_daily, category, state, state_effective_date, state_reason, payment_expense_id, payment_evidence, idempotency_key, version, created_at, updated_at";
+  "id, template_id, kind, description, amount_minor, currency, period_start, period_end, due_date, need_vs_want, purpose, counts_in_daily, category, state, state_effective_date, state_reason, state_history, payment_expense_id, payment_evidence, idempotency_key, version, created_at, updated_at";
 
 const OCCURRENCE_COLUMNS_WITH_FINGERPRINT = `${OCCURRENCE_COLUMNS}, create_fingerprint`;
 
@@ -67,6 +68,7 @@ type ObligationRow = {
   state: string;
   state_effective_date: string;
   state_reason: string | null;
+  state_history: unknown;
   payment_expense_id: string | null;
   payment_evidence: unknown;
   idempotency_key: string;
@@ -146,6 +148,31 @@ function toPaymentEvidence(
   };
 }
 
+function toStateHistory(raw: unknown): ObligationStateEvent[] {
+  if (!Array.isArray(raw)) return [];
+  const events: ObligationStateEvent[] = [];
+  for (const item of raw) {
+    if (typeof item !== "object" || item === null) continue;
+    const value = item as Record<string, unknown>;
+    if (
+      typeof value.state !== "string" ||
+      typeof value.effectiveDate !== "string" ||
+      typeof value.version !== "number" ||
+      typeof value.recordedAt !== "string"
+    ) {
+      continue;
+    }
+    events.push({
+      state: value.state as ObligationState,
+      effectiveDate: value.effectiveDate,
+      reason: typeof value.reason === "string" ? value.reason : null,
+      version: value.version,
+      recordedAt: value.recordedAt,
+    });
+  }
+  return events;
+}
+
 function toOccurrence(row: ObligationRow): ObligationOccurrence {
   return {
     id: String(row.id),
@@ -167,6 +194,7 @@ function toOccurrence(row: ObligationRow): ObligationOccurrence {
     state: String(row.state) as ObligationState,
     stateEffectiveDate: String(row.state_effective_date),
     stateReason: optionalString(row.state_reason),
+    stateHistory: toStateHistory(row.state_history),
     paymentExpenseId: optionalString(row.payment_expense_id),
     paymentEvidence: toPaymentEvidence(row.payment_evidence),
     templateId: optionalString(row.template_id),
