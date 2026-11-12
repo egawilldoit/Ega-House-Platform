@@ -53,6 +53,62 @@ export type MoneyDirection = (typeof MONEY_DIRECTIONS)[number];
 export const MONEY_PURPOSES = ["fixed", "flexible", "emergency"] as const;
 export type MoneyPurpose = (typeof MONEY_PURPOSES)[number];
 
+/** Versioned fallback for workbook Dashboard B15 when its source formula is unavailable. */
+export const MONEY_DAILY_REFERENCE_ALGORITHM = "safe-flexible-start-of-day-v1" as const;
+
+export type MoneyReserveInputs = Readonly<{
+  recordedCashMinor: number;
+  unpaidCommitmentsMinor: number;
+  savingsTargetMinor: number;
+  savingsFundedMinor: number;
+  emergencyTargetMinor: number;
+  emergencyUsedMinor: number;
+}>;
+
+/** Disjoint protections release when their matching cash movement is recorded. */
+export function calculateMoneyReserves(input: MoneyReserveInputs) {
+  const unfundedSavingsMinor = Math.max(0, input.savingsTargetMinor - input.savingsFundedMinor);
+  const remainingEmergencyMinor = Math.max(0, input.emergencyTargetMinor - input.emergencyUsedMinor);
+  return {
+    recordedCashMinor: input.recordedCashMinor,
+    unpaidCommitmentsMinor: input.unpaidCommitmentsMinor,
+    savingsTargetMinor: input.savingsTargetMinor,
+    fundedSavingsMinor: input.savingsFundedMinor,
+    unfundedSavingsMinor,
+    emergencyTargetMinor: input.emergencyTargetMinor,
+    emergencyUsedMinor: input.emergencyUsedMinor,
+    remainingEmergencyMinor,
+    safeFlexibleMinor: input.recordedCashMinor - input.unpaidCommitmentsMinor - unfundedSavingsMinor - remainingEmergencyMinor,
+  };
+}
+
+/** Returns null when baseline inputs are unknown; zero days has no allowance. */
+export function calculateMoneyDailyReference(input: Readonly<{
+  startCashMinor: number | null;
+  startCommitmentsMinor: number | null;
+  startSavingsTargetMinor: number | null;
+  savingsFundedBeforeMinor: number | null;
+  startEmergencyTargetMinor: number | null;
+  emergencyUsedBeforeMinor: number | null;
+  periodEnd: string;
+  selectedDate: string;
+  dailyIncludedExpenseMinor: number;
+  periodLifecycle: MoneyPeriodLifecycle;
+}>) {
+  const values = [input.startCashMinor, input.startCommitmentsMinor, input.startSavingsTargetMinor, input.savingsFundedBeforeMinor, input.startEmergencyTargetMinor, input.emergencyUsedBeforeMinor];
+  if (values.some((value) => value === null)) return { available: false as const, reason: "baseline_incomplete" as const };
+  const days = Math.max(0, Math.floor((Date.parse(`${input.periodEnd}T00:00:00Z`) - Date.parse(`${input.selectedDate}T00:00:00Z`)) / 86_400_000) + 1);
+  if (input.periodLifecycle !== "tracking") return { available: false as const, reason: "period_ended" as const };
+  if (days === 0) return { available: false as const, reason: "no_days_left" as const };
+  const cash = input.startCashMinor as number;
+  const commitments = input.startCommitmentsMinor as number;
+  const savings = Math.max(0, (input.startSavingsTargetMinor as number) - (input.savingsFundedBeforeMinor as number));
+  const emergency = Math.max(0, (input.startEmergencyTargetMinor as number) - (input.emergencyUsedBeforeMinor as number));
+  const safePoolMinor = cash - commitments - savings - emergency;
+  const referenceMinor = Math.floor(Math.max(0, safePoolMinor) / days);
+  return { available: true as const, algorithm: MONEY_DAILY_REFERENCE_ALGORITHM, daysRemaining: days, safePoolMinor, referenceMinor, dailyIncludedExpenseMinor: input.dailyIncludedExpenseMinor, dailyRemainingMinor: referenceMinor - input.dailyIncludedExpenseMinor };
+}
+
 export const MONEY_CURRENCY = "MAD" as const;
 export type MoneyCurrency = typeof MONEY_CURRENCY;
 
