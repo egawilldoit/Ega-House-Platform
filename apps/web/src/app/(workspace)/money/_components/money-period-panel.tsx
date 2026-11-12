@@ -28,6 +28,7 @@ type MoneyPeriodPanelProps = {
   selectedPeriodId: string | null;
   createAction: (formData: FormData) => Promise<MoneyFormActionResult>;
   updateAction: (formData: FormData) => Promise<MoneyFormActionResult>;
+  rebaseAction: (formData: FormData) => Promise<MoneyFormActionResult>;
 };
 
 function defaultMonthRange(localToday: string): { start: string; end: string } {
@@ -61,6 +62,7 @@ export function MoneyPeriodPanel({
   selectedPeriodId,
   createAction,
   updateAction,
+  rebaseAction,
 }: MoneyPeriodPanelProps) {
   const router = useRouter();
   const initialRange = defaultMonthRange(localToday);
@@ -83,6 +85,7 @@ export function MoneyPeriodPanel({
   const [openingEvidence, setOpeningEvidence] = useState("");
   const [openingNote, setOpeningNote] = useState("");
   const [settingsError, setSettingsError] = useState<string | null>(null);
+  const [rebaseError, setRebaseError] = useState<string | null>(null);
 
   async function handleCreate(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -130,6 +133,19 @@ export function MoneyPeriodPanel({
     router.refresh();
   }
 
+  async function handleRebase() {
+    if (!period) return;
+    setRebaseError(null);
+    const formData = new FormData();
+    formData.set("periodId", period.id);
+    const result = await rebaseAction(formData);
+    if (!result.ok) {
+      setRebaseError(result.error);
+      return;
+    }
+    router.refresh();
+  }
+
   return (
     <section
       aria-labelledby="money-period-heading"
@@ -141,6 +157,11 @@ export function MoneyPeriodPanel({
       >
         Tracking period
       </h2>
+      {period ? <div className="mt-3">
+        <p className="text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">The day-start baseline stays fixed unless you explicitly rebase it.</p>
+        <button type="button" className="mt-2 underline" onClick={handleRebase}>Rebase day-start baseline to current state</button>
+        {rebaseError ? <p role="alert" className="mt-2 feedback-block feedback-block-error">{rebaseError}</p> : null}
+      </div> : null}
 
       <dl className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <div>

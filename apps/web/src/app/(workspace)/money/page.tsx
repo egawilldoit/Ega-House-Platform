@@ -49,6 +49,7 @@ import {
   classifyExpenseCategoryAction,
   createMoneyPeriodAction,
   recordCoffeeVisitAction,
+  rebaseMoneyDayStartBaselineAction,
   saveBudgetPlanAction,
   saveCategoryCapsAction,
   updateMoneySettingsAction,
@@ -306,6 +307,7 @@ export default async function MoneyPage({ searchParams }: Props) {
         selectedPeriodId={selectedPeriodId}
         createAction={createMoneyPeriodAction}
         updateAction={updateMoneySettingsAction}
+        rebaseAction={rebaseMoneyDayStartBaselineAction}
       />
       </>
     ) : (
