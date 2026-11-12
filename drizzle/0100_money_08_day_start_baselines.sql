@@ -141,7 +141,9 @@ BEGIN
     CROSS JOIN LATERAL (SELECT COALESCE((SELECT e->>'state' FROM jsonb_array_elements(o.state_history) e
        WHERE (e->>'effectiveDate')::date < p_date ORDER BY (e->>'effectiveDate')::date DESC,
          (e->>'version')::integer DESC LIMIT 1),
-       CASE WHEN o.created_at::date < p_date THEN 'pending' END) AS state) h
+       CASE WHEN o.created_at::date < p_date
+         OR (p_date = v_period.start_date AND o.created_at::date = p_date AND o.state = 'pending')
+         THEN 'pending' END) AS state) h
    WHERE o.owner_user_id = auth.uid()
      AND o.period_start >= v_period.start_date AND o.period_end <= v_period.end_date
      AND o.period_start <= p_date AND (p_date = v_period.start_date OR o.period_start < p_date)

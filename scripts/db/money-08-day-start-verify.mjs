@@ -230,14 +230,16 @@ async function main() {
        ($1,'bill','same-day transition',3200,'2026-12-01','2026-12-31','2026-12-10',
         'fixed',true,'cancelled','2026-12-01',jsonb_build_array(jsonb_build_object('state','cancelled','effectiveDate','2026-12-01','version',2)), 'same-day-transition',repeat('f',64),'2026-11-30T12:00:00Z'),
        ($1,'bill','future transition',4300,'2026-12-01','2026-12-31','2026-12-10',
-        'fixed',true,'cancelled','2026-12-03',jsonb_build_array(jsonb_build_object('state','cancelled','effectiveDate','2026-12-03','version',2)), 'future-transition',repeat('1',64),'2026-11-30T12:00:00Z')`, [A]);
+        'fixed',true,'cancelled','2026-12-03',jsonb_build_array(jsonb_build_object('state','cancelled','effectiveDate','2026-12-03','version',2)), 'future-transition',repeat('1',64),'2026-11-30T12:00:00Z'),
+       ($1,'bill','created during setup',1700,'2026-12-01','2026-12-31','2026-12-10',
+        'fixed',true,'pending','2026-12-01','[]'::jsonb,'setup-day-obligation',repeat('5',64),'2026-12-01T12:00:00Z')`, [A]);
     const initialObligationsBaseline = await sql.unsafe("SELECT availability,unavailable_reason,inputs FROM public.money_day_start_baselines WHERE owner_user_id=$1 AND period_id=$2 AND date='2026-12-01'", [A,nextPeriodId]);
     assert(initialObligationsBaseline.length===1 && initialObligationsBaseline[0].availability==="unavailable"
       && initialObligationsBaseline[0].unavailable_reason==="initial_setup_incomplete"
       && initialObligationsBaseline[0].inputs.setupComplete===false,
       "new period starts unavailable until obligation setup is explicitly completed");
     const openingObligations = await user(A, tx => tx.unsafe("SELECT * FROM public.money_rebase_day_start_baseline($1)", [nextPeriodId]));
-    assert(openingObligations[0].availability==="available" && openingObligations[0].commitments_minor===9600,
+    assert(openingObligations[0].availability==="available" && openingObligations[0].commitments_minor===11300,
       "first-day baseline includes pending obligations before same-day or future cancellation");
     console.log("[OBLIGATIONS] first-day cutoff includes period-start obligations without applying same-day transitions");
     // The later date excludes transitions effective on that date, but applies
@@ -252,7 +254,7 @@ async function main() {
        ($1,'bill','on cutoff transition',1200,'2026-12-01','2026-12-31','2026-12-10',
         'fixed',true,'cancelled','2026-12-03',jsonb_build_array(jsonb_build_object('state','pending','effectiveDate','2026-12-01','version',1),jsonb_build_object('state','cancelled','effectiveDate','2026-12-03','version',2)), 'on-cutoff',repeat('3',64),'2026-11-30T12:00:00Z')`, [A]);
     const cutoffObligations = await user(A, tx => tx.unsafe("SELECT (public.money_ensure_day_start_baseline($1, '2026-12-03'::date)).*", [nextPeriodId]));
-    assert(cutoffObligations[0].commitments_minor===7600,
+    assert(cutoffObligations[0].commitments_minor===9300,
       "untouched pending and on-cutoff transition remain reserved; before-cutoff cancellation releases its reserve");
     await user(A, tx => tx.unsafe(`INSERT INTO public.personal_expenses
       (owner_user_id,period_id,occurred_at,booking_date,kind,direction,amount_minor,currency,
@@ -261,7 +263,7 @@ async function main() {
        NULL,NULL,'prior-period-income',repeat('c',64))`, [A,period]));
     const later = await user(A, tx => tx.unsafe("SELECT (public.money_ensure_day_start_baseline($1, '2026-12-02'::date)).*", [nextPeriodId]));
     const laterAgain = await user(A, tx => tx.unsafe("SELECT (public.money_ensure_day_start_baseline($1, '2026-12-02'::date)).*", [nextPeriodId]));
-    assert(later[0].availability==="available" && later[0].cash_minor===73000 && later[0].commitments_minor===8700 && later[0].savings_funded_minor===0 && later[0].emergency_used_minor===0 && later[0].version===laterAgain[0].version, "later-period baseline applies only lifecycle transitions before the date, excludes prior-period movement, and is idempotent");
+    assert(later[0].availability==="available" && later[0].cash_minor===73000 && later[0].commitments_minor===10400 && later[0].savings_funded_minor===0 && later[0].emergency_used_minor===0 && later[0].version===laterAgain[0].version, "later-period baseline applies only lifecycle transitions before the date, excludes prior-period movement, and is idempotent");
     assert(later[0].policy_version_id && later[0].policy_version_id!==rows[0].policy_id && later[0].inputs.lifecycleCutoff==="2026-12-02", "later-day baseline binds the second period policy and lifecycle cutoff");
     await sql.unsafe(`INSERT INTO public.money_obligations
       (owner_user_id,kind,description,amount_minor,period_start,period_end,due_date,
