@@ -178,13 +178,24 @@ describe("MONEY-06 obligations migration", () => {
     expect(migration).not.toContain("GRANT DELETE");
   });
 
-  it("keeps immutable create identity and owner columns out of UPDATE grants", () => {
+  it("keeps payment/state columns out of direct INSERT and UPDATE grants", () => {
     const occurrenceGrant = migration.slice(migration.lastIndexOf("GRANT UPDATE ("));
     expect(occurrenceGrant).toContain('"version"');
-    expect(occurrenceGrant).toContain('"payment_expense_id"');
+    expect(occurrenceGrant).not.toContain('"payment_expense_id"');
+    expect(occurrenceGrant).not.toContain('"payment_evidence"');
+    expect(occurrenceGrant).not.toContain('"state_history"');
     expect(occurrenceGrant).not.toContain('"owner_user_id"');
     expect(occurrenceGrant).not.toContain('"create_fingerprint"');
     expect(occurrenceGrant).not.toContain('"template_id"');
     expect(occurrenceGrant).not.toContain('"idempotency_key"');
+
+    const insertGrant = migration.slice(
+      migration.indexOf("GRANT INSERT ("),
+      migration.indexOf("ON TABLE \"public\".\"money_obligations\" TO authenticated"),
+    );
+    expect(insertGrant).not.toContain('"state"');
+    expect(insertGrant).not.toContain('"state_history"');
+    expect(insertGrant).not.toContain('"payment_expense_id"');
+    expect(insertGrant).not.toContain('"payment_evidence"');
   });
 });

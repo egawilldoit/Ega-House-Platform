@@ -230,7 +230,7 @@ test("POST /api/money/obligations creates a pending occurrence for the verified 
     .find((step) => step.method === "insert");
   const payload = insert?.args[0] as Record<string, unknown>;
   assert.equal(payload.owner_user_id, "user-123");
-  assert.equal(payload.state, "pending");
+  assert.equal(payload.state, undefined); // DB default keeps new rows pending
   assert.equal(payload.currency, "MAD");
   assert.equal(payload.payment_expense_id, undefined);
 });
