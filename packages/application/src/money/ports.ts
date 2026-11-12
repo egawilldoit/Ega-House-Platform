@@ -88,6 +88,7 @@ export type MoneyDayStartBaseline = Readonly<{
 export type MoneyDailyExpenseTotal = Readonly<{ amountMinor: number; complete: boolean }>;
 
 export type MoneyPeriodRepository = {
+  ensureDayStartBaseline?(actor: AuthenticatedActor, periodId: string, date: string): Promise<RepositoryResult<MoneyDayStartBaseline>>;
   getDayStartBaseline?(
     actor: AuthenticatedActor,
     periodId: string,
