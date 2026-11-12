@@ -6,6 +6,7 @@ import {
   getMoneyCoffeeWindowForPlan,
   getMoneyMovementTotals,
   getMoneyPeriodSpending,
+  getCurrentMoneyReserves,
   getMoneyState,
   listExpenses,
   listMovements,
@@ -21,6 +22,7 @@ import {
   SupabaseMoneyCoffeeRepository,
   SupabaseMoneyPeriodRepository,
   SupabaseMoneyRepository,
+  SupabaseObligationRepository,
 } from "@ega/data-access";
 import {
   MONEY_ADVISORY_CAP_LABEL,
@@ -93,6 +95,7 @@ export default async function MoneyPage({ searchParams }: Props) {
   let periodSpending: MoneyPeriodSpending | null = null;
   let movements: MoneyLedgerRow[] | null = null;
   let movementTotals: MoneyMovementTotals | null = null;
+  let reserveResult: Awaited<ReturnType<typeof getCurrentMoneyReserves>> | null = null;
   let movementsHasMore = false;
   let timezone: string = MONEY_DEFAULT_TIMEZONE;
   let timeContextFailed = false;
@@ -200,6 +203,16 @@ export default async function MoneyPage({ searchParams }: Props) {
       },
     ).catch(() => null);
     movementTotals = totalsResult?.ok ? totalsResult.data.totals : null;
+    if (moneyState?.period) {
+      reserveResult = await getCurrentMoneyReserves(actor, {
+        period: moneyState.period,
+        opening: moneyState.opening,
+        periods: new SupabaseMoneyPeriodRepository(client),
+        movements: moneyRepository,
+        budgets: new SupabaseMoneyBudgetRepository(client),
+        obligations: new SupabaseObligationRepository(client),
+      }).catch(() => null);
+    }
   } catch {
     result = null;
     moneyState = null;
@@ -209,6 +222,7 @@ export default async function MoneyPage({ searchParams }: Props) {
     periodSpending = null;
     movements = null;
     movementTotals = null;
+    reserveResult = null;
     timeContextFailed = true;
   }
   // Monthly caps are advisory progress targets in owner preferences.
@@ -245,7 +259,27 @@ export default async function MoneyPage({ searchParams }: Props) {
       <a className="underline" href="/money/subscriptions">Subscriptions</a>
     </nav>
 
+    <section aria-labelledby="reserves-heading" className="mt-6 rounded-lg border border-ega-border p-5">
+      <h2 id="reserves-heading" className="text-[length:var(--text-section)] font-semibold">Current reserves and safe funds</h2>
+      {reserveResult?.ok && reserveResult.data.available ? (
+        <dl className="mt-3 grid gap-2 sm:grid-cols-2">
+          {([
+            ["Recorded cash", reserveResult.data.reserves.recordedCashMinor],
+            ["Unpaid commitments", reserveResult.data.reserves.unpaidCommitmentsMinor],
+            ["Savings target", reserveResult.data.reserves.savingsTargetMinor],
+            ["Savings funded", reserveResult.data.reserves.fundedSavingsMinor],
+            ["Unfunded savings", reserveResult.data.reserves.unfundedSavingsMinor],
+            ["Emergency target", reserveResult.data.reserves.emergencyTargetMinor],
+            ["Emergency used", reserveResult.data.reserves.emergencyUsedMinor],
+            ["Remaining emergency reserve", reserveResult.data.reserves.remainingEmergencyMinor],
+            ["Safe flexible funds", reserveResult.data.reserves.safeFlexibleMinor],
+          ] as const).map(([label, value]) => <div key={label}><dt>{label}</dt><dd className="font-semibold">{formatMad(value)}</dd></div>)}
+        </dl>
+      ) : <p role="status" className="mt-3 text-[color:var(--ega-text-secondary)]">Unavailable — reserve inputs are incomplete or could not be loaded.</p>}
+    </section>
+
     {moneyState ? (
+      <>
       <section aria-labelledby="daily-reference-heading" className="mt-6 rounded-lg border border-ega-border p-5">
         <h2 id="daily-reference-heading" className="text-[length:var(--text-section)] font-semibold">Day-start daily reference</h2>
         <p className="mt-1 text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">Method: {moneyState.dayStartBaseline?.dailyReference?.available ? moneyState.dayStartBaseline.dailyReference.algorithm : "shared day-start daily reference"}</p>
@@ -273,6 +307,7 @@ export default async function MoneyPage({ searchParams }: Props) {
         createAction={createMoneyPeriodAction}
         updateAction={updateMoneySettingsAction}
       />
+      </>
     ) : (
       <section role="alert" className="mt-6 rounded-lg border border-ega-border p-5">
         <h2 className="text-[length:var(--text-section)] font-semibold">
