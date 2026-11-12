@@ -273,10 +273,20 @@ export async function createObligation(
 
   // Template supplies defaults only; the occurrence snapshots the resolved
   // values so a later template edit cannot rewrite it.
+  const classificationInput = {
+    ...(parsed.value.needVsWant != null
+      ? { needVsWant: parsed.value.needVsWant }
+      : {}),
+    ...(parsed.value.purpose != null ? { purpose: parsed.value.purpose } : {}),
+    ...(parsed.value.countsInDaily != null
+      ? { countsInDaily: parsed.value.countsInDaily }
+      : {}),
+    ...(parsed.value.category != null ? { category: parsed.value.category } : {}),
+  };
   const classification = resolveObligationClassification({
     kind: parsed.value.kind,
     template: templateClassificationSource(template),
-    occurrence: parsed.value,
+    occurrence: classificationInput,
   });
 
   const values: ObligationCreateValues = {
