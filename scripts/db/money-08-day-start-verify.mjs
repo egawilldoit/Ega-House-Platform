@@ -191,6 +191,24 @@ async function main() {
       && revisedDay[0].policy_version_id===revisions[1].id,
       "subsequent day-start baseline uses the effective revised targets and preserves opening cash");
     console.log("[REVISION] target update appends policy version 2; existing day-start baseline remains immutable");
+    // Savings funding is an outflow; deletion restates future baselines while
+    // preserving an already materialized baseline as historical evidence.
+    const savings = await user(A, tx => tx.unsafe(`INSERT INTO public.personal_expenses
+      (owner_user_id,period_id,booking_date,kind,direction,amount_minor,currency,
+       category,need_vs_want,idempotency_key,create_fingerprint)
+      VALUES ($1,$2,'2026-11-16','savings_transfer','out',1000,'MAD',
+       NULL,NULL,'proof-savings',repeat('7',64)) RETURNING id`, [A,period]));
+    const funded = await user(A, tx => tx.unsafe("SELECT * FROM public.money_ensure_day_start_baseline($1, '2026-11-17'::date)", [period]));
+    assert(funded[0].availability === "available" && funded[0].cash_minor === 49000
+      && funded[0].savings_funded_minor === 1000, "funded savings reduces cash and unfunded savings once");
+    await user(A, tx => tx.unsafe("UPDATE public.personal_expenses SET deleted_at=now(), version=version+1 WHERE id=$1", [savings[0].id]));
+    const afterSavingsDelete = await user(A, tx => tx.unsafe("SELECT * FROM public.money_ensure_day_start_baseline($1, '2026-11-18'::date)", [period]));
+    const retainedFunded = await sql.unsafe("SELECT cash_minor,savings_funded_minor FROM public.money_day_start_baselines WHERE id=$1", [funded[0].id]);
+    assert(afterSavingsDelete[0].availability === "available" && afterSavingsDelete[0].cash_minor === 50000
+      && afterSavingsDelete[0].savings_funded_minor === 0 && retainedFunded[0].cash_minor === 49000
+      && retainedFunded[0].savings_funded_minor === 1000,
+      "deleted savings funding is excluded from new baselines while earlier snapshots remain intact");
+    console.log("[SAVINGS] deleted transfer excluded; earlier baseline preserved");
     const endFirst = await user(A, tx => tx.unsafe("UPDATE public.money_periods SET lifecycle='ended', version=version+1 WHERE id=$1 RETURNING id", [period]));
     assert(endFirst.length===1, "first period ends before creating the next tracking period");
     const endedRebaseDenied = await user(A, tx => tx.unsafe("SELECT * FROM public.money_rebase_day_start_baseline($1)", [period]))
