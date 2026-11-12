@@ -76,6 +76,9 @@ test("Money survives reload, exports only the owner, then edits and deletes", as
   const expense = expenses.data?.[0];
   if (!expense) throw new Error("Expense was not persisted.");
   expect(expense.amount_minor).toBe(1250);
+  const visits = await a.from("money_coffee_visits").select("id,visit_key");
+  expect(visits.error).toBeNull();
+  expect(visits.data).toHaveLength(1);
   const b = await ownerClient(owners.ownerB);
   const seededB = await b.from("personal_expenses").insert({
     owner_user_id: owners.ownerB.id, amount_minor: 9900, currency: "MAD", category: "coffee",

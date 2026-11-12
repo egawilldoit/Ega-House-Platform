@@ -81,6 +81,27 @@ export async function recordMoneyCoffeeVisit(
   if (!parsed.ok) return applicationFailure(parsed.message, "validation");
   const values = parsed.value;
 
+  // Resolve an existing visit before re-validating current expense state. A
+  // retry with the same stable key and payload must replay the original result
+  // even if the purchase was re-dated or reclassified after the original write.
+  const visitFingerprint = sha256Hex(canonicalCoffeeVisitPayload(values));
+  const existing = await dependencies.coffee.findByVisitKey(actor, values.visitKey);
+  if (!existing.ok) {
+    return mapFailure(
+      existing.error.code,
+      "Unable to check the coffee visit right now.",
+    );
+  }
+  if (existing.value) {
+    if (existing.value.visitFingerprint !== visitFingerprint) {
+      return applicationFailure(
+        "That visit key was already used for a different coffee visit.",
+        "conflict",
+      );
+    }
+    return applicationSuccess({ visit: existing.value, replayed: true });
+  }
+
   for (const expenseId of values.expenseIds) {
     const expense = await dependencies.expenses.get(actor, expenseId);
     if (!expense.ok) {
@@ -107,24 +128,6 @@ export async function recordMoneyCoffeeVisit(
         "validation",
       );
     }
-  }
-
-  const visitFingerprint = sha256Hex(canonicalCoffeeVisitPayload(values));
-  const existing = await dependencies.coffee.findByVisitKey(actor, values.visitKey);
-  if (!existing.ok) {
-    return mapFailure(
-      existing.error.code,
-      "Unable to check the coffee visit right now.",
-    );
-  }
-  if (existing.value) {
-    if (existing.value.visitFingerprint !== visitFingerprint) {
-      return applicationFailure(
-        "That visit key was already used for a different coffee visit.",
-        "conflict",
-      );
-    }
-    return applicationSuccess({ visit: existing.value, replayed: true });
   }
 
   const nowIso = (options.now ?? new Date()).toISOString();
@@ -209,7 +212,11 @@ function countedVisitTotals(visits: readonly MoneyCoffeeVisitRecord[]): Readonly
   for (const visit of visits) {
     let countedInVisit = 0;
     for (const line of visit.lines) {
-      if (line.deletedAt === null && line.category === "coffee") {
+      if (
+        line.deletedAt === null &&
+        line.category === "coffee" &&
+        line.bookingDate === visit.localDate
+      ) {
         countedInVisit += line.amountMinor;
       }
     }

@@ -365,6 +365,10 @@ export default async function MoneyPage({ searchParams }: Props) {
                       category === "coffee"
                         ? coffeeUsage?.countedVisitSpendMinor ?? null
                         : periodSpending?.totalsByCategory[category] ?? (periodSpending ? 0 : null);
+                    const truncated =
+                      category === "coffee"
+                        ? coffeeUsage?.truncated ?? false
+                        : periodSpending?.truncated ?? false;
                     return (
                       <li key={category} className="flex flex-wrap items-baseline gap-x-3 text-[length:var(--text-body)]">
                         <span className="font-medium">{describeExpenseCategory(category).label}</span>
@@ -375,7 +379,7 @@ export default async function MoneyPage({ searchParams }: Props) {
                         ) : (
                           <span>
                             {formatMad(spent)}
-                            {periodSpending?.truncated ? "+" : ""}
+                            {truncated ? "+" : ""}
                             {" / "}
                             {formatMad(allocation)}
                           </span>
@@ -462,6 +466,29 @@ export default async function MoneyPage({ searchParams }: Props) {
             {coffeeWindow.clippedToPeriod ? " (clipped to the selected period)" : ""}.{" "}
             {coffeeWindow.projectionNote}
             {coffeeWindow.truncated ? " This week hit the bounded scan cap; counts are a lower bound." : ""}
+          </p>
+          <p className="mt-2 text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
+            {periodSpending ? (
+              <>
+                Period category coffee (separate from counted visits):{" "}
+                {formatMad(periodSpending.totalsByCategory.coffee ?? 0)}.
+                {" "}Period counted visit spend:{" "}
+                {coffeeUsage ? formatMad(coffeeUsage.countedVisitSpendMinor) : "unavailable"}.
+                {" "}Uncounted period category coffee:{" "}
+                {coffeeUsage
+                  ? formatMad(
+                      Math.max(
+                        0,
+                        (periodSpending.totalsByCategory.coffee ?? 0) -
+                          coffeeUsage.countedVisitSpendMinor,
+                      ),
+                    )
+                  : "unavailable"}
+                .
+              </>
+            ) : (
+              "Period category coffee is unavailable right now."
+            )}
           </p>
         </>
       ) : (

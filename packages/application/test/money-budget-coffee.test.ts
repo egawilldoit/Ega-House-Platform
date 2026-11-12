@@ -249,6 +249,7 @@ class FakeCoffeeRepository implements MoneyCoffeeVisitRepository {
           expenseId,
           amountMinor: linked?.amountMinor ?? 0,
           category: linked?.category ?? "coffee",
+          bookingDate: linked?.bookingDate ?? "2026-11-09",
           deletedAt: linked?.deletedAt ?? null,
         };
       }),
@@ -489,7 +490,12 @@ test("coffee window clips to a partial week and asks only for in-period dates", 
   await recordMoneyCoffeeVisit(ACTOR, { expenses, coffee }, visitValues([inWeek.id]));
   // Move the visit into the clipped in-period portion of the week (the fake
   // repository filters by owner-local date exactly like the SQL adapter).
-  coffee.visits[0] = { ...coffee.visits[0]!, localDate: "2026-11-11" };
+  const movedVisit = coffee.visits[0]!;
+  coffee.visits[0] = {
+    ...movedVisit,
+    localDate: "2026-11-11",
+    lines: movedVisit.lines.map((line) => ({ ...line, bookingDate: "2026-11-11" })),
+  };
 
   const window = await getMoneyCoffeeWindow(
     ACTOR,
@@ -597,6 +603,45 @@ test("a counted visit cannot move a purchase to another booking day", async () =
   assert.equal(coffee.visits.length, 0);
 });
 
+test("a re-dated purchase still replays its original visit by key", async () => {
+  const expenses = new FakeExpenseRepository();
+  const coffee = new FakeCoffeeRepository();
+  const purchase = expense("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "coffee", 2_500);
+  expenses.byId.set(purchase.id, purchase);
+  seedCoffeeRepository(coffee, [purchase]);
+  const values = visitValues([purchase.id]);
+  const first = await recordMoneyCoffeeVisit(ACTOR, { expenses, coffee }, values);
+  assert.equal(first.ok, true);
+  expenses.byId.set(purchase.id, { ...purchase, bookingDate: "2026-11-10" });
+  const replay = await recordMoneyCoffeeVisit(ACTOR, { expenses, coffee }, values);
+  assert.equal(replay.ok, true);
+  if (!replay.ok) return;
+  assert.equal(replay.data.replayed, true);
+  assert.equal(coffee.visits.length, 1);
+});
+
+test("a counted line whose booking day no longer matches stops counting", async () => {
+  const coffee = new FakeCoffeeRepository();
+  const purchase = expense("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "coffee", 2_500);
+  seedCoffeeRepository(coffee, [purchase]);
+  const expenses = new FakeExpenseRepository();
+  expenses.byId.set(purchase.id, purchase);
+  await recordMoneyCoffeeVisit(ACTOR, { expenses, coffee }, visitValues([purchase.id]));
+  coffee.visits[0]!.lines[0] = {
+    ...coffee.visits[0]!.lines[0]!,
+    bookingDate: "2026-11-10",
+  };
+  const result = await getMoneyCoffeeVisitUsage(
+    ACTOR,
+    coffee,
+    { from: "2026-11-09", to: "2026-11-09" },
+  );
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.data.countedVisitCount, 0);
+  assert.equal(result.data.countedVisitSpendMinor, 0);
+});
+
 test("period coffee usage is not limited to the current week", async () => {
   const coffee = new FakeCoffeeRepository();
   const purchase = expense("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "coffee", 2_500);
@@ -609,12 +654,21 @@ test("period coffee usage is not limited to the current week", async () => {
     })(),
     coffee,
   }, visitValues([purchase.id]));
-  coffee.visits[0] = { ...coffee.visits[0]!, localDate: "2026-11-02" };
+  const firstVisit = coffee.visits[0]!;
+  coffee.visits[0] = {
+    ...firstVisit,
+    localDate: "2026-11-02",
+    lines: firstVisit.lines.map((line) => ({ ...line, bookingDate: "2026-11-02" })),
+  };
   coffee.visits.push({
     ...coffee.visits[0]!,
     id: "visit-2",
     visitKey: "visit-key-2",
     localDate: "2026-11-20",
+    lines: coffee.visits[0]!.lines.map((line) => ({
+      ...line,
+      bookingDate: "2026-11-20",
+    })),
   });
   const result = await getMoneyCoffeeVisitUsage(
     ACTOR,

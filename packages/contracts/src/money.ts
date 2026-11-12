@@ -364,6 +364,7 @@ export type MoneyCoffeeVisitLineDto = Readonly<{
   expenseId: string;
   amountMinor: number;
   category: string;
+  bookingDate: string;
   deletedAt: string | null;
 }>;
 
