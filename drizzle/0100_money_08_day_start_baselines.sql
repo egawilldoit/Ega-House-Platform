@@ -57,8 +57,8 @@ CREATE INDEX IF NOT EXISTS money_day_start_baselines_date_idx
 --> statement-breakpoint
 -- Materialize from retained ledger and obligation lifecycle history. The period
 -- period row lock serializes concurrent callers; all inputs are read in this transaction.
-CREATE OR REPLACE FUNCTION public.money_ensure_day_start_baseline(
-  p_period_id uuid, p_date date
+CREATE OR REPLACE FUNCTION public.money_calculate_day_start_baseline(
+  p_period_id uuid, p_date date, p_rebase boolean
 ) RETURNS public.money_day_start_baselines
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = ''
 AS $baseline$
@@ -85,7 +85,7 @@ BEGIN
   SELECT * INTO v_row FROM public.money_day_start_baselines
     WHERE owner_user_id = auth.uid() AND period_id = p_period_id AND date = p_date
     ORDER BY version DESC LIMIT 1;
-  IF FOUND THEN RETURN v_row; END IF;
+  IF FOUND AND NOT p_rebase THEN RETURN v_row; END IF;
   -- Serialize the version allocation for this period/date via the period lock.
   SELECT * INTO v_policy FROM public.money_policy_versions
     WHERE owner_user_id = auth.uid()
@@ -163,8 +163,33 @@ BEGIN
 END
 $baseline$;
 --> statement-breakpoint
+REVOKE ALL ON FUNCTION public.money_calculate_day_start_baseline(uuid, date, boolean) FROM PUBLIC, anon, authenticated;
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION public.money_ensure_day_start_baseline(p_period_id uuid, p_date date)
+RETURNS public.money_day_start_baselines
+LANGUAGE sql SECURITY DEFINER SET search_path = ''
+AS $wrapper$ SELECT public.money_calculate_day_start_baseline(p_period_id, p_date, false) $wrapper$;
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION public.money_rebase_day_start_baseline(p_period_id uuid)
+RETURNS public.money_day_start_baselines
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = ''
+AS $rebase$
+DECLARE
+  v_period public.money_periods;
+BEGIN
+  SELECT * INTO v_period FROM public.money_periods
+   WHERE id = p_period_id AND owner_user_id = auth.uid() FOR UPDATE;
+  IF NOT FOUND OR v_period.active_date <> CURRENT_DATE THEN
+    RAISE EXCEPTION 'Only the owner current active date can be rebased';
+  END IF;
+  RETURN public.money_calculate_day_start_baseline(p_period_id, v_period.active_date, true);
+END
+$rebase$;
+--> statement-breakpoint
 REVOKE ALL ON FUNCTION public.money_ensure_day_start_baseline(uuid, date) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.money_ensure_day_start_baseline(uuid, date) TO authenticated;
+REVOKE ALL ON FUNCTION public.money_rebase_day_start_baseline(uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.money_rebase_day_start_baseline(uuid) TO authenticated;
 --> statement-breakpoint
 -- Extend the existing atomic period-creation boundary. The first-day snapshot
 -- is deliberately unavailable: settings/opening alone cannot establish the

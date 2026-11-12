@@ -71,6 +71,34 @@ async function main() {
     assert(unchanged.length===1 && unchanged[0].cash_minor===50000 && unchanged[0].savings_target_minor===12000
       && unchanged[0].emergency_target_minor===3000 && unchanged[0].policy_version_id===rows[0].policy_id,
       "target revision leaves the existing day-start baseline unchanged");
+    const rebased = await user(A, tx => tx.unsafe("SELECT (public.money_rebase_day_start_baseline($1)).*", [period]));
+    const baselineVersions = await sql.unsafe(`SELECT version,cash_minor,savings_target_minor,emergency_target_minor,policy_version_id
+      FROM public.money_day_start_baselines WHERE owner_user_id=$1 AND period_id=$2 AND date='2026-11-12' ORDER BY version`, [A,period]);
+    assert(rebased[0].version===2 && rebased[0].savings_target_minor===15000 && rebased[0].emergency_target_minor===4500
+      && rebased[0].policy_version_id===revisions[1].id,
+      "owner rebase recomputes the active baseline with changed effective targets");
+    assert(baselineVersions.length===2 && baselineVersions[0].version===1 && baselineVersions[0].savings_target_minor===12000
+      && baselineVersions[0].emergency_target_minor===3000 && baselineVersions[1].version===2,
+      "rebase retains the original baseline as version 1");
+    const legacy = await user(A, tx => tx.unsafe(`SELECT (public.money_create_period(
+      '2026-10-01'::date,'2026-10-31'::date,'Africa/Casablanca'::text,
+      '2026-10-01'::date,'initialized'::text,50000::integer,'2026-10-01'::date,
+      repeat('d',64)::text,'{"opening":{"source":"user_entered"}}'::jsonb,
+      '{}'::jsonb,now()::timestamptz)).id AS id`));
+    const legacyPeriod = legacy[0].id;
+    await user(A, tx => tx.unsafe(`INSERT INTO public.money_budget_plans
+      (owner_user_id,period_id,savings_target_minor,emergency_target_minor)
+      VALUES ($1,$2,12000,3000)`, [A,legacyPeriod]));
+    await user(A, tx => tx.unsafe(`UPDATE public.money_budget_plans
+      SET savings_target_minor=15000, emergency_target_minor=4500, version=2
+      WHERE owner_user_id=$1 AND period_id=$2`, [A,legacyPeriod]));
+    const legacyPolicy = await sql.unsafe(`SELECT version,effective_date,policy
+      FROM public.money_policy_versions WHERE owner_user_id=$1 AND period_id=$2`, [A,legacyPeriod]);
+    assert(legacyPolicy.length===1 && legacyPolicy[0].version===1
+      && new Date(legacyPolicy[0].effective_date).toISOString().slice(0,10)==='2026-10-01'
+      && legacyPolicy[0].policy.settings.savingsTargetMinor===15000
+      && legacyPolicy[0].policy.settings.emergencyTargetMinor===4500,
+      "legacy target edit records only complete current settings without a historical baseline");
     const revisedDay = await user(A, tx => tx.unsafe("SELECT (public.money_ensure_day_start_baseline($1, '2026-11-13'::date)).*", [period]));
     assert(revisedDay[0].availability==="available" && revisedDay[0].cash_minor===50000
       && revisedDay[0].savings_target_minor===15000 && revisedDay[0].emergency_target_minor===4500
