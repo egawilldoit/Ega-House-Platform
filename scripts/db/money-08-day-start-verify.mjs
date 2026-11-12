@@ -67,10 +67,8 @@ async function main() {
     assert(writerEnsure[0].availability === "available", "MCP write grant can ensure a baseline");
     const firstPartyEnsure = await user(A, tx => tx.unsafe("SELECT (public.money_ensure_day_start_baseline($1,'2026-11-14'::date)).*", [period]));
     assert(firstPartyEnsure[0].availability === "available", "first-party session can ensure a baseline");
-    const legacyRpcDenied = await user(A, tx => tx.unsafe(`SELECT * FROM public.money_update_period_v1(
-      $1,$2,'2026-11-15'::date,'{}'::jsonb,NULL::integer,NULL::text,NULL::text,
-      '{}'::jsonb,NULL::text,now()::timestamptz)`, [period,periodVersion])).then(() => false, e => e.code === "42501");
-    assert(legacyRpcDenied, "authenticated clients cannot bypass the period update wrapper");
+    const internalRpc = await sql.unsafe("SELECT to_regprocedure('public.money_update_period_v1(uuid,integer,date,jsonb,integer,text,text,jsonb,text,timestamp with time zone)') AS id");
+    assert(internalRpc[0].id === null, "no separate period update RPC can bypass baseline creation");
     const readerUpdateDenied = await user(A, tx => tx.unsafe(`SELECT * FROM public.money_update_period(
       $1,$2,'2026-11-15'::date,'{}'::jsonb,NULL::integer,NULL::text,NULL::text,
       '{}'::jsonb,NULL::text,now()::timestamptz)`, [period,periodVersion], "money-read")).then(() => false, e => e.code === "42501");
