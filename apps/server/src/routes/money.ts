@@ -2,28 +2,46 @@ import { Hono } from "hono";
 import type { Context } from "hono";
 
 import {
+  classifyMoneyExpense,
   createMoneyPeriod,
   createMovement,
+  deleteMoneyCoffeeVisit,
+  getMoneyBudgetPlan,
+  getMoneyCoffeeWindowForPlan,
   getMoneyState,
   getMovement,
   getTimeContextTimezone,
+  listMoneyCoffeeVisits,
   listMovements,
+  patchMoneyBudgetPlan,
+  recordMoneyCoffeeVisit,
   resolveTimeContext,
+  saveMoneyBudgetPlan,
   updateMoneySettings,
   updateMovement,
   type ApplicationErrorCode,
   type AuthenticatedActor,
 } from "@ega/application";
 import type {
+  ClassifyMoneyExpenseResponse,
   CreateMoneyPeriodResponse,
   CreateMovementResponse,
+  DeleteMoneyCoffeeVisitResponse,
+  GetMoneyBudgetPlanResponse,
   GetMoneyStateResponse,
   GetMovementResponse,
+  ListMoneyCoffeeVisitsResponse,
   ListMovementsResponse,
+  MoneyBudgetMutationResponse,
+  MoneyCoffeeWindowResponse,
+  RecordMoneyCoffeeVisitResponse,
   UpdateMoneySettingsResponse,
   UpdateMovementResponse,
 } from "@ega/contracts/money";
 import {
+  SupabaseExpenseRepository,
+  SupabaseMoneyBudgetRepository,
+  SupabaseMoneyCoffeeRepository,
   SupabaseMoneyPeriodRepository,
   SupabaseMoneyRepository,
   SupabaseTimeContextRepository,
@@ -298,6 +316,173 @@ export function createMoneyRoutes(
     );
     if (!result.ok) return errorResponse(c, result.code, result.errorMessage);
     const response: UpdateMovementResponse = { ok: true, movement: result.data };
+    return c.json(response);
+  });
+
+  // MONEY-05: period budget plan. The canonical period row owns its dates; the
+  // plan owns allocations, targets and coffee limits with version fencing.
+  function budgetDependencies(c: MoneyContext) {
+    return {
+      budgets: new SupabaseMoneyBudgetRepository(c.var.client),
+      periods: new SupabaseMoneyPeriodRepository(c.var.client),
+    };
+  }
+
+  routes.get("/budget", async (c) => {
+    const result = await getMoneyBudgetPlan(
+      c.var.actor,
+      budgetDependencies(c),
+      c.req.query(),
+    );
+    if (!result.ok) return errorResponse(c, result.code, result.errorMessage);
+    const response: GetMoneyBudgetPlanResponse = { ok: true, plan: result.data };
+    return c.json(response);
+  });
+
+  routes.put("/budget", async (c) => {
+    const body = await readJsonBody(c);
+    if (!body) {
+      return c.json({ error: { code: "VALIDATION", message: VALIDATION_MESSAGE } }, 400);
+    }
+    const result = await saveMoneyBudgetPlan(
+      c.var.actor,
+      budgetDependencies(c),
+      body,
+      { now: dependencies.now?.() ?? new Date() },
+    );
+    if (!result.ok) return errorResponse(c, result.code, result.errorMessage);
+    const response: MoneyBudgetMutationResponse = { ok: true, plan: result.data };
+    return c.json(response, result.data.version === 1 ? 201 : 200);
+  });
+
+  routes.patch("/budget", async (c) => {
+    const body = await readJsonBody(c);
+    if (!body) {
+      return c.json({ error: { code: "VALIDATION", message: VALIDATION_MESSAGE } }, 400);
+    }
+    const result = await patchMoneyBudgetPlan(
+      c.var.actor,
+      budgetDependencies(c),
+      body,
+      { now: dependencies.now?.() ?? new Date() },
+    );
+    if (!result.ok) return errorResponse(c, result.code, result.errorMessage);
+    const response: MoneyBudgetMutationResponse = { ok: true, plan: result.data };
+    return c.json(response);
+  });
+
+  // Counted coffee visits reference canonical expenses; no second cash effect.
+  function coffeeDependencies(c: MoneyContext) {
+    return {
+      expenses: new SupabaseExpenseRepository(c.var.client),
+      coffee: new SupabaseMoneyCoffeeRepository(c.var.client),
+    };
+  }
+
+  routes.post("/coffee-visits", async (c) => {
+    const body = await readJsonBody(c);
+    if (!body) {
+      return c.json({ error: { code: "VALIDATION", message: VALIDATION_MESSAGE } }, 400);
+    }
+    const result = await recordMoneyCoffeeVisit(
+      c.var.actor,
+      coffeeDependencies(c),
+      body,
+      { now: dependencies.now?.() ?? new Date() },
+    );
+    if (!result.ok) return errorResponse(c, result.code, result.errorMessage);
+    const response: RecordMoneyCoffeeVisitResponse = {
+      ok: true,
+      visit: result.data.visit,
+      replayed: result.data.replayed,
+    };
+    return c.json(response, result.data.replayed ? 200 : 201);
+  });
+
+  routes.get("/coffee-visits", async (c) => {
+    const query = c.req.query();
+    const result = await listMoneyCoffeeVisits(
+      c.var.actor,
+      new SupabaseMoneyCoffeeRepository(c.var.client),
+      {
+        ...query,
+        limit: query.limit === undefined ? undefined : Number(query.limit),
+        offset: query.offset === undefined ? undefined : Number(query.offset),
+      },
+    );
+    if (!result.ok) return errorResponse(c, result.code, result.errorMessage);
+    const response: ListMoneyCoffeeVisitsResponse = {
+      ok: true,
+      visits: result.data.visits,
+    };
+    return c.json(response);
+  });
+
+  routes.delete("/coffee-visits/:id", async (c) => {
+    const rawVersion = c.req.query("version");
+    const result = await deleteMoneyCoffeeVisit(
+      c.var.actor,
+      new SupabaseMoneyCoffeeRepository(c.var.client),
+      {
+        id: c.req.param("id"),
+        version: rawVersion === undefined ? undefined : Number(rawVersion),
+      },
+      { now: dependencies.now?.() ?? new Date() },
+    );
+    if (!result.ok) return errorResponse(c, result.code, result.errorMessage);
+    const response: DeleteMoneyCoffeeVisitResponse = {
+      ok: true,
+      id: result.data.id,
+      alreadyDeleted: result.data.alreadyDeleted,
+    };
+    return c.json(response);
+  });
+
+  routes.get("/coffee-window", async (c) => {
+    const plan = await getMoneyBudgetPlan(
+      c.var.actor,
+      budgetDependencies(c),
+      {
+        periodStartDate: c.req.query("periodStartDate"),
+        periodEndDate: c.req.query("periodEndDate"),
+      },
+    );
+    if (!plan.ok) return errorResponse(c, plan.code, plan.errorMessage);
+    const result = await getMoneyCoffeeWindowForPlan(
+      c.var.actor,
+      coffeeDependencies(c),
+      {
+        localDate: c.req.query("localDate") ?? "",
+        timezone: c.req.query("timezone") ?? "",
+        periodStartDate: c.req.query("periodStartDate") ?? "",
+        periodEndDate: c.req.query("periodEndDate") ?? "",
+        plan: plan.data,
+      },
+    );
+    if (!result.ok) return errorResponse(c, result.code, result.errorMessage);
+    const response: MoneyCoffeeWindowResponse = { ok: true, coffee: result.data };
+    return c.json(response);
+  });
+
+  routes.post("/classify", async (c) => {
+    const body = await readJsonBody(c);
+    if (!body) {
+      return c.json({ error: { code: "VALIDATION", message: VALIDATION_MESSAGE } }, 400);
+    }
+    const result = await classifyMoneyExpense(
+      c.var.actor,
+      coffeeDependencies(c),
+      body,
+      { now: dependencies.now?.() ?? new Date() },
+    );
+    if (!result.ok) return errorResponse(c, result.code, result.errorMessage);
+    const response: ClassifyMoneyExpenseResponse = {
+      ok: true,
+      expense: result.data.expense,
+      previousCategory: result.data.previousCategory,
+      countedCoffeeVisitIds: result.data.countedCoffeeVisitIds,
+      countedCoffeeUsageChanged: result.data.countedCoffeeUsageChanged,
+    };
     return c.json(response);
   });
 

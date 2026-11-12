@@ -676,7 +676,10 @@ jobs:
         env:
           PROOF_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ega_proof
         run: node scripts/db/money-01-finance-grants-verify.mjs --url "$PROOF_DATABASE_URL"
-
+      - name: Prove MONEY-05 budget plans, category taxonomy, counted coffee visits and grant-scoped RLS
+        env:
+          PROOF_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ega_proof
+        run: node scripts/db/money-05-budgets-coffee-verify.mjs --url "$PROOF_DATABASE_URL"
   hygiene:
     needs: [changes, workspace, contracts, domain, application, data-access, regressions, lint-changed, lint-report, web, web-typecheck, web-tests, mobile, server, api-client, db-invariants]
     if: always()
