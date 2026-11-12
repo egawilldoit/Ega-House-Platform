@@ -67,7 +67,7 @@ function makeRepository() {
       return { ok: true as const, value: { date, version: 1, availability: "available" as const, unavailableReason: null, cashMinor: 50000, commitmentsMinor: 0, savingsTargetMinor: 0, savingsFundedMinor: 0, emergencyTargetMinor: 0, emergencyUsedMinor: 0 } };
     },
     async getDayStartBaseline() {
-      return { ok: true as const, value: { date: "2026-11-11", version: 1, availability: "available" as const, unavailableReason: null, cashMinor: 50000, commitmentsMinor: 0, savingsTargetMinor: 0, savingsFundedMinor: 0, emergencyTargetMinor: 0, emergencyUsedMinor: 0 } };
+      return { ok: true as const, value: null };
     },
     async getDailyIncludedExpenseTotal(actor, periodId, date) {
       const amount = ledger.filter((row) => row.ownerUserId === actor.userId && row.periodId === periodId && row.bookingDate === date && !row.deletedAt).reduce((sum, row) => sum + row.amountMinor, 0);
@@ -341,19 +341,15 @@ test("an empty account has no invented period or opening, and cash is unknown", 
   assert.equal(state.data.dateResolution.basis, "local_today_no_period");
 });
 
-test("selected-day reference subtracts counted outflows and becomes unavailable when the aggregate is incomplete", async () => {
-  const { repository, setDailyTotal, ensured } = makeRepository();
+test("selected-day read does not materialize missing baseline and reports it unavailable", async () => {
+  const { repository, ensured } = makeRepository();
   await createMoneyPeriod(ACTOR, repository, CREATE_BODY, { now: NOW });
-  setDailyTotal({ amountMinor: 1250, complete: true });
   const state = await getMoneyState(ACTOR, repository, {}, { now: NOW, timezone: "Africa/Casablanca" });
   assert.equal(state.ok, true);
   if (!state.ok) return;
-  assert.equal(state.data.dayStartBaseline?.dailyReference?.dailyRemainingMinor, 1250);
-  assert.deepEqual(ensured, [{ ownerUserId: ACTOR.userId, periodId: state.data.period!.id, date: state.data.period!.activeDate }]);
-  setDailyTotal({ amountMinor: 1250, complete: false });
-  const incomplete = await getMoneyState(ACTOR, repository, {}, { now: NOW, timezone: "Africa/Casablanca" });
-  assert.equal(incomplete.ok && incomplete.data.dayStartBaseline?.dailyReference, null);
-  assert.equal(incomplete.ok && incomplete.data.dayStartBaselineUnavailable, true);
+  assert.equal(state.data.dayStartBaseline, null);
+  assert.equal(state.data.dayStartBaselineUnavailable, true);
+  assert.deepEqual(ensured, []);
 });
 
 test("historical explicit reads do not materialize missing day-start history", async () => {

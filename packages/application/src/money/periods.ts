@@ -444,12 +444,8 @@ export async function getMoneyState(
 
   let dayStartBaseline: MoneyState["dayStartBaseline"] = null;
   let dayStartBaselineUnavailable = false;
-  // Materialize only the selected period's active date. Explicit historical
-  // reads remain observational and cannot invent missing lifecycle history.
-  if (selected && resolvedDate === selected.activeDate && repository.ensureDayStartBaseline) {
-    const ensured = await repository.ensureDayStartBaseline(actor, selected.id, resolvedDate);
-    if (!ensured.ok) return fromRepository(ensured, "Unable to materialize the day-start baseline right now.");
-  }
+  // Reads are observational. A missing baseline remains unavailable until an
+  // explicitly authorized write creates one.
   if (selected && repository.getDayStartBaseline) {
     const baselineResult = await repository.getDayStartBaseline(actor, selected.id, resolvedDate);
     if (!baselineResult.ok) return fromRepository(baselineResult, "Unable to load the day-start baseline right now.");
