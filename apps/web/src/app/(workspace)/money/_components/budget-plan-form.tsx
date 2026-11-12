@@ -22,6 +22,8 @@ type BudgetPlanFormProps = {
   plan: MoneyBudgetPlanDto | null;
   periodStartDate: string;
   periodEndDate: string;
+  /** Ended/rolled-over periods keep their plan readable but not editable. */
+  readOnly?: boolean;
   action: (input: SaveBudgetPlanActionInput) => Promise<
     { ok: true; plan: MoneyBudgetPlanDto } | { ok: false; code: string; error: string }
   >;
@@ -67,6 +69,7 @@ export function BudgetPlanForm({
   plan,
   periodStartDate,
   periodEndDate,
+  readOnly = false,
   action,
 }: BudgetPlanFormProps) {
   const router = useRouter();
@@ -97,6 +100,7 @@ export function BudgetPlanForm({
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (readOnly) return;
     setSaved(false);
     const parsedAllocations: Partial<Record<ExpenseCategory, number>> = {};
     for (const category of EXPENSE_CATEGORY_VALUES) {
@@ -171,6 +175,7 @@ export function BudgetPlanForm({
               autoComplete="off"
               placeholder="Not set"
               value={allocations[category]}
+              disabled={readOnly}
               onChange={(event) =>
                 setAllocations((current) => ({
                   ...current,
@@ -193,6 +198,7 @@ export function BudgetPlanForm({
             autoComplete="off"
             placeholder="Not set"
             value={savingsTarget}
+            disabled={readOnly}
             onChange={(event) => setSavingsTarget(event.target.value)}
           />
         </div>
@@ -207,6 +213,7 @@ export function BudgetPlanForm({
             autoComplete="off"
             placeholder="Not set"
             value={emergencyTarget}
+            disabled={readOnly}
             onChange={(event) => setEmergencyTarget(event.target.value)}
           />
         </div>
@@ -221,6 +228,7 @@ export function BudgetPlanForm({
             autoComplete="off"
             placeholder="Not set"
             value={coffeeSpendLimit}
+            disabled={readOnly}
             onChange={(event) => setCoffeeSpendLimit(event.target.value)}
           />
         </div>
@@ -235,6 +243,7 @@ export function BudgetPlanForm({
             autoComplete="off"
             placeholder="Not set"
             value={coffeeVisitLimit}
+            disabled={readOnly}
             onChange={(event) => setCoffeeVisitLimit(event.target.value)}
           />
         </div>
@@ -250,12 +259,21 @@ export function BudgetPlanForm({
         </p>
       ) : null}
       <div className="flex items-center gap-3">
-        <PendingSubmitButton pendingLabel="Saving…">
-          {plan ? "Save period plan" : "Create period plan"}
-        </PendingSubmitButton>
-        <span className="text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
-          Version {version}
-        </span>
+        {readOnly ? (
+          <span className="text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
+            This period is not tracking, so its plan is read-only. Select or create
+            the tracking period to edit it.
+          </span>
+        ) : (
+          <>
+            <PendingSubmitButton pendingLabel="Saving…">
+              {plan ? "Save period plan" : "Create period plan"}
+            </PendingSubmitButton>
+            <span className="text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
+              Version {version}
+            </span>
+          </>
+        )}
       </div>
     </form>
   );

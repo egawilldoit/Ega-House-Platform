@@ -2305,7 +2305,7 @@ export type MoneyCoffeeWindowValues = Readonly<{
   periodStartDate: string;
   periodEndDate: string;
   spendLimitMinor: number | null;
-  visitLimitMinor: number | null;
+  visitLimit: number | null;
 }>;
 
 const COFFEE_WINDOW_KEYS = new Set([
@@ -2314,7 +2314,7 @@ const COFFEE_WINDOW_KEYS = new Set([
   "periodStartDate",
   "periodEndDate",
   "spendLimitMinor",
-  "visitLimitMinor",
+  "visitLimit",
 ]);
 
 export function parseMoneyCoffeeWindowInput(
@@ -2339,7 +2339,7 @@ export function parseMoneyCoffeeWindowInput(
     "spendLimitMinor",
   );
   if (!spendLimit.ok) return spendLimit;
-  const visitLimit = parseVisitLimit(input.visitLimitMinor, "visitLimitMinor");
+  const visitLimit = parseVisitLimit(input.visitLimit, "visitLimit");
   if (!visitLimit.ok) return visitLimit;
   return {
     ok: true,
@@ -2349,7 +2349,7 @@ export function parseMoneyCoffeeWindowInput(
       periodStartDate: period.startDate,
       periodEndDate: period.endDate,
       spendLimitMinor: spendLimit.value,
-      visitLimitMinor: visitLimit.value,
+      visitLimit: visitLimit.value,
     },
   };
 }

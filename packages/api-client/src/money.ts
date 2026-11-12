@@ -224,10 +224,10 @@ export function createMoneyApi(http: HttpClient): MoneyApi {
             query.spendLimitMinor === undefined || query.spendLimitMinor === null
               ? undefined
               : String(query.spendLimitMinor),
-          visitLimitMinor:
-            query.visitLimitMinor === undefined || query.visitLimitMinor === null
+          visitLimit:
+            query.visitLimit === undefined || query.visitLimit === null
               ? undefined
-              : String(query.visitLimitMinor),
+              : String(query.visitLimit),
         },
       });
     },

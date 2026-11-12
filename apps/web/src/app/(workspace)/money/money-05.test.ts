@@ -20,10 +20,12 @@ const coffeeControlsSource = readFileSync(
 test("Money page exposes editable period budget, coffee and mapping controls", () => {
   assert.match(pageSource, /getMoneyBudgetPlan\(/);
   assert.match(pageSource, /getMoneyCoffeeWindow\(/);
+  assert.match(pageSource, /getMoneyPeriodSpending\(/);
   assert.match(pageSource, /new SupabaseMoneyBudgetRepository\(client\)/);
   assert.match(pageSource, /new SupabaseMoneyCoffeeRepository\(client\)/);
   assert.match(pageSource, /BudgetPlanForm/);
   assert.match(pageSource, /CoffeeVisitControls/);
+  assert.match(pageSource, /readOnly=\{moneyState\.period\.lifecycle !== "tracking"\}/);
   assert.match(pageSource, /MONEY_HANDOFF_CATEGORY_MAPPING/);
   assert.match(pageSource, /describeExpenseCategory\(/);
   assert.match(pageSource, /MONEY_ADVISORY_CAP_LABEL/);

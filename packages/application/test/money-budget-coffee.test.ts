@@ -15,6 +15,7 @@ import {
   classifyMoneyExpense,
   createAuthenticatedActor,
   getMoneyCoffeeWindow,
+  getMoneyPeriodSpending,
   patchMoneyBudgetPlan,
   recordMoneyCoffeeVisit,
 } from "../src";
@@ -131,6 +132,12 @@ function expense(id: string, category: PersonalExpense["category"], amountMinor 
 class FakeExpenseRepository implements ExpenseRepository {
   byId = new Map<string, PersonalExpense>();
   categorySpend = 0;
+  lastSummaryWindow: {
+    startUtcIso: string;
+    endUtcExclusiveIso: string;
+    startBookingDate?: string | null;
+    endBookingDateExclusive?: string | null;
+  } | null = null;
 
   async get(
     _actor: AuthenticatedActor,
@@ -139,7 +146,15 @@ class FakeExpenseRepository implements ExpenseRepository {
     return { ok: true, value: this.byId.get(id) ?? null };
   }
 
-  async summarize(): Promise<{
+  async summarize(
+    _actor: AuthenticatedActor,
+    window: {
+      startUtcIso: string;
+      endUtcExclusiveIso: string;
+      startBookingDate?: string | null;
+      endBookingDateExclusive?: string | null;
+    },
+  ): Promise<{
     ok: true;
     value: {
       totalsByCategory: Record<string, number>;
@@ -148,6 +163,7 @@ class FakeExpenseRepository implements ExpenseRepository {
       truncated: boolean;
     };
   }> {
+    this.lastSummaryWindow = window;
     return {
       ok: true,
       value: {
@@ -407,7 +423,7 @@ test("multiple purchase lines in one visit count once and sum their canonical am
       timezone: "Africa/Casablanca",
       ...PERIOD,
       spendLimitMinor: 5_000,
-      visitLimitMinor: 1,
+      visitLimit: 1,
     },
   );
   assert.equal(window.ok, true);
@@ -495,4 +511,37 @@ test("coffee window clips to a partial week and asks only for in-period dates", 
     offset: 0,
   });
   assert.equal(window.data.countedVisitCount, 1);
+  // The canonical category summary must use booking dates, not UTC instants, so
+  // date-only coffee rows are included and the window is timezone-stable.
+  assert.deepEqual(expenses.lastSummaryWindow?.startBookingDate, "2026-11-10");
+  assert.deepEqual(expenses.lastSummaryWindow?.endBookingDateExclusive, "2026-11-16");
+  assert.equal(
+    expenses.lastSummaryWindow?.startUtcIso,
+    "2026-11-09T23:00:00.000Z",
+  );
+});
+
+test("period spending uses the inclusive period dates rather than the calendar month", async () => {
+  const expenses = new FakeExpenseRepository();
+  expenses.categorySpend = 4_300;
+  const result = await getMoneyPeriodSpending(ACTOR, expenses, {
+    periodStartDate: "2026-11-09",
+    periodEndDate: "2026-11-30",
+    timezone: "Africa/Casablanca",
+  });
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.data.totalsByCategory.coffee, 4_300);
+  assert.equal(result.data.periodStartDate, "2026-11-09");
+  assert.equal(result.data.truncated, false);
+  assert.equal(expenses.lastSummaryWindow?.startBookingDate, "2026-11-09");
+  assert.equal(expenses.lastSummaryWindow?.endBookingDateExclusive, "2026-12-01");
+  assert.equal(
+    expenses.lastSummaryWindow?.startUtcIso,
+    "2026-11-08T23:00:00.000Z",
+  );
+  assert.equal(
+    expenses.lastSummaryWindow?.endUtcExclusiveIso,
+    "2026-11-30T23:00:00.000Z",
+  );
 });
