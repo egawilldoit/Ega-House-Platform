@@ -75,6 +75,8 @@ DECLARE
   v_savings_target integer;
   v_emergency_target integer;
   v_unknown boolean := false;
+  v_unknown_opening boolean := false;
+  v_unknown_obligations boolean := false;
 BEGIN
   SELECT * INTO v_period FROM public.money_periods
     WHERE id = p_period_id AND owner_user_id = auth.uid()
@@ -100,7 +102,7 @@ BEGIN
    WHERE owner_user_id = auth.uid()
      AND period_id = p_period_id AND id = v_period.opening_movement_id
      AND kind = 'opening' AND deleted_at IS NULL;
-  IF v_opening IS NULL THEN v_unknown := true; END IF;
+  IF v_opening IS NULL THEN v_unknown_opening := true; END IF;
   SELECT COALESCE(v_opening, 0) + COALESCE(sum(CASE
       WHEN kind = 'income' OR (kind = 'reconciliation_adjustment' AND direction = 'in') THEN amount_minor
       WHEN kind = 'expense' OR kind = 'savings_transfer' OR (kind = 'reconciliation_adjustment' AND direction = 'out') THEN -amount_minor
@@ -127,17 +129,22 @@ BEGIN
      AND o.period_start >= v_period.start_date AND o.period_end <= v_period.end_date
      AND o.period_start < p_date AND o.period_end >= p_date;
   SELECT COALESCE(bool_or(state_history = '[]'::jsonb AND state_effective_date < p_date AND state <> 'pending'), false)
-    INTO v_unknown FROM public.money_obligations
+    INTO v_unknown_obligations FROM public.money_obligations
    WHERE owner_user_id = auth.uid()
      AND period_start >= v_period.start_date AND period_end <= v_period.end_date
      AND period_start < p_date AND period_end >= p_date;
+  v_unknown := v_unknown_opening OR v_unknown_obligations;
   IF v_savings_target IS NULL OR v_emergency_target IS NULL OR v_unknown THEN
     INSERT INTO public.money_day_start_baselines
       (owner_user_id, period_id, date, version, policy_version_id, algorithm_version,
        availability, unavailable_reason, inputs)
     VALUES (auth.uid(), p_period_id, p_date, v_version, v_policy.id,
       COALESCE(v_policy.policy->>'algorithmVersion', 'safe-flexible-start-of-day-v1'),
-      'unavailable', CASE WHEN v_unknown THEN 'obligation_history_incomplete' ELSE 'effective_policy_incomplete' END,
+      'unavailable', CASE
+        WHEN v_unknown_obligations THEN 'obligation_history_incomplete'
+        WHEN v_unknown_opening THEN 'opening_balance_unknown'
+        ELSE 'effective_policy_incomplete'
+      END,
       jsonb_build_object('policyEffectiveDate', v_policy.effective_date, 'lifecycleCutoff', p_date));
   ELSE
     INSERT INTO public.money_day_start_baselines
