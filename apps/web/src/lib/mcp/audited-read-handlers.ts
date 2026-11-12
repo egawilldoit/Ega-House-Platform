@@ -475,5 +475,18 @@ export function createAuditedMcpReadHandlers(
         () => handlers.moneyObligationTemplatesList(authInfo, input),
       );
     },
+
+    moneyObligationsSummary(
+      authInfo: AuthInfo | undefined,
+      input: Parameters<BaseReadHandlers["moneyObligationsSummary"]>[1],
+      context?: ProtocolContext,
+    ): Promise<CallToolResult> {
+      return execute(
+        "ega_money_obligation_summary",
+        authInfo,
+        context,
+        () => handlers.moneyObligationsSummary(authInfo, input),
+      );
+    },
   };
 }

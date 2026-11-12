@@ -255,11 +255,9 @@ function toOccurrenceInsertPayload(
     purpose: values.purpose,
     counts_in_daily: values.countsInDaily,
     category: values.category,
-    // Creation never accepts a caller-supplied state or payment: a bare status
-    // change cannot manufacture cash history.
-    state: "pending",
+    // Creation never accepts a caller-supplied state or payment: the DB
+    // defaults enforce pending with empty lifecycle history.
     state_effective_date: values.stateEffectiveDate,
-    state_reason: null,
     idempotency_key: values.idempotencyKey,
     create_fingerprint: input.createFingerprint,
   };

@@ -82,6 +82,11 @@ export type McpReadToolDependencies = {
     ownerUserId: string,
     query: { kind?: string; includeArchived?: boolean },
   ) => Promise<unknown>;
+  moneyObligationsSummary?: (
+    client: SupabaseClient<McpDatabase>,
+    ownerUserId: string,
+    query: { cutoff: string },
+  ) => Promise<unknown>;
 };
 
 const DEFAULT_DEPENDENCIES: McpReadToolDependencies = {
@@ -590,6 +595,27 @@ export function createMcpReadToolHandlers(
         return errorResult(error);
       }
     },
+
+    async moneyObligationsSummary(
+      authInfo: AuthInfo | undefined,
+      input: { cutoff: string },
+    ): Promise<CallToolResult> {
+      try {
+        const principal = requireMcpPermission(authInfo, "personal_ops.read");
+        const client = createClient(dependencies, authInfo!);
+        const data = await (dependencies.moneyObligationsSummary ?? defaultMoneyObligationsSummary)(
+          client,
+          principal.ownerUserId,
+          input ?? { cutoff: "" },
+        );
+        return resultFromPayload({
+          ok: true,
+          ...((data as Record<string, unknown>) ?? {}),
+        });
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
   };
 }
 
@@ -858,5 +884,29 @@ async function defaultMoneyObligationTemplatesList(
     templates: result.data.templates,
     count: result.data.templates.length,
     note: "Templates supply recurrence and classification defaults; they never post cash.",
+  };
+}
+
+async function defaultMoneyObligationsSummary(
+  client: SupabaseClient<McpDatabase>,
+  ownerUserId: string,
+  query: { cutoff: string },
+) {
+  const { getObligationSummary } = await import("@ega/application");
+  const { SupabaseObligationRepository } = await import("@ega/data-access");
+  const result = await getObligationSummary(
+    { userId: ownerUserId } as never,
+    new SupabaseObligationRepository(client as never),
+    { cutoff: query.cutoff },
+  );
+  if (!result.ok) {
+    if (result.code === "validation") {
+      throw new McpInvalidArgumentError(result.errorMessage);
+    }
+    throw new Error("Failed to load EGA obligation totals.");
+  }
+  return {
+    summary: result.data,
+    note: "Totals cover complete occurrences at the inclusive cutoff; waived and cancelled hold zero reserve.",
   };
 }

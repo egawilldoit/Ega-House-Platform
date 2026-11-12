@@ -54,6 +54,7 @@ const EXPENSE_EXACT = "14141414-1414-4414-8414-141414141414";
 const EXPENSE_SMALL = "15151515-1515-4515-8515-151515151515";
 const EXPENSE_OVER = "16161616-1616-4616-8616-161616161616";
 const EXPENSE_OTHER_OWNER = "18181818-1818-4818-8818-181818181818";
+const EXPENSE_INCOME = "20202020-2020-4020-8020-202020202020";
 
 const READ_PERMISSIONS = ["today.read", "timer.read", "personal_ops.read"];
 const WRITE_PERMISSIONS = [...READ_PERMISSIONS, "personal_ops.write"];
@@ -536,6 +537,14 @@ async function main() {
     await insertExpense(sql, { id: EXPENSE_SMALL, owner: OWNER_A, amount: 5000, key: "pay-small" });
     await insertExpense(sql, { id: EXPENSE_OVER, owner: OWNER_A, amount: 10001, key: "pay-over" });
     await insertExpense(sql, { id: EXPENSE_OTHER_OWNER, owner: OWNER_B, amount: 10000, key: "pay-other" });
+    await sql.unsafe(
+      `INSERT INTO public.personal_expenses
+         (id, owner_user_id, kind, direction, occurred_at, amount_minor,
+          currency, category, idempotency_key, create_fingerprint)
+       VALUES ($1::uuid, $2::uuid, 'income', 'in', '2026-11-15T09:00:00Z',
+               10000, 'MAD', null, 'income-funding', $3)`,
+      [EXPENSE_INCOME, OWNER_A, fingerprint("income-funding")],
+    );
     await insertOccurrence(sql, {
       id: OCCURRENCE_LINK,
       owner: OWNER_A,
@@ -546,6 +555,7 @@ async function main() {
       ["partial payment", EXPENSE_SMALL, "23514"],
       ["overpayment", EXPENSE_OVER, "23514"],
       ["cross-owner payment", EXPENSE_OTHER_OWNER, "42501"],
+      ["income row payment", EXPENSE_INCOME, "23514"],
     ]) {
       await expectDenied(
         label,
@@ -768,14 +778,40 @@ async function main() {
       clientId: "profile-personal_operations_writer",
     });
     const writerInsert = await writer.run((tx) =>
-      insertOccurrence(tx, {
-        id: OCCURRENCE_INSERTED_BY_WRITER,
-        owner: OWNER_A,
-        description: "Writer bill",
-        key: "writer-insert",
-      }),
+      tx.unsafe(
+        `INSERT INTO public.money_obligations
+           (id, owner_user_id, kind, description, amount_minor, currency,
+            period_start, period_end, due_date, purpose, counts_in_daily,
+            category, state_effective_date, idempotency_key, create_fingerprint)
+         VALUES ($1::uuid, $2::uuid, 'bill', 'Writer bill', 10000, 'MAD',
+                 '2026-11-01'::date, '2026-11-30'::date, '2026-11-15'::date,
+                 'fixed', false, 'bills', '2026-11-01'::date, 'writer-insert', $3)
+         RETURNING id`,
+        [
+          OCCURRENCE_INSERTED_BY_WRITER,
+          OWNER_A,
+          fingerprint("writer-insert"),
+        ],
+      ),
     );
     assert(writerInsert.length === 1, "writer grant inserts a pending occurrence");
+    await expectDenied(
+      "writer cannot mint a paid occurrence on insert",
+      () =>
+        writer.run((tx) =>
+          tx.unsafe(
+            `INSERT INTO public.money_obligations
+               (owner_user_id, kind, description, amount_minor, currency,
+                period_start, period_end, due_date, purpose, counts_in_daily,
+                state, state_effective_date, idempotency_key, create_fingerprint)
+             VALUES ($1::uuid, 'bill', 'Fabricated paid', 10000, 'MAD',
+                     '2026-12-01'::date, '2026-12-31'::date, '2026-12-15'::date,
+                     'fixed', false, 'paid', '2026-12-01'::date, 'writer-paid', $2)`,
+            [OWNER_A, fingerprint("writer-paid")],
+          ),
+        ),
+      "42501",
+    );
     const writerUpdate = await writer.run((tx) =>
       tx.unsafe(
         `UPDATE public.money_obligations

@@ -62,6 +62,7 @@ function createBaseHandlers() {
     moneyObligationsList: vi.fn().mockResolvedValue(successResult(0)),
     moneyObligationGet: vi.fn().mockResolvedValue(successResult()),
     moneyObligationTemplatesList: vi.fn().mockResolvedValue(successResult(0)),
+    moneyObligationsSummary: vi.fn().mockResolvedValue(successResult(0)),
   };
 }
 

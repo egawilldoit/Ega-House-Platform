@@ -374,6 +374,8 @@ export type MoneyCoffeeVisitLineDto = Readonly<{
   expenseId: string;
   amountMinor: number;
   category: string;
+  /** Current canonical booking day; must match the visit day to count. */
+  bookingDate: string;
   deletedAt: string | null;
 }>;
 
@@ -428,8 +430,6 @@ export type MoneyCoffeeWindowQuery = Readonly<{
   timezone: string;
   periodStartDate: string;
   periodEndDate: string;
-  spendLimitMinor?: number | null;
-  visitLimitMinor?: number | null;
 }>;
 
 export type MoneyCoffeeWindowResponse = Readonly<{

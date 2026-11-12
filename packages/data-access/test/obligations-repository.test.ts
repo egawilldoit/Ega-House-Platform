@@ -227,7 +227,7 @@ test("create sends owner from the actor, pending state, MAD and the fingerprint"
   assert.ok(insert);
   const payload = JSON.parse(insert.slice("insert:".length)) as Record<string, unknown>;
   assert.equal(payload.owner_user_id, "owner-obligations");
-  assert.equal(payload.state, "pending");
+  assert.equal(payload.state, undefined); // DB default keeps new rows pending
   assert.equal(payload.state_effective_date, "2026-11-01");
   assert.equal(payload.currency, "MAD");
   assert.equal(payload.create_fingerprint, FINGERPRINT);
