@@ -316,6 +316,12 @@ test("counted visit create/delete and classification use the shared Money paths"
   });
   assert.equal(calls[0]!.url, "https://api.ega.example/api/money/coffee-visits");
   assert.equal(calls[0]!.method, "POST");
+  assert.deepEqual(calls[0]!.body, {
+    visitKey: "visit-1",
+    localDate: "2026-11-11",
+    timezone: "Africa/Casablanca",
+    expenseIds: ["00000000-0000-4000-8000-000000000001"],
+  });
 
   await client.money.listCoffeeVisits({
     from: "2026-11-09",

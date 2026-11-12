@@ -1169,10 +1169,14 @@ export function createMcpWriteToolHandlers(
         requireMcpPermission(authInfo, "personal_ops.write");
         const client = dependencies.createUserClient(authInfo!.token);
         return await withExclusiveMutation(client, "ega_money_record_coffee_visit", input.operationId, {
-          visitKey: input.visitKey,
-          localDate: input.localDate,
-          timezone: input.timezone,
-          expenseIds: [...input.expenseIds].sort(),
+          // Match the domain visit parser's identity: trimmed text, lowercase
+          // canonical UUIDs, duplicate lines collapsed, sorted for stable hashing.
+          visitKey: input.visitKey.trim(),
+          localDate: input.localDate.trim(),
+          timezone: input.timezone.trim(),
+          expenseIds: [
+            ...new Set(input.expenseIds.map((id) => id.trim().toLowerCase())),
+          ].sort(),
           note: canonicalReceiptText(input.note ?? null),
         }, () => moneyHandlers.recordCoffeeVisit(authInfo, input, input.operationId));
       } catch (error) {

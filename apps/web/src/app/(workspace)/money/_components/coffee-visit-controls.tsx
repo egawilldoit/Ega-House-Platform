@@ -43,14 +43,19 @@ export function CoffeeVisitControls({
     setPending(true);
     setError(null);
     setMessage(null);
-    const result = await operation();
-    setPending(false);
-    if (!result.ok) {
-      setError(result.error);
-      return;
+    try {
+      const result = await operation();
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      setMessage("Saved.");
+      router.refresh();
+    } catch {
+      setError("The coffee operation could not be completed right now. Try again.");
+    } finally {
+      setPending(false);
     }
-    setMessage("Saved.");
-    router.refresh();
   }
 
   return (

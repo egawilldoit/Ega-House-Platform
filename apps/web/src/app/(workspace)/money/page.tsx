@@ -135,21 +135,27 @@ export default async function MoneyPage({ searchParams }: Props) {
         },
       ).catch(() => null);
       periodSpending = spendingResult?.ok ? spendingResult.data : null;
-      const coffeeResult = await getMoneyCoffeeWindowForPlan(
-        actor,
-        {
-          expenses: new SupabaseExpenseRepository(client),
-          coffee: new SupabaseMoneyCoffeeRepository(client),
-        },
-        {
-          localDate: moneyState.localToday,
-          timezone,
-          periodStartDate: period.startDate,
-          periodEndDate: period.endDate,
-          plan,
-        },
-      ).catch(() => null);
-      coffeeWindow = coffeeResult?.ok ? coffeeResult.data : null;
+      // Only a successful plan read can supply limits. A failed read is not
+      // "no limit" and must render as unavailable.
+      if (budgetResult?.ok) {
+        const windowDate =
+          period.lifecycle === "tracking" ? moneyState.localToday : period.activeDate;
+        const coffeeResult = await getMoneyCoffeeWindowForPlan(
+          actor,
+          {
+            expenses: new SupabaseExpenseRepository(client),
+            coffee: new SupabaseMoneyCoffeeRepository(client),
+          },
+          {
+            localDate: windowDate,
+            timezone,
+            periodStartDate: period.startDate,
+            periodEndDate: period.endDate,
+            plan,
+          },
+        ).catch(() => null);
+        coffeeWindow = coffeeResult?.ok ? coffeeResult.data : null;
+      }
       // The period allocation consumes counted visits across the whole period;
       // the weekly card above intentionally clips to the current week.
       const usageResult = await getMoneyCoffeeVisitUsage(
@@ -343,6 +349,7 @@ export default async function MoneyPage({ searchParams }: Props) {
               periodStartDate={moneyState.period.startDate}
               periodEndDate={moneyState.period.endDate}
               readOnly={moneyState.period.lifecycle !== "tracking"}
+              loadFailed={budgetResult !== null && !budgetResult.ok}
               action={saveBudgetPlanAction}
             />
           </div>
@@ -361,10 +368,13 @@ export default async function MoneyPage({ searchParams }: Props) {
                     // follows counted-visit amounts for the whole period;
                     // category coffee remains a separate projection. Unknown
                     // values stay unavailable.
+                    const categoryTotal = periodSpending?.totalsByCategory[category];
+                    const completePeriodSummary =
+                      periodSpending !== null && !periodSpending.truncated;
                     const spent =
                       category === "coffee"
                         ? coffeeUsage?.countedVisitSpendMinor ?? null
-                        : periodSpending?.totalsByCategory[category] ?? (periodSpending ? 0 : null);
+                        : categoryTotal ?? (completePeriodSummary ? 0 : null);
                     const truncated =
                       category === "coffee"
                         ? coffeeUsage?.truncated ?? false

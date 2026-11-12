@@ -24,6 +24,8 @@ type BudgetPlanFormProps = {
   periodEndDate: string;
   /** Ended/rolled-over periods keep their plan readable but not editable. */
   readOnly?: boolean;
+  /** A failed budget read is not the same as a period with no plan. */
+  loadFailed?: boolean;
   action: (input: SaveBudgetPlanActionInput) => Promise<
     { ok: true; plan: MoneyBudgetPlanDto } | { ok: false; code: string; error: string }
   >;
@@ -54,7 +56,9 @@ function parseOptionalAmount(
 ): { ok: true; value: number | null } | { ok: false; error: string } {
   const trimmed = raw.trim();
   if (trimmed === "") return { ok: true, value: null };
-  if (trimmed === "0" && allowZero) return { ok: true, value: 0 };
+  // formatMinorToMadInput renders a saved zero as "0.00"; accept every plain
+  // zero form before the positive-only expense parser.
+  if (allowZero && /^0+(?:\.0+)?$/.test(trimmed)) return { ok: true, value: 0 };
   const parsed = parseMadAmountToMinor(trimmed);
   if (!parsed.ok) return { ok: false, error: parsed.error };
   return { ok: true, value: parsed.value };
@@ -70,6 +74,7 @@ export function BudgetPlanForm({
   periodStartDate,
   periodEndDate,
   readOnly = false,
+  loadFailed = false,
   action,
 }: BudgetPlanFormProps) {
   const router = useRouter();
@@ -96,11 +101,18 @@ export function BudgetPlanForm({
   );
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  // The version that produced this draft. A different prop version means
+  // another tab changed the plan; never submit stale amounts with a new version.
+  const [sourceVersion, setSourceVersion] = useState(plan?.version ?? 0);
   const version = plan?.version ?? 0;
+  const externallyChanged = version !== sourceVersion;
+  const externalChangeMessage =
+    "This plan changed in another tab. Reload Money to review the new version before saving.";
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (readOnly) return;
+    if (readOnly || submitting || externallyChanged) return;
     setSaved(false);
     const parsedAllocations: Partial<Record<ExpenseCategory, number>> = {};
     for (const category of EXPENSE_CATEGORY_VALUES) {
@@ -135,22 +147,41 @@ export function BudgetPlanForm({
       visitLimit = Number(coffeeVisitLimit.trim());
     }
     setError(null);
-    const result = await action({
-      periodStartDate,
-      periodEndDate,
-      version,
-      allocations: parsedAllocations,
-      savingsTargetMinor: savings.value,
-      emergencyTargetMinor: emergency.value,
-      coffeeWeeklySpendLimitMinor: coffeeSpend.value,
-      coffeeWeeklyVisitLimit: visitLimit,
-    });
-    if (!result.ok) {
-      setError(result.error);
-      return;
+    setSubmitting(true);
+    try {
+      const result = await action({
+        periodStartDate,
+        periodEndDate,
+        version,
+        allocations: parsedAllocations,
+        savingsTargetMinor: savings.value,
+        emergencyTargetMinor: emergency.value,
+        coffeeWeeklySpendLimitMinor: coffeeSpend.value,
+        coffeeWeeklyVisitLimit: visitLimit,
+      });
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      // Our own save is the new source snapshot; a later refresh with this
+      // version must not look like an external edit.
+      setSourceVersion(result.plan.version);
+      setSaved(true);
+      router.refresh();
+    } catch {
+      setError("The period plan could not be saved right now. Your entries are still here.");
+    } finally {
+      setSubmitting(false);
     }
-    setSaved(true);
-    router.refresh();
+  }
+
+  if (loadFailed) {
+    return (
+      <p role="alert" className="feedback-block feedback-block-error">
+        The period plan is unavailable right now. Reload Money before editing;
+        an unset limit is not the same as an unreadable plan.
+      </p>
+    );
   }
 
   return (
@@ -248,12 +279,12 @@ export function BudgetPlanForm({
           />
         </div>
       </div>
-      {error ? (
+      {externallyChanged || error ? (
         <p role="alert" className="feedback-block feedback-block-error">
-          {error}
+          {externallyChanged ? externalChangeMessage : error}
         </p>
       ) : null}
-      {saved ? (
+      {saved && !externallyChanged ? (
         <p role="status" className="text-[length:var(--text-meta)]">
           Period plan saved.
         </p>
@@ -266,7 +297,10 @@ export function BudgetPlanForm({
           </span>
         ) : (
           <>
-            <PendingSubmitButton pendingLabel="Saving…">
+            <PendingSubmitButton
+              pendingLabel="Saving…"
+              disabled={submitting || externallyChanged}
+            >
               {plan ? "Save period plan" : "Create period plan"}
             </PendingSubmitButton>
             <span className="text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">

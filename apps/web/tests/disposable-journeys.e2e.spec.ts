@@ -79,6 +79,12 @@ test("Money survives reload, exports only the owner, then edits and deletes", as
   const visits = await a.from("money_coffee_visits").select("id,visit_key");
   expect(visits.error).toBeNull();
   expect(visits.data).toHaveLength(1);
+  const visitLines = await a
+    .from("money_coffee_visit_lines")
+    .select("expense_id")
+    .eq("expense_id", expense.id);
+  expect(visitLines.error).toBeNull();
+  expect(visitLines.data).toEqual([{ expense_id: expense.id }]);
   const b = await ownerClient(owners.ownerB);
   const seededB = await b.from("personal_expenses").insert({
     owner_user_id: owners.ownerB.id, amount_minor: 9900, currency: "MAD", category: "coffee",
