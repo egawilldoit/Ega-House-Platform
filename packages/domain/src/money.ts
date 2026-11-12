@@ -1791,6 +1791,11 @@ export function parseMoneyBudgetPlanSaveInput(
   if (!period.ok) return period;
   const version = parseBudgetExpectedVersion(input.version);
   if (!version.ok) return version;
+  // A full save replaces the allocation set. An omitted/null field must not
+  // silently clear every stored allocation; the wire contract requires it.
+  if (!isRecord(input.allocations)) {
+    return failure("allocations", "Allocations must be an object of categories.");
+  }
   const allocations = parseAllocations(input.allocations, { allowNullValues: false });
   if (!allocations.ok) return allocations;
   const savings = parseBudgetOptionalAmount(input.savingsTargetMinor, "savingsTargetMinor");
@@ -1862,8 +1867,11 @@ export function parseMoneyBudgetPatchInput(
   if (input.allocations !== undefined) {
     const allocations = parseAllocations(input.allocations, { allowNullValues: true });
     if (!allocations.ok) return allocations;
-    value.allocations = allocations.value;
-    hasChange = true;
+    // An empty object changes no entry; do not advance the plan version for it.
+    if (Object.keys(allocations.value).length > 0) {
+      value.allocations = allocations.value;
+      hasChange = true;
+    }
   }
   if (input.savingsTargetMinor !== undefined) {
     const parsed = parseBudgetOptionalAmount(
@@ -2145,6 +2153,9 @@ export function getCoffeeWeekWindow(input: Readonly<{
   if (!period.ok) throw new Error(period.message);
   if (!isIsoDate(input.localDate)) throw new Error("Invalid local date.");
   if (!isValidIANATimeZone(input.timezone)) throw new Error("Invalid timezone.");
+  if (input.localDate < period.startDate || input.localDate > period.endDate) {
+    throw new Error("The selected date is outside the period.");
+  }
 
   const week = getWeekWindow(input.timezone, input.localDate);
   const weekStart = week.weekStart > period.startDate ? week.weekStart : period.startDate;
@@ -2368,6 +2379,30 @@ export const MONEY_COFFEE_LIST_MAX_LIMIT = 200;
 
 const COFFEE_LIST_KEYS = new Set(["from", "to", "limit", "offset"]);
 
+/** Query strings are canonical integers at the HTTP boundary; MCP sends numbers. */
+function parseCoffeeListInteger(
+  raw: unknown,
+  field: string,
+  min: number,
+  max: number,
+): { ok: true; value: number } | MoneyValidationFailure {
+  let parsed: number;
+  if (typeof raw === "number" && Number.isInteger(raw)) {
+    parsed = raw;
+  } else if (typeof raw === "string" && /^(0|[1-9][0-9]*)$/.test(raw.trim())) {
+    parsed = Number(raw.trim());
+  } else {
+    return failure(field, `${field} must be a whole number.`);
+  }
+  if (!Number.isSafeInteger(parsed) || parsed < min || parsed > max) {
+    return failure(
+      field,
+      `${field} must be a whole number between ${min} and ${max}.`,
+    );
+  }
+  return { ok: true, value: parsed };
+}
+
 export function parseMoneyCoffeeVisitListInput(
   input: unknown,
 ): { ok: true; value: MoneyCoffeeVisitListValues } | MoneyValidationFailure {
@@ -2382,32 +2417,23 @@ export function parseMoneyCoffeeVisitListInput(
     );
   }
   const limitRaw = input.limit === undefined ? MONEY_COFFEE_LIST_DEFAULT_LIMIT : input.limit;
-  if (
-    typeof limitRaw !== "number" ||
-    !Number.isInteger(limitRaw) ||
-    limitRaw < 1 ||
-    limitRaw > MONEY_COFFEE_LIST_MAX_LIMIT
-  ) {
-    return failure(
-      "limit",
-      `limit must be a whole number between 1 and ${MONEY_COFFEE_LIST_MAX_LIMIT}.`,
-    );
-  }
+  const limit = parseCoffeeListInteger(limitRaw, "limit", 1, MONEY_COFFEE_LIST_MAX_LIMIT);
+  if (!limit.ok) return limit;
   const offsetRaw = input.offset === undefined ? 0 : input.offset;
-  if (
-    typeof offsetRaw !== "number" ||
-    !Number.isInteger(offsetRaw) ||
-    offsetRaw < 0
-  ) {
-    return failure("offset", "offset must be a non-negative whole number.");
-  }
+  const offset = parseCoffeeListInteger(
+    offsetRaw,
+    "offset",
+    0,
+    Number.MAX_SAFE_INTEGER,
+  );
+  if (!offset.ok) return offset;
   return {
     ok: true,
     value: {
       from: period.startDate,
       to: period.endDate,
-      limit: limitRaw,
-      offset: offsetRaw,
+      limit: limit.value,
+      offset: offset.value,
     },
   };
 }

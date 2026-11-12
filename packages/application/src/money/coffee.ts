@@ -477,8 +477,11 @@ export async function classifyMoneyExpense(
     expense: updated.data,
     previousCategory: current.value.category,
     countedCoffeeVisitIds: visits.value,
+    // Only a linked visit can change counted usage, and only when the
+    // before/after category changes coffee eligibility (both directions).
     countedCoffeeUsageChanged:
-      current.value.category === "coffee" && values.category !== "coffee",
+      visits.value.length > 0 &&
+      (current.value.category === "coffee") !== (values.category === "coffee"),
   });
 }
 

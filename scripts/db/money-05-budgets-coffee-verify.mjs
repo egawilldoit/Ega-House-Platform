@@ -277,6 +277,12 @@ async function main() {
       profile: "personal_operations_writer",
       permissions: WRITE_PERMISSIONS,
     });
+    await seedGrant(sql, {
+      owner: OWNER_B,
+      clientId: "reader-client-b",
+      profile: "personal_operations",
+      permissions: READ_PERMISSIONS,
+    });
 
     // CATEGORY ---------------------------------------------------------------
     await asUser(sql, OWNER_A).run(async (tx) => {
@@ -369,6 +375,13 @@ async function main() {
         start: "2026-11-09",
         end: "2026-11-30",
       }),
+    );
+    const ownerBPlan = await sql.unsafe(
+      `INSERT INTO public.money_budget_plans
+         (owner_user_id, period_id, allocations)
+       VALUES ($1::uuid, $2::uuid, '{"coffee": 500}'::jsonb)
+       RETURNING id`,
+      [OWNER_B, PERIOD_OWNER_B],
     );
 
     const budget = await asUser(sql, OWNER_A).run((tx) =>
@@ -539,11 +552,16 @@ async function main() {
     );
     assert(writerInsert.length === 1, "writer grant can create a plan");
     const crossOwner = await asUser(sql, OWNER_B, {
-      clientId: "reader-client",
+      clientId: "reader-client-b",
     }).run((tx) =>
-      tx.unsafe(`SELECT id FROM public.money_budget_plans`),
+      tx.unsafe(`SELECT id, period_id FROM public.money_budget_plans`),
     );
-    assert(crossOwner.length === 0, "cross-owner plans are invisible");
+    assert(
+      crossOwner.length === 1 &&
+        crossOwner[0].id === ownerBPlan[0].id &&
+        crossOwner[0].period_id === PERIOD_OWNER_B,
+      "owner B reads its own plan and cannot see owner A's plans",
+    );
     log("RLS", "reader denied writes; writer allowed; cross-owner hidden");
 
     // COFFEE ----------------------------------------------------------------

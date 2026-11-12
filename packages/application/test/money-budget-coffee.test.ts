@@ -530,6 +530,50 @@ test("category edit reports affected visit ids and reduces counted coffee usage"
   if (!window.ok) return;
   assert.equal(window.data.countedVisitCount, 0);
   assert.equal(window.data.countedVisitSpendMinor, 0);
+
+  // Classifying back to coffee restores counted usage and reports the change.
+  const restored = await classifyMoneyExpense(
+    ACTOR,
+    { expenses, coffee },
+    { expenseId: purchase.id, version: 2, category: "coffee" },
+  );
+  assert.equal(restored.ok, true);
+  if (!restored.ok) return;
+  assert.equal(restored.data.countedCoffeeUsageChanged, true);
+  coffee.visits[0]!.lines[0] = {
+    ...coffee.visits[0]!.lines[0]!,
+    category: "coffee",
+  };
+  const restoredWindow = await getMoneyCoffeeWindow(
+    ACTOR,
+    { expenses, coffee },
+    {
+      localDate: "2026-11-09",
+      timezone: "Africa/Casablanca",
+      periodStartDate: PERIOD.periodStartDate,
+      periodEndDate: PERIOD.periodEndDate,
+    },
+  );
+  assert.equal(restoredWindow.ok, true);
+  if (!restoredWindow.ok) return;
+  assert.equal(restoredWindow.data.countedVisitCount, 1);
+  assert.equal(restoredWindow.data.countedVisitSpendMinor, 2_500);
+});
+
+test("classifying an unlinked coffee expense does not claim counted usage changed", async () => {
+  const expenses = new FakeExpenseRepository();
+  const coffee = new FakeCoffeeRepository();
+  const purchase = expense("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "coffee", 2_500);
+  expenses.byId.set(purchase.id, purchase);
+  const result = await classifyMoneyExpense(
+    ACTOR,
+    { expenses, coffee },
+    { expenseId: purchase.id, version: 1, category: "groceries" },
+  );
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.data.countedCoffeeVisitIds.length, 0);
+  assert.equal(result.data.countedCoffeeUsageChanged, false);
 });
 
 test("coffee window clips to a partial week and asks only for in-period dates", async () => {

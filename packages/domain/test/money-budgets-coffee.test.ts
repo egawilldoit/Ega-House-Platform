@@ -9,6 +9,7 @@ import {
   parseMoneyBudgetPatchInput,
   parseMoneyBudgetPlanSaveInput,
   parseMoneyCoffeeVisitInput,
+  parseMoneyCoffeeVisitListInput,
   parseMoneyExpenseClassificationInput,
   resolveCategoryBudgetPrecedence,
   resolveHandoffSourceLabel,
@@ -160,6 +161,58 @@ test("coffee visit parser dedupes lines and sorts a stable replay payload", () =
     expenseIds: [],
   });
   assert.equal(invalid.ok, false);
+});
+
+test("budget save requires an allocations object and empty patches do not advance", () => {
+  const save = parseMoneyBudgetPlanSaveInput({
+    periodStartDate: "2026-11-09",
+    periodEndDate: "2026-11-30",
+    version: 1,
+  });
+  assert.equal(save.ok, false);
+  if (!save.ok) assert.match(save.message, /allocations/i);
+
+  const patch = parseMoneyBudgetPatchInput({
+    periodStartDate: "2026-11-09",
+    periodEndDate: "2026-11-30",
+    version: 1,
+    allocations: {},
+  });
+  assert.equal(patch.ok, false);
+});
+
+test("coffee week rejects a selected date outside the period", () => {
+  assert.throws(
+    () =>
+      getCoffeeWeekWindow({
+        localDate: "2026-11-09",
+        timezone: "Africa/Casablanca",
+        periodStartDate: "2026-11-11",
+        periodEndDate: "2026-11-30",
+      }),
+    /outside the period/,
+  );
+});
+
+test("coffee visit list accepts canonical integer query strings", () => {
+  const parsed = parseMoneyCoffeeVisitListInput({
+    from: "2026-11-09",
+    to: "2026-11-15",
+    limit: "50",
+    offset: "10",
+  });
+  assert.equal(parsed.ok, true);
+  if (!parsed.ok) return;
+  assert.equal(parsed.value.limit, 50);
+  assert.equal(parsed.value.offset, 10);
+  for (const bad of ["1.5", "-1", "", "01"]) {
+    const rejected = parseMoneyCoffeeVisitListInput({
+      from: "2026-11-09",
+      to: "2026-11-15",
+      limit: bad,
+    });
+    assert.equal(rejected.ok, false, `limit ${JSON.stringify(bad)} must be rejected`);
+  }
 });
 
 test("coffee week clips to a partial period and keeps counts/spend/remaining/overshoot distinct", () => {
