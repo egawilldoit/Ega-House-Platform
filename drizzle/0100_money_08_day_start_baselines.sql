@@ -55,6 +55,50 @@ CREATE TABLE IF NOT EXISTS public.money_day_start_baselines (
 CREATE INDEX IF NOT EXISTS money_day_start_baselines_date_idx
   ON public.money_day_start_baselines(owner_user_id, period_id, date DESC, version DESC);
 --> statement-breakpoint
+-- Materialize a day exactly once from the best retained policy revision. Later
+-- days are unavailable until a complete historical reconstruction is possible;
+-- callers must never turn a missing baseline into zero-valued inputs.
+CREATE OR REPLACE FUNCTION public.money_ensure_day_start_baseline(
+  p_period_id uuid, p_date date
+) RETURNS public.money_day_start_baselines
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = ''
+AS $baseline$
+DECLARE
+  v_period public.money_periods;
+  v_policy public.money_policy_versions;
+  v_row public.money_day_start_baselines;
+  v_version integer;
+BEGIN
+  SELECT * INTO v_period FROM public.money_periods
+    WHERE id = p_period_id AND owner_user_id = auth.uid()
+      AND start_date <= p_date AND end_date >= p_date FOR SHARE;
+  IF NOT FOUND THEN RAISE EXCEPTION 'Money period or date is unavailable'; END IF;
+  SELECT * INTO v_row FROM public.money_day_start_baselines
+    WHERE owner_user_id = auth.uid() AND period_id = p_period_id AND date = p_date
+    ORDER BY version DESC LIMIT 1;
+  IF FOUND THEN RETURN v_row; END IF;
+  SELECT * INTO v_policy FROM public.money_policy_versions
+    WHERE owner_user_id = auth.uid() AND period_id = p_period_id
+      AND effective_date <= p_date ORDER BY effective_date DESC, version DESC LIMIT 1;
+  SELECT COALESCE(max(version), 0) + 1 INTO v_version
+    FROM public.money_day_start_baselines
+    WHERE owner_user_id = auth.uid() AND period_id = p_period_id AND date = p_date;
+  INSERT INTO public.money_day_start_baselines
+    (owner_user_id, period_id, date, version, policy_version_id,
+     algorithm_version, availability, unavailable_reason, inputs)
+  VALUES (auth.uid(), p_period_id, p_date, v_version, v_policy.id,
+    COALESCE(v_policy.policy->>'algorithmVersion', 'safe-flexible-start-of-day-v1'),
+    'unavailable', 'historical_inputs_not_reconstructable',
+    jsonb_build_object('policyEffectiveDate', v_policy.effective_date,
+      'lifecycleCutoff', p_date, 'materializedAt', now()))
+  RETURNING * INTO v_row;
+  RETURN v_row;
+END
+$baseline$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION public.money_ensure_day_start_baseline(uuid, date) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.money_ensure_day_start_baseline(uuid, date) TO authenticated;
+--> statement-breakpoint
 -- Extend the existing atomic period-creation boundary. The first-day snapshot
 -- is deliberately unavailable: settings/opening alone cannot establish the
 -- initial obligation lifecycle or funded/used reserve history.
