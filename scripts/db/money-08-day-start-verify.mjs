@@ -226,6 +226,29 @@ async function main() {
     assert(openingObligations[0].availability==="available" && openingObligations[0].commitments_minor===6400,
       "first-day baseline includes initial and future-transition pending obligations but excludes same-day cancellation");
     console.log("[OBLIGATIONS] first-day cutoff includes period-start obligations without applying same-day transitions");
+    // The later date excludes transitions effective on that date, but applies
+    // transitions effective before it. Keep a pending row untouched as a
+    // control, and include an explicit legacy row with no history below.
+    await sql.unsafe(`INSERT INTO public.money_obligations
+      (owner_user_id,kind,description,amount_minor,period_start,period_end,due_date,
+       purpose,counts_in_daily,state,state_effective_date,state_history,idempotency_key,create_fingerprint,created_at)
+      VALUES
+       ($1,'bill','before cutoff transition',1100,'2026-12-01','2026-12-31','2026-12-10',
+        'fixed',true,'cancelled','2026-12-02',jsonb_build_array(jsonb_build_object('state','pending','effectiveDate','2026-12-01','version',1),jsonb_build_object('state','cancelled','effectiveDate','2026-12-02','version',2)), 'before-cutoff',repeat('2',64),'2026-11-30T12:00:00Z'),
+       ($1,'bill','on cutoff transition',1200,'2026-12-01','2026-12-31','2026-12-10',
+        'fixed',true,'cancelled','2026-12-03',jsonb_build_array(jsonb_build_object('state','pending','effectiveDate','2026-12-01','version',1),jsonb_build_object('state','cancelled','effectiveDate','2026-12-03','version',2)), 'on-cutoff',repeat('3',64),'2026-11-30T12:00:00Z')`, [A]);
+    const cutoffObligations = await user(A, tx => tx.unsafe("SELECT (public.money_ensure_day_start_baseline($1, '2026-12-03'::date)).*", [nextPeriodId]));
+    assert(cutoffObligations[0].commitments_minor===7600,
+      "untouched pending and on-cutoff transition remain reserved; before-cutoff cancellation releases its reserve");
+    const legacyHistory = await sql.unsafe(`INSERT INTO public.money_obligations
+      (owner_user_id,kind,description,amount_minor,period_start,period_end,due_date,
+       purpose,counts_in_daily,state,state_effective_date,state_history,idempotency_key,create_fingerprint,created_at)
+      VALUES ($1,'bill','legacy missing history',1300,'2026-12-01','2026-12-31','2026-12-10',
+       'fixed',true,'cancelled','2026-12-02','[]'::jsonb,'legacy-missing-history',repeat('4',64),'2026-11-30T12:00:00Z')
+      RETURNING id`, [A]);
+    const unavailableLegacy = await user(A, tx => tx.unsafe("SELECT (public.money_ensure_day_start_baseline($1, '2026-12-04'::date)).*", [nextPeriodId]));
+    assert(unavailableLegacy[0].availability==="unavailable" && unavailableLegacy[0].unavailable_reason==="obligation_history_incomplete",
+      "legacy changed obligation without retained history makes the baseline unavailable");
     await user(A, tx => tx.unsafe(`INSERT INTO public.personal_expenses
       (owner_user_id,period_id,occurred_at,booking_date,kind,direction,amount_minor,currency,
        category,need_vs_want,idempotency_key,create_fingerprint)
@@ -266,7 +289,7 @@ async function main() {
     const asA = await user(A, tx => tx.unsafe("SELECT count(*)::int n FROM public.money_day_start_baselines"));
     const asB = await user(B, tx => tx.unsafe("SELECT count(*)::int n FROM public.money_day_start_baselines"));
     const asC = await user(C, tx => tx.unsafe("SELECT count(*)::int n FROM public.money_day_start_baselines"));
-    assert(asA[0].n===6 && asB[0].n===3 && asC[0].n===0, "RLS owner isolation");
+    assert(asA[0].n===8 && asB[0].n===3 && asC[0].n===0, "RLS owner isolation");
     console.log("[RLS] owners A and B see their own baselines; owner C sees none");
     for (const [label, statement, params] of [
       ["cross-owner period", "INSERT INTO public.money_policy_versions(owner_user_id,period_id,version,effective_date,policy) VALUES($1,$2,1,'2026-11-12','{}')", [B,period]],
