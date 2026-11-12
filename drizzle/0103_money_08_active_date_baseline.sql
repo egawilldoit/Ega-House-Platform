@@ -3,6 +3,15 @@
 ALTER FUNCTION public.money_update_period(
   uuid, integer, date, jsonb, integer, text, text, jsonb, text, timestamp with time zone
 ) RENAME TO money_update_period_v1;
+-- The renamed implementation is an invoker-rights internal routine. Remove
+-- inherited RPC access, then allow only the wrapper owner to call it; its table
+-- access and auth.uid() checks still run with the authenticated caller's rights.
+REVOKE ALL ON FUNCTION public.money_update_period_v1(
+  uuid, integer, date, jsonb, integer, text, text, jsonb, text, timestamp with time zone
+) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.money_update_period_v1(
+  uuid, integer, date, jsonb, integer, text, text, jsonb, text, timestamp with time zone
+) TO CURRENT_USER;
 --> statement-breakpoint
 CREATE OR REPLACE FUNCTION public.money_update_period(
   p_period_id uuid,
