@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/** Disposable PostgreSQL proof for MONEY-08 migration 0100. */
+/** Disposable PostgreSQL proof for MONEY-08 migrations through 0101. */
 import { readFile } from "node:fs/promises";
 import { argv, exit } from "node:process";
 import postgres from "postgres";
@@ -107,6 +107,21 @@ async function main() {
       '{}'::jsonb,'{}'::jsonb,now()::timestamptz)).id AS id`));
     const unknownBaseline = await sql.unsafe("SELECT availability, unavailable_reason FROM public.money_day_start_baselines WHERE owner_user_id=$1 AND period_id=$2", [B,unknown[0].id]);
     assert(unknownBaseline[0].availability==="unavailable" && unknownBaseline[0].unavailable_reason!==null, "unknown setup inputs remain explicitly unavailable");
+    const unknownLater = await user(B, tx => tx.unsafe("SELECT (public.money_ensure_day_start_baseline($1, '2026-12-02'::date)).*", [unknown[0].id]));
+    assert(unknownLater[0].availability==="unavailable" && unknownLater[0].cash_minor===null
+      && unknownLater[0].unavailable_reason==="opening_balance_unknown",
+      "uninitialized period with complete policy and no opening stays unavailable on a later date");
+    console.log("[OPENING] missing opening remains unavailable after later-day materialization");
+    await user(B, tx => tx.unsafe(`INSERT INTO public.money_obligations
+      (owner_user_id,period_id,kind,description,amount_minor,period_start,period_end,due_date,
+       purpose,counts_in_daily,state,state_effective_date,state_history,idempotency_key,create_fingerprint)
+      VALUES ($1,$2,'bill','historical obligation',1000,'2026-12-01','2026-12-31','2026-12-10',
+       'fixed',true,'paid','2026-12-01','[]'::jsonb,'unknown-history',repeat('d',64))`, [B,unknown[0].id]));
+    const unknownObligation = await user(B, tx => tx.unsafe("SELECT (public.money_ensure_day_start_baseline($1, '2026-12-03'::date)).*", [unknown[0].id]));
+    assert(unknownObligation[0].availability==="unavailable" && unknownObligation[0].cash_minor===null
+      && unknownObligation[0].unavailable_reason==="obligation_history_incomplete",
+      "incomplete obligation history has its own unavailable reason when opening is also unknown");
+    console.log("[OBLIGATIONS] incomplete lifecycle history remains a distinct unavailable cause");
     console.log("[RPC] policy and known first-day setup baseline are atomic; unknown inputs stay unavailable");
     const asA = await user(A, tx => tx.unsafe("SELECT count(*)::int n FROM public.money_day_start_baselines"));
     const asB = await user(B, tx => tx.unsafe("SELECT count(*)::int n FROM public.money_day_start_baselines"));
@@ -121,7 +136,7 @@ async function main() {
       assert(denied, `${label} foreign key rejects mismatch`);
     }
     console.log("[FK] cross-owner period and invalid policy references rejected");
-    console.log("[DONE] MONEY-08 migration 0100 proof passed");
+    console.log("[DONE] MONEY-08 proof through migration 0101 passed");
   } finally { await sql.end(); }
 }
 main().catch(e=>{ console.error(e); exit(1); });
