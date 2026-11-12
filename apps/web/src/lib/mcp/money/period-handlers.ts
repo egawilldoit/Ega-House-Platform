@@ -175,7 +175,23 @@ export function createMcpMoneyPeriodHandlers(
           { now, timezone },
         );
         if (!result.ok) return mapApplicationError(result);
-        return resultFromPayload({ ok: true, ...result.data });
+        const state = result.data;
+        return resultFromPayload({
+          ok: true,
+          ...state,
+          analytics: {
+            dayStartBaseline: state.dayStartBaseline,
+            available: state.dayStartBaseline?.dailyReference?.available === true,
+            reason: state.dayStartBaselineUnavailable
+              ? "baseline_unavailable"
+              : state.dayStartBaseline?.dailyReference && !state.dayStartBaseline.dailyReference.available
+                ? state.dayStartBaseline.dailyReference.reason
+                : null,
+            method: state.dayStartBaseline?.dailyReference?.available
+              ? state.dayStartBaseline.dailyReference.algorithm
+              : "safe-flexible-start-of-day-v1",
+          },
+        });
       } catch (error) {
         if (error instanceof McpToolAuthorizationError) {
           return errorResult({ code: error.code, message: error.message });
