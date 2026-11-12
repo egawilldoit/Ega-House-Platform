@@ -213,6 +213,21 @@ describe("Money MCP tools", () => {
     expect(mocks.getCurrentMoneyReserves).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ period: PERIOD, opening: STATE.opening }));
   });
 
+  it("labels ended-period analytics as historical without a spending allowance", async () => {
+    mocks.timezoneGet.mockResolvedValue({ ok: true, value: "Africa/Casablanca" });
+    mocks.getMoneyState.mockResolvedValue({ ok: true, data: {
+      ...STATE,
+      period: { ...PERIOD, lifecycle: "ended" },
+      dayStartBaseline: { ...STATE.dayStartBaseline, dailyReference: {
+        ...STATE.dayStartBaseline.dailyReference, historical: true, allowanceAvailable: false,
+      } },
+    } });
+    mocks.getCurrentMoneyReserves.mockResolvedValue({ ok: true, data: { available: false, currency: "MAD", reason: "period_ended", cutoffDate: PERIOD.activeDate } });
+    const result = structured(await handlers().moneyState(authInfo(READER_PRINCIPAL), {}));
+    expect(result.analytics).toMatchObject({ available: true, historical: true, allowanceAvailable: false,
+      dayStartBaseline: { dailyReference: { historical: true, allowanceAvailable: false } } });
+  });
+
   it("labels missing analytics unavailable without inventing values", async () => {
     mocks.timezoneGet.mockResolvedValue({ ok: true, value: "Africa/Casablanca" });
     mocks.getMoneyState.mockResolvedValue({ ok: true, data: {
