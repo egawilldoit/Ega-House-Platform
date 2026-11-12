@@ -33,6 +33,7 @@ function makeRepository() {
   const periods = new Map<string, { period: MoneyPeriod; ownerUserId: string }>();
   const openings = new Map<string, { opening: MoneyOpening; ownerUserId: string }>();
   const ledger: LedgerRow[] = [];
+  let dailyTotal = { amountMinor: 0, complete: true };
   let sequence = 0;
 
   function nextId(prefix: string): string {
@@ -47,6 +48,13 @@ function makeRepository() {
   }
 
   const repository: MoneyPeriodRepository = {
+    async getDayStartBaseline() {
+      return { ok: true as const, value: { date: "2026-11-11", version: 1, availability: "available" as const, unavailableReason: null, cashMinor: 50000, commitmentsMinor: 0, savingsTargetMinor: 0, savingsFundedMinor: 0, emergencyTargetMinor: 0, emergencyUsedMinor: 0 } };
+    },
+    async getDailyIncludedExpenseTotal(actor, periodId, date) {
+      const amount = ledger.filter((row) => row.ownerUserId === actor.userId && row.periodId === periodId && row.bookingDate === date && !row.deletedAt).reduce((sum, row) => sum + row.amountMinor, 0);
+      return { ok: true as const, value: { ...dailyTotal, amountMinor: amount || dailyTotal.amountMinor } };
+    },
     async findTracking(actor) {
       return {
         ok: true as const,
@@ -286,7 +294,7 @@ function makeRepository() {
     });
   }
 
-  return { repository, addExpense, periods, ledger };
+  return { repository, addExpense, periods, ledger, setDailyTotal(value: { amountMinor: number; complete: boolean }) { dailyTotal = value; } };
 }
 
 const CREATE_BODY = {
@@ -313,6 +321,20 @@ test("an empty account has no invented period or opening, and cash is unknown", 
   assert.equal(state.data.cash.available, false);
   assert.equal(state.data.localToday, "2026-11-11");
   assert.equal(state.data.dateResolution.basis, "local_today_no_period");
+});
+
+test("selected-day reference subtracts counted outflows and becomes unavailable when the aggregate is incomplete", async () => {
+  const { repository, setDailyTotal } = makeRepository();
+  await createMoneyPeriod(ACTOR, repository, CREATE_BODY, { now: NOW });
+  setDailyTotal({ amountMinor: 1250, complete: true });
+  const state = await getMoneyState(ACTOR, repository, {}, { now: NOW, timezone: "Africa/Casablanca" });
+  assert.equal(state.ok, true);
+  if (!state.ok) return;
+  assert.equal(state.data.dayStartBaseline?.dailyReference?.dailyRemainingMinor, 1250);
+  setDailyTotal({ amountMinor: 1250, complete: false });
+  const incomplete = await getMoneyState(ACTOR, repository, {}, { now: NOW, timezone: "Africa/Casablanca" });
+  assert.equal(incomplete.ok && incomplete.data.dayStartBaseline?.dailyReference, null);
+  assert.equal(incomplete.ok && incomplete.data.dayStartBaselineUnavailable, true);
 });
 
 test("a partial period creates one known opening and reports cash through the active date", async () => {
