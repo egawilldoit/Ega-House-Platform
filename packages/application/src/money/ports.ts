@@ -14,6 +14,7 @@ import type {
   MoneyPeriodInitialization,
   MoneyPeriodProvenance,
   MoneyPeriodSettings,
+  MoneyPurpose,
   MoneyUpdateChanges,
 } from "@ega/domain/money";
 
@@ -71,7 +72,30 @@ export type MoneyLedgerOverview = Readonly<{
   inPeriodUnassignedCount: number;
 }>;
 
+export type MoneyDayStartBaseline = Readonly<{
+  date: string;
+  version: number;
+  availability: "available" | "unavailable";
+  unavailableReason: string | null;
+  cashMinor: number | null;
+  commitmentsMinor: number | null;
+  savingsTargetMinor: number | null;
+  savingsFundedMinor: number | null;
+  emergencyTargetMinor: number | null;
+  emergencyUsedMinor: number | null;
+}>;
+
+export type MoneyDailyExpenseTotal = Readonly<{ amountMinor: number; complete: boolean }>;
+
 export type MoneyPeriodRepository = {
+  ensureDayStartBaseline?(actor: AuthenticatedActor, periodId: string, date: string): Promise<RepositoryResult<MoneyDayStartBaseline>>;
+  rebaseDayStartBaseline?(actor: AuthenticatedActor, periodId: string): Promise<RepositoryResult<MoneyDayStartBaseline>>;
+  getDayStartBaseline?(
+    actor: AuthenticatedActor,
+    periodId: string,
+    date: string,
+  ): Promise<RepositoryResult<MoneyDayStartBaseline | null>>;
+  getDailyIncludedExpenseTotal?(actor: AuthenticatedActor, periodId: string, date: string): Promise<RepositoryResult<MoneyDailyExpenseTotal>>;
   findTracking(
     actor: AuthenticatedActor,
   ): Promise<RepositoryResult<MoneyPeriod | null>>;
@@ -152,6 +176,7 @@ export type MoneyAggregateRow = Readonly<{
   direction: MoneyDirection;
   amountMinor: number;
   countsInDaily: boolean;
+  purpose: MoneyPurpose | null;
   bookingDate: string;
 }>;
 

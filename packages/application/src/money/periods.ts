@@ -1,5 +1,6 @@
 import {
   MONEY_DEFAULT_TIMEZONE,
+  calculateMoneyDailyReference,
   canonicalMoneyOpeningPayload,
   classifyDateInPeriod,
   isMoneyPeriodId,
@@ -32,7 +33,7 @@ import {
   type RepositoryResult,
 } from "../shared/result";
 import { getMoneyCashPosition, type MoneyCashPosition } from "./summary";
-import type { MoneyPeriodRepository } from "./ports";
+import type { MoneyDayStartBaseline, MoneyPeriodRepository } from "./ports";
 
 export type MoneyStateQuery = Readonly<{
   periodId?: unknown;
@@ -45,6 +46,23 @@ export type MoneyStateOptions = Readonly<{
   /** Owner-resolved IANA zone, or null when the owner has none stored. */
   timezone?: string | null;
 }>;
+
+/** Explicitly replace today's active day-start snapshot with current state. */
+export async function rebaseMoneyDayStartBaseline(
+  actor: AuthenticatedActor,
+  repository: Pick<MoneyPeriodRepository, "rebaseDayStartBaseline">,
+  rawPeriodId: unknown,
+): Promise<ApplicationResult<MoneyDayStartBaseline>> {
+  if (typeof rawPeriodId !== "string" || !isMoneyPeriodId(rawPeriodId.trim())) {
+    return applicationFailure("Use a valid Money period ID.", "validation");
+  }
+  if (!repository.rebaseDayStartBaseline) {
+    return applicationFailure("Day-start baseline rebasing is unavailable right now.", "unknown");
+  }
+  const result = await repository.rebaseDayStartBaseline(actor, rawPeriodId.trim());
+  if (!result.ok) return fromRepository(result, "Unable to rebase the day-start baseline right now.");
+  return applicationSuccess(result.value);
+}
 
 export type MoneyStateDateResolution = Readonly<{
   localToday: string;
@@ -111,6 +129,8 @@ export type MoneyState = Readonly<{
   period: MoneyPeriod | null;
   opening: MoneyOpeningState;
   cash: MoneyCashPosition;
+  dayStartBaseline: (MoneyDayStartBaseline & { dailyReference: ReturnType<typeof calculateMoneyDailyReference> | null }) | null;
+  dayStartBaselineUnavailable: boolean;
   dateResolution: MoneyStateDateResolution;
   history: readonly MoneyStatePeriodSummary[];
   historyUnavailable: boolean;
@@ -422,6 +442,46 @@ export async function getMoneyState(
     ? classifyDateInPeriod(resolvedDate, selected)
     : ("no_period" as const);
 
+  let dayStartBaseline: MoneyState["dayStartBaseline"] = null;
+  let dayStartBaselineUnavailable = false;
+  // Reads are observational. A missing baseline remains unavailable until an
+  // explicitly authorized write creates one.
+  if (selected && repository.getDayStartBaseline) {
+    const baselineResult = await repository.getDayStartBaseline(actor, selected.id, resolvedDate);
+    if (!baselineResult.ok) return fromRepository(baselineResult, "Unable to load the day-start baseline right now.");
+    const baseline = baselineResult.value;
+    if (!baseline) {
+      dayStartBaselineUnavailable = true;
+    } else if (baseline.availability !== "available") {
+      dayStartBaselineUnavailable = true;
+      dayStartBaseline = { ...baseline, dailyReference: null };
+    } else {
+      const dailyTotalResult = repository.getDailyIncludedExpenseTotal
+        ? await repository.getDailyIncludedExpenseTotal(actor, selected.id, resolvedDate)
+        : null;
+      if (dailyTotalResult && !dailyTotalResult.ok) return fromRepository(dailyTotalResult, "Unable to load daily expense outflows right now.");
+      const dailyTotal = dailyTotalResult?.ok ? dailyTotalResult.value : null;
+      if (!dailyTotal || !dailyTotal.complete) dayStartBaselineUnavailable = true;
+      dayStartBaseline = {
+        ...baseline,
+        dailyReference: dailyTotal?.complete ? calculateMoneyDailyReference({
+          startCashMinor: baseline.cashMinor,
+          startCommitmentsMinor: baseline.commitmentsMinor,
+          startSavingsTargetMinor: baseline.savingsTargetMinor,
+          savingsFundedBeforeMinor: baseline.savingsFundedMinor,
+          startEmergencyTargetMinor: baseline.emergencyTargetMinor,
+          emergencyUsedBeforeMinor: baseline.emergencyUsedMinor,
+          periodEnd: selected.endDate,
+          selectedDate: resolvedDate,
+          dailyIncludedExpenseMinor: dailyTotal.amountMinor,
+          periodLifecycle: selected.lifecycle,
+        }) : null,
+      };
+    }
+  } else if (selected) {
+    dayStartBaselineUnavailable = true;
+  }
+
   const history = historyResult.value.map(summarizePeriod);
   if (selected && !history.some((entry) => entry.id === selected!.id)) {
     history.unshift(summarizePeriod(selected));
@@ -449,6 +509,8 @@ export async function getMoneyState(
             openingMovementId: opening.id,
           },
     cash,
+    dayStartBaseline,
+    dayStartBaselineUnavailable,
     dateResolution: {
       localToday,
       timezone,

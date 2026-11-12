@@ -6,6 +6,7 @@ import {
   getMoneyCoffeeWindowForPlan,
   getMoneyMovementTotals,
   getMoneyPeriodSpending,
+  getCurrentMoneyReserves,
   getMoneyState,
   listExpenses,
   listMovements,
@@ -21,6 +22,7 @@ import {
   SupabaseMoneyCoffeeRepository,
   SupabaseMoneyPeriodRepository,
   SupabaseMoneyRepository,
+  SupabaseObligationRepository,
 } from "@ega/data-access";
 import {
   MONEY_ADVISORY_CAP_LABEL,
@@ -47,6 +49,7 @@ import {
   classifyExpenseCategoryAction,
   createMoneyPeriodAction,
   recordCoffeeVisitAction,
+  rebaseMoneyDayStartBaselineAction,
   saveBudgetPlanAction,
   saveCategoryCapsAction,
   updateMoneySettingsAction,
@@ -93,6 +96,7 @@ export default async function MoneyPage({ searchParams }: Props) {
   let periodSpending: MoneyPeriodSpending | null = null;
   let movements: MoneyLedgerRow[] | null = null;
   let movementTotals: MoneyMovementTotals | null = null;
+  let reserveResult: Awaited<ReturnType<typeof getCurrentMoneyReserves>> | null = null;
   let movementsHasMore = false;
   let timezone: string = MONEY_DEFAULT_TIMEZONE;
   let timeContextFailed = false;
@@ -200,6 +204,16 @@ export default async function MoneyPage({ searchParams }: Props) {
       },
     ).catch(() => null);
     movementTotals = totalsResult?.ok ? totalsResult.data.totals : null;
+    if (moneyState?.period) {
+      reserveResult = await getCurrentMoneyReserves(actor, {
+        period: moneyState.period,
+        opening: moneyState.opening.status === "known" ? moneyState.opening : null,
+        periods: new SupabaseMoneyPeriodRepository(client),
+        movements: moneyRepository,
+        budgets: new SupabaseMoneyBudgetRepository(client),
+        obligations: new SupabaseObligationRepository(client),
+      }).catch(() => null);
+    }
   } catch {
     result = null;
     moneyState = null;
@@ -209,6 +223,7 @@ export default async function MoneyPage({ searchParams }: Props) {
     periodSpending = null;
     movements = null;
     movementTotals = null;
+    reserveResult = null;
     timeContextFailed = true;
   }
   // Monthly caps are advisory progress targets in owner preferences.
@@ -245,7 +260,40 @@ export default async function MoneyPage({ searchParams }: Props) {
       <a className="underline" href="/money/subscriptions">Subscriptions</a>
     </nav>
 
+    <section aria-labelledby="reserves-heading" className="mt-6 rounded-lg border border-ega-border p-5">
+      <h2 id="reserves-heading" className="text-[length:var(--text-section)] font-semibold">Current reserves and safe funds</h2>
+      {reserveResult?.ok && reserveResult.data.available ? (
+        <dl className="mt-3 grid gap-2 sm:grid-cols-2">
+          {([
+            ["Recorded cash", reserveResult.data.reserves.recordedCashMinor],
+            ["Unpaid commitments", reserveResult.data.reserves.unpaidCommitmentsMinor],
+            ["Savings target", reserveResult.data.reserves.savingsTargetMinor],
+            ["Savings funded", reserveResult.data.reserves.fundedSavingsMinor],
+            ["Unfunded savings", reserveResult.data.reserves.unfundedSavingsMinor],
+            ["Emergency target", reserveResult.data.reserves.emergencyTargetMinor],
+            ["Emergency used", reserveResult.data.reserves.emergencyUsedMinor],
+            ["Remaining emergency reserve", reserveResult.data.reserves.remainingEmergencyMinor],
+            ["Safe flexible funds", reserveResult.data.reserves.safeFlexibleMinor],
+          ] as const).map(([label, value]) => <div key={label}><dt>{label}</dt><dd className="font-semibold">{formatMad(value)}</dd></div>)}
+        </dl>
+      ) : <p role="status" className="mt-3 text-[color:var(--ega-text-secondary)]">Unavailable — reserve inputs are incomplete or could not be loaded.</p>}
+    </section>
+
     {moneyState ? (
+      <>
+      <section aria-labelledby="daily-reference-heading" className="mt-6 rounded-lg border border-ega-border p-5">
+        <h2 id="daily-reference-heading" className="text-[length:var(--text-section)] font-semibold">Day-start daily reference</h2>
+        <p className="mt-1 text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">Method: {moneyState.dayStartBaseline?.dailyReference?.available ? moneyState.dayStartBaseline.dailyReference.algorithm : "shared day-start daily reference"}</p>
+        {moneyState.dayStartBaseline?.dailyReference?.available ? (
+          <dl className="mt-3 grid gap-2 sm:grid-cols-2">
+            <div><dt>{moneyState.dayStartBaseline.dailyReference.historical ? "Historical daily reference" : "Daily reference"}</dt><dd className="font-semibold">{formatMad(moneyState.dayStartBaseline.dailyReference.referenceMinor)}</dd></div>
+            <div><dt>{moneyState.dayStartBaseline.dailyReference.historical ? "Historical daily remaining" : "Daily remaining"}</dt><dd className="font-semibold">{formatMad(moneyState.dayStartBaseline.dailyReference.dailyRemainingMinor)}</dd></div>
+            {moneyState.dayStartBaseline.dailyReference.historical ? <p className="text-[color:var(--ega-text-secondary)]">Ended period — historical result only; no new-day spend allowance.</p> : null}
+          </dl>
+        ) : (
+          <p role="status" className="mt-3 text-[color:var(--ega-text-secondary)]">Unavailable — baseline or complete daily expense data is missing.</p>
+        )}
+      </section>
       <MoneyPeriodPanel
         key={`${moneyState.period?.id ?? "none"}:${moneyState.period?.version ?? 0}`}
         localToday={moneyState.localToday}
@@ -260,7 +308,10 @@ export default async function MoneyPage({ searchParams }: Props) {
         selectedPeriodId={selectedPeriodId}
         createAction={createMoneyPeriodAction}
         updateAction={updateMoneySettingsAction}
+        rebaseAction={rebaseMoneyDayStartBaselineAction}
+        initialSetupIncomplete={moneyState.dayStartBaseline?.unavailableReason === "initial_setup_incomplete"}
       />
+      </>
     ) : (
       <section role="alert" className="mt-6 rounded-lg border border-ega-border p-5">
         <h2 className="text-[length:var(--text-section)] font-semibold">

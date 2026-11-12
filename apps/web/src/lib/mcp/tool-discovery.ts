@@ -55,6 +55,7 @@ const ALL_TOOLS: readonly McpToolDefinition[] = [
   { name: "ega_money_delete_expense", requiredPermission: "personal_ops.write", writesEnabledRequired: true },
   // Money settings (MONEY-03).
   { name: "ega_money_update_settings", requiredPermission: "personal_ops.write", writesEnabledRequired: true },
+  { name: "ega_money_rebase_day_start_baseline", requiredPermission: "personal_ops.write", writesEnabledRequired: true },
   // Money movement writes (MONEY-04).
   { name: "ega_money_create_movement", requiredPermission: "personal_ops.write", writesEnabledRequired: true },
   { name: "ega_money_update_movement", requiredPermission: "personal_ops.write", writesEnabledRequired: true },

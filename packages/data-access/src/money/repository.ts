@@ -224,6 +224,109 @@ function toOpening(row: OpeningRow): MoneyOpening {
 export class SupabaseMoneyPeriodRepository implements MoneyPeriodRepository {
   constructor(private readonly supabase: SupabaseClient) {}
 
+  async ensureDayStartBaseline(actor: AuthenticatedActor, periodId: string, date: string) {
+    // RPC authorization is bound to auth.uid() by the database function; the
+    // request-scoped client carries the verified actor session.
+    void actor;
+    const { data, error } = await this.supabase.rpc("money_ensure_day_start_baseline", {
+      p_period_id: periodId,
+      p_date: date,
+    });
+    if (error) return { ok: false as const, error: moneyFailure(error) };
+    const row = Array.isArray(data) ? data[0] : data;
+    if (!row) return { ok: false as const, error: { code: "unknown" as const } };
+    return { ok: true as const, value: {
+      date: row.date,
+      version: row.version,
+      availability: row.availability,
+      unavailableReason: row.unavailable_reason,
+      cashMinor: row.cash_minor,
+      commitmentsMinor: row.commitments_minor,
+      savingsTargetMinor: row.savings_target_minor,
+      savingsFundedMinor: row.savings_funded_minor,
+      emergencyTargetMinor: row.emergency_target_minor,
+      emergencyUsedMinor: row.emergency_used_minor,
+    } };
+  }
+
+  async rebaseDayStartBaseline(actor: AuthenticatedActor, periodId: string) {
+    // The authenticated request client supplies auth.uid(); actor is retained
+    // in the port contract and the RPC enforces ownership itself.
+    void actor;
+    const { data, error } = await this.supabase.rpc("money_rebase_day_start_baseline", {
+      p_period_id: periodId,
+    });
+    if (error) return { ok: false as const, error: moneyFailure(error) };
+    const row = Array.isArray(data) ? data[0] : data;
+    if (!row) return { ok: false as const, error: { code: "unknown" as const } };
+    return { ok: true as const, value: {
+      date: row.date,
+      version: row.version,
+      availability: row.availability,
+      unavailableReason: row.unavailable_reason,
+      cashMinor: row.cash_minor,
+      commitmentsMinor: row.commitments_minor,
+      savingsTargetMinor: row.savings_target_minor,
+      savingsFundedMinor: row.savings_funded_minor,
+      emergencyTargetMinor: row.emergency_target_minor,
+      emergencyUsedMinor: row.emergency_used_minor,
+    } };
+  }
+
+  async getDayStartBaseline(
+    actor: AuthenticatedActor,
+    periodId: string,
+    date: string,
+  ) {
+    const { data, error } = await this.supabase
+      .from("money_day_start_baselines")
+      .select("date, version, availability, unavailable_reason, cash_minor, commitments_minor, savings_target_minor, savings_funded_minor, emergency_target_minor, emergency_used_minor")
+      .eq("owner_user_id", actor.userId)
+      .eq("period_id", periodId)
+      .eq("date", date)
+      .order("version", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error) return { ok: false as const, error: moneyFailure(error) };
+    if (!data) return { ok: true as const, value: null };
+    return { ok: true as const, value: {
+      date: data.date,
+      version: data.version,
+      availability: data.availability,
+      unavailableReason: data.unavailable_reason,
+      cashMinor: data.cash_minor,
+      commitmentsMinor: data.commitments_minor,
+      savingsTargetMinor: data.savings_target_minor,
+      savingsFundedMinor: data.savings_funded_minor,
+      emergencyTargetMinor: data.emergency_target_minor,
+      emergencyUsedMinor: data.emergency_used_minor,
+    } };
+  }
+
+  async getDailyIncludedExpenseTotal(actor: AuthenticatedActor, periodId: string, date: string) {
+    const { data, error } = await this.supabase
+      .from(LEDGER_TABLE)
+      .select("amount_minor")
+      .eq("owner_user_id", actor.userId)
+      .eq("period_id", periodId)
+      .eq("booking_date", date)
+      .eq("kind", "expense")
+      .eq("direction", "out")
+      .eq("counts_in_daily", true)
+      .is("deleted_at", null)
+      .limit(10001);
+    if (error) return { ok: false as const, error: moneyFailure(error) };
+    const rows = data ?? [];
+    let total = 0;
+    let safe = true;
+    for (const row of rows) {
+      const amount = Number(row.amount_minor);
+      if (!Number.isSafeInteger(amount) || !Number.isSafeInteger(total + amount)) safe = false;
+      total += amount;
+    }
+    return { ok: true as const, value: { amountMinor: total, complete: rows.length <= 10000 && safe } };
+  }
+
   async findTracking(
     actor: AuthenticatedActor,
   ): Promise<RepositoryResult<MoneyPeriod | null>> {
@@ -729,6 +832,7 @@ export class SupabaseMoneyRepository implements MoneyMovementRepository {
       direction: string;
       amount_minor: number;
       counts_in_daily: boolean;
+      purpose: MoneyPurpose | null;
       booking_date: string;
     }> = [];
     let truncated = false;
@@ -736,7 +840,7 @@ export class SupabaseMoneyRepository implements MoneyMovementRepository {
     for (let offset = 0; offset < MAX_ROWS; offset += PAGE_SIZE) {
       let request = this.supabase
         .from(LEDGER_TABLE)
-        .select("id, kind, direction, amount_minor, counts_in_daily, booking_date")
+        .select("id, kind, direction, amount_minor, counts_in_daily, purpose, booking_date")
         .eq("owner_user_id", actor.userId)
         .is("deleted_at", null)
         .lte("booking_date", query.cutoff);
@@ -769,6 +873,7 @@ export class SupabaseMoneyRepository implements MoneyMovementRepository {
             direction: row.direction === "in" ? "in" : "out",
             amountMinor: Number(row.amount_minor),
             countsInDaily: Boolean(row.counts_in_daily),
+            purpose: row.purpose,
             bookingDate: String(row.booking_date),
           };
         }),

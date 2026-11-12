@@ -11,6 +11,7 @@ import {
   deleteExpense,
   getExpense,
   recordMoneyCoffeeVisit,
+  rebaseMoneyDayStartBaseline,
   saveMoneyBudgetPlan,
   updateExpense,
   updateMoneySettings,
@@ -399,6 +400,28 @@ export async function updateMoneySettingsAction(
     return { ok: true, error: null };
   } catch {
     return { ok: false, error: "Unable to save Money settings right now." };
+  }
+}
+
+/** Deliberately replace the active period's day-start baseline. */
+export async function rebaseMoneyDayStartBaselineAction(
+  formData: FormData,
+): Promise<MoneyFormActionResult> {
+  try {
+    const context = await moneyActionContext();
+    if (!context) return { ok: false, error: "Sign in to rebase the day-start baseline." };
+    const periodId = formText(formData, "periodId");
+    if (!periodId) return { ok: false, error: "A Money period is required." };
+    const result = await rebaseMoneyDayStartBaseline(
+      context.actor,
+      context.repository,
+      periodId,
+    );
+    if (!result.ok) return { ok: false, error: result.errorMessage };
+    revalidatePath("/money");
+    return { ok: true, error: null };
+  } catch {
+    return { ok: false, error: "Unable to rebase the day-start baseline right now." };
   }
 }
 

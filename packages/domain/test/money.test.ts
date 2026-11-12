@@ -9,6 +9,8 @@ import {
   MONEY_PERIOD_LIFECYCLES,
   MONEY_DEFAULT_TIMEZONE,
   canonicalMoneyOpeningPayload,
+  calculateMoneyDailyReference,
+  calculateMoneyReserves,
   canonicalMovementCreatePayload,
   classifyDateInPeriod,
   defaultCountsInDaily,
@@ -26,6 +28,31 @@ import {
   validateOpeningAgainstPeriod,
   type MoneyPeriod,
 } from "../src/money";
+
+test("MONEY-08 protects disjoint reserves and releases matched funding once", () => {
+  const before = calculateMoneyReserves({ recordedCashMinor: 68_900, unpaidCommitmentsMinor: 10_000, savingsTargetMinor: 20_000, savingsFundedMinor: 0, emergencyTargetMinor: 5_000, emergencyUsedMinor: 0 });
+  assert.equal(before.safeFlexibleMinor, 33_900);
+  assert.equal(calculateMoneyReserves({ recordedCashMinor: 58_900, unpaidCommitmentsMinor: 0, savingsTargetMinor: 20_000, savingsFundedMinor: 0, emergencyTargetMinor: 5_000, emergencyUsedMinor: 0 }).safeFlexibleMinor, 33_900);
+  assert.equal(calculateMoneyReserves({ recordedCashMinor: 48_900, unpaidCommitmentsMinor: 10_000, savingsTargetMinor: 20_000, savingsFundedMinor: 20_000, emergencyTargetMinor: 5_000, emergencyUsedMinor: 0 }).safeFlexibleMinor, 33_900);
+});
+
+test("MONEY-08 daily reference floors centimes and subtracts counted spending once", () => {
+  const result = calculateMoneyDailyReference({ startCashMinor: 68_900, startCommitmentsMinor: 10_000, startSavingsTargetMinor: 20_000, savingsFundedBeforeMinor: 0, startEmergencyTargetMinor: 5_000, emergencyUsedBeforeMinor: 0, periodEnd: "2026-11-10", selectedDate: "2026-11-01", dailyIncludedExpenseMinor: 1_100, periodLifecycle: "tracking" });
+  assert.equal(result.available, true);
+  if (result.available) { assert.equal(result.referenceMinor, 3_390); assert.equal(result.dailyRemainingMinor, 2_290); }
+  assert.equal(calculateMoneyDailyReference({ startCashMinor: null, startCommitmentsMinor: 0, startSavingsTargetMinor: 0, savingsFundedBeforeMinor: 0, startEmergencyTargetMinor: 0, emergencyUsedBeforeMinor: 0, periodEnd: "2026-11-10", selectedDate: "2026-11-01", dailyIncludedExpenseMinor: 0, periodLifecycle: "tracking" }).available, false);
+});
+
+test("MONEY-08 ended periods retain historical daily results without a current allowance", () => {
+  const result = calculateMoneyDailyReference({ startCashMinor: 1_000, startCommitmentsMinor: 0, startSavingsTargetMinor: 0, savingsFundedBeforeMinor: 0, startEmergencyTargetMinor: 0, emergencyUsedBeforeMinor: 0, periodEnd: "2026-11-10", selectedDate: "2026-11-10", dailyIncludedExpenseMinor: 250, periodLifecycle: "ended" });
+  assert.equal(result.available, true);
+  if (result.available) {
+    assert.equal(result.historical, true);
+    assert.equal(result.allowanceAvailable, false);
+    assert.equal(result.referenceMinor, 1_000);
+    assert.equal(result.dailyRemainingMinor, 750);
+  }
+});
 
 const VALID_CREATE = {
   startDate: "2026-11-09",

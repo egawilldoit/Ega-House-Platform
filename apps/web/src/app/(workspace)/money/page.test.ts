@@ -35,6 +35,17 @@ test("money page composes the shared period state and shows local today separate
   assert.match(source, /Tracking period unavailable/);
 });
 
+test("money page reads shared reserves with request-scoped repositories and renders every input", () => {
+  assert.match(source, /getCurrentMoneyReserves\(actor/);
+  assert.match(source, /new SupabaseMoneyRepository\(client\)/);
+  assert.match(source, /new SupabaseMoneyBudgetRepository\(client\)/);
+  assert.match(source, /new SupabaseObligationRepository\(client\)/);
+  for (const field of ["recordedCashMinor", "unpaidCommitmentsMinor", "savingsTargetMinor", "fundedSavingsMinor", "unfundedSavingsMinor", "emergencyTargetMinor", "emergencyUsedMinor", "remainingEmergencyMinor", "safeFlexibleMinor"]) {
+    assert.match(source, new RegExp(`reserves\\.${field}`));
+  }
+  assert.match(source, /reserve inputs are incomplete or could not be loaded/);
+});
+
 test("money ledger displays need-vs-want and keeps notes visible beside merchants", () => {
   assert.match(source, /Need or want/);
   assert.match(source, /expense\.needVsWant/);
@@ -54,6 +65,15 @@ test("money page renders recorded cash and the movement ledger through the share
   assert.match(source, /MoneyMovementPanel/);
   assert.match(source, /MoneyMovementActions/);
   assert.doesNotMatch(source, /owner_user_id\s*:/);
+});
+
+test("daily reference renders shared values with method and unavailable state", () => {
+  assert.match(source, /dayStartBaseline\?\.dailyReference\?\.available/);
+  assert.match(source, /Daily reference/);
+  assert.match(source, /Daily remaining/);
+  assert.match(source, /dailyReference\.algorithm/);
+  assert.match(source, /Unavailable — baseline or complete daily expense data is missing/);
+  assert.doesNotMatch(source, /dailyRemainingMinor\s*\?\?/);
 });
 
 test("money ledger has bounded URL pagination and accessible loading failure recovery", () => {
