@@ -437,9 +437,15 @@ export async function getMoneyState(
       dayStartBaselineUnavailable = true;
       dayStartBaseline = { ...baseline, dailyReference: null };
     } else {
+      const dailyTotalResult = repository.getDailyIncludedExpenseTotal
+        ? await repository.getDailyIncludedExpenseTotal(actor, selected.id, resolvedDate)
+        : null;
+      if (dailyTotalResult && !dailyTotalResult.ok) return fromRepository(dailyTotalResult, "Unable to load daily expense outflows right now.");
+      const dailyTotal = dailyTotalResult?.ok ? dailyTotalResult.value : null;
+      if (!dailyTotal || !dailyTotal.complete) dayStartBaselineUnavailable = true;
       dayStartBaseline = {
         ...baseline,
-        dailyReference: calculateMoneyDailyReference({
+        dailyReference: dailyTotal?.complete ? calculateMoneyDailyReference({
           startCashMinor: baseline.cashMinor,
           startCommitmentsMinor: baseline.commitmentsMinor,
           startSavingsTargetMinor: baseline.savingsTargetMinor,
@@ -448,9 +454,9 @@ export async function getMoneyState(
           emergencyUsedBeforeMinor: baseline.emergencyUsedMinor,
           periodEnd: selected.endDate,
           selectedDate: resolvedDate,
-          dailyIncludedExpenseMinor: 0,
+          dailyIncludedExpenseMinor: dailyTotal.amountMinor,
           periodLifecycle: selected.lifecycle,
-        }),
+        }) : null,
       };
     }
   } else if (selected) {

@@ -254,6 +254,24 @@ export class SupabaseMoneyPeriodRepository implements MoneyPeriodRepository {
     } };
   }
 
+  async getDailyIncludedExpenseTotal(actor: AuthenticatedActor, periodId: string, date: string) {
+    const { data, error } = await this.supabase
+      .from(LEDGER_TABLE)
+      .select("amount_minor")
+      .eq("owner_user_id", actor.userId)
+      .eq("period_id", periodId)
+      .eq("booking_date", date)
+      .eq("kind", "expense")
+      .eq("direction", "out")
+      .eq("counts_in_daily", true)
+      .is("deleted_at", null)
+      .limit(10001);
+    if (error) return { ok: false as const, error: moneyFailure(error) };
+    const rows = data ?? [];
+    const total = rows.reduce((sum, row) => sum + Number(row.amount_minor), 0);
+    return { ok: true as const, value: { amountMinor: total, complete: rows.length <= 10000 } };
+  }
+
   async findTracking(
     actor: AuthenticatedActor,
   ): Promise<RepositoryResult<MoneyPeriod | null>> {

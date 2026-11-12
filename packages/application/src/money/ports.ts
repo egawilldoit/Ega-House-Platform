@@ -84,12 +84,15 @@ export type MoneyDayStartBaseline = Readonly<{
   emergencyUsedMinor: number | null;
 }>;
 
+export type MoneyDailyExpenseTotal = Readonly<{ amountMinor: number; complete: boolean }>;
+
 export type MoneyPeriodRepository = {
   getDayStartBaseline?(
     actor: AuthenticatedActor,
     periodId: string,
     date: string,
   ): Promise<RepositoryResult<MoneyDayStartBaseline | null>>;
+  getDailyIncludedExpenseTotal?(actor: AuthenticatedActor, periodId: string, date: string): Promise<RepositoryResult<MoneyDailyExpenseTotal>>;
   findTracking(
     actor: AuthenticatedActor,
   ): Promise<RepositoryResult<MoneyPeriod | null>>;
