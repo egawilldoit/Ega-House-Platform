@@ -32,6 +32,12 @@ import {
   updateObligationFormAction,
   updateTemplateFormAction,
 } from "../obligations-actions";
+import {
+  correctObligationPaymentFormAction,
+  payObligationFormAction,
+  undoObligationPaymentFormAction,
+} from "../obligation-payment-actions";
+import { PendingPaymentButton } from "./pending-payment-button";
 
 export type ObligationsSearchParams = {
   notice?: string;
@@ -58,6 +64,14 @@ const COPY: Record<
 };
 
 const NEED_VS_WANT_OPTIONS = ["need", "want"] as const;
+
+const PAYMENT_METHOD_OPTIONS = [
+  "cash",
+  "card",
+  "bank_transfer",
+  "mobile_wallet",
+  "other",
+] as const;
 
 function occurrencePath(kind: ObligationKind): string {
   return kind === "bill" ? "/money/bills" : "/money/subscriptions";
@@ -521,6 +535,182 @@ function TransitionForm({
   );
 }
 
+/**
+ * MONEY-07 payment form for a pending occurrence. The payment date, the
+ * need/want choice and the optional overrides are the only inputs: the amount
+ * is the occurrence's own amount, because one occurrence is settled by one
+ * full payment.
+ */
+function PayForm({
+  occurrence,
+  returnTo,
+  localToday,
+}: {
+  occurrence: ObligationOccurrence;
+  returnTo: string;
+  localToday: string;
+}) {
+  return (
+    <details className="mt-3">
+      <summary className="cursor-pointer text-[length:var(--text-body)]">
+        Pay this obligation
+      </summary>
+      <form action={payObligationFormAction} className="mt-3 flex flex-col gap-3">
+        <input type="hidden" name="returnTo" value={returnTo} />
+        <input type="hidden" name="obligationId" value={occurrence.id} />
+        <input type="hidden" name="version" value={occurrence.version} />
+        <input type="hidden" name="operationId" value={randomUUID()} />
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <label className="flex flex-col gap-1 text-[length:var(--text-body)]">
+            Payment date
+            <input
+              className="rounded border border-ega-border p-2"
+              type="date"
+              name="bookingDate"
+              defaultValue={localToday}
+              required
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-[length:var(--text-body)]">
+            Need or want
+            <select
+              className="rounded border border-ega-border p-2"
+              name="needVsWant"
+              defaultValue={occurrence.needVsWant ?? ""}
+              required
+            >
+              <option value="">Choose need or want</option>
+              {NEED_VS_WANT_OPTIONS.map((value) => (
+                <option key={value} value={value}>
+                  {value}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1 text-[length:var(--text-body)]">
+            Counts in daily spending
+            <select
+              className="rounded border border-ega-border p-2"
+              name="countsInDaily"
+              defaultValue=""
+            >
+              <option value="">Use the obligation default</option>
+              <option value="true">Yes</option>
+              <option value="false">No</option>
+            </select>
+          </label>
+          <label className="flex flex-col gap-1 text-[length:var(--text-body)]">
+            Payment method
+            <select
+              className="rounded border border-ega-border p-2"
+              name="paymentMethod"
+              defaultValue=""
+            >
+              <option value="">Not recorded</option>
+              {PAYMENT_METHOD_OPTIONS.map((value) => (
+                <option key={value} value={value}>
+                  {value.replaceAll("_", " ")}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <PendingPaymentButton pendingLabel="Recording payment...">
+          Pay {formatMinorToMad(occurrence.amountMinor)}
+        </PendingPaymentButton>
+        <p className="text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
+          Paying records one ledger outflow and settles the obligation in the same transaction. A fixed
+          obligation normally stays out of daily spending.
+        </p>
+      </form>
+    </details>
+  );
+}
+
+/**
+ * MONEY-07 correction and undo for a paid occurrence. Both move the linked
+ * payment and the occurrence together; a generic expense edit cannot.
+ */
+function PaidPaymentActions({
+  occurrence,
+  returnTo,
+}: {
+  occurrence: ObligationOccurrence;
+  returnTo: string;
+}) {
+  return (
+    <>
+      <details className="mt-2">
+        <summary className="cursor-pointer text-[length:var(--text-body)]">
+          Correct the linked payment
+        </summary>
+        <form
+          action={correctObligationPaymentFormAction}
+          className="mt-3 flex flex-col gap-3"
+        >
+          <input type="hidden" name="returnTo" value={returnTo} />
+          <input type="hidden" name="obligationId" value={occurrence.id} />
+          <input type="hidden" name="version" value={occurrence.version} />
+          <input type="hidden" name="operationId" value={randomUUID()} />
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <label className="flex flex-col gap-1 text-[length:var(--text-body)]">
+              Paid amount (MAD)
+              <input
+                className="rounded border border-ega-border p-2"
+                name="amount"
+                defaultValue={formatMinorToMadInput(occurrence.amountMinor)}
+                required
+                inputMode="decimal"
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-[length:var(--text-body)]">
+              Payment date
+              <input
+                className="rounded border border-ega-border p-2"
+                type="date"
+                name="bookingDate"
+                defaultValue={occurrence.stateEffectiveDate}
+                required
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-[length:var(--text-body)]">
+              Counts in daily spending
+              <select
+                className="rounded border border-ega-border p-2"
+                name="countsInDaily"
+                defaultValue={String(occurrence.countsInDaily)}
+              >
+                <option value="true">Yes</option>
+                <option value="false">No</option>
+              </select>
+            </label>
+          </div>
+          <PendingPaymentButton pendingLabel="Correcting payment...">
+            Save correction
+          </PendingPaymentButton>
+          <p className="text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
+            The corrected amount, date and daily flag are applied to the linked ledger payment and the
+            obligation in one transaction.
+          </p>
+        </form>
+      </details>
+      <form action={undoObligationPaymentFormAction} className="mt-2">
+        <input type="hidden" name="returnTo" value={returnTo} />
+        <input type="hidden" name="obligationId" value={occurrence.id} />
+        <input type="hidden" name="version" value={occurrence.version} />
+        <input type="hidden" name="operationId" value={randomUUID()} />
+        <PendingPaymentButton pendingLabel="Undoing payment...">
+          Undo this payment
+        </PendingPaymentButton>
+        <p className="mt-1 text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
+          Undoing removes the ledger outflow and reopens the obligation, so cash and the outstanding reserve
+          are restored together.
+        </p>
+      </form>
+    </>
+  );
+}
+
 function OccurrenceCard({
   occurrence,
   localToday,
@@ -553,13 +743,16 @@ function OccurrenceCard({
         {occurrence.stateReason ? ` · ${occurrence.stateReason}` : ""}
       </p>
       {isPaid ? (
-        <p className="mt-2 text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
-          {occurrence.paymentExpenseId
-            ? "Paid by a linked canonical ledger payment. Undo or correct it through the atomic payment path."
-            : occurrence.paymentEvidence
-              ? `Paid according to reconciled historical import evidence (${occurrence.paymentEvidence.reference}); payment history is not claimed.`
-              : "Paid. Linked payment details are unavailable."}
-        </p>
+        <div className="mt-2">
+          <p className="text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
+            {occurrence.paymentExpenseId
+              ? "Paid by a linked canonical ledger payment. Correct or undo it here; a generic expense edit cannot change it."
+              : occurrence.paymentEvidence
+                ? `Paid according to reconciled historical import evidence (${occurrence.paymentEvidence.reference}); payment history is not claimed.`
+                : "Paid. Linked payment details are unavailable."}
+          </p>
+          <PaidPaymentActions occurrence={occurrence} returnTo={returnTo} />
+        </div>
       ) : (
         <div className="mt-2 flex flex-wrap items-end gap-3">
           <TransitionForm occurrence={occurrence} returnTo={returnTo} to="waived" label="Waive" localToday={localToday} />
@@ -570,6 +763,9 @@ function OccurrenceCard({
         <div className="mt-2">
           <TransitionForm occurrence={occurrence} returnTo={returnTo} to="pending" label="Reopen to pending" localToday={localToday} />
         </div>
+      ) : null}
+      {occurrence.state === "pending" ? (
+        <PayForm occurrence={occurrence} returnTo={returnTo} localToday={localToday} />
       ) : null}
 
       <details className="mt-3">

@@ -642,3 +642,66 @@ export type ObligationErrorEnvelope = Readonly<{
 
 /** Convenience alias for the historical-import evidence shape on the wire. */
 export type ObligationPaymentEvidenceDto = ObligationHistoricalImportEvidence;
+
+/* -------------------------------------------------------------------------- */
+/* Obligation payment (MONEY-07)                                              */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The canonical ledger row that settles an occurrence. It is the same row the
+ * Money ledger reads, so the payment and the obligation never disagree.
+ */
+export type ObligationPaymentDto = Readonly<{
+  expenseId: string;
+  amountMinor: number;
+  currency: "MAD";
+  bookingDate: string;
+  countsInDaily: boolean;
+  needVsWant: ExpenseNeedVsWant;
+  paymentMethod: string | null;
+  purpose: MoneyPurpose;
+  category: ExpenseCategory;
+}>;
+
+/**
+ * A payment always settles the occurrence in full, so it carries no amount:
+ * the amount is the occurrence's own amount. `needVsWant` is requested, never
+ * fabricated; `countsInDaily` defaults to false for a fixed obligation.
+ */
+export type PayObligationRequest = Readonly<{
+  version: number;
+  bookingDate: string;
+  idempotencyKey: string;
+  needVsWant?: ExpenseNeedVsWant | null;
+  countsInDaily?: boolean | null;
+  paymentMethod?: string | null;
+  /**
+   * Stable retry identity of this write. It is carried beside the semantic
+   * payload, never parsed as one: the same operation replays its original
+   * result and a different operation cannot pay the same occurrence twice.
+   */
+  operationId: string;
+}>;
+
+/** A correction moves the linked payment and the occurrence together. */
+export type CorrectObligationPaymentRequest = Readonly<{
+  version: number;
+  amountMinor: number;
+  bookingDate: string;
+  countsInDaily?: boolean | null;
+  operationId: string;
+}>;
+
+/** An undo removes the linked payment and reopens the occurrence. */
+export type UndoObligationPaymentRequest = Readonly<{
+  version: number;
+  operationId: string;
+}>;
+
+export type ObligationPaymentResponse = Readonly<{
+  ok: true;
+  obligation: ObligationDto;
+  payment: ObligationPaymentDto | null;
+  /** True when the same operation replayed its original result. */
+  replayed: boolean;
+}>;

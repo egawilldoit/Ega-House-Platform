@@ -1,6 +1,7 @@
 import type {
   ClassifyMoneyExpenseRequest,
   ClassifyMoneyExpenseResponse,
+  CorrectObligationPaymentRequest,
   CreateMoneyPeriodRequest,
   CreateMoneyPeriodResponse,
   CreateMovementRequest,
@@ -28,14 +29,17 @@ import type {
   MoneyBudgetMutationResponse,
   MoneyCoffeeWindowQuery,
   MoneyCoffeeWindowResponse,
+  ObligationPaymentResponse,
   ObligationSummaryQuery,
   ObligationSummaryResponse,
   ObligationTemplateResponse,
+  PayObligationRequest,
   RecordMoneyCoffeeVisitRequest,
   RecordMoneyCoffeeVisitResponse,
   SaveMoneyBudgetPlanRequest,
   SetMoneyBudgetAllocationRequest,
   TransitionObligationRequest,
+  UndoObligationPaymentRequest,
   UpdateMovementRequest,
   UpdateMovementResponse,
   UpdateMoneySettingsRequest,
@@ -279,6 +283,21 @@ export type ObligationsApi = {
     id: string,
     request: TransitionObligationRequest,
   ): Promise<ApiResult<UpdateObligationResponse>>;
+  /** POST /api/money/obligations/:id/payment — one atomic payment. */
+  pay(
+    id: string,
+    request: PayObligationRequest,
+  ): Promise<ApiResult<ObligationPaymentResponse>>;
+  /** POST /api/money/obligations/:id/payment/correction — move the payment. */
+  correctPayment(
+    id: string,
+    request: CorrectObligationPaymentRequest,
+  ): Promise<ApiResult<ObligationPaymentResponse>>;
+  /** POST /api/money/obligations/:id/payment/undo — remove the payment. */
+  undoPayment(
+    id: string,
+    request: UndoObligationPaymentRequest,
+  ): Promise<ApiResult<ObligationPaymentResponse>>;
 
   /** GET /api/money/obligation-templates */
   listTemplates(
@@ -359,6 +378,27 @@ export function createObligationsApi(http: HttpClient): ObligationsApi {
     transition(id, request) {
       return http.request<UpdateObligationResponse>({
         path: `${obligationPath(id)}/transition`,
+        method: "POST",
+        body: request,
+      });
+    },
+    pay(id, request) {
+      return http.request<ObligationPaymentResponse>({
+        path: `${obligationPath(id)}/payment`,
+        method: "POST",
+        body: request,
+      });
+    },
+    correctPayment(id, request) {
+      return http.request<ObligationPaymentResponse>({
+        path: `${obligationPath(id)}/payment/correction`,
+        method: "POST",
+        body: request,
+      });
+    },
+    undoPayment(id, request) {
+      return http.request<ObligationPaymentResponse>({
+        path: `${obligationPath(id)}/payment/undo`,
         method: "POST",
         body: request,
       });

@@ -543,6 +543,36 @@ export type McpWriteToolHandlers = {
     input: { templateId: string; throughDate: string; operationId: string },
     context?: McpProtocolContext,
   ) => Promise<CallToolResult>;
+  payMoneyObligation: (
+    authInfo: AuthInfo | undefined,
+    input: {
+      obligationId: string;
+      version: number;
+      bookingDate: string;
+      needVsWant?: "need" | "want" | null;
+      countsInDaily?: boolean | null;
+      paymentMethod?: string | null;
+      operationId: string;
+    },
+    context?: McpProtocolContext,
+  ) => Promise<CallToolResult>;
+  correctMoneyObligationPayment: (
+    authInfo: AuthInfo | undefined,
+    input: {
+      obligationId: string;
+      version: number;
+      amountMinor: number;
+      bookingDate: string;
+      countsInDaily?: boolean | null;
+      operationId: string;
+    },
+    context?: McpProtocolContext,
+  ) => Promise<CallToolResult>;
+  undoMoneyObligationPayment: (
+    authInfo: AuthInfo | undefined,
+    input: { obligationId: string; version: number; operationId: string },
+    context?: McpProtocolContext,
+  ) => Promise<CallToolResult>;
 };
 
 const READ_ONLY_ANNOTATIONS = {
@@ -1151,6 +1181,31 @@ const moneyObligationTemplateUpdateInputSchema = z.object({
 const moneyObligationGenerateInputSchema = z.object({
   templateId: uuidSchema,
   throughDate: obligationDateSchema,
+  operationId: z.string().uuid(),
+}).strict();
+
+const moneyObligationPayInputSchema = z.object({
+  obligationId: uuidSchema,
+  version: z.number().int().positive(),
+  bookingDate: obligationDateSchema,
+  needVsWant: obligationNeedVsWantSchema.nullable().optional(),
+  countsInDaily: z.boolean().nullable().optional(),
+  paymentMethod: z.string().min(1).max(32).nullable().optional(),
+  operationId: z.string().uuid(),
+}).strict();
+
+const moneyObligationCorrectPaymentInputSchema = z.object({
+  obligationId: uuidSchema,
+  version: z.number().int().positive(),
+  amountMinor: z.number().int().positive().max(2147483647),
+  bookingDate: obligationDateSchema,
+  countsInDaily: z.boolean().nullable().optional(),
+  operationId: z.string().uuid(),
+}).strict();
+
+const moneyObligationUndoPaymentInputSchema = z.object({
+  obligationId: uuidSchema,
+  version: z.number().int().positive(),
   operationId: z.string().uuid(),
 }).strict();
 
@@ -2208,6 +2263,57 @@ const WRITE_TOOL_REGISTRATIONS: readonly WriteToolRegistration[] = [
         },
         async (input, ctx) =>
           handlers.generateMoneyObligations(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
+      ),
+  },
+  {
+    name: "ega_money_pay_obligation",
+    register: (server, handlers) =>
+      server.registerTool(
+        "ega_money_pay_obligation",
+        {
+          title: "Pay a Money obligation",
+          description:
+            "Pay one pending bill or subscription. The payment records exactly one canonical ledger outflow and settles the occurrence in a single transaction, so a failure leaves neither half committed. The amount is always the occurrence's own amount: partial and overpayment are not supported. `needVsWant` is required while the occurrence has not classified it; `countsInDaily` defaults to false for a fixed obligation and an explicit value always wins. The `operationId` is the retry identity: the same operation replays the original receipt, and a different operation cannot pay an already-paid occurrence. Requires the explicit personal_ops.write grant.",
+          inputSchema: moneyObligationPayInputSchema,
+          outputSchema: genericWriteOutputSchema,
+          annotations: WRITE_ANNOTATIONS,
+        },
+        async (input, ctx) =>
+          handlers.payMoneyObligation(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
+      ),
+  },
+  {
+    name: "ega_money_correct_obligation_payment",
+    register: (server, handlers) =>
+      server.registerTool(
+        "ega_money_correct_obligation_payment",
+        {
+          title: "Correct a Money obligation payment",
+          description:
+            "Correct the linked ledger payment of a paid obligation: the amount, the booking date and the daily-inclusion flag move together with the occurrence in one transaction, so the pair stays coherent. A generic expense edit cannot change a linked payment. The `operationId` is the retry identity of the correction. Requires the explicit personal_ops.write grant.",
+          inputSchema: moneyObligationCorrectPaymentInputSchema,
+          outputSchema: genericWriteOutputSchema,
+          annotations: WRITE_ANNOTATIONS,
+        },
+        async (input, ctx) =>
+          handlers.correctMoneyObligationPayment(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
+      ),
+  },
+  {
+    name: "ega_money_undo_obligation_payment",
+    register: (server, handlers) =>
+      server.registerTool(
+        "ega_money_undo_obligation_payment",
+        {
+          title: "Undo a Money obligation payment",
+          description:
+            "Undo the linked ledger payment of a paid obligation. The ledger outflow is removed and the obligation returns to pending in one transaction, so cash and the outstanding reserve are restored together. The `operationId` is the retry identity of the undo. Requires the explicit personal_ops.write grant.",
+          inputSchema: moneyObligationUndoPaymentInputSchema,
+          outputSchema: genericWriteOutputSchema,
+          annotations: WRITE_ANNOTATIONS,
+        },
+        async (input, ctx) =>
+          handlers.undoMoneyObligationPayment(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
       ),
   },
   {

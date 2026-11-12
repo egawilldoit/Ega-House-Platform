@@ -1772,6 +1772,206 @@ export function validateObligationPayment(
 }
 
 /* -------------------------------------------------------------------------- */
+/* Payment inputs and resolution (MONEY-07)                                   */
+/* -------------------------------------------------------------------------- */
+
+export const OBLIGATION_PAYMENT_METHODS = [
+  "cash",
+  "card",
+  "bank_transfer",
+  "mobile_wallet",
+  "other",
+] as const;
+export type ObligationPaymentMethod = (typeof OBLIGATION_PAYMENT_METHODS)[number];
+
+/**
+ * A payment always settles the occurrence in full: there is no partial or
+ * overpayment input, so the amount is the occurrence's own amount. The
+ * booking date, the ledger idempotency key and the payment classification
+ * overrides are the only inputs.
+ */
+export type ObligationPaymentInput = Readonly<{
+  /** The occurrence version the caller read; the write is guarded on it. */
+  version: number;
+  bookingDate: string;
+  idempotencyKey: string;
+  needVsWant?: ExpenseNeedVsWant | null;
+  countsInDaily?: boolean | null;
+  paymentMethod?: ObligationPaymentMethod | null;
+}>;
+
+/** A correction moves the linked payment and the occurrence together. */
+export type ObligationPaymentCorrectionInput = Readonly<{
+  /** The occurrence version the caller read; the write is guarded on it. */
+  version: number;
+  amountMinor: number;
+  bookingDate: string;
+  countsInDaily?: boolean | null;
+}>;
+
+/** An undo removes the linked payment and reopens the occurrence. */
+export type ObligationUndoInput = Readonly<{ version: number }>;
+
+const PAYMENT_KEYS = new Set([
+  "version",
+  "bookingDate",
+  "idempotencyKey",
+  "needVsWant",
+  "countsInDaily",
+  "paymentMethod",
+]);
+
+const PAYMENT_CORRECTION_KEYS = new Set([
+  "version",
+  "amountMinor",
+  "bookingDate",
+  "countsInDaily",
+]);
+
+const PAYMENT_UNDO_KEYS = new Set(["version"]);
+
+function parsePaymentMethod(
+  raw: unknown,
+): { ok: true; value: ObligationPaymentMethod | null } | ObligationValidationFailure {
+  if (raw === undefined || raw === null) return { ok: true, value: null };
+  if (
+    typeof raw !== "string" ||
+    !(OBLIGATION_PAYMENT_METHODS as readonly string[]).includes(raw)
+  ) {
+    return failure("paymentMethod", "Choose a supported payment method.");
+  }
+  return { ok: true, value: raw as ObligationPaymentMethod };
+}
+
+/**
+ * Strict payment input. The operation id is deliberately not part of the
+ * parsed body: it is the retry identity carried beside the payload, never a
+ * semantic field of the payment.
+ */
+export function parseObligationPaymentInput(
+  input: unknown,
+): { ok: true; value: ObligationPaymentInput } | ObligationValidationFailure {
+  if (!isRecord(input)) {
+    return failure("body", "Request body must be a JSON object.");
+  }
+  const unknownKey = findUnknownKey(input, PAYMENT_KEYS);
+  if (unknownKey) return failure(unknownKey, `Unknown field "${unknownKey}".`);
+
+  const version = parseVersion(input.version);
+  if (!version.ok) return version;
+
+  const bookingDate = parseIsoDateField(input.bookingDate, "bookingDate");
+  if (!bookingDate.ok) return bookingDate;
+
+  const idempotencyKey = parseBoundedText(
+    input.idempotencyKey,
+    "idempotencyKey",
+    OBLIGATION_IDEMPOTENCY_KEY_MAX_LENGTH,
+  );
+  if (!idempotencyKey.ok) return idempotencyKey;
+
+  let needVsWant: ExpenseNeedVsWant | null | undefined;
+  if ("needVsWant" in input) {
+    const parsed = parseNeedVsWant(input.needVsWant, true);
+    if (!parsed.ok) return parsed;
+    needVsWant = parsed.value;
+  }
+
+  let countsInDaily: boolean | null | undefined;
+  if ("countsInDaily" in input) {
+    if (typeof input.countsInDaily !== "boolean") {
+      return failure("countsInDaily", "Choose whether this counts in daily spending.");
+    }
+    countsInDaily = input.countsInDaily;
+  }
+
+  const paymentMethod = parsePaymentMethod(input.paymentMethod);
+  if (!paymentMethod.ok) return paymentMethod;
+
+  return {
+    ok: true,
+    value: {
+      version: version.value,
+      bookingDate: bookingDate.value,
+      idempotencyKey: idempotencyKey.value,
+      ...(needVsWant !== undefined ? { needVsWant } : {}),
+      ...(countsInDaily !== undefined ? { countsInDaily } : {}),
+      ...(paymentMethod.value !== null ? { paymentMethod: paymentMethod.value } : {}),
+    },
+  };
+}
+
+export function parseObligationPaymentCorrectionInput(
+  input: unknown,
+):
+  | { ok: true; value: ObligationPaymentCorrectionInput }
+  | ObligationValidationFailure {
+  if (!isRecord(input)) {
+    return failure("body", "Request body must be a JSON object.");
+  }
+  const unknownKey = findUnknownKey(input, PAYMENT_CORRECTION_KEYS);
+  if (unknownKey) return failure(unknownKey, `Unknown field "${unknownKey}".`);
+
+  const version = parseVersion(input.version);
+  if (!version.ok) return version;
+
+  const amountMinor = parseAmountMinor(input.amountMinor);
+  if (!amountMinor.ok) return amountMinor;
+
+  const bookingDate = parseIsoDateField(input.bookingDate, "bookingDate");
+  if (!bookingDate.ok) return bookingDate;
+
+  let countsInDaily: boolean | null | undefined;
+  if ("countsInDaily" in input) {
+    if (typeof input.countsInDaily !== "boolean") {
+      return failure("countsInDaily", "Choose whether this counts in daily spending.");
+    }
+    countsInDaily = input.countsInDaily;
+  }
+
+  return {
+    ok: true,
+    value: {
+      version: version.value,
+      amountMinor: amountMinor.value,
+      bookingDate: bookingDate.value,
+      ...(countsInDaily !== undefined ? { countsInDaily } : {}),
+    },
+  };
+}
+
+export function parseObligationUndoInput(
+  input: unknown,
+): { ok: true; value: ObligationUndoInput } | ObligationValidationFailure {
+  if (!isRecord(input)) {
+    return failure("body", "Request body must be a JSON object.");
+  }
+  const unknownKey = findUnknownKey(input, PAYMENT_UNDO_KEYS);
+  if (unknownKey) return failure(unknownKey, `Unknown field "${unknownKey}".`);
+
+  const version = parseVersion(input.version);
+  if (!version.ok) return version;
+
+  return { ok: true, value: { version: version.value } };
+}
+
+/**
+ * The daily-spending flag a payment persists. A fixed obligation normally
+ * excludes flexible daily spending; an explicit payment override always wins.
+ * The database applies the same rule, so a direct caller and the application
+ * agree on the persisted value.
+ */
+export function resolveObligationPaymentCountsInDaily(input: Readonly<{
+  purpose: MoneyPurpose;
+  occurrenceCountsInDaily: boolean;
+  explicit?: boolean | null;
+}>): boolean {
+  if (typeof input.explicit === "boolean") return input.explicit;
+  if (input.purpose === "fixed") return false;
+  return input.occurrenceCountsInDaily;
+}
+
+/* -------------------------------------------------------------------------- */
 /* Fingerprints                                                               */
 /* -------------------------------------------------------------------------- */
 
