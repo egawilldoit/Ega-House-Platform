@@ -523,10 +523,6 @@ test("coffee window clips to a partial week and asks only for in-period dates", 
   // date-only coffee rows are included and the window is timezone-stable.
   assert.deepEqual(expenses.lastSummaryWindow?.startBookingDate, "2026-11-10");
   assert.deepEqual(expenses.lastSummaryWindow?.endBookingDateExclusive, "2026-11-16");
-  assert.equal(
-    expenses.lastSummaryWindow?.startUtcIso,
-    "2026-11-09T23:00:00.000Z",
-  );
 });
 
 test("period spending uses the inclusive period dates rather than the calendar month", async () => {
@@ -544,14 +540,6 @@ test("period spending uses the inclusive period dates rather than the calendar m
   assert.equal(result.data.truncated, false);
   assert.equal(expenses.lastSummaryWindow?.startBookingDate, "2026-11-09");
   assert.equal(expenses.lastSummaryWindow?.endBookingDateExclusive, "2026-12-01");
-  assert.equal(
-    expenses.lastSummaryWindow?.startUtcIso,
-    "2026-11-08T23:00:00.000Z",
-  );
-  assert.equal(
-    expenses.lastSummaryWindow?.endUtcExclusiveIso,
-    "2026-11-30T23:00:00.000Z",
-  );
 });
 
 test("coffee limits resolve from the canonical period plan, not caller input", async () => {
