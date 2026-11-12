@@ -54,10 +54,30 @@ async function main() {
     const baseline = await sql.unsafe("SELECT availability, cash_minor, commitments_minor, savings_target_minor, savings_funded_minor, emergency_target_minor, emergency_used_minor, inputs FROM public.money_day_start_baselines WHERE owner_user_id=$1 AND period_id=$2", [A,period]);
     assert(rows.length===1 && rows[0].version===1 && rows[0].availability==="available" && rows[0].policy_version_id===rows[0].policy_id, "RPC created version-1 policy and available baseline");
     assert(baseline.length===1 && baseline[0].cash_minor===50000 && baseline[0].commitments_minor===0 && baseline[0].savings_target_minor===12000 && baseline[0].savings_funded_minor===0 && baseline[0].emergency_target_minor===3000 && baseline[0].emergency_used_minor===0, "setup snapshot preserves opening and configured targets");
-    const later = await user(A, tx => tx.unsafe("SELECT (public.money_ensure_day_start_baseline($1, '2026-11-13'::date)).*", [period]));
-    const laterAgain = await user(A, tx => tx.unsafe("SELECT (public.money_ensure_day_start_baseline($1, '2026-11-13'::date)).*", [period]));
-    assert(later[0].availability==="available" && later[0].cash_minor===50000 && later[0].commitments_minor===0 && later[0].savings_funded_minor===0 && later[0].emergency_used_minor===0 && later[0].version===laterAgain[0].version, "later day reconstructs from opening and is materialized idempotently");
-    assert(later[0].policy_version_id===rows[0].policy_id && later[0].inputs.lifecycleCutoff==="2026-11-13", "later day binds effective policy and explicit lifecycle cutoff");
+    const endFirst = await user(A, tx => tx.unsafe("UPDATE public.money_periods SET lifecycle='ended', version=version+1 WHERE id=$1 RETURNING id", [period]));
+    assert(endFirst.length===1, "first period ends before creating the next tracking period");
+    const nextPeriod = await user(A, tx => tx.unsafe(`SELECT (public.money_create_period(
+      '2026-12-01'::date,'2026-12-31'::date,'Africa/Casablanca'::text,
+      '2026-12-01'::date,'initialized'::text,73000::integer,'2026-12-01'::date,
+      repeat('b',64)::text,'{"opening":{"source":"user_entered"}}'::jsonb,
+      '{"savingsTargetMinor":4000,"emergencyTargetMinor":9000}'::jsonb,
+      now()::timestamptz)).id AS id`));
+    const nextPeriodId = nextPeriod[0].id;
+    await user(A, tx => tx.unsafe(`INSERT INTO public.personal_expenses
+      (owner_user_id,period_id,occurred_at,booking_date,kind,direction,amount_minor,currency,
+       category,need_vs_want,idempotency_key,create_fingerprint)
+      VALUES ($1,$2,'2026-11-20T12:00:00Z','2026-11-20','income','in',9000,'MAD',
+       NULL,NULL,'prior-period-income',repeat('c',64))`, [A,period]));
+    const later = await user(A, tx => tx.unsafe("SELECT (public.money_ensure_day_start_baseline($1, '2026-12-02'::date)).*", [nextPeriodId]));
+    const laterAgain = await user(A, tx => tx.unsafe("SELECT (public.money_ensure_day_start_baseline($1, '2026-12-02'::date)).*", [nextPeriodId]));
+    assert(later[0].availability==="available" && later[0].cash_minor===73000 && later[0].commitments_minor===0 && later[0].savings_funded_minor===0 && later[0].emergency_used_minor===0 && later[0].version===laterAgain[0].version, "later-period baseline excludes prior-period movement and is idempotent");
+    assert(later[0].policy_version_id && later[0].policy_version_id!==rows[0].policy_id && later[0].inputs.lifecycleCutoff==="2026-12-02", "later-day baseline binds the second period policy and lifecycle cutoff");
+    const nextPolicy = await sql.unsafe("SELECT id,version,policy FROM public.money_policy_versions WHERE owner_user_id=$1 AND period_id=$2", [A,nextPeriodId]);
+    const nextBaseline = await sql.unsafe("SELECT cash_minor,savings_target_minor,emergency_target_minor,availability FROM public.money_day_start_baselines WHERE owner_user_id=$1 AND period_id=$2 AND date='2026-12-01'", [A,nextPeriodId]);
+    const priorAgain = await sql.unsafe("SELECT p.version,p.policy,b.cash_minor,b.savings_target_minor,b.emergency_target_minor,b.availability,b.policy_version_id FROM public.money_policy_versions p JOIN public.money_day_start_baselines b USING(owner_user_id,period_id) WHERE p.owner_user_id=$1 AND p.period_id=$2", [A,period]);
+    assert(nextPolicy.length===1 && nextPolicy[0].version===1 && nextBaseline.length===1 && nextBaseline[0].cash_minor===73000 && nextBaseline[0].savings_target_minor===4000 && nextBaseline[0].emergency_target_minor===9000 && nextBaseline[0].availability==="available", "same owner next period receives only its own opening and policy inputs");
+    assert(priorAgain.length===1 && priorAgain[0].version===1 && priorAgain[0].policy_version_id===rows[0].policy_id && priorAgain[0].cash_minor===50000 && priorAgain[0].savings_target_minor===12000 && priorAgain[0].emergency_target_minor===3000 && priorAgain[0].availability==="available", "creating a later period does not move or replace the prior-period policy or baseline");
+    console.log("[PERIOD ISOLATION] same-owner prior-period policy and baseline remain unchanged");
     const unknown = await user(B, tx => tx.unsafe(`SELECT (public.money_create_period(
       '2026-12-01'::date,'2026-12-31'::date,'Africa/Casablanca'::text,
       '2026-12-01'::date,'uninitialized'::text,NULL::integer,NULL::date,NULL::text,
@@ -68,7 +88,7 @@ async function main() {
     const asA = await user(A, tx => tx.unsafe("SELECT count(*)::int n FROM public.money_day_start_baselines"));
     const asB = await user(B, tx => tx.unsafe("SELECT count(*)::int n FROM public.money_day_start_baselines"));
     const asC = await user(C, tx => tx.unsafe("SELECT count(*)::int n FROM public.money_day_start_baselines"));
-    assert(asA[0].n===2 && asB[0].n===1 && asC[0].n===0, "RLS owner isolation");
+    assert(asA[0].n===3 && asB[0].n===1 && asC[0].n===0, "RLS owner isolation");
     console.log("[RLS] owners A and B see their own baselines; owner C sees none");
     for (const [label, statement, params] of [
       ["cross-owner period", "INSERT INTO public.money_policy_versions(owner_user_id,period_id,version,effective_date,policy) VALUES($1,$2,1,'2026-11-12','{}')", [B,period]],
