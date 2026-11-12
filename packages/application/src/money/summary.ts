@@ -1,4 +1,4 @@
-import type { MoneyOpening, MoneyPeriod } from "@ega/domain/money";
+import { calculateMoneyReserves, type MoneyOpening, type MoneyPeriod } from "@ega/domain/money";
 import type { MoneyDirection, MoneyKind } from "@ega/domain/money";
 import type { ExpenseCategory } from "@ega/domain/expenses";
 import {
@@ -15,6 +15,9 @@ import {
   type ApplicationResult,
 } from "../shared/result";
 import type { ExpenseRepository } from "../expenses/ports";
+import { summarizeObligationOccurrences } from "@ega/domain/obligations";
+import type { MoneyBudgetRepository, MoneyMovementRepository } from "./ports";
+import type { ObligationRepository } from "./obligation-ports";
 import type {
   MoneyAggregate,
   MoneyAggregateRow,
@@ -59,7 +62,7 @@ export async function getMoneyCashPosition(
   actor: AuthenticatedActor,
   repository: MoneyPeriodRepository,
   period: MoneyPeriod,
-  opening: MoneyOpening | null,
+  opening: Pick<MoneyOpening, "amountMinor"> | null,
 ): Promise<ApplicationResult<MoneyCashPosition>> {
   const cutoffDate = period.activeDate;
 
@@ -114,6 +117,7 @@ export type MoneyMovementTotals = Readonly<{
   expenseTotalMinor: number;
   dailyIncludedSpendMinor: number;
   savingsFundedMinor: number;
+  emergencyUsedMinor: number;
   counts: Readonly<{
     movements: number;
     expenses: number;
@@ -121,9 +125,73 @@ export type MoneyMovementTotals = Readonly<{
     savingsTransfers: number;
     openingMovements: number;
   }>;
+
   /** True when the bounded aggregation stopped before the whole history. */
   truncated: boolean;
 }>;
+
+/** Current reserve read model. Missing or incomplete source data stays unavailable. */
+export type MoneyReserveProjection =
+  | Readonly<{ available: false; currency: "MAD"; reason: string; cutoffDate: string }>
+  | Readonly<{ available: true; currency: "MAD"; cutoffDate: string; reserves: ReturnType<typeof calculateMoneyReserves> }>;
+
+/** Compose canonical cash, obligation, and reserve totals in the application layer. */
+export function projectMoneyReserves(input: Readonly<{
+  cutoffDate: string;
+  recordedCashMinor: number | null;
+  unpaidCommitmentsMinor: number | null;
+  savingsTargetMinor: number | null;
+  savingsFundedMinor: number | null;
+  emergencyTargetMinor: number | null;
+  emergencyUsedMinor: number | null;
+  complete: boolean;
+}>): MoneyReserveProjection {
+  const values = [input.recordedCashMinor, input.unpaidCommitmentsMinor, input.savingsTargetMinor,
+    input.savingsFundedMinor, input.emergencyTargetMinor, input.emergencyUsedMinor];
+  if (!input.complete || values.some((value) => value === null)) {
+    return { available: false, currency: "MAD", reason: "reserve_inputs_incomplete", cutoffDate: input.cutoffDate };
+  }
+  const [recordedCashMinor, unpaidCommitmentsMinor, savingsTargetMinor, savingsFundedMinor, emergencyTargetMinor, emergencyUsedMinor] = values as number[];
+  return { available: true, currency: "MAD", cutoffDate: input.cutoffDate,
+    reserves: calculateMoneyReserves({ recordedCashMinor, unpaidCommitmentsMinor, savingsTargetMinor, savingsFundedMinor, emergencyTargetMinor, emergencyUsedMinor }) };
+}
+
+/** Shared current reserve read. Obligations are fetched through period end so future
+ * commitments are visible, then lifecycle state is evaluated at the active-date cutoff. */
+export async function getCurrentMoneyReserves(actor: AuthenticatedActor, input: Readonly<{
+  period: MoneyPeriod;
+  opening: Pick<MoneyOpening, "amountMinor"> | null;
+  periods: MoneyPeriodRepository;
+  movements: MoneyMovementRepository;
+  budgets: MoneyBudgetRepository;
+  obligations: ObligationRepository;
+}>): Promise<ApplicationResult<MoneyReserveProjection>> {
+  const { period } = input;
+  const cash = await getMoneyCashPosition(actor, input.periods, period, input.opening);
+  if (!cash.ok) return applicationFailure(cash.errorMessage, cash.code);
+  if (!cash.data.available) return applicationSuccess({ available: false, currency: "MAD", reason: cash.data.reason, cutoffDate: period.activeDate });
+  const [movement, plan, occurrences] = await Promise.all([
+    input.movements.aggregate(actor, { cutoff: period.activeDate, startDate: period.startDate }),
+    input.budgets.getPlan(actor, { periodId: period.id, periodStartDate: period.startDate, periodEndDate: period.endDate }),
+    input.obligations.list(actor, { kind: null, state: null, dueFrom: period.startDate, dueTo: period.endDate, limit: 500, offset: 0 }),
+  ]);
+  if (!movement.ok) return applicationFailure("Unable to calculate current reserves right now.", movement.error.code);
+  if (!plan.ok) return applicationFailure("Unable to calculate current reserves right now.", plan.error.code);
+  if (!occurrences.ok) return applicationFailure("Unable to calculate current reserves right now.", occurrences.error.code);
+  if (!plan.value || movement.value.truncated || occurrences.value.length >= 500) {
+    return applicationSuccess({ available: false, currency: "MAD", reason: "reserve_inputs_incomplete", cutoffDate: period.activeDate });
+  }
+  const totals = computeMoneyMovementTotals(movement.value);
+  const commitmentTotals = summarizeObligationOccurrences(occurrences.value, period.activeDate);
+  return applicationSuccess(projectMoneyReserves({
+    cutoffDate: period.activeDate, recordedCashMinor: cash.data.recordedCashMinor,
+    unpaidCommitmentsMinor: commitmentTotals.outstandingMinor,
+    savingsTargetMinor: plan.value.savingsTargetMinor,
+    savingsFundedMinor: totals.savingsFundedMinor,
+    emergencyTargetMinor: plan.value.emergencyTargetMinor,
+    emergencyUsedMinor: totals.emergencyUsedMinor, complete: !totals.truncated,
+  }));
+}
 
 /**
  * Projection of the ledger rows through a cutoff. `truncated` is surfaced so a
@@ -136,6 +204,7 @@ export function computeMoneyMovementTotals(
   let expenseTotalMinor = 0;
   let dailyIncludedSpendMinor = 0;
   let savingsFundedMinor = 0;
+  let emergencyUsedMinor = 0;
   let openingMovements = 0;
   let savingsTransfers = 0;
   let dailyIncludedExpenses = 0;
@@ -145,6 +214,9 @@ export function computeMoneyMovementTotals(
     if (row.kind === "expense") {
       expenses += 1;
       expenseTotalMinor += row.amountMinor;
+      if (row.purpose === "emergency") {
+        emergencyUsedMinor += row.direction === "out" ? row.amountMinor : -row.amountMinor;
+      }
       if (row.countsInDaily) {
         dailyIncludedExpenses += 1;
         dailyIncludedSpendMinor += row.amountMinor;
@@ -162,6 +234,7 @@ export function computeMoneyMovementTotals(
     expenseTotalMinor,
     dailyIncludedSpendMinor,
     savingsFundedMinor,
+    emergencyUsedMinor,
     counts: {
       movements: rows.length,
       expenses,

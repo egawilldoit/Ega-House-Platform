@@ -4,11 +4,16 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   createAuthenticatedActor,
   createMoneyPeriod,
+  getCurrentMoneyReserves,
   getMoneyState,
+  rebaseMoneyDayStartBaseline,
   updateMoneySettings,
 } from "@ega/application";
 import {
   SupabaseMoneyPeriodRepository,
+  SupabaseMoneyRepository,
+  SupabaseMoneyBudgetRepository,
+  SupabaseObligationRepository,
   SupabaseTimeContextRepository,
 } from "@ega/data-access";
 import type { MoneyOpeningInput } from "@ega/domain/money";
@@ -60,6 +65,7 @@ export type McpMoneyPeriodHandlers = {
     input: McpMoneyUpdateSettingsInput,
     operationId: string,
   ): Promise<CallToolResult>;
+  rebaseMoneyDayStartBaseline(authInfo: AuthInfo | undefined, periodId: string): Promise<CallToolResult>;
 };
 
 type ToolPayload = {
@@ -175,7 +181,45 @@ export function createMcpMoneyPeriodHandlers(
           { now, timezone },
         );
         if (!result.ok) return mapApplicationError(result);
-        return resultFromPayload({ ok: true, ...result.data });
+        const state = result.data;
+        const reserveResult = state.period
+          ? await getCurrentMoneyReserves(actor, {
+              period: state.period,
+              opening: state.opening.status === "known" ? state.opening : null,
+              periods: new SupabaseMoneyPeriodRepository(client as never),
+              movements: new SupabaseMoneyRepository(client as never),
+              budgets: new SupabaseMoneyBudgetRepository(client as never),
+              obligations: new SupabaseObligationRepository(client as never),
+            })
+          : null;
+        const reserves = reserveResult?.ok
+          ? reserveResult.data
+          : { available: false as const, currency: "MAD" as const, reason: "reserve_inputs_incomplete", cutoffDate: state.period?.activeDate ?? now.toISOString().slice(0, 10) };
+        return resultFromPayload({
+          ok: true,
+          ...state,
+          analytics: {
+            dayStartBaseline: state.dayStartBaseline,
+            setupComplete: state.dayStartBaseline
+              ? state.dayStartBaseline.unavailableReason !== "initial_setup_incomplete"
+              : null,
+            setupNextStep: state.dayStartBaseline?.unavailableReason === "initial_setup_incomplete"
+              ? "Add initial obligations, then explicitly call ega_money_rebase_day_start_baseline to complete setup and record the baseline. An empty obligation list is valid if there are none."
+              : null,
+            available: state.dayStartBaseline?.dailyReference?.available === true,
+            historical: state.dayStartBaseline?.dailyReference?.historical === true,
+            allowanceAvailable: state.dayStartBaseline?.dailyReference?.allowanceAvailable === true,
+            reason: state.dayStartBaselineUnavailable
+              ? "baseline_unavailable"
+              : state.dayStartBaseline?.dailyReference && !state.dayStartBaseline.dailyReference.available
+                ? state.dayStartBaseline.dailyReference.reason
+                : null,
+            method: state.dayStartBaseline?.dailyReference?.available
+              ? state.dayStartBaseline.dailyReference.algorithm
+              : "safe-flexible-start-of-day-v1",
+            reserves,
+          },
+        });
       } catch (error) {
         if (error instanceof McpToolAuthorizationError) {
           return errorResult({ code: error.code, message: error.message });
@@ -255,6 +299,24 @@ export function createMcpMoneyPeriodHandlers(
           code: "INTERNAL_ERROR",
           message: "The MCP tool could not complete the request.",
         });
+      }
+    },
+
+    async rebaseMoneyDayStartBaseline(authInfo, periodId) {
+      try {
+        const { actor, client } = contextOf(authInfo, "personal_ops.write");
+        const result = await rebaseMoneyDayStartBaseline(
+          actor,
+          new SupabaseMoneyPeriodRepository(client as never),
+          periodId,
+        );
+        if (!result.ok) return mapApplicationError(result);
+        return resultFromPayload({ ok: true, baseline: result.data });
+      } catch (error) {
+        if (error instanceof McpToolAuthorizationError) {
+          return errorResult({ code: error.code, message: error.message });
+        }
+        return errorResult({ code: "INTERNAL_ERROR", message: "The MCP tool could not complete the request." });
       }
     },
   };

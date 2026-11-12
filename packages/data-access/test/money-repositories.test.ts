@@ -6,10 +6,19 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { SupabaseMoneyBudgetRepository } from "../src/money/budget-repository";
 import { SupabaseMoneyCoffeeRepository } from "../src/money/coffee-repository";
+import { SupabaseMoneyPeriodRepository } from "../src/money/repository";
 
 const ACTOR = createAuthenticatedActor("owner-money-05");
 const VISIT_ID = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
 const EXPENSE_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+
+test("rebase adapter calls the explicit authenticated RPC and propagates failures", async () => {
+  const periodId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const { client, rpcCalls } = fakeClient([{ data: [{ date: "2026-11-12", version: 2, availability: "available", unavailable_reason: null, cash_minor: 100, commitments_minor: 0, savings_target_minor: 0, savings_funded_minor: 0, emergency_target_minor: 0, emergency_used_minor: 0 }], error: null }]);
+  const result = await new SupabaseMoneyPeriodRepository(client).rebaseDayStartBaseline(ACTOR, periodId);
+  assert.equal(result.ok, true);
+  assert.deepEqual(rpcCalls, [{ name: "money_rebase_day_start_baseline", args: { p_period_id: periodId } }]);
+});
 
 type QueryResult = { data: unknown; error: null | { code?: string; message?: string } };
 

@@ -645,6 +645,34 @@
       "when": 1787880000062,
       "tag": "0099_money_07_obligation_payments",
       "breakpoints": true
+    },
+    {
+      "idx": 113,
+      "version": "7",
+      "when": 1787880000063,
+      "tag": "0100_money_08_day_start_baselines",
+      "breakpoints": true
+    },
+    {
+      "idx": 114,
+      "version": "7",
+      "when": 1787880000064,
+      "tag": "0101_money_08_budget_target_revisions",
+      "breakpoints": true
+    },
+    {
+      "idx": 115,
+      "version": "7",
+      "when": 1787880000065,
+      "tag": "0102_money_08_baseline_write_grants",
+      "breakpoints": true
+    },
+    {
+      "idx": 116,
+      "version": "7",
+      "when": 1787880000066,
+      "tag": "0103_money_08_active_date_baseline",
+      "breakpoints": true
     }
   ]
 }

@@ -25,6 +25,10 @@ const pageSource = readFileSync(
   resolve(import.meta.dirname, "./page.tsx"),
   "utf8",
 );
+const periodPanelSource = readFileSync(
+  resolve(import.meta.dirname, "./_components/money-period-panel.tsx"),
+  "utf8",
+);
 
 test("money actions derive the actor from the verified session and never accept an owner", () => {
   assert.match(actionsSource, /getCurrentUser\(\)/);
@@ -87,6 +91,21 @@ test("money period actions share the verified session, repository and centime pa
   assert.match(actionsSource, /periodId/);
   assert.match(actionsSource, /revalidatePath\("\/money"\)/);
   assert.doesNotMatch(actionsSource, /owner_user_id\s*:/);
+  assert.doesNotMatch(actionsSource, /getSupabaseServiceClient/);
+});
+
+test("day-start rebase is explicit, authenticated and uses the request-scoped period repository", () => {
+  assert.match(actionsSource, /rebaseMoneyDayStartBaselineAction/);
+  assert.match(actionsSource, /rebaseMoneyDayStartBaseline\(/);
+  assert.match(actionsSource, /moneyActionContext\(\)/);
+  assert.match(actionsSource, /new SupabaseMoneyPeriodRepository\(client\)/);
+  assert.match(actionsSource, /revalidatePath\("\/money"\)/);
+  assert.match(pageSource, /rebaseAction=\{rebaseMoneyDayStartBaselineAction\}/);
+  assert.match(periodPanelSource, /Rebase day-start baseline to current state/);
+  assert.match(periodPanelSource, /Add your initial obligations first/);
+  assert.match(periodPanelSource, /Complete day-start setup/);
+  assert.match(pageSource, /unavailableReason === "initial_setup_incomplete"/);
+  assert.match(periodPanelSource, /role="alert"/);
   assert.doesNotMatch(actionsSource, /getSupabaseServiceClient/);
 });
 

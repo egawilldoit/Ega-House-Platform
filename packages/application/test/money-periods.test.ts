@@ -6,6 +6,7 @@ import {
   createExpense,
   createMoneyPeriod,
   getMoneyState,
+  rebaseMoneyDayStartBaseline,
   routineEntryGuardFailure,
   updateMoneySettings,
   type ExpenseRepository,
@@ -17,6 +18,18 @@ import type { PersonalExpense } from "@ega/domain/expenses";
 const ACTOR = createAuthenticatedActor("owner-money");
 const OTHER = createAuthenticatedActor("owner-other");
 const NOW = new Date("2026-11-11T12:00:00.000Z");
+
+test("rebases a day-start baseline through the explicit use case", async () => {
+  let calls = 0;
+  const result = await rebaseMoneyDayStartBaseline(ACTOR, {
+    async rebaseDayStartBaseline() {
+      calls += 1;
+      return { ok: true, value: { date: "2026-11-12", version: 2, availability: "unavailable", unavailableReason: "first_day", cashMinor: null, commitmentsMinor: null, savingsTargetMinor: null, savingsFundedMinor: null, emergencyTargetMinor: null, emergencyUsedMinor: null } };
+    },
+  }, "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
+  assert.equal(result.ok, true);
+  assert.equal(calls, 1);
+});
 
 type LedgerRow = {
   id: string;
@@ -33,6 +46,8 @@ function makeRepository() {
   const periods = new Map<string, { period: MoneyPeriod; ownerUserId: string }>();
   const openings = new Map<string, { opening: MoneyOpening; ownerUserId: string }>();
   const ledger: LedgerRow[] = [];
+  const ensured: Array<{ ownerUserId: string; periodId: string; date: string }> = [];
+  let dailyTotal = { amountMinor: 0, complete: true };
   let sequence = 0;
 
   function nextId(prefix: string): string {
@@ -47,6 +62,17 @@ function makeRepository() {
   }
 
   const repository: MoneyPeriodRepository = {
+    async ensureDayStartBaseline(actor, periodId, date) {
+      ensured.push({ ownerUserId: actor.userId, periodId, date });
+      return { ok: true as const, value: { date, version: 1, availability: "available" as const, unavailableReason: null, cashMinor: 50000, commitmentsMinor: 0, savingsTargetMinor: 0, savingsFundedMinor: 0, emergencyTargetMinor: 0, emergencyUsedMinor: 0 } };
+    },
+    async getDayStartBaseline() {
+      return { ok: true as const, value: null };
+    },
+    async getDailyIncludedExpenseTotal(actor, periodId, date) {
+      const amount = ledger.filter((row) => row.ownerUserId === actor.userId && row.periodId === periodId && row.bookingDate === date && !row.deletedAt).reduce((sum, row) => sum + row.amountMinor, 0);
+      return { ok: true as const, value: { ...dailyTotal, amountMinor: amount || dailyTotal.amountMinor } };
+    },
     async findTracking(actor) {
       return {
         ok: true as const,
@@ -286,7 +312,7 @@ function makeRepository() {
     });
   }
 
-  return { repository, addExpense, periods, ledger };
+  return { repository, addExpense, periods, ledger, ensured, setDailyTotal(value: { amountMinor: number; complete: boolean }) { dailyTotal = value; } };
 }
 
 const CREATE_BODY = {
@@ -313,6 +339,25 @@ test("an empty account has no invented period or opening, and cash is unknown", 
   assert.equal(state.data.cash.available, false);
   assert.equal(state.data.localToday, "2026-11-11");
   assert.equal(state.data.dateResolution.basis, "local_today_no_period");
+});
+
+test("selected-day read does not materialize missing baseline and reports it unavailable", async () => {
+  const { repository, ensured } = makeRepository();
+  await createMoneyPeriod(ACTOR, repository, CREATE_BODY, { now: NOW });
+  const state = await getMoneyState(ACTOR, repository, {}, { now: NOW, timezone: "Africa/Casablanca" });
+  assert.equal(state.ok, true);
+  if (!state.ok) return;
+  assert.equal(state.data.dayStartBaseline, null);
+  assert.equal(state.data.dayStartBaselineUnavailable, true);
+  assert.deepEqual(ensured, []);
+});
+
+test("historical explicit reads do not materialize missing day-start history", async () => {
+  const { repository, ensured } = makeRepository();
+  await createMoneyPeriod(ACTOR, repository, CREATE_BODY, { now: NOW });
+  const state = await getMoneyState(ACTOR, repository, { date: "2026-11-10" }, { now: NOW, timezone: "Africa/Casablanca" });
+  assert.equal(state.ok, true);
+  assert.deepEqual(ensured, []);
 });
 
 test("a partial period creates one known opening and reports cash through the active date", async () => {
