@@ -78,6 +78,17 @@ async function main() {
         VALUES (${A}::uuid,${clientId},${RESOURCE},'proof','active',${profile},${sql.json(permissions)},1,now())`;
     }
 
+    // Definer-backed period creation must not let a read-only MCP client write.
+    const createArgs = `('2027-02-01'::date,'2027-02-28'::date,'Africa/Casablanca'::text,
+      '2027-02-01'::date,'initialized'::text,777000::integer,'2027-02-01'::date,
+      repeat('a',64)::text,'{"opening":{"source":"user_entered"}}'::jsonb,
+      '{"savingsTargetMinor":0,"emergencyTargetMinor":0}'::jsonb,now())`;
+    for (const name of ['money_create_period', 'money_create_period_v3']) {
+      const denied = await user(A, tx => tx.unsafe(`SELECT public.${name}${createArgs}`), 'money-read')
+        .then(() => false, e => e.code === '42501');
+      assert(denied, `read-only MCP client cannot invoke ${name}`);
+    }
+
     // Read RPCs must enforce the same finance grant as the underlying RLS.
     for (const [query, params] of [
       ["SELECT public.money_ledger_direction_totals('2026-11-09','2026-11-09')", []],
@@ -395,6 +406,10 @@ async function main() {
         NULL,'canonical-waived',repeat('3',64),'2027-01-01T12:00:00Z'),
        ($1,'bill','future window commitment',1500,'2027-01-19','2027-01-25','2027-01-20',
         'fixed',false,'pending','2027-01-01','[]'::jsonb,NULL,'canonical-future-window',repeat('a',64),'2027-01-01T12:00:00Z'),
+       ($1,'bill','previously recorded paid import',3100,'2027-01-05','2027-01-31','2027-01-20',
+        'fixed',false,'paid','2027-01-01','[]'::jsonb,
+        jsonb_build_object('kind','reconciled_historical_import','reference','past-proof','note',NULL,'importedAt','2027-01-04T00:00:00Z'),
+        'canonical-past-import',repeat('c',64),'2027-01-04T12:00:00Z'),
        ($1,'bill','future recorded import',3000,'2027-01-19','2027-01-25','2027-01-20',
         'fixed',false,'paid','2027-01-01','[]'::jsonb,
         jsonb_build_object('kind','reconciled_historical_import','reference','future-proof','note',NULL,'importedAt','2027-01-19T00:00:00Z'),
@@ -495,6 +510,34 @@ async function main() {
     assert(canonicalLedger[0].result.inflowsMinor === 6000 && canonicalLedger[0].result.outflowsMinor === 6800,
       "canonical cash aggregate includes legacy unassigned movements and excludes opening");
     console.log("[CANONICAL] legacy rows, future commitments and expense-only inclusion match close and live reads");
+
+    // A timestamp just after local midnight must not appear in that day's
+    // exclusive day-start snapshot, even when its UTC date is the previous day.
+    const zoneOwner = "55555555-5555-4555-8555-555555555555";
+    await sql.unsafe("INSERT INTO auth.users VALUES ($1, 'zone@example.test')", [zoneOwner]);
+    const zoneRows = await user(zoneOwner, tx => tx.unsafe(`SELECT (p).id AS id, (p).version AS version
+      FROM (SELECT public.money_create_period(
+        '2026-10-05'::date,'2026-10-31'::date,'Asia/Tokyo'::text,
+        '2026-10-05'::date,'initialized'::text,10000::integer,'2026-10-05'::date,
+        repeat('a',64)::text,'{"opening":{"source":"user_entered"}}'::jsonb,
+        '{"savingsTargetMinor":0,"emergencyTargetMinor":0}'::jsonb,
+        '2026-10-05T00:00:00Z'::timestamptz) AS p) created`));
+    const zonePeriod = zoneRows[0].id;
+    await user(zoneOwner, tx => tx.unsafe("SELECT * FROM public.money_rebase_day_start_baseline($1)", [zonePeriod]));
+    await sql.unsafe(`INSERT INTO public.money_obligations
+      (owner_user_id,kind,description,amount_minor,period_start,period_end,due_date,
+       purpose,counts_in_daily,state,state_effective_date,state_history,idempotency_key,create_fingerprint,created_at)
+      VALUES ($1,'bill','after local midnight',5000,'2026-10-05','2026-10-31','2026-10-20',
+       'fixed',false,'pending','2026-10-05','[]'::jsonb,'zone-pending',repeat('d',64),'2026-10-05T15:30:00Z')`, [zoneOwner]);
+    const zoneVersion = (await sql.unsafe("SELECT version FROM public.money_periods WHERE id=$1", [zonePeriod]))[0].version;
+    await user(zoneOwner, tx => tx.unsafe(`SELECT * FROM public.money_update_period(
+      $1,$2,'2026-10-06'::date,NULL::jsonb,NULL::integer,NULL::text,NULL::text,
+      NULL::jsonb,NULL::text,'2026-10-06T08:00:00Z'::timestamptz)`, [zonePeriod, zoneVersion]));
+    const zoneBaseline = await sql.unsafe(`SELECT availability,commitments_minor FROM public.money_day_start_baselines
+      WHERE period_id=$1 AND date='2026-10-06' ORDER BY version DESC LIMIT 1`, [zonePeriod]);
+    assert(zoneBaseline.length === 1 && zoneBaseline[0].availability === 'available'
+      && zoneBaseline[0].commitments_minor === 0, `day-start cutoff uses the period timezone: ${JSON.stringify(zoneBaseline)}`);
+    console.log("[TIMEZONE] day-start obligation cutoff uses the period's local date");
 
     // Baseline remains unavailable without explicit setup, so a close cannot
     // invent a zero baseline.
