@@ -690,6 +690,7 @@ async function main() {
       },
       createdFrom: "web",
     };
+    verifiedArgs[14] = { savingsTargetMinor: null, emergencyTargetMinor: null };
     let restatedRolloverDenied = false;
     try {
       await user(A, (tx) => callRollover(tx, verifiedArgs));
@@ -704,6 +705,15 @@ async function main() {
     const verified = await user(A, (tx) => callRollover(tx, verifiedArgs));
     const verifiedPeriodId = verified[0].result.rollover.successor_period_id;
     assert(verifiedPeriodId, "a second, independently verified successor was created");
+    const clearedSettings = await sql.unsafe(
+      "SELECT settings FROM public.money_periods WHERE owner_user_id=$1 AND id=$2",
+      [A, verifiedPeriodId],
+    );
+    assert(
+      clearedSettings[0].settings.savingsTargetMinor === null &&
+        clearedSettings[0].settings.emergencyTargetMinor === null,
+      "explicit null targets are preserved as unset on rollover",
+    );
     const verifiedOpening = await sql.unsafe(
       "SELECT amount_minor FROM public.personal_expenses WHERE owner_user_id=$1 AND period_id=$2 AND kind='opening'",
       [A, verifiedPeriodId],

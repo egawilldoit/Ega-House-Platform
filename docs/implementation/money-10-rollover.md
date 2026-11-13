@@ -93,6 +93,7 @@ Status: implementation candidate on `t3/money-10-mcp-delivery`, rebased onto
   allowance to the successor opening.
 - Unknown closing cash is never carried as zero. A verified opening needs an
   amount, a cutoff date and retained evidence.
+- An explicit null savings or emergency target clears that target. The successor baseline remains unavailable until both targets are set.
 - The successor day-start baseline starts as MONEY-08 `initial_setup_incomplete`
   because a historical rollover cannot prove its initial obligation/funding
   history from current state. The Money period panel offers the existing explicit
