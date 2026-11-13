@@ -3,7 +3,9 @@ import test from "node:test";
 
 import { createAuthenticatedActor } from "../src/auth/actor";
 import {
+  getMoneyRolloverPreview,
   getMoneyRolloverPreviewForPeriod,
+  listMoneyRolloverBridges,
   rolloverMoneyPeriod,
 } from "../src/money/rollover";
 import type {
@@ -72,6 +74,9 @@ function fakeRepository(context: MoneyRolloverSourceContext) {
     async getSourceContext() {
       return { ok: true, value: context };
     },
+    async listCorrectionBridges() {
+      return { ok: true, value: context.priorCorrectionBridges };
+    },
     async findRolloverByOperation(_actor, operationId) {
       return {
         ok: true,
@@ -112,12 +117,16 @@ function baseInput(overrides: Record<string, unknown> = {}) {
 function context(overrides: Partial<MoneyRolloverSourceContext> = {}): MoneyRolloverSourceContext {
   return {
     period: endedPeriod(),
+    effectiveSettings: { savingsTargetMinor: 12_000 },
     modeledClosingCashMinor: 68_900,
     cashComplete: true,
     pendingOccurrences: [],
+    pendingOccurrencesTruncated: false,
     closeSnapshots: {
       available: true,
       closeCount: 19,
+      requiredCloseCount: 19,
+      completeCloseEvidence: true,
       lastClosedDate: "2026-11-30",
       comparableToRestatedTotals: true,
       restatedDifferenceCount: 0,
@@ -129,6 +138,7 @@ function context(overrides: Partial<MoneyRolloverSourceContext> = {}): MoneyRoll
       savingsTransferredMinor: 0,
       restatedDifferences: [],
     },
+    priorCorrectionBridges: [],
     existingSuccessorPeriodId: null,
     existingRollover: null,
     ...overrides,
@@ -152,7 +162,7 @@ test("carry-forward creates one successor opening from modeled closing cash", as
   assert.equal(write.initialized, "initialized");
   assert.equal(write.provenance.createdFrom, "mcp");
   assert.equal(write.targets.startDate, "2026-12-01");
-  assert.deepEqual(write.settings, { savingsTargetMinor: 12_000 });
+  assert.equal(write.settingsOverrides, null);
 });
 
 test("an identical retry replays and never writes a second successor", async () => {
@@ -308,6 +318,8 @@ test("restated close snapshots need an acceptance note before the write", async 
   const restated = {
     available: true as const,
     closeCount: 19,
+    requiredCloseCount: 19,
+    completeCloseEvidence: true,
     lastClosedDate: "2026-11-30",
     comparableToRestatedTotals: true as const,
     restatedDifferenceCount: 1,
@@ -394,4 +406,191 @@ test("preview surfaces the choices without writing", async () => {
   assert.equal(result.ok && result.data.choices.length, 1);
   assert.equal(fake.writes.length, 0);
   assert.equal(result.ok && result.data.targets.startDate, "2026-12-01");
+});
+
+test("preview copies the source's effective policy, never the mutable period copy", async () => {
+  const fake = fakeRepository(
+    context({
+      // A web-created period can have an empty `money_periods.settings` copy
+      // while its effective policy version carries the real targets.
+      period: endedPeriod({ settings: {} }),
+      effectiveSettings: {
+        savingsTargetMinor: 12_500,
+        emergencyTargetMinor: 3_000,
+      },
+    }),
+  );
+  const preview = await getMoneyRolloverPreviewForPeriod(
+    actor,
+    { repository: fake.repository, obligations: noTemplates },
+    "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+  );
+  assert.equal(preview.ok, true);
+  assert.deepEqual(preview.ok && preview.data.settings, {
+    savingsTargetMinor: 12_500,
+    emergencyTargetMinor: 3_000,
+  });
+});
+
+test("settings overrides are layered over the effective policy without persisting period copy", async () => {
+  const fake = fakeRepository(
+    context({
+      period: endedPeriod({ settings: {} }),
+      effectiveSettings: {
+        savingsTargetMinor: 12_500,
+        emergencyTargetMinor: 3_000,
+      },
+    }),
+  );
+  const preview = await getMoneyRolloverPreview(
+    actor,
+    { repository: fake.repository, obligations: noTemplates },
+    baseInput({ settingsOverrides: { savingsTargetMinor: 20_000 } }),
+  );
+  assert.equal(preview.ok, true);
+  assert.deepEqual(preview.ok && preview.data.settings, {
+    savingsTargetMinor: 20_000,
+    emergencyTargetMinor: 3_000,
+  });
+
+  const written = await rolloverMoneyPeriod(
+    actor,
+    { repository: fake.repository, obligations: noTemplates },
+    baseInput({ settingsOverrides: { savingsTargetMinor: 20_000 } }),
+    "750e8400-e29b-41d4-a716-4466554400b1",
+  );
+  assert.equal(written.ok, true);
+  assert.deepEqual(fake.writes[0].settingsOverrides, {
+    savingsTargetMinor: 20_000,
+  });
+});
+
+test("a restated close never hides paid-obligation and visit mismatches", async () => {
+  const fake = fakeRepository(
+    context({
+      closeSnapshots: {
+        available: true,
+        closeCount: 19,
+        requiredCloseCount: 19,
+        completeCloseEvidence: true,
+        lastClosedDate: "2026-11-30",
+        comparableToRestatedTotals: true,
+        restatedDifferenceCount: 1,
+        restatedDifferences: [
+          {
+            closeId: "close-1",
+            closeDate: "2026-11-20",
+            changedFields: ["recordedCash"],
+          },
+        ],
+        paidObligationCount: 2,
+        paidObligationMismatchCount: 2,
+        countedVisitCount: 4,
+        countedVisitMismatchCount: 1,
+        savingsTargetMinor: 12_000,
+        savingsTransferredMinor: 2_000,
+      },
+    }),
+  );
+  const preview = await getMoneyRolloverPreviewForPeriod(
+    actor,
+    { repository: fake.repository, obligations: noTemplates },
+    "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+  );
+  assert.equal(preview.ok, true);
+  const differences = preview.ok ? preview.data.reconciliation.differences : [];
+  assert.equal(
+    differences.filter((entry) => entry.status === "choice_required").length,
+    3,
+    "restatement, paid payment and counted visit are all unresolved",
+  );
+  assert.equal(preview.ok && preview.data.ready, false);
+});
+
+test("incomplete close evidence blocks rollover even when the final day closed", async () => {
+  const fake = fakeRepository(
+    context({
+      closeSnapshots: {
+        available: true,
+        closeCount: 1,
+        requiredCloseCount: 2,
+        completeCloseEvidence: false,
+        lastClosedDate: "2026-11-30",
+        comparableToRestatedTotals: true,
+        restatedDifferenceCount: 0,
+        restatedDifferences: [],
+        paidObligationCount: 0,
+        paidObligationMismatchCount: 0,
+        countedVisitCount: 0,
+        countedVisitMismatchCount: 0,
+        savingsTargetMinor: null,
+        savingsTransferredMinor: 0,
+      },
+    }),
+  );
+  const preview = await getMoneyRolloverPreviewForPeriod(
+    actor,
+    { repository: fake.repository, obligations: noTemplates },
+    "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+  );
+  assert.equal(preview.ok, true);
+  assert.equal(preview.ok && preview.data.ready, false);
+  assert.match(
+    preview.ok ? preview.data.blockers.join(" ") : "",
+    /Every tracked source day/,
+  );
+  assert.equal(
+    preview.ok &&
+      preview.data.reconciliation.differences.find(
+        (entry) => entry.code === "incomplete_close_evidence",
+      )?.status,
+    "unavailable",
+  );
+});
+
+test("a truncated pending set blocks instead of undercounting reconciliation", async () => {
+  const fake = fakeRepository(context({ pendingOccurrencesTruncated: true }));
+  const preview = await getMoneyRolloverPreviewForPeriod(
+    actor,
+    { repository: fake.repository, obligations: noTemplates },
+    "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+  );
+  assert.equal(preview.ok, true);
+  assert.equal(preview.ok && preview.data.ready, false);
+  assert.match(
+    preview.ok ? preview.data.blockers.join(" ") : "",
+    /bounded read limit/,
+  );
+});
+
+test("preview and the bridge read expose historical variance disclosures", async () => {
+  const bridge = {
+    id: "bridge-1",
+    sourcePeriodId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    destinationPeriodId: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+    movementId: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+    correctionVersion: 3,
+    amountMinor: 500,
+    direction: "out" as const,
+    bookingDate: "2026-11-20",
+    applied: false,
+    varianceReason: "verified_opening_excludes_correction" as const,
+    createdAt: "2026-12-02T00:00:00.000Z",
+  };
+  const fake = fakeRepository(context({ priorCorrectionBridges: [bridge] }));
+  const preview = await getMoneyRolloverPreviewForPeriod(
+    actor,
+    { repository: fake.repository, obligations: noTemplates },
+    "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+  );
+  assert.equal(preview.ok, true);
+  assert.deepEqual(preview.ok && preview.data.priorCorrectionBridges, [bridge]);
+
+  const listed = await listMoneyRolloverBridges(
+    actor,
+    fake.repository,
+    "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+  );
+  assert.equal(listed.ok, true);
+  assert.deepEqual(listed.ok && listed.data, [bridge]);
 });

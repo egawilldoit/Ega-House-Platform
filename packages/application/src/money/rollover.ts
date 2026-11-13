@@ -35,6 +35,7 @@ import {
 import type { ObligationRepository } from "./obligation-ports";
 import { obligationReceiptFingerprint } from "./obligations";
 import type {
+  MoneyRolloverBridgeRecord,
   MoneyRolloverCarryItem,
   MoneyRolloverObligationPlanItem,
   MoneyRolloverRecord,
@@ -92,6 +93,9 @@ export type MoneyRolloverPreview = Readonly<{
   /** Stored close evidence and the live restatement comparison it powered. */
   closeSnapshots: MoneyRolloverSourceContext["closeSnapshots"];
   pendingOccurrences: MoneyRolloverSourceContext["pendingOccurrences"];
+  pendingOccurrencesTruncated: boolean;
+  /** Corrections from a rolled-over predecessor that affected this period. */
+  priorCorrectionBridges: readonly MoneyRolloverBridgeRecord[];
   generatedObligations: readonly Readonly<{
     templateId: string;
     description: string;
@@ -427,6 +431,11 @@ async function prepareRollover(
   const blockers = [
     ...reconciliation.blockers,
     ...(openingFailure ? [openingFailure.message] : []),
+    ...(source.pendingOccurrencesTruncated
+      ? [
+          "The unpaid occurrence set exceeded the bounded read limit, so rollover cannot prove every unpaid item was decided. Resolve or reduce the pending set and reload.",
+        ]
+      : []),
   ];
   const obligations =
     blockers.length === 0 ? planGeneratedOccurrences(templatesResult.value, targets) : [];
@@ -472,12 +481,14 @@ function previewOf(prepared: Prepared): MoneyRolloverPreview {
     modeledClosingCashMinor: source.modeledClosingCashMinor,
     proposedOpeningMinor: opening?.amountMinor ?? null,
     settings: resolveMoneyRolloverSettings(
-      source.period.settings,
+      source.effectiveSettings,
       values.settingsOverrides,
     ),
     reconciliation,
     closeSnapshots: source.closeSnapshots,
     pendingOccurrences: source.pendingOccurrences,
+    pendingOccurrencesTruncated: source.pendingOccurrencesTruncated,
+    priorCorrectionBridges: source.priorCorrectionBridges,
     generatedObligations: obligations.map((item) => ({
       templateId: item.values.templateId ?? "",
       description: item.values.description,
@@ -626,10 +637,7 @@ export async function rolloverMoneyPeriod(
     opening,
     initialized,
     provenance: buildProvenance(opening, createdAt, surface),
-    settings: resolveMoneyRolloverSettings(
-      source.period.settings,
-      values.settingsOverrides,
-    ),
+    settingsOverrides: values.settingsOverrides,
     operationId: operation,
     requestFingerprint,
     openingCreateFingerprint: sha256Hex(canonicalMoneyOpeningPayload(opening)),
@@ -665,6 +673,30 @@ export function defaultRolloverRangeFor(source: {
   endDate: string;
 }): { startDate: string; endDate: string } {
   return defaultMoneyRolloverRange(source);
+}
+
+/**
+ * Read the correction bridges that targeted one period. This is the disclosure
+ * path for a historical variance: the verified opening is never rewritten, but
+ * the owner and MCP can see that a later correction was intentionally not
+ * posted into it.
+ */
+export async function listMoneyRolloverBridges(
+  actor: AuthenticatedActor,
+  repository: MoneyRolloverRepository,
+  periodId: unknown,
+): Promise<ApplicationResult<readonly MoneyRolloverBridgeRecord[]>> {
+  if (typeof periodId !== "string" || !periodId.trim()) {
+    return applicationFailure("A valid Money period ID is required.", "validation");
+  }
+  const result = await repository.listCorrectionBridges(actor, periodId.trim());
+  if (!result.ok) {
+    return repositoryFailure(
+      result.error.code,
+      "Unable to load historical correction bridges right now.",
+    );
+  }
+  return applicationSuccess(result.value);
 }
 
 /**

@@ -10,15 +10,16 @@ import {
   getMoneyRolloverPreviewForPeriod,
   getMoneyState,
   listExpenses,
+  listMoneyRolloverBridges,
   listMovements,
   movementEffect,
   type MoneyMovementTotals,
   type MoneyCoffeeUsage,
   type MoneyPeriodSpending,
+  type MoneyRolloverBridgeRecord,
   type MoneyRolloverPreview,
   type MoneyState,
-} from "@ega/application";
-import {
+} from "@ega/application";import {
   SupabaseExpenseRepository,
   SupabaseMoneyBudgetRepository,
   SupabaseMoneyCoffeeRepository,
@@ -44,6 +45,7 @@ import { MoneyCreatePanel } from "./_components/money-create-panel";
 import { MoneyRowActions } from "./_components/money-row-actions";
 import { MoneyPeriodPanel } from "./_components/money-period-panel";
 import { MoneyRolloverPanel } from "./_components/money-rollover-panel";
+import { MoneyRolloverVariancePanel } from "./_components/money-rollover-variance-panel";
 import { MoneyDayClosePanel } from "./_components/money-day-close-panel";
 import { MoneyMovementPanel } from "./_components/money-movement-panel";
 import { MoneyMovementActions } from "./_components/money-movement-actions";
@@ -106,6 +108,8 @@ export default async function MoneyPage({ searchParams }: Props) {
   let reserveResult: Awaited<ReturnType<typeof getCurrentMoneyReserves>> | null = null;
   let rolloverPreview: MoneyRolloverPreview | null = null;
   let rolloverPreviewError: string | null = null;
+  let rolloverBridges: readonly MoneyRolloverBridgeRecord[] | null = null;
+  let rolloverBridgesError: string | null = null;
   let movementsHasMore = false;
   let timezone: string = MONEY_DEFAULT_TIMEZONE;
   let timeContextFailed = false;
@@ -236,6 +240,20 @@ export default async function MoneyPage({ searchParams }: Props) {
         rolloverPreviewError =
           previewResult && !previewResult.ok ? previewResult.errorMessage : null;
       }
+
+      // Variance disclosure follows the period, not only the ended-source
+      // preview: a tracking successor can receive a correction variance from a
+      // rolled-over predecessor.
+      const bridgesResult = await listMoneyRolloverBridges(
+        actor,
+        new SupabaseMoneyRolloverRepository(client),
+        moneyState.period.id,
+      ).catch(() => null);
+      rolloverBridges = bridgesResult?.ok ? bridgesResult.data : null;
+      rolloverBridgesError =
+        bridgesResult && !bridgesResult.ok
+          ? "Historical correction variances could not be loaded right now."
+          : null;
     }
   } catch {
     result = null;
@@ -336,6 +354,12 @@ export default async function MoneyPage({ searchParams }: Props) {
         rebaseAction={rebaseMoneyDayStartBaselineAction}
         initialSetupIncomplete={moneyState.dayStartBaseline?.unavailableReason === "initial_setup_incomplete"}
       />
+      {moneyState.period ? (
+        <MoneyRolloverVariancePanel
+          bridges={rolloverBridges}
+          unavailableReason={rolloverBridgesError}
+        />
+      ) : null}
       {moneyState.period ? (
         <MoneyDayClosePanel
           key={`close:${moneyState.period.id}:${moneyState.period.version}`}

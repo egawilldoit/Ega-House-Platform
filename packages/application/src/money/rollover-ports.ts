@@ -44,16 +44,39 @@ export type MoneyRolloverPendingOccurrence = Readonly<{
 
 export type MoneyRolloverSourceContext = Readonly<{
   period: MoneyPeriod;
+  /** Latest effective policy settings for the source period. */
+  effectiveSettings: MoneyPeriodSettings;
   /** Modeled recorded cash through the source end date; null when unknown. */
   modeledClosingCashMinor: number | null;
   /** False when a bounded aggregation could not read the whole window. */
   cashComplete: boolean;
   pendingOccurrences: readonly MoneyRolloverPendingOccurrence[];
+  /** True when the payer occurrence read hit a bounded page cap. */
+  pendingOccurrencesTruncated: boolean;
   /** MONEY-09 close evidence compared with the live restated totals. */
   closeSnapshots: MoneyRolloverCloseSnapshotAssessment;
+  /** Corrections from a rolled-over predecessor that targeted this period. */
+  priorCorrectionBridges: readonly MoneyRolloverBridgeRecord[];
   existingSuccessorPeriodId: string | null;
   /** Already-created successor for a replayed operation, if any. */
   existingRollover: MoneyRolloverRecord | null;
+}>;
+
+export type MoneyRolloverBridgeRecord = Readonly<{
+  id: string;
+  sourcePeriodId: string;
+  destinationPeriodId: string;
+  movementId: string;
+  correctionVersion: number;
+  amountMinor: number;
+  direction: "in" | "out";
+  bookingDate: string;
+  applied: boolean;
+  varianceReason:
+    | "verified_opening_covered_cutoff"
+    | "verified_opening_excludes_correction"
+    | null;
+  createdAt: string;
 }>;
 
 export type MoneyRolloverRecord = Readonly<{
@@ -95,7 +118,8 @@ export type MoneyRolloverWriteInput = Readonly<{
   opening: MoneyOpeningInput;
   initialized: "initialized" | "reconciled";
   provenance: MoneyPeriodProvenance;
-  settings: MoneyPeriodSettings;
+  /** Explicit overrides layered over the source's latest effective policy. */
+  settingsOverrides: MoneyPeriodSettings | null;
   operationId: string;
   requestFingerprint: string;
   openingCreateFingerprint: string;
@@ -116,6 +140,10 @@ export type MoneyRolloverRepository = {
     actor: AuthenticatedActor,
     sourcePeriodId: string,
   ): Promise<RepositoryResult<MoneyRolloverSourceContext | null>>;
+  listCorrectionBridges(
+    actor: AuthenticatedActor,
+    destinationPeriodId: string,
+  ): Promise<RepositoryResult<readonly MoneyRolloverBridgeRecord[]>>;
   findRolloverByOperation(
     actor: AuthenticatedActor,
     operationId: string,
