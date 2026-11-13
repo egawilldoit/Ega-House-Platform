@@ -345,6 +345,16 @@ export class SupabaseMoneyRolloverRepository implements MoneyRolloverRepository 
     actor: AuthenticatedActor,
     destinationPeriodId: string,
   ): Promise<RepositoryResult<MoneyRolloverBridgeList>> {
+    const period = await this.periods.findById(actor, destinationPeriodId);
+    if (!period.ok) return period;
+    if (!period.value) return { ok: false, error: { code: "notFound" } };
+    return this.readCorrectionBridges(actor, destinationPeriodId);
+  }
+
+  private async readCorrectionBridges(
+    actor: AuthenticatedActor,
+    destinationPeriodId: string,
+  ): Promise<RepositoryResult<MoneyRolloverBridgeList>> {
     const { data, error, count } = await this.supabase
       .from(BRIDGE_TABLE)
       .select(BRIDGE_COLUMNS, { count: "exact" })
@@ -418,7 +428,7 @@ export class SupabaseMoneyRolloverRepository implements MoneyRolloverRepository 
           .order("version", { ascending: false })
           .limit(1)
           .maybeSingle(),
-        this.listCorrectionBridges(actor, period.id),
+        this.readCorrectionBridges(actor, period.id),
       ]);
 
     if (!openingResult.ok) return openingResult;

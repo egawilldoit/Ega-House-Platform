@@ -156,6 +156,7 @@ function closeSummary(overrides: Record<string, unknown> = {}) {
 
 test("correction bridge reads are owner-scoped and disclose truncation", async () => {
   const complete = fakeClient({
+    money_periods: [{ data: PERIOD_ROW, error: null }],
     money_period_rollover_bridges: [
       { data: [BRIDGE_ROW], error: null, count: 1 },
     ],
@@ -178,13 +179,14 @@ test("correction bridge reads are owner-scoped and disclose truncation", async (
     createdAt: BRIDGE_ROW.created_at,
   });
   assert.equal(completeResult.ok && completeResult.value.truncated, false);
-  const steps = complete.calls[0]!.builder.steps;
+  const steps = complete.calls.find((call) => call.table === "money_period_rollover_bridges")!.builder.steps;
   assert.ok(steps.includes(`eq:owner_user_id=${ACTOR.userId}`));
   assert.ok(steps.includes(`eq:destination_period_id=${PERIOD_ID}`));
   assert.ok(steps.includes("limit:500"));
   assert.ok(steps.some((step) => step.includes("count=exact")));
 
   const truncated = fakeClient({
+    money_periods: [{ data: PERIOD_ROW, error: null }],
     money_period_rollover_bridges: [
       { data: [BRIDGE_ROW], error: null, count: 501 },
     ],
@@ -195,6 +197,7 @@ test("correction bridge reads are owner-scoped and disclose truncation", async (
   assert.equal(truncatedResult.ok && truncatedResult.value.truncated, true);
 
   const unknownCount = fakeClient({
+    money_periods: [{ data: PERIOD_ROW, error: null }],
     money_period_rollover_bridges: [{ data: [BRIDGE_ROW], error: null }],
   });
   const unknownResult = await new SupabaseMoneyRolloverRepository(
@@ -205,6 +208,15 @@ test("correction bridge reads are owner-scoped and disclose truncation", async (
     true,
     "an unverifiable total is never treated as a complete history",
   );
+});
+
+test("correction bridge reads reject a missing or inaccessible period", async () => {
+  const fake = fakeClient({ money_periods: [{ data: null, error: null }] });
+  const result = await new SupabaseMoneyRolloverRepository(fake.client)
+    .listCorrectionBridges(ACTOR, PERIOD_ID);
+  assert.deepEqual(result, { ok: false, error: { code: "notFound" } });
+  assert.ok(fake.calls[0]!.builder.steps.includes(`eq:owner_user_id=${ACTOR.userId}`));
+  assert.equal(fake.calls.some((call) => call.table === "money_period_rollover_bridges"), false);
 });
 
 test("source context reads the effective policy and a bridge truncation flag", async () => {
@@ -226,7 +238,7 @@ test("source context reads the effective policy and a bridge truncation flag", a
     ],
     money_policy_versions: [
       {
-        data: { policy: { settings: { savingsTargetMinor: 5_000 } } },
+        data: { policy: { settings: { savingsTargetMinor: null } } },
         error: null,
       },
     ],
@@ -242,7 +254,7 @@ test("source context reads the effective policy and a bridge truncation flag", a
   assert.equal(result.ok, true);
   if (!result.ok || !result.value) return;
   assert.deepEqual(result.value.effectiveSettings, {
-    savingsTargetMinor: 5_000,
+    savingsTargetMinor: null,
   });
   assert.equal(result.value.priorCorrectionBridges.length, 1);
   assert.equal(result.value.priorCorrectionBridgesTruncated, true);

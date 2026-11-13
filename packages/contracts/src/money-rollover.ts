@@ -176,7 +176,7 @@ export type MoneyRolloverPreviewResponse = Readonly<{
   pendingOccurrences: readonly MoneyRolloverPendingOccurrenceDto[];
   pendingOccurrencesTruncated: boolean;
   priorCorrectionBridges: readonly MoneyRolloverBridgeDto[];
-  /** False when the bounded bridge read could not prove the full list. */
+  /** True when the bounded bridge read could not prove the full list. */
   priorCorrectionBridgesTruncated: boolean;
   generatedObligations: readonly Readonly<{
     templateId: string;

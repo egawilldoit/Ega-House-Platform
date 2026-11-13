@@ -1012,7 +1012,7 @@ export function parseMoneySettings(
   // rollover SQL. Reject the same shapes here so an MCP/HTTP caller gets a
   // field validation error instead of a generic database conflict.
   if (
-    raw.savingsTargetMinor !== undefined &&
+    raw.savingsTargetMinor != null &&
     !isMoneyBudgetAmountMinor(raw.savingsTargetMinor)
   ) {
     return failure(
@@ -1021,7 +1021,7 @@ export function parseMoneySettings(
     );
   }
   if (
-    raw.emergencyTargetMinor !== undefined &&
+    raw.emergencyTargetMinor != null &&
     !isMoneyBudgetAmountMinor(raw.emergencyTargetMinor)
   ) {
     return failure(
