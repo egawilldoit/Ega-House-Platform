@@ -54,9 +54,9 @@ import type {
  *
  * Integration dependency (MONEY-09): the source must already be finished by the
  * durable day close (`lifecycle = 'ended'`, `activeDate = endDate`). Stored close
- * snapshots are read through the port's `closeSnapshots` seam; until MONEY-09
- * provides them the preview reports the comparison as unavailable instead of
- * claiming it passed.
+ * snapshots are read from `money_day_closes` and compared with live restated
+ * totals; a changed or unavailable comparison is an explicit decision, never a
+ * passed check.
  */
 
 export type MoneyRolloverSurface = "web" | "mcp";
@@ -89,6 +89,8 @@ export type MoneyRolloverPreview = Readonly<{
   proposedOpeningMinor: number | null;
   settings: Readonly<Record<string, unknown>>;
   reconciliation: MoneyRolloverReconciliation;
+  /** Stored close evidence and the live restatement comparison it powered. */
+  closeSnapshots: MoneyRolloverSourceContext["closeSnapshots"];
   pendingOccurrences: MoneyRolloverSourceContext["pendingOccurrences"];
   generatedObligations: readonly Readonly<{
     templateId: string;
@@ -236,6 +238,19 @@ function planCarriedOccurrences(
       });
       // The receipt mirrors the classification the atomic write copies from the
       // canonical source row, so the fingerprint never describes different data.
+      // A legacy occurrence with no stored category falls back to its kind
+      // default instead of inventing an unrelated category or writing null.
+      const classification = resolveObligationClassification({
+        kind: occurrence.kind,
+        occurrence: {
+          needVsWant: occurrence.needVsWant,
+          purpose: occurrence.purpose,
+          countsInDaily: occurrence.countsInDaily,
+          ...(occurrence.category === null
+            ? {}
+            : { category: occurrence.category }),
+        },
+      });
       const values: ObligationCreateValues = {
         kind: occurrence.kind,
         description: occurrence.description,
@@ -243,10 +258,10 @@ function planCarriedOccurrences(
         periodStart: targets.startDate,
         periodEnd: targets.endDate,
         dueDate,
-        needVsWant: occurrence.needVsWant,
-        purpose: occurrence.purpose,
-        countsInDaily: occurrence.countsInDaily,
-        category: occurrence.category,
+        needVsWant: classification.needVsWant,
+        purpose: classification.purpose,
+        countsInDaily: classification.countsInDaily,
+        category: classification.category,
         stateEffectiveDate: targets.startDate,
         templateId: null,
         idempotencyKey: `rollover-carry:${targets.startDate}:${occurrence.id}`,
@@ -371,13 +386,13 @@ async function prepareRollover(
   } else {
     const verified = values.opening;
     if (
-      verified.cutoffDate < source.period.startDate ||
-      verified.cutoffDate > targets.endDate
+      verified.cutoffDate < source.period.endDate ||
+      verified.cutoffDate > targets.startDate
     ) {
       openingFailure = {
         ok: false,
         code: "validation",
-        message: `The verified opening cutoff must be between ${source.period.startDate} and ${targets.endDate}.`,
+        message: `The verified opening cutoff must cover the source close and not extend past the successor start (${source.period.endDate} through ${targets.startDate}).`,
       };
     } else {
       opening = buildVerifiedRolloverOpening(verified, source.period);
@@ -394,10 +409,7 @@ async function prepareRollover(
     pendingOccurrences: source.pendingOccurrences,
     unpaidChoice: values.unpaidItems,
     openingMode: values.opening.mode,
-    closeSnapshotAvailable: source.closeSnapshots.available,
-    closeSnapshotReason: source.closeSnapshots.available
-      ? null
-      : source.closeSnapshots.reason,
+    closeSnapshots: source.closeSnapshots,
   });
 
   const templatesResult = await dependencies.obligations.listTemplates(actor, {
@@ -464,6 +476,7 @@ function previewOf(prepared: Prepared): MoneyRolloverPreview {
       values.settingsOverrides,
     ),
     reconciliation,
+    closeSnapshots: source.closeSnapshots,
     pendingOccurrences: source.pendingOccurrences,
     generatedObligations: obligations.map((item) => ({
       templateId: item.values.templateId ?? "",

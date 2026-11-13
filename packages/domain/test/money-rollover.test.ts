@@ -164,7 +164,7 @@ test("unknown closing cash blocks carry-forward and is not modeled as zero", () 
     pendingOccurrences: [],
     unpaidChoice: null,
     openingMode: "carry_forward",
-    closeSnapshotAvailable: true,
+    closeSnapshots: { available: true, closeCount: 1, lastClosedDate: "2026-11-30", comparableToRestatedTotals: true, restatedDifferenceCount: 0, restatedDifferences: [], paidObligationCount: 0, paidObligationMismatchCount: 0, countedVisitCount: 0, countedVisitMismatchCount: 0, savingsTargetMinor: null, savingsTransferredMinor: 0 },
   });
   assert.equal(result.blockers.length, 1);
   assert.match(result.blockers[0], /unknown/);
@@ -183,7 +183,7 @@ test("a verified difference requires explicit acceptance and keeps the amount", 
     pendingOccurrences: [],
     unpaidChoice: null,
     openingMode: "verified_source",
-    closeSnapshotAvailable: true,
+    closeSnapshots: { available: true, closeCount: 1, lastClosedDate: "2026-11-30", comparableToRestatedTotals: true, restatedDifferenceCount: 0, restatedDifferences: [], paidObligationCount: 0, paidObligationMismatchCount: 0, countedVisitCount: 0, countedVisitMismatchCount: 0, savingsTargetMinor: null, savingsTransferredMinor: 0 },
   });
   assert.equal(rejected.choices.length, 1);
   assert.equal(rejected.differenceMinor, -900);
@@ -196,7 +196,7 @@ test("a verified difference requires explicit acceptance and keeps the amount", 
     pendingOccurrences: [],
     unpaidChoice: null,
     openingMode: "verified_source",
-    closeSnapshotAvailable: true,
+    closeSnapshots: { available: true, closeCount: 1, lastClosedDate: "2026-11-30", comparableToRestatedTotals: true, restatedDifferenceCount: 0, restatedDifferences: [], paidObligationCount: 0, paidObligationMismatchCount: 0, countedVisitCount: 0, countedVisitMismatchCount: 0, savingsTargetMinor: null, savingsTransferredMinor: 0 },
   });
   assert.equal(accepted.choices.length, 0);
   assert.equal(accepted.differenceAccepted, true);
@@ -214,7 +214,7 @@ test("unpaid occurrences require an explicit treatment and are never dropped", (
     ],
     unpaidChoice: null,
     openingMode: "carry_forward",
-    closeSnapshotAvailable: true,
+    closeSnapshots: { available: true, closeCount: 1, lastClosedDate: "2026-11-30", comparableToRestatedTotals: true, restatedDifferenceCount: 0, restatedDifferences: [], paidObligationCount: 0, paidObligationMismatchCount: 0, countedVisitCount: 0, countedVisitMismatchCount: 0, savingsTargetMinor: null, savingsTransferredMinor: 0 },
   });
   assert.equal(result.pendingOccurrenceCount, 2);
   assert.equal(result.pendingOccurrenceMinor, 10_000);
@@ -231,8 +231,7 @@ test("missing close snapshots are reported as unavailable, not passed", () => {
     pendingOccurrences: [],
     unpaidChoice: null,
     openingMode: "carry_forward",
-    closeSnapshotAvailable: false,
-    closeSnapshotReason: "not available",
+    closeSnapshots: { available: false, reason: "no_close_evidence" },
   });
   assert.equal(
     result.differences.find((entry) => entry.code === "close_snapshot_restatement")
@@ -241,9 +240,127 @@ test("missing close snapshots are reported as unavailable, not passed", () => {
   );
 });
 
+test("restated close snapshots require explicit acceptance before rollover", () => {
+  const pending = assessMoneyRollover({
+    cutoffDate: "2026-11-30",
+    modeledClosingCashMinor: 10_000,
+    verifiedClosingCashMinor: null,
+    differenceAccepted: false,
+    pendingOccurrences: [],
+    unpaidChoice: null,
+    openingMode: "carry_forward",
+    closeSnapshots: {
+      available: true,
+      closeCount: 19,
+      lastClosedDate: "2026-11-30",
+      comparableToRestatedTotals: true,
+      restatedDifferenceCount: 1,
+      paidObligationCount: 0,
+      paidObligationMismatchCount: 0,
+      countedVisitCount: 0,
+      countedVisitMismatchCount: 0,
+      savingsTargetMinor: null,
+      savingsTransferredMinor: 0,
+      restatedDifferences: [
+        {
+          closeId: "close-1",
+          closeDate: "2026-11-20",
+          changedFields: ["expenseTotal", "recordedCash"],
+        },
+      ],
+    },
+  });
+  assert.equal(
+    pending.differences.find((entry) => entry.code === "close_snapshot_restatement")
+      ?.status,
+    "choice_required",
+  );
+  assert.equal(pending.choices.length, 1);
+
+  const accepted = assessMoneyRollover({
+    cutoffDate: "2026-11-30",
+    modeledClosingCashMinor: 10_000,
+    verifiedClosingCashMinor: null,
+    differenceAccepted: true,
+    pendingOccurrences: [],
+    unpaidChoice: null,
+    openingMode: "carry_forward",
+    closeSnapshots: {
+      available: true,
+      closeCount: 19,
+      lastClosedDate: "2026-11-30",
+      comparableToRestatedTotals: true,
+      restatedDifferenceCount: 1,
+      paidObligationCount: 0,
+      paidObligationMismatchCount: 0,
+      countedVisitCount: 0,
+      countedVisitMismatchCount: 0,
+      savingsTargetMinor: null,
+      savingsTransferredMinor: 0,
+      restatedDifferences: [
+        {
+          closeId: "close-1",
+          closeDate: "2026-11-20",
+          changedFields: ["recordedCash"],
+        },
+      ],
+    },
+  });
+  assert.equal(accepted.choices.length, 0);
+  assert.equal(
+    accepted.differences.find((entry) => entry.code === "close_snapshot_restatement")
+      ?.status,
+    "accepted",
+  );
+});
+
+test("payment and counted-visit mismatches are reconciliation choices", () => {
+  const result = assessMoneyRollover({
+    cutoffDate: "2026-11-30",
+    modeledClosingCashMinor: 10_000,
+    verifiedClosingCashMinor: null,
+    differenceAccepted: false,
+    pendingOccurrences: [],
+    unpaidChoice: null,
+    openingMode: "carry_forward",
+    closeSnapshots: {
+      available: true,
+      closeCount: 2,
+      lastClosedDate: "2026-11-30",
+      comparableToRestatedTotals: true,
+      restatedDifferenceCount: 0,
+      restatedDifferences: [],
+      paidObligationCount: 2,
+      paidObligationMismatchCount: 1,
+      countedVisitCount: 3,
+      countedVisitMismatchCount: 1,
+      savingsTargetMinor: 12_000,
+      savingsTransferredMinor: 2_000,
+    },
+  });
+  assert.equal(
+    result.differences.find(
+      (entry) => entry.code === "paid_obligation_payment_mismatch",
+    )?.status,
+    "choice_required",
+  );
+  assert.equal(
+    result.differences.find((entry) => entry.code === "counted_coffee_visit_mismatch")
+      ?.status,
+    "choice_required",
+  );
+  assert.equal(result.choices.length, 2);
+  const savings = result.differences.find(
+    (entry) => entry.code === "savings_target_vs_transfers",
+  );
+  assert.equal(savings?.status, "ok");
+  assert.equal(savings?.amountMinor, -10_000);
+});
+
 test("bridge posts only the incremental delta into derived successors", () => {
   const plan = planMoneyRolloverBridge({
     sourcePeriodId: "source",
+    sourceEndDate: "2026-11-30",
     correctionVersion: 3,
     movementBookingDate: "2026-11-20",
     previousCashDeltaMinor: -1_100,
@@ -279,6 +396,7 @@ test("bridge posts only the incremental delta into derived successors", () => {
 test("bridge stops at a verified opening without altering it", () => {
   const plan = planMoneyRolloverBridge({
     sourcePeriodId: "source",
+    sourceEndDate: "2026-11-30",
     correctionVersion: 4,
     movementBookingDate: "2026-11-20",
     previousCashDeltaMinor: 0,
@@ -316,6 +434,7 @@ test("bridge stops at a verified opening without altering it", () => {
 test("post-cutoff corrections do not bridge", () => {
   const plan = planMoneyRolloverBridge({
     sourcePeriodId: "source",
+    sourceEndDate: "2026-11-30",
     correctionVersion: 5,
     movementBookingDate: "2026-12-05",
     previousCashDeltaMinor: 0,

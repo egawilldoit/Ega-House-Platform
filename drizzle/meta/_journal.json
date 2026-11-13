@@ -675,10 +675,31 @@
       "breakpoints": true
     },
     {
-      "idx": 123,
+      "idx": 117,
       "version": "7",
-      "when": 1787880000073,
-      "tag": "0110_money_10_period_rollover",
+      "when": 1787880000067,
+      "tag": "0104_money_09_day_close",
+      "breakpoints": true
+    },
+    {
+      "idx": 118,
+      "version": "7",
+      "when": 1787880000068,
+      "tag": "0105_money_09_close_review_fixes",
+      "breakpoints": true
+    },
+    {
+      "idx": 119,
+      "version": "7",
+      "when": 1787880000069,
+      "tag": "0106_money_09_close_canonical_predicate",
+      "breakpoints": true
+    },
+    {
+      "idx": 120,
+      "version": "7",
+      "when": 1787880000070,
+      "tag": "0107_money_10_period_rollover",
       "breakpoints": true
     }
   ]

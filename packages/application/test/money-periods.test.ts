@@ -12,7 +12,7 @@ import {
   type ExpenseRepository,
   type MoneyPeriodRepository,
 } from "../src/index";
-import type { MoneyOpening, MoneyPeriod } from "@ega/domain/money";
+import type { MoneyDayClose, MoneyOpening, MoneyPeriod } from "@ega/domain/money";
 import type { PersonalExpense } from "@ega/domain/expenses";
 
 const ACTOR = createAuthenticatedActor("owner-money");
@@ -72,6 +72,15 @@ function makeRepository() {
     async getDailyIncludedExpenseTotal(actor, periodId, date) {
       const amount = ledger.filter((row) => row.ownerUserId === actor.userId && row.periodId === periodId && row.bookingDate === date && !row.deletedAt).reduce((sum, row) => sum + row.amountMinor, 0);
       return { ok: true as const, value: { ...dailyTotal, amountMinor: amount || dailyTotal.amountMinor } };
+    },
+    async getDayCloseForDate() {
+      return { ok: true as const, value: null };
+    },
+    async getReserveInputs() {
+      return {
+        ok: true as const,
+        value: { available: false as const, reason: "reserve_inputs_incomplete" },
+      };
     },
     async findTracking(actor) {
       return {
@@ -499,6 +508,48 @@ test("changing the active date keeps boundaries and transactions and increments 
   assert.equal(updated.data.version, created.data.period.version + 1);
   assert.equal(ledger.filter((row) => row.kind === "expense").length, 1);
   assert.equal(ledger.find((row) => row.kind === "expense")?.amountMinor, 1100);
+});
+
+test("a retained close makes the active date close-driven", async () => {
+  const { repository } = makeRepository();
+  const created = await createMoneyPeriod(ACTOR, repository, CREATE_BODY, {
+    now: NOW,
+    timezone: "Africa/Casablanca",
+  });
+  assert.equal(created.ok, true);
+  if (!created.ok) return;
+
+  const withClose = {
+    ...repository,
+    async listDayCloses() {
+      return {
+        ok: true as const,
+        value: [{ id: "close-1" } as MoneyDayClose],
+      };
+    },
+  };
+
+  const skipped = await updateMoneySettings(
+    ACTOR,
+    withClose,
+    created.data.period.id,
+    { version: created.data.period.version, activeDate: "2026-11-12" },
+    { now: NOW, timezone: "Africa/Casablanca" },
+  );
+  assert.equal(skipped.ok, false);
+  if (!skipped.ok) {
+    assert.equal(skipped.code, "validation");
+    assert.match(skipped.errorMessage, /closing the active day/);
+  }
+
+  const unchanged = await updateMoneySettings(
+    ACTOR,
+    withClose,
+    created.data.period.id,
+    { version: created.data.period.version, activeDate: created.data.period.activeDate },
+    { now: NOW, timezone: "Africa/Casablanca" },
+  );
+  assert.equal(unchanged.ok, true);
 });
 
 test("a stale version conflicts without changing the stored period", async () => {

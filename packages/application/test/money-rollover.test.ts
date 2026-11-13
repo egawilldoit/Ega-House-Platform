@@ -115,7 +115,20 @@ function context(overrides: Partial<MoneyRolloverSourceContext> = {}): MoneyRoll
     modeledClosingCashMinor: 68_900,
     cashComplete: true,
     pendingOccurrences: [],
-    closeSnapshots: { available: false, reason: "not available in this build" },
+    closeSnapshots: {
+      available: true,
+      closeCount: 19,
+      lastClosedDate: "2026-11-30",
+      comparableToRestatedTotals: true,
+      restatedDifferenceCount: 0,
+      paidObligationCount: 0,
+      paidObligationMismatchCount: 0,
+      countedVisitCount: 0,
+      countedVisitMismatchCount: 0,
+      savingsTargetMinor: null,
+      savingsTransferredMinor: 0,
+      restatedDifferences: [],
+    },
     existingSuccessorPeriodId: null,
     existingRollover: null,
     ...overrides,
@@ -289,6 +302,47 @@ test("a verified opening difference needs an explicit acceptance note", async ()
   assert.equal(accepted.ok, true);
   assert.equal(fake.writes[0].initialized, "reconciled");
   assert.equal(fake.writes[0].opening.source, "verified_source");
+});
+
+test("restated close snapshots need an acceptance note before the write", async () => {
+  const restated = {
+    available: true as const,
+    closeCount: 19,
+    lastClosedDate: "2026-11-30",
+    comparableToRestatedTotals: true as const,
+    restatedDifferenceCount: 1,
+    paidObligationCount: 0,
+    paidObligationMismatchCount: 0,
+    countedVisitCount: 0,
+    countedVisitMismatchCount: 0,
+    savingsTargetMinor: null,
+    savingsTransferredMinor: 0,
+    restatedDifferences: [
+      {
+        closeId: "close-1",
+        closeDate: "2026-11-20",
+        changedFields: ["expenseTotal", "recordedCash"],
+      },
+    ],
+  };
+  const blocked = await rolloverMoneyPeriod(
+    actor,
+    { repository: fakeRepository(context({ closeSnapshots: restated })).repository, obligations: noTemplates },
+    baseInput(),
+    "750e8400-e29b-41d4-a716-446655440009",
+  );
+  assert.equal(blocked.ok, false);
+  assert.match(!blocked.ok ? blocked.errorMessage : "", /restated|acceptance/i);
+
+  const fake = fakeRepository(context({ closeSnapshots: restated }));
+  const accepted = await rolloverMoneyPeriod(
+    actor,
+    { repository: fake.repository, obligations: noTemplates },
+    baseInput({ acceptClosingDifferenceNote: "reviewed restated close" }),
+    "750e8400-e29b-41d4-a716-44665544000a",
+  );
+  assert.equal(accepted.ok, true);
+  assert.equal(fake.writes.length, 1);
 });
 
 test("a verified opening cutoff after the successor start is rejected", async () => {

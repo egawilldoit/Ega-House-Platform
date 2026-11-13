@@ -1445,6 +1445,8 @@ export const moneyPeriods = pgTable(
       .default("uninitialized")
       .notNull(),
     openingMovementId: uuid("opening_movement_id"),
+    successorPeriodId: uuid("successor_period_id"),
+    rolledOverAt: timestamp("rolled_over_at", { withTimezone: true }),
     provenance: jsonb("provenance").default(sql`'{}'::jsonb`).notNull(),
     settings: jsonb("settings").default(sql`'{}'::jsonb`).notNull(),
     version: integer("version").default(1).notNull(),
@@ -1455,6 +1457,10 @@ export const moneyPeriods = pgTable(
     uniqueIndex("money_periods_owner_tracking_unique")
       .on(table.ownerUserId)
       .where(sql`lifecycle = 'tracking'`),
+    uniqueIndex("money_periods_owner_id_unique").on(
+      table.ownerUserId,
+      table.id,
+    ),
     uniqueIndex("money_periods_owner_range_unique").on(
       table.ownerUserId,
       table.startDate,
@@ -1464,6 +1470,17 @@ export const moneyPeriods = pgTable(
       table.ownerUserId,
       table.startDate.desc(),
       table.id.desc(),
+    ),
+    uniqueIndex("money_periods_owner_successor_unique")
+      .on(table.ownerUserId, table.successorPeriodId)
+      .where(sql`successor_period_id is not null`),
+    foreignKey({
+      columns: [table.ownerUserId, table.successorPeriodId],
+      foreignColumns: [table.ownerUserId, table.id],
+    }).onDelete("restrict"),
+    check(
+      "money_periods_successor_not_self_check",
+      sql`${table.successorPeriodId} is null or ${table.successorPeriodId} <> ${table.id}`,
     ),
     check("money_periods_range_check", sql`${table.startDate} <= ${table.endDate}`),
     check("money_periods_currency_check", sql`${table.currency} = 'MAD'`),
@@ -1481,6 +1498,261 @@ export const moneyPeriods = pgTable(
       sql`${table.initialization} in ('uninitialized','initialized','reconciled')`,
     ),
     check("money_periods_version_check", sql`${table.version} > 0`),
+  ],
+);
+
+/**
+ * MONEY-09 durable day close. One immutable row per owner/period/date retains
+ * the CLOSED note, the calculated day totals, the chosen day-start baseline, the
+ * algorithm/policy version and the close identity. The active-date transition
+ * and this insert happen in one `money_close_day` transaction. Later
+ * corrections never rewrite the snapshot; reads compute restated totals.
+ */
+export const moneyDayCloses = pgTable(
+  "money_day_closes",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    ownerUserId: uuid("owner_user_id")
+      .default(sql`auth.uid()`)
+      .notNull(),
+    periodId: uuid("period_id").notNull(),
+    closeDate: date("close_date").notNull(),
+    status: text("status").default("closed").notNull(),
+    note: text("note"),
+    operationId: uuid("operation_id").notNull(),
+    closeFingerprint: text("close_fingerprint").notNull(),
+    expectedPeriodVersion: integer("expected_period_version").notNull(),
+    periodVersionAfter: integer("period_version_after").notNull(),
+    activeDateAfter: date("active_date_after").notNull(),
+    lifecycleAfter: text("lifecycle_after").notNull(),
+    isFinalDay: boolean("is_final_day").notNull(),
+    algorithmVersion: text("algorithm_version").notNull(),
+    policyVersionId: uuid("policy_version_id"),
+    policyVersion: integer("policy_version"),
+    baselineVersion: integer("baseline_version").notNull(),
+    includedMovementIds: uuid("included_movement_ids")
+      .array()
+      .default(sql`'{}'::uuid[]`)
+      .notNull(),
+    snapshot: jsonb("snapshot").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    uniqueIndex("money_day_closes_owner_operation_unique").on(
+      table.ownerUserId,
+      table.operationId,
+    ),
+    uniqueIndex("money_day_closes_owner_period_date_unique").on(
+      table.ownerUserId,
+      table.periodId,
+      table.closeDate,
+    ),
+    index("money_day_closes_owner_period_history_idx").on(
+      table.ownerUserId,
+      table.periodId,
+      table.closeDate.desc(),
+      table.createdAt.desc(),
+    ),
+    foreignKey({
+      columns: [table.ownerUserId, table.periodId],
+      foreignColumns: [moneyPeriods.ownerUserId, moneyPeriods.id],
+    }).onDelete("restrict"),
+    check("money_day_closes_status_check", sql`${table.status} = 'closed'`),
+    check(
+      "money_day_closes_fingerprint_check",
+      sql`${table.closeFingerprint} ~ '^[0-9a-f]{64}$'`,
+    ),
+    check(
+      "money_day_closes_version_check",
+      sql`${table.expectedPeriodVersion} > 0 and ${table.periodVersionAfter} = ${table.expectedPeriodVersion} + 1`,
+    ),
+    check(
+      "money_day_closes_lifecycle_check",
+      sql`${table.lifecycleAfter} in ('tracking','ended')`,
+    ),
+    check(
+      "money_day_closes_final_day_check",
+      sql`(${table.isFinalDay} and ${table.lifecycleAfter} = 'ended') or (not ${table.isFinalDay} and ${table.lifecycleAfter} = 'tracking')`,
+    ),
+    check(
+      "money_day_closes_advance_check",
+      sql`(${table.lifecycleAfter} <> 'ended' or ${table.closeDate} = ${table.activeDateAfter}) and (${table.lifecycleAfter} <> 'tracking' or ${table.activeDateAfter} = ${table.closeDate} + 1)`,
+    ),
+    check(
+      "money_day_closes_algorithm_version_check",
+      sql`btrim(${table.algorithmVersion}) <> ''`,
+    ),
+    check(
+      "money_day_closes_baseline_version_check",
+      sql`${table.baselineVersion} > 0`,
+    ),
+    check(
+      "money_day_closes_snapshot_check",
+      sql`jsonb_typeof(${table.snapshot}) = 'object'`,
+    ),
+  ],
+);
+
+/**
+ * MONEY-10 explicit rollover receipt. One immutable row per owner/source and
+ * owner/operation retains the accepted opening mode, reconciliation provenance
+ * and occurrence counts that the single atomic rollover produced.
+ */
+export const moneyPeriodRollovers = pgTable(
+  "money_period_rollovers",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    ownerUserId: uuid("owner_user_id").default(sql`auth.uid()`).notNull(),
+    sourcePeriodId: uuid("source_period_id").notNull(),
+    successorPeriodId: uuid("successor_period_id").notNull(),
+    operationId: varchar("operation_id", { length: 128 }).notNull(),
+    requestFingerprint: varchar("request_fingerprint", { length: 64 }).notNull(),
+    openingMode: varchar("opening_mode", { length: 24 }).notNull(),
+    openingAmountMinor: integer("opening_amount_minor").notNull(),
+    closingCashMinor: integer("closing_cash_minor"),
+    closingCutoffDate: date("closing_cutoff_date").notNull(),
+    unpaidTreatment: varchar("unpaid_treatment", { length: 24 }),
+    reconciliationAcceptedNote: varchar("reconciliation_accepted_note", {
+      length: 500,
+    }),
+    reconciliation: jsonb("reconciliation").default(sql`'{}'::jsonb`).notNull(),
+    generatedOccurrenceCount: integer("generated_occurrence_count")
+      .default(0)
+      .notNull(),
+    carriedOccurrenceCount: integer("carried_occurrence_count")
+      .default(0)
+      .notNull(),
+    cancelledOccurrenceCount: integer("cancelled_occurrence_count")
+      .default(0)
+      .notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    uniqueIndex("money_period_rollovers_owner_operation_unique").on(
+      table.ownerUserId,
+      table.operationId,
+    ),
+    uniqueIndex("money_period_rollovers_owner_source_unique").on(
+      table.ownerUserId,
+      table.sourcePeriodId,
+    ),
+    uniqueIndex("money_period_rollovers_owner_successor_unique").on(
+      table.ownerUserId,
+      table.successorPeriodId,
+    ),
+    foreignKey({
+      columns: [table.ownerUserId, table.sourcePeriodId],
+      foreignColumns: [moneyPeriods.ownerUserId, moneyPeriods.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      columns: [table.ownerUserId, table.successorPeriodId],
+      foreignColumns: [moneyPeriods.ownerUserId, moneyPeriods.id],
+    }).onDelete("restrict"),
+    check(
+      "money_period_rollovers_operation_check",
+      sql`btrim(${table.operationId}) <> ''`,
+    ),
+    check(
+      "money_period_rollovers_distinct_periods_check",
+      sql`${table.sourcePeriodId} <> ${table.successorPeriodId}`,
+    ),
+    check(
+      "money_period_rollovers_fingerprint_check",
+      sql`${table.requestFingerprint} ~ '^[0-9a-f]{64}$'`,
+    ),
+    check(
+      "money_period_rollovers_opening_mode_check",
+      sql`${table.openingMode} in ('carry_forward','verified_source')`,
+    ),
+    check(
+      "money_period_rollovers_opening_amount_check",
+      sql`${table.openingAmountMinor} >= 0`,
+    ),
+    check(
+      "money_period_rollovers_unpaid_treatment_check",
+      sql`${table.unpaidTreatment} is null or ${table.unpaidTreatment} in ('keep_pending','carry_forward','cancel')`,
+    ),
+    check(
+      "money_period_rollovers_reconciliation_check",
+      sql`jsonb_typeof(${table.reconciliation}) = 'object'`,
+    ),
+  ],
+);
+
+/**
+ * MONEY-10 downstream correction bridges. An applied row links the canonical
+ * `reconciliation_adjustment` it created; a variance row records why a verified
+ * successor opening was not altered.
+ */
+export const moneyPeriodRolloverBridges = pgTable(
+  "money_period_rollover_bridges",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    ownerUserId: uuid("owner_user_id").default(sql`auth.uid()`).notNull(),
+    sourcePeriodId: uuid("source_period_id").notNull(),
+    destinationPeriodId: uuid("destination_period_id").notNull(),
+    movementId: uuid("movement_id").notNull(),
+    correctionVersion: integer("correction_version").notNull(),
+    identity: varchar("identity", { length: 200 }).notNull(),
+    amountMinor: integer("amount_minor").notNull(),
+    direction: varchar("direction", { length: 3 }).notNull(),
+    bookingDate: date("booking_date").notNull(),
+    adjustmentExpenseId: uuid("adjustment_expense_id").references(
+      () => personalExpenses.id,
+      { onDelete: "restrict" },
+    ),
+    applied: boolean("applied").default(false).notNull(),
+    varianceReason: varchar("variance_reason", { length: 48 }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    uniqueIndex("money_period_rollover_bridges_owner_identity_unique").on(
+      table.ownerUserId,
+      table.identity,
+    ),
+    index("money_period_rollover_bridges_destination_idx").on(
+      table.ownerUserId,
+      table.destinationPeriodId,
+      table.createdAt.desc(),
+    ),
+    foreignKey({
+      columns: [table.ownerUserId, table.sourcePeriodId],
+      foreignColumns: [moneyPeriods.ownerUserId, moneyPeriods.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      columns: [table.ownerUserId, table.destinationPeriodId],
+      foreignColumns: [moneyPeriods.ownerUserId, moneyPeriods.id],
+    }).onDelete("restrict"),
+    check(
+      "money_period_rollover_bridges_identity_check",
+      sql`btrim(${table.identity}) <> ''`,
+    ),
+    check(
+      "money_period_rollover_bridges_correction_version_check",
+      sql`${table.correctionVersion} > 0`,
+    ),
+    check(
+      "money_period_rollover_bridges_amount_check",
+      sql`${table.amountMinor} >= 0`,
+    ),
+    check(
+      "money_period_rollover_bridges_direction_check",
+      sql`${table.direction} in ('in','out')`,
+    ),
+    check(
+      "money_period_rollover_bridges_applied_check",
+      sql`(${table.applied} and ${table.adjustmentExpenseId} is not null and ${table.varianceReason} is null) or (not ${table.applied} and ${table.adjustmentExpenseId} is null and ${table.varianceReason} is not null)`,
+    ),
+    check(
+      "money_period_rollover_bridges_variance_reason_check",
+      sql`${table.varianceReason} is null or ${table.varianceReason} in ('verified_opening_covered_cutoff','verified_opening_excludes_correction')`,
+    ),
   ],
 );
 

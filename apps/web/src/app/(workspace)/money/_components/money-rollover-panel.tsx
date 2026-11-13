@@ -60,7 +60,17 @@ export function MoneyRolloverPanel({
 
   const pending = preview.pendingOccurrences;
   const difference = preview.reconciliation.differenceMinor;
-  const needsDifferenceNote = difference !== null && difference !== 0;
+  const restatedCloses =
+    preview.closeSnapshots.available &&
+    preview.closeSnapshots.comparableToRestatedTotals
+      ? preview.closeSnapshots.restatedDifferenceCount
+      : null;
+  const needsDifferenceNote =
+    (difference !== null && difference !== 0) ||
+    (restatedCloses !== null && restatedCloses > 0) ||
+    preview.reconciliation.differences.some(
+      (entry) => entry.status === "choice_required",
+    );
 
   async function submit(formData: FormData) {
     setError(null);
@@ -116,6 +126,18 @@ export function MoneyRolloverPanel({
             {difference === null
               ? "Not supplied"
               : formatMinorToMad(difference)}
+          </dd>
+        </div>
+        <div>
+          <dt className="text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
+            Day closes compared
+          </dt>
+          <dd className="font-medium">
+            {preview.closeSnapshots.available
+              ? preview.closeSnapshots.comparableToRestatedTotals
+                ? `${preview.closeSnapshots.closeCount} · ${preview.closeSnapshots.restatedDifferenceCount} restated`
+                : `${preview.closeSnapshots.closeCount} · comparison unavailable`
+              : "Unavailable"}
           </dd>
         </div>
       </dl>
@@ -226,7 +248,7 @@ export function MoneyRolloverPanel({
         {needsDifferenceNote ? (
           <div className="flex flex-col gap-1.5">
             <label htmlFor="rollover-difference-note" className="form-label">
-              Accept the closing difference (required, retained as provenance)
+              Accept the closing/restatement differences (required, retained as provenance)
             </label>
             <Input id="rollover-difference-note" name="acceptClosingDifferenceNote" placeholder="Why the difference is accepted" />
           </div>

@@ -8,6 +8,7 @@ import type {
 import type { ExpenseCategory } from "@ega/domain/expenses";
 import type { ObligationCreateValues, ObligationKind } from "@ega/domain/obligations";
 import type {
+  MoneyRolloverCloseSnapshotAssessment,
   MoneyRolloverOpeningMode,
   MoneyRolloverReconciliation,
   MoneyRolloverTargets,
@@ -41,20 +42,6 @@ export type MoneyRolloverPendingOccurrence = Readonly<{
   category: ExpenseCategory | null;
 }>;
 
-/**
- * Integration seam for MONEY-09 day-close evidence. MONEY-09 owns the durable
- * close snapshot; until it lands this reports unavailable rather than
- * pretending the comparison passed.
- */
-export type MoneyRolloverCloseSnapshotSummary =
-  | Readonly<{
-      available: true;
-      closeCount: number;
-      lastClosedDate: string | null;
-      comparableToRestatedTotals: boolean;
-    }>
-  | Readonly<{ available: false; reason: string }>;
-
 export type MoneyRolloverSourceContext = Readonly<{
   period: MoneyPeriod;
   /** Modeled recorded cash through the source end date; null when unknown. */
@@ -62,7 +49,8 @@ export type MoneyRolloverSourceContext = Readonly<{
   /** False when a bounded aggregation could not read the whole window. */
   cashComplete: boolean;
   pendingOccurrences: readonly MoneyRolloverPendingOccurrence[];
-  closeSnapshots: MoneyRolloverCloseSnapshotSummary;
+  /** MONEY-09 close evidence compared with the live restated totals. */
+  closeSnapshots: MoneyRolloverCloseSnapshotAssessment;
   existingSuccessorPeriodId: string | null;
   /** Already-created successor for a replayed operation, if any. */
   existingRollover: MoneyRolloverRecord | null;
@@ -139,34 +127,8 @@ export type MoneyRolloverRepository = {
 };
 
 /**
- * Compound historical-correction bridge seam.
- *
- * MONEY-09's correction path calls this inside the same transaction as the
- * source movement correction. The implementation must never commit a
- * correction whose downstream bridge failed, and must be idempotent on
- * `bridge:<source>:<correctionVersion>:<destination>`.
+ * Historical-correction bridges are applied by the canonical
+ * `personal_expenses_rollover_bridge` database trigger, not by an application
+ * repository method: the trigger runs inside the same transaction as every
+ * movement edit/delete, so no surface can commit a correction without it.
  */
-export type MoneyRolloverBridgeWriteInput = Readonly<{
-  sourcePeriodId: string;
-  movementId: string;
-  correctionVersion: number;
-  correctionDate: string;
-  previousCashDeltaMinor: number;
-  newCashDeltaMinor: number;
-  createdAt: string;
-}>;
-
-export type MoneyRolloverBridgeWriteResult = Readonly<{
-  postings: number;
-  variances: number;
-  replayed: number;
-  /** Periods that received an adjustment, in chain order. */
-  destinationPeriodIds: readonly string[];
-}>;
-
-export type MoneyRolloverBridgeRepository = {
-  applyBridge(
-    actor: AuthenticatedActor,
-    input: MoneyRolloverBridgeWriteInput,
-  ): Promise<RepositoryResult<MoneyRolloverBridgeWriteResult>>;
-};

@@ -2,10 +2,10 @@
 /**
  * Disposable PostgreSQL proof for MONEY-10 (explicit period rollover).
  *
- * It applies the whole migration journal, simulates the MONEY-09 precondition
- * (`ended` with every tracked day closed) by setting the lifecycle directly,
- * then exercises the atomic rollover, replay, unpaid-item treatment, the
- * derived-period correction bridge and the verified-opening stop condition.
+ * It applies the whole migration journal, finishes the source and middle
+ * periods through real MONEY-09 `money_close_day` calls, then exercises the
+ * close-to-restated comparison, atomic rollover, replay, unpaid-item treatment,
+ * the ledger-trigger correction bridge and the verified-opening stop condition.
  */
 import { readFile } from "node:fs/promises";
 import { argv, exit } from "node:process";
@@ -15,15 +15,21 @@ const A = "11111111-1111-4111-8111-111111111111";
 const B = "22222222-2222-4222-8222-222222222222";
 const C = "33333333-3333-4333-8333-333333333333";
 const RESOURCE = "https://ega.example.com/api/mcp";
-const READ = ["today.read", "timer.read", "personal_ops.read"];
-const WRITE = [...READ, "personal_ops.write"];
 
 const tags = JSON.parse(
   await readFile(new URL("../../drizzle/meta/_journal.json", import.meta.url), "utf8"),
 ).entries.map((entry) => entry.tag);
 const url = argv[argv.indexOf("--url") + 1];
 if (!url) throw new Error("Missing --url");
-const sql = postgres(url, { max: 2, onnotice: () => {} });
+// Keep DATE columns as ISO strings; this proof compares dates and never needs a
+// JavaScript Date whose local timezone could shift the calendar day.
+const sql = postgres(url, {
+  max: 2,
+  onnotice: () => {},
+  types: {
+    date: { to: 1082, from: [1082], serialize: (value) => value, parse: (value) => value },
+  },
+});
 
 function assert(ok, message) {
   if (!ok) throw new Error(message);
@@ -92,8 +98,8 @@ async function main() {
     const created = await user(A, (tx) =>
       tx.unsafe(`SELECT (p).id AS id, (p).version AS version
         FROM (SELECT public.money_create_period(
-          '2026-11-12'::date,'2026-11-30'::date,'Africa/Casablanca'::text,
-          '2026-11-12'::date,'initialized'::text,68900::integer,'2026-11-12'::date,
+          '2026-11-29'::date,'2026-11-30'::date,'Africa/Casablanca'::text,
+          '2026-11-29'::date,'initialized'::text,68900::integer,'2026-11-29'::date,
           repeat('a',64)::text,'{"opening":{"source":"user_entered","recordedAt":"2026-11-12T00:00:00.000Z","cutoffDate":"2026-11-12","evidence":null,"note":null,"corrections":[]}}'::jsonb,
           '{"savingsTargetMinor":12000,"emergencyTargetMinor":3000}'::jsonb,
           now()::timestamptz) AS p) created`),
@@ -105,9 +111,9 @@ async function main() {
         (owner_user_id,amount_minor,currency,note,idempotency_key,create_fingerprint,kind,direction,
          booking_date,counts_in_daily,period_id,category,need_vs_want,purpose)
         VALUES
-          ($1,5000,'MAD','salary','m10-income',repeat('b',64),'income','in','2026-11-15',false,$2,NULL,NULL,NULL),
-          ($1,1100,'MAD','groceries','m10-expense',repeat('c',64),'expense','out','2026-11-20',true,$2,'groceries','need','flexible'),
-          ($1,2000,'MAD','savings','m10-savings',repeat('d',64),'savings_transfer','out','2026-11-18',false,$2,NULL,NULL,NULL)
+          ($1,5000,'MAD','salary','m10-income',repeat('b',64),'income','in','2026-11-29',false,$2,NULL,NULL,NULL),
+          ($1,1100,'MAD','groceries','m10-expense',repeat('c',64),'expense','out','2026-11-29',true,$2,'groceries','need','flexible'),
+          ($1,2000,'MAD','savings','m10-savings',repeat('d',64),'savings_transfer','out','2026-11-29',false,$2,NULL,NULL,NULL)
         RETURNING id, kind`, [A, sourceId]);
       return rows;
     });
@@ -127,24 +133,87 @@ async function main() {
         (owner_user_id,kind,description,amount_minor,currency,period_start,period_end,due_date,
          need_vs_want,purpose,counts_in_daily,category,state,state_effective_date,state_history,
          idempotency_key,create_fingerprint)
-        VALUES ($1,'bill','Repair',4000,'MAD','2026-11-12','2026-11-30','2026-11-25',
-         'need','fixed',false,'bills','pending','2026-11-12','[]'::jsonb,
+        VALUES ($1,'bill','Repair',4000,'MAD','2026-11-29','2026-11-30','2026-11-30',
+         'need','fixed',false,'bills','pending','2026-11-29','[]'::jsonb,
          'm10-one-off',repeat('f',64))
         RETURNING id`, [A]);
     const oneOffId = oneOff[0].id;
 
-    // MONEY-09 precondition. This proof does not fabricate close evidence: it
-    // only reproduces the lifecycle state that the durable close produces.
-    await user(A, (tx) =>
-      tx.unsafe(`UPDATE public.money_periods
-        SET lifecycle='ended', active_date=end_date, version=version+1, updated_at=now()
-        WHERE id=$1 AND owner_user_id=$2`, [sourceId, A]),
+    // MONEY-09 precondition through the real durable close. The first-day
+    // baseline is seeded as the fixture owner because this proof deliberately
+    // runs on fixed historical dates that the current-day rebase path rejects;
+    // both close rows and their snapshots are then produced by money_close_day.
+    const policy = await sql.unsafe(
+      "SELECT id FROM public.money_policy_versions WHERE owner_user_id=$1 AND period_id=$2 ORDER BY version DESC LIMIT 1",
+      [A, sourceId],
     );
+    await sql.unsafe(
+      `UPDATE public.money_day_start_baselines
+       SET policy_version_id=$1, availability='available', unavailable_reason=NULL,
+           cash_minor=68900, commitments_minor=0, savings_target_minor=12000,
+           savings_funded_minor=0, emergency_target_minor=3000, emergency_used_minor=0,
+           inputs='{"setupComplete":true}'::jsonb
+       WHERE owner_user_id=$2 AND period_id=$3 AND date='2026-11-29'`,
+      [policy[0].id, A, sourceId],
+    );
+    await sql.unsafe(
+      `UPDATE public.money_periods
+       SET day_start_setup_completed=true, version=version+1, updated_at=now()
+       WHERE id=$1 AND owner_user_id=$2`,
+      [sourceId, A],
+    );
+
+    for (const [index, date] of ["2026-11-29", "2026-11-30"].entries()) {
+      const current = await sql.unsafe(
+        "SELECT version FROM public.money_periods WHERE id=$1",
+        [sourceId],
+      );
+      await user(A, (tx) =>
+        tx.unsafe(
+          `SELECT public.money_close_day($1::uuid,$2::integer,$3::date,$4::text,$5::uuid,$6::text,$7::uuid[],$8::timestamptz)`,
+          [
+            sourceId,
+            current[0].version,
+            date,
+            "CLOSED",
+            `750e8400-e29b-41d4-a716-44665544001${index}`,
+            hex(String(index + 1)),
+            [],
+            "2026-11-30T20:00:00.000Z",
+          ],
+        ),
+      );
+    }
     const ended = await sql.unsafe(
-      "SELECT lifecycle, active_date FROM public.money_periods WHERE id=$1",
+      "SELECT lifecycle, active_date, version FROM public.money_periods WHERE id=$1",
       [sourceId],
     );
-    assert(ended[0].lifecycle === "ended", "source is ended for the proof");
+    assert(
+      ended[0].lifecycle === "ended" && ended[0].active_date === "2026-11-30",
+      "source ended through the final durable close",
+    );
+    const closeRows = await sql.unsafe(
+      "SELECT count(*)::int AS n FROM public.money_day_closes WHERE owner_user_id=$1 AND period_id=$2",
+      [A, sourceId],
+    );
+    assert(closeRows[0].n === 2, "two real day-close snapshots were retained");
+    const snapshotSummary = await user(A, (tx) =>
+      tx.unsafe(
+        "SELECT public.money_rollover_close_snapshot_summary($1::uuid) AS summary",
+        [sourceId],
+      ),
+    );
+    assert(
+      snapshotSummary[0].summary.available === true &&
+        snapshotSummary[0].summary.closeCount === 2 &&
+        snapshotSummary[0].summary.restatedDifferenceCount === 0 &&
+        snapshotSummary[0].summary.paidObligationMismatchCount === 0 &&
+        snapshotSummary[0].summary.countedVisitMismatchCount === 0 &&
+        snapshotSummary[0].summary.savingsTargetMinor === 12000 &&
+        snapshotSummary[0].summary.savingsTransferredMinor === 2000,
+      "close snapshots and reconciliation evidence compare cleanly",
+    );
+    console.log("[CLOSE] real MONEY-09 close evidence and restated comparison are present");
 
     // --- Preview-shaped rollover request ------------------------------------
     const occurrences = [
@@ -190,7 +259,7 @@ async function main() {
     };
     const rolloverArgs = (operationId, fingerprint, overrides = {}) => [
       sourceId,
-      overrides.expectedVersion ?? 3,
+      overrides.expectedVersion ?? ended[0].version,
       "2026-12-01",
       "2026-12-19",
       "2026-12-01",
@@ -211,8 +280,8 @@ async function main() {
       overrides.unpaidReason ?? "still owed",
       null,
       { modeledClosingCashMinor: 70800, pendingOccurrenceCount: 1 },
-      JSON.stringify(overrides.occurrences ?? occurrences),
-      JSON.stringify(overrides.carried ?? carried),
+      overrides.occurrences ?? occurrences,
+      overrides.carried ?? carried,
       "2026-12-01T09:00:00.000Z",
     ];
     const callRollover = (tx, args) =>
@@ -323,6 +392,8 @@ async function main() {
     console.log("[OWNER] operation ids and rollover writes stay owner-scoped");
 
     // --- Bridge: pre-cutoff correction into the derived successor -----------
+    // A generic ledger update is the correction path under test: the trigger
+    // must post the bridge without any separate application-side RPC call.
     await user(A, (tx) =>
       tx.unsafe(
         `UPDATE public.personal_expenses SET amount_minor=2100, version=version+1, updated_at=now()
@@ -330,13 +401,18 @@ async function main() {
         [expenseId, A],
       ),
     );
-    const bridge1 = await user(A, (tx) =>
-      tx.unsafe(
-        "SELECT public.money_apply_rollover_bridge($1::uuid,$2::integer,$3::integer,$4::integer,$5::date,$6::timestamptz) AS result",
-        [expenseId, -1100, -2100, 2, "2026-11-20", "2026-12-02T09:00:00.000Z"],
-      ),
+    const bridgeRows = await sql.unsafe(
+      "SELECT amount_minor, direction, applied, correction_version FROM public.money_period_rollover_bridges WHERE owner_user_id=$1",
+      [A],
     );
-    assert(bridge1[0].result.postings === 1 && bridge1[0].result.variances === 0, "one bridge adjustment was posted");
+    assert(
+      bridgeRows.length === 1 &&
+        bridgeRows[0].amount_minor === 1000 &&
+        bridgeRows[0].direction === "out" &&
+        bridgeRows[0].applied === true &&
+        bridgeRows[0].correction_version === 2,
+      "the canonical update trigger posted one incremental bridge",
+    );
     const adjustment = await sql.unsafe(
       "SELECT amount_minor, direction, kind, counts_in_daily, period_id, booking_date FROM public.personal_expenses WHERE owner_user_id=$1 AND kind='reconciliation_adjustment'",
       [A],
@@ -378,7 +454,7 @@ async function main() {
     const bridgeReplay = await user(A, (tx) =>
       tx.unsafe(
         "SELECT public.money_apply_rollover_bridge($1::uuid,$2::integer,$3::integer,$4::integer,$5::date,$6::timestamptz) AS result",
-        [expenseId, -1100, -2100, 2, "2026-11-20", "2026-12-02T09:00:00.000Z"],
+        [expenseId, -1100, -2100, 2, "2026-11-29", "2026-12-02T09:00:00.000Z"],
       ),
     );
     assert(bridgeReplay[0].result.replayed === 1 && bridgeReplay[0].result.postings === 0, "bridge retry is idempotent");
@@ -396,13 +472,14 @@ async function main() {
         [expenseId, A],
       ),
     );
-    const bridge2 = await user(A, (tx) =>
-      tx.unsafe(
-        "SELECT public.money_apply_rollover_bridge($1::uuid,$2::integer,$3::integer,$4::integer,$5::date,$6::timestamptz) AS result",
-        [expenseId, -2100, -2600, 3, "2026-11-20", "2026-12-03T09:00:00.000Z"],
-      ),
+    const secondBridgeRows = await sql.unsafe(
+      "SELECT amount_minor FROM public.money_period_rollover_bridges WHERE owner_user_id=$1 ORDER BY correction_version",
+      [A],
     );
-    assert(bridge2[0].result.postings === 1, "a later correction posts only the incremental delta");
+    assert(
+      secondBridgeRows.length === 2 && secondBridgeRows[1].amount_minor === 500,
+      "a later correction posts only the incremental delta",
+    );
     const adjustments = await sql.unsafe(
       "SELECT amount_minor FROM public.personal_expenses WHERE owner_user_id=$1 AND kind='reconciliation_adjustment' ORDER BY created_at, amount_minor",
       [A],
@@ -414,19 +491,103 @@ async function main() {
     console.log("[BRIDGE] repeated edits apply only the incremental delta");
 
     // --- Verified opening stops propagation ---------------------------------
+    // Finish the middle period through real closes too, so the second rollover
+    // exercises the same retained-close gate. One middle-period expense is
+    // corrected after its close to prove a restated snapshot needs acceptance.
+    const successorExpense = await sql.unsafe(
+      `INSERT INTO public.personal_expenses
+        (owner_user_id,amount_minor,currency,note,idempotency_key,create_fingerprint,kind,direction,
+         booking_date,counts_in_daily,period_id,category,need_vs_want,purpose)
+       VALUES ($1,1000,'MAD','middle expense','m10-middle-expense',repeat('9',64),'expense','out',
+         '2026-12-10',true,$2,'groceries','need','flexible')
+       RETURNING id`,
+      [A, successorId],
+    );
+    const successorExpenseId = successorExpense[0].id;
+    const successorPolicy = await sql.unsafe(
+      "SELECT id FROM public.money_policy_versions WHERE owner_user_id=$1 AND period_id=$2 ORDER BY version DESC LIMIT 1",
+      [A, successorId],
+    );
+    await sql.unsafe(
+      `UPDATE public.money_day_start_baselines
+       SET policy_version_id=$1, availability='available', unavailable_reason=NULL,
+           cash_minor=70800, commitments_minor=7000, savings_target_minor=12000,
+           savings_funded_minor=0, emergency_target_minor=3000, emergency_used_minor=0,
+           inputs='{"setupComplete":true}'::jsonb
+       WHERE owner_user_id=$2 AND period_id=$3 AND date='2026-12-01'`,
+      [successorPolicy[0].id, A, successorId],
+    );
+    await sql.unsafe(
+      `UPDATE public.money_periods
+       SET day_start_setup_completed=true, version=version+1, updated_at=now()
+       WHERE id=$1 AND owner_user_id=$2`,
+      [successorId, A],
+    );
+    const successorDays = [];
+    for (
+      let cursor = new Date("2026-12-01T00:00:00Z");
+      cursor <= new Date("2026-12-19T00:00:00Z");
+      cursor.setUTCDate(cursor.getUTCDate() + 1)
+    ) {
+      successorDays.push(cursor.toISOString().slice(0, 10));
+    }
+    for (const [index, date] of successorDays.entries()) {
+      const current = await sql.unsafe(
+        "SELECT version FROM public.money_periods WHERE id=$1",
+        [successorId],
+      );
+      await user(A, (tx) =>
+        tx.unsafe(
+          `SELECT public.money_close_day($1::uuid,$2::integer,$3::date,$4::text,$5::uuid,$6::text,$7::uuid[],$8::timestamptz)`,
+          [
+            successorId,
+            current[0].version,
+            date,
+            "CLOSED",
+            `750e8400-e29b-41d4-a716-4466554401${String(index).padStart(2, "0")}`,
+            hex("5"),
+            [],
+            "2026-12-19T20:00:00.000Z",
+          ],
+        ),
+      );
+    }
+    const successorEnded = await sql.unsafe(
+      "SELECT lifecycle, active_date, version FROM public.money_periods WHERE id=$1",
+      [successorId],
+    );
+    assert(
+      successorEnded[0].lifecycle === "ended" &&
+        successorEnded[0].active_date === "2026-12-19",
+      "middle period ended through its final close",
+    );
     await user(A, (tx) =>
       tx.unsafe(
-        `UPDATE public.money_periods SET lifecycle='ended', active_date=end_date, version=version+1, updated_at=now()
+        `UPDATE public.personal_expenses
+         SET amount_minor=1500, version=version+1, updated_at=now()
          WHERE id=$1 AND owner_user_id=$2`,
-        [successorId, A],
+        [successorExpenseId, A],
       ),
     );
+    const restatedSummary = await user(A, (tx) =>
+      tx.unsafe(
+        "SELECT public.money_rollover_close_snapshot_summary($1::uuid) AS summary",
+        [successorId],
+      ),
+    );
+    assert(
+      restatedSummary[0].summary.available === true &&
+        restatedSummary[0].summary.restatedDifferenceCount > 0,
+      "a post-close correction marks the retained close as restated",
+    );
+    console.log("[CLOSE] later correction is disclosed as a restated close snapshot");
+
     const verifiedArgs = rolloverArgs("m10-op-2", hex("6"), {
-      expectedVersion: successor.version + 1,
+      expectedVersion: successorEnded[0].version,
       initialized: "reconciled",
       allowUncoveredDays: true,
       openingMode: "verified_source",
-      openingAmountMinor: 69300,
+      openingAmountMinor: 67800,
       unpaidTreatment: "keep_pending",
       unpaidReason: null,
       occurrences: [
@@ -456,7 +617,7 @@ async function main() {
     verifiedArgs[2] = "2027-01-01";
     verifiedArgs[3] = "2027-01-31";
     verifiedArgs[4] = "2027-01-01";
-    verifiedArgs[8] = 69300;
+    verifiedArgs[8] = 67800;
     verifiedArgs[9] = "2026-12-19";
     verifiedArgs[10] = "verified statement";
     verifiedArgs[11] = "Verified opening";
@@ -471,6 +632,17 @@ async function main() {
       },
       createdFrom: "web",
     };
+    let restatedRolloverDenied = false;
+    try {
+      await user(A, (tx) => callRollover(tx, verifiedArgs));
+    } catch (error) {
+      restatedRolloverDenied = error.code === "23514";
+    }
+    assert(
+      restatedRolloverDenied,
+      "a restated close cannot roll over without an acceptance note",
+    );
+    verifiedArgs[20] = "restated close reviewed and accepted";
     const verified = await user(A, (tx) => callRollover(tx, verifiedArgs));
     const verifiedPeriodId = verified[0].result.rollover.successor_period_id;
     assert(verifiedPeriodId, "a second, independently verified successor was created");
@@ -478,7 +650,7 @@ async function main() {
       "SELECT amount_minor FROM public.personal_expenses WHERE owner_user_id=$1 AND period_id=$2 AND kind='opening'",
       [A, verifiedPeriodId],
     );
-    assert(verifiedOpening[0].amount_minor === 69300, "verified opening retains its verified amount");
+    assert(verifiedOpening[0].amount_minor === 67800, "verified opening retains its verified amount");
     console.log("[VERIFIED] partial source rolled into a full successor month with a verified opening");
 
     await user(A, (tx) =>
@@ -488,21 +660,31 @@ async function main() {
         [expenseId, A],
       ),
     );
-    const bridge3 = await user(A, (tx) =>
-      tx.unsafe(
-        "SELECT public.money_apply_rollover_bridge($1::uuid,$2::integer,$3::integer,$4::integer,$5::date,$6::timestamptz) AS result",
-        [expenseId, -2600, -3100, 4, "2026-11-20", "2027-01-02T09:00:00.000Z"],
-      ),
+    const chainRows = await sql.unsafe(
+      "SELECT destination_period_id, applied, variance_reason, amount_minor FROM public.money_period_rollover_bridges WHERE owner_user_id=$1 AND correction_version=4 ORDER BY applied DESC",
+      [A],
     );
     assert(
-      bridge3[0].result.postings === 1 && bridge3[0].result.variances === 1,
-      "the bridge stops at the verified opening and discloses the variance",
+      chainRows.length === 2 &&
+        chainRows.some(
+          (row) =>
+            row.destination_period_id === successorId &&
+            row.applied === true &&
+            row.amount_minor === 500,
+        ) &&
+        chainRows.some(
+          (row) =>
+            row.destination_period_id === verifiedPeriodId &&
+            row.applied === false &&
+            row.amount_minor === 500,
+        ),
+      "the bridge posts to the derived period and stops at the verified opening with a variance",
     );
     const verifiedOpeningAfter = await sql.unsafe(
       "SELECT amount_minor FROM public.personal_expenses WHERE owner_user_id=$1 AND period_id=$2 AND kind='opening'",
       [A, verifiedPeriodId],
     );
-    assert(verifiedOpeningAfter[0].amount_minor === 69300, "a verified opening snapshot is never altered");
+    assert(verifiedOpeningAfter[0].amount_minor === 67800, "a verified opening snapshot is never altered");
     const varianceRows = await sql.unsafe(
       "SELECT destination_period_id, applied, variance_reason, amount_minor FROM public.money_period_rollover_bridges WHERE owner_user_id=$1 AND variance_reason IS NOT NULL",
       [A],
@@ -538,7 +720,7 @@ async function main() {
     assert(directInsertDenied, "clients cannot insert rollover receipts directly");
     console.log("[RLS] rollover receipts are owner-readable and not client-writable");
 
-    console.log("[DONE] MONEY-10 rollover proof through migration 0110 passed");
+    console.log(`[DONE] MONEY-10 rollover proof through ${tags.at(-1)} passed`);
   } finally {
     await sql.end();
   }
