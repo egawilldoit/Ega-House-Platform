@@ -83,7 +83,7 @@ export type MoneyRolloverBridgeRecord = Readonly<{
 
 export type MoneyRolloverBridgeList = Readonly<{
   bridges: readonly MoneyRolloverBridgeRecord[];
-  /** False when the bounded read could not prove every row was returned. */
+  /** True when the bounded read could not prove every row was returned. */
   truncated: boolean;
 }>;
 

@@ -638,3 +638,14 @@ test("a truncated bridge read is disclosed instead of presented as no variance",
   );
   assert.equal(preview.ok && preview.data.priorCorrectionBridgesTruncated, true);
 });
+
+test("variance reads report an inaccessible period as not found", async () => {
+  const fake = fakeRepository(context());
+  fake.repository.listCorrectionBridges = async () => ({
+    ok: false,
+    error: { code: "notFound" },
+  });
+  const result = await listMoneyRolloverBridges(actor, fake.repository, "missing");
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.equal(result.code, "notFound");
+});

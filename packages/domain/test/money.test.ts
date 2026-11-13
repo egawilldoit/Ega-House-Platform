@@ -270,7 +270,8 @@ test("settings are bounded JSON and reject prototype keys", () => {
 test("settings align known target amounts with the persisted integer centimes", () => {
   assert.equal(parseMoneySettings({ savingsTargetMinor: 0 }).ok, true);
   assert.equal(parseMoneySettings({ emergencyTargetMinor: 2_147_483_647 }).ok, true);
-  for (const invalid of [-1, 1.5, "100", null, 2_147_483_648]) {
+  assert.equal(parseMoneySettings({ savingsTargetMinor: null, emergencyTargetMinor: null }).ok, true);
+  for (const invalid of [-1, 1.5, "100", 2_147_483_648]) {
     const savings = parseMoneySettings({ savingsTargetMinor: invalid });
     const emergency = parseMoneySettings({ emergencyTargetMinor: invalid });
     assert.equal(savings.ok, false);

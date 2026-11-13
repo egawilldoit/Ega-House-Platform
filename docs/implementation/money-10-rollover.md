@@ -34,11 +34,15 @@ Status: implementation candidate on `t3/money-10-mcp-delivery`, rebased onto
 1. **Finished source state.** Rollover requires
    `money_periods.lifecycle = 'ended'` and `active_date = end_date`. Close
    evidence is complete when every day from the first retained close (the
-   tracking start) through the source end has exactly one close. A period
+   inferred tracking start) through the source end has exactly one close. A period
    created on a month boundary but tracked from a later active date therefore
    rolls over normally: its untracked leading calendar days are not evidence
    gaps. An actual missing day inside the tracked range blocks the preview and
-   the atomic write, and the blocker names the first missing date. The durable
+   the atomic write, and the blocker names the first missing date. Because the
+   first retained close is the only tracking-start evidence used here, loss of
+   that first close cannot be distinguished from an intentional later start.
+   Repair of missing retained evidence requires an operational recovery; the
+   product has no backfill action. The durable
    day close is the only normal producer of the finished state; a tracking
    source fails the preview before the panel is rendered.
 2. **Close snapshots.** `MoneyRolloverSourceContext.closeSnapshots` is read from
