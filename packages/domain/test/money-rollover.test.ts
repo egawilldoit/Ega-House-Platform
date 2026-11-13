@@ -360,6 +360,7 @@ test("payment and counted-visit mismatches are reconciliation choices", () => {
 test("bridge posts only the incremental delta into derived successors", () => {
   const plan = planMoneyRolloverBridge({
     sourcePeriodId: "source",
+    movementId: "movement-1",
     sourceEndDate: "2026-11-30",
     correctionVersion: 3,
     movementBookingDate: "2026-11-20",
@@ -389,13 +390,14 @@ test("bridge posts only the incremental delta into derived successors", () => {
   assert.equal(plan.postings[0].direction, "out");
   assert.equal(
     plan.postings[0].identity,
-    moneyRolloverBridgeIdentity("source", 3, "dest-1"),
+    moneyRolloverBridgeIdentity("source", "movement-1", 3, "dest-1"),
   );
 });
 
 test("bridge stops at a verified opening without altering it", () => {
   const plan = planMoneyRolloverBridge({
     sourcePeriodId: "source",
+    movementId: "movement-1",
     sourceEndDate: "2026-11-30",
     correctionVersion: 4,
     movementBookingDate: "2026-11-20",
@@ -434,6 +436,7 @@ test("bridge stops at a verified opening without altering it", () => {
 test("post-cutoff corrections do not bridge", () => {
   const plan = planMoneyRolloverBridge({
     sourcePeriodId: "source",
+    movementId: "movement-1",
     sourceEndDate: "2026-11-30",
     correctionVersion: 5,
     movementBookingDate: "2026-12-05",
