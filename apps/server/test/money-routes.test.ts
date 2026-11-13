@@ -22,7 +22,7 @@ class FakeSupabase {
   rpc(name: string, args: unknown) {
     this.calls.push({
       table: `rpc:${name}`,
-      steps: [{ method: "rpc", args }],
+      steps: [{ method: "rpc", args: [args] }],
     });
     return Promise.resolve(this.pop("<rpc>"));
   }
@@ -392,7 +392,8 @@ test("POST /api/money/day-close validates before persistence and returns retaine
   assert.equal(body.replayed, false);
   const rpc = fake.calls.find((call) => call.table === "rpc:money_close_day");
   assert.ok(rpc);
-  const args = rpc.steps[0]!.args as Record<string, unknown>;
+  const args = rpc.steps[0]!.args[0];
+  assert.ok(args && typeof args === "object" && "p_expected_version" in args && "p_date" in args && "p_operation_id" in args);
   assert.equal(args.p_expected_version, 1);
   assert.equal(args.p_date, "2026-11-11");
   assert.equal(args.p_operation_id, "cccccccc-cccc-4ccc-8ccc-cccccccccccc");
