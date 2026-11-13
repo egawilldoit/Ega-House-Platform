@@ -17,6 +17,7 @@
     "./preferences": "./src/preferences.ts",
     "./expenses": "./src/expenses.ts",
     "./money": "./src/money.ts",
+    "./money-rollover": "./src/money-rollover.ts",
     "./obligations": "./src/obligations.ts",
     "./checkins": "./src/checkins.ts"
   },

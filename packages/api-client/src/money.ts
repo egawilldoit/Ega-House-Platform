@@ -48,6 +48,11 @@ import type {
   UpdateObligationResponse,
   UpdateObligationTemplateRequest,
 } from "@ega/contracts/money";
+import type {
+  MoneyRolloverPreviewResponse,
+  MoneyRolloverResponse,
+  MoneyRolloverWriteRequest,
+} from "@ega/contracts/money-rollover";
 
 import type { ApiResult } from "./errors";
 import type { HttpClient } from "./http";
@@ -70,6 +75,13 @@ export type MoneyApi = {
     id: string,
     request: UpdateMoneySettingsRequest,
   ): Promise<ApiResult<UpdateMoneySettingsResponse>>;
+  /** GET /api/money/periods/:id/rollover/preview - successor defaults + choices. */
+  rolloverPreview(id: string): Promise<ApiResult<MoneyRolloverPreviewResponse>>;
+  /** POST /api/money/periods/:id/rollover - one explicit successor per source. */
+  rollover(
+    id: string,
+    request: MoneyRolloverWriteRequest,
+  ): Promise<ApiResult<MoneyRolloverResponse>>;
   /** GET /api/money/movements - newest booking date first. */
   listMovements(query?: ListMovementsQuery): Promise<ApiResult<ListMovementsResponse>>;
   /** POST /api/money/movements - 201 on create, 200 on idempotent replay. */
@@ -120,6 +132,10 @@ function periodSettingsPath(id: string): string {
   return `/api/money/periods/${encodeURIComponent(id)}/settings`;
 }
 
+function periodPath(id: string): string {
+  return `/api/money/periods/${encodeURIComponent(id)}`;
+}
+
 function movementPath(id: string): string {
   return `/api/money/movements/${encodeURIComponent(id)}`;
 }
@@ -151,6 +167,18 @@ export function createMoneyApi(http: HttpClient): MoneyApi {
       return http.request<UpdateMoneySettingsResponse>({
         path: periodSettingsPath(id),
         method: "PATCH",
+        body: request,
+      });
+    },
+    rolloverPreview(id) {
+      return http.request<MoneyRolloverPreviewResponse>({
+        path: `${periodPath(id)}/rollover/preview`,
+      });
+    },
+    rollover(id, request) {
+      return http.request<MoneyRolloverResponse>({
+        path: `${periodPath(id)}/rollover`,
+        method: "POST",
         body: request,
       });
     },

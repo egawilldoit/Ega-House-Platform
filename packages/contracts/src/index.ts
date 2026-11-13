@@ -15,6 +15,7 @@ export * from "./projects";
 export * from "./goals";
 export * from "./expenses";
 export * from "./money";
+export * from "./money-rollover";
 export * from "./checkins";
 
 export * from "./subtasks";

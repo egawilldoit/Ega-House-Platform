@@ -95,6 +95,12 @@ export type McpReadToolHandlers = {
     input: { periodId?: string; date?: string; mode?: "today" | "active_day" },
     context?: McpProtocolContext,
   ) => Promise<CallToolResult>;
+  /** MONEY-10 rollover preview for one finished source period. */
+  moneyRolloverPreview: (
+    authInfo: AuthInfo | undefined,
+    input: { periodId: string },
+    context?: McpProtocolContext,
+  ) => Promise<CallToolResult>;
   /** MONEY-04 movement reads (distinct from the expense ledger reads). */
   moneyMovementList: (
     authInfo: AuthInfo | undefined,
@@ -353,6 +359,36 @@ export type McpWriteToolHandlers = {
     context?: McpProtocolContext,
   ) => Promise<CallToolResult>;
   rebaseMoneyDayStartBaseline: (authInfo: AuthInfo | undefined, input: { periodId: string; operationId: string }, context?: McpProtocolContext) => Promise<CallToolResult>;
+  /** MONEY-10 explicit rollover. The source must already be ended by a close. */
+  rolloverMoneyPeriod: (
+    authInfo: AuthInfo | undefined,
+    input: {
+      operationId: string;
+      periodId: string;
+      expectedVersion: number;
+      startDate: string;
+      endDate: string;
+      opening:
+        | { mode: "carry_forward" }
+        | {
+            mode: "verified_source";
+            amountMinor: number;
+            cutoffDate: string;
+            evidence: string;
+            note?: string | null;
+          };
+      unpaidItems?:
+        | {
+            treatment: "keep_pending" | "carry_forward" | "cancel";
+            reason?: string | null;
+          }
+        | null;
+      settingsOverrides?: Record<string, unknown> | null;
+      allowUncoveredDays?: boolean;
+      acceptClosingDifferenceNote?: string | null;
+    },
+    context?: McpProtocolContext,
+  ) => Promise<CallToolResult>;
   /** MONEY-04 movement writes on the one ledger. */
   createMoneyMovement: (
     authInfo: AuthInfo | undefined,
@@ -752,6 +788,42 @@ const moneyUpdateSettingsInputSchema = z.object({
 }).strict();
 
 const moneyRebaseDayStartInputSchema = z.object({ periodId: uuidSchema, operationId: z.string().uuid() }).strict();
+
+const moneyRolloverDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+const moneyRolloverPreviewInputSchema = z.object({ periodId: uuidSchema }).strict();
+const moneyRolloverOpeningSchema = z.union([
+  z.object({ mode: z.literal("carry_forward") }).strict(),
+  z
+    .object({
+      mode: z.literal("verified_source"),
+      amountMinor: z.number().int().min(0),
+      cutoffDate: moneyRolloverDateSchema,
+      evidence: z.string().min(1).max(500),
+      note: z.string().max(500).nullable().optional(),
+    })
+    .strict(),
+]);
+const moneyRolloverInputSchema = z
+  .object({
+    operationId: z.string().uuid(),
+    periodId: uuidSchema,
+    expectedVersion: z.number().int().positive(),
+    startDate: moneyRolloverDateSchema,
+    endDate: moneyRolloverDateSchema,
+    opening: moneyRolloverOpeningSchema,
+    unpaidItems: z
+      .object({
+        treatment: z.enum(["keep_pending", "carry_forward", "cancel"]),
+        reason: z.string().max(200).nullable().optional(),
+      })
+      .strict()
+      .nullable()
+      .optional(),
+    settingsOverrides: z.record(z.string(), z.unknown()).nullable().optional(),
+    allowUncoveredDays: z.boolean().optional(),
+    acceptClosingDifferenceNote: z.string().min(3).max(500).nullable().optional(),
+  })
+  .strict();
 
 const moneyStateOutputSchema = z.object({
   ok: z.literal(true),
@@ -1458,6 +1530,27 @@ const READ_TOOL_REGISTRATIONS: readonly ReadToolRegistration[] = [
       ),
   },
   {
+    name: "ega_money_rollover_preview",
+    register: (server, handlers) =>
+      server.registerTool(
+        "ega_money_rollover_preview",
+        {
+          title: "Preview a Money period rollover",
+          description:
+            "Preview the one explicit successor for a finished Money period. The source must be ended with every tracked day closed. Returns the default successor dates (the day after the source end, same inclusive length), the modeled closing cash, unpaid occurrences, regenerated occurrences, derived coffee week windows, and any choices or blockers. `choices` must be resolved by the owner: unpaid occurrences (keep_pending, carry_forward or cancel) and a modeled-versus-verified closing difference. `blockers` mean rollover cannot proceed. Unknown closing cash is never zero. Requires the explicit personal_ops.read grant.",
+          inputSchema: moneyRolloverPreviewInputSchema,
+          outputSchema: moneyStateOutputSchema,
+          annotations: READ_ONLY_ANNOTATIONS,
+        },
+        async (input, ctx) =>
+          handlers.moneyRolloverPreview(
+            getAuthInfo(ctx as unknown as ServerContext),
+            input,
+            getProtocolContext(ctx as unknown as ServerContext),
+          ),
+      ),
+  },
+  {
     name: "ega_money_movement_list",
     register: (server, handlers) =>
       server.registerTool(
@@ -2071,6 +2164,27 @@ const WRITE_TOOL_REGISTRATIONS: readonly WriteToolRegistration[] = [
       { title: "Complete or rebase Money day-start baseline", description: "For initial setup, first add the period's initial obligations, then call this tool to explicitly complete setup and record the baseline (an empty list is valid if there are none). For completed setup, explicitly rebase the baseline to current state. The response returns the stored baseline and setup status. Requires the explicit personal_ops.write grant.", inputSchema: moneyRebaseDayStartInputSchema, outputSchema: genericWriteOutputSchema, annotations: WRITE_ANNOTATIONS },
       async (input, ctx) => handlers.rebaseMoneyDayStartBaseline(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
     ),
+  },
+  {
+    name: "ega_money_rollover_period",
+    register: (server, handlers) =>
+      server.registerTool(
+        "ega_money_rollover_period",
+        {
+          title: "Roll over a finished Money period",
+          description:
+            "Explicitly roll one ended period into exactly one successor. Creates one successor period and one opening movement atomically, regenerates recurring obligation occurrences from the canonical templates with new period identities, and links the source as rolled_over. `opening.mode=carry_forward` carries the modeled closing cash and is labeled modeled; `verified_source` requires amountMinor, cutoffDate and evidence and is labeled reconciled. A nonzero modeled-versus-verified difference needs `acceptClosingDifferenceNote`. Unpaid source occurrences need an explicit `unpaidItems` treatment: keep_pending, carry_forward (one-off bills only) or cancel, with a reason. Paid rows are never copied as expenses. The same operationId replays its original successor; a stale `expectedVersion` conflicts. Requires the explicit personal_ops.write grant.",
+          inputSchema: moneyRolloverInputSchema,
+          outputSchema: genericWriteOutputSchema,
+          annotations: WRITE_ANNOTATIONS,
+        },
+        async (input, ctx) =>
+          handlers.rolloverMoneyPeriod(
+            getAuthInfo(ctx as unknown as ServerContext),
+            input,
+            getProtocolContext(ctx as unknown as ServerContext),
+          ),
+      ),
   },
   {
     name: "ega_money_create_movement",

@@ -21,3 +21,4 @@ export * from "./operator/repository";
 export * from "./weekly-review/repository";
 export * from "./money/obligations-repository";
 export * from "./money/obligation-payments-repository";
+export * from "./money/rollover-repository";

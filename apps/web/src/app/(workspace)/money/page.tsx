@@ -7,6 +7,7 @@ import {
   getMoneyMovementTotals,
   getMoneyPeriodSpending,
   getCurrentMoneyReserves,
+  getMoneyRolloverPreviewForPeriod,
   getMoneyState,
   listExpenses,
   listMovements,
@@ -14,6 +15,7 @@ import {
   type MoneyMovementTotals,
   type MoneyCoffeeUsage,
   type MoneyPeriodSpending,
+  type MoneyRolloverPreview,
   type MoneyState,
 } from "@ega/application";
 import {
@@ -22,6 +24,7 @@ import {
   SupabaseMoneyCoffeeRepository,
   SupabaseMoneyPeriodRepository,
   SupabaseMoneyRepository,
+  SupabaseMoneyRolloverRepository,
   SupabaseObligationRepository,
 } from "@ega/data-access";
 import {
@@ -40,6 +43,7 @@ import { getWebTimeContext } from "@/lib/services/time-context-service";
 import { MoneyCreatePanel } from "./_components/money-create-panel";
 import { MoneyRowActions } from "./_components/money-row-actions";
 import { MoneyPeriodPanel } from "./_components/money-period-panel";
+import { MoneyRolloverPanel } from "./_components/money-rollover-panel";
 import { MoneyMovementPanel } from "./_components/money-movement-panel";
 import { MoneyMovementActions } from "./_components/money-movement-actions";
 import { CategoryCapsForm } from "./_components/category-caps-form";
@@ -50,6 +54,7 @@ import {
   createMoneyPeriodAction,
   recordCoffeeVisitAction,
   rebaseMoneyDayStartBaselineAction,
+  rolloverMoneyPeriodAction,
   saveBudgetPlanAction,
   saveCategoryCapsAction,
   updateMoneySettingsAction,
@@ -97,6 +102,8 @@ export default async function MoneyPage({ searchParams }: Props) {
   let movements: MoneyLedgerRow[] | null = null;
   let movementTotals: MoneyMovementTotals | null = null;
   let reserveResult: Awaited<ReturnType<typeof getCurrentMoneyReserves>> | null = null;
+  let rolloverPreview: MoneyRolloverPreview | null = null;
+  let rolloverPreviewError: string | null = null;
   let movementsHasMore = false;
   let timezone: string = MONEY_DEFAULT_TIMEZONE;
   let timeContextFailed = false;
@@ -213,6 +220,23 @@ export default async function MoneyPage({ searchParams }: Props) {
         budgets: new SupabaseMoneyBudgetRepository(client),
         obligations: new SupabaseObligationRepository(client),
       }).catch(() => null);
+
+      // MONEY-10: only a finished period can be rolled over. The preview is
+      // read-only and never closes a day or writes a successor.
+      if (moneyState.period.lifecycle === "ended") {
+        const previewResult = await getMoneyRolloverPreviewForPeriod(
+          actor,
+          {
+            repository: new SupabaseMoneyRolloverRepository(client),
+            obligations: new SupabaseObligationRepository(client),
+          },
+          moneyState.period.id,
+          { now: new Date(), timezone: time.persistedTimezone },
+        ).catch(() => null);
+        rolloverPreview = previewResult?.ok ? previewResult.data : null;
+        rolloverPreviewError =
+          previewResult && !previewResult.ok ? previewResult.errorMessage : null;
+      }
     }
   } catch {
     result = null;
@@ -311,6 +335,13 @@ export default async function MoneyPage({ searchParams }: Props) {
         rebaseAction={rebaseMoneyDayStartBaselineAction}
         initialSetupIncomplete={moneyState.dayStartBaseline?.unavailableReason === "initial_setup_incomplete"}
       />
+      {moneyState.period?.lifecycle === "ended" ? (
+        <MoneyRolloverPanel
+          preview={rolloverPreview}
+          previewUnavailableReason={rolloverPreviewError}
+          action={rolloverMoneyPeriodAction}
+        />
+      ) : null}
       </>
     ) : (
       <section role="alert" className="mt-6 rounded-lg border border-ega-border p-5">
