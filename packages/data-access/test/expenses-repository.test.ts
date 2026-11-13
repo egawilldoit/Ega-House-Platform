@@ -179,6 +179,15 @@ test("create sends canonical snake_case values and the fingerprint", async () =>
   assert.ok(selectStep && !selectStep.includes("create_fingerprint"));
 });
 
+test("a deadlocked expense write returns a retryable conflict", async () => {
+  const fake = new FakeSupabase([{ data: null, error: { code: "40P01" } }]);
+  const result = await repository(fake).create(ACTOR, {
+    values: CREATE_VALUES,
+    createFingerprint: FINGERPRINT,
+  });
+  assert.deepEqual(result, { ok: false, error: { code: "conflict" } });
+});
+
 test("only the named idempotency unique constraint maps to conflict", async () => {
   const duplicate = await repository(
     new FakeSupabase([

@@ -175,6 +175,7 @@ test("database refusals keep the small failure vocabulary", async () => {
     ["22023", { code: "22023" }, "validation"],
     ["23514", { code: "23514" }, "conflict"],
     ["23505", { code: "23505" }, "conflict"],
+    ["40P01", { code: "40P01" }, "conflict"],
     ["unknown", { code: "XX000" }, "unknown"],
   ];
 

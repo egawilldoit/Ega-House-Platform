@@ -154,6 +154,13 @@ function closeSummary(overrides: Record<string, unknown> = {}) {
   };
 }
 
+test("a deadlock while reading rollover state is reported as a conflict", async () => {
+  const fake = fakeClient({ money_period_rollovers: [{ data: null, error: { code: "40P01" } }] });
+  const result = await new SupabaseMoneyRolloverRepository(fake.client)
+    .findRolloverByOperation(ACTOR, "operation-1");
+  assert.deepEqual(result, { ok: false, error: { code: "conflict" } });
+});
+
 test("correction bridge reads are owner-scoped and disclose truncation", async () => {
   const complete = fakeClient({
     money_periods: [{ data: PERIOD_ROW, error: null }],

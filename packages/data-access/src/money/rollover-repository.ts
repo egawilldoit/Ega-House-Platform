@@ -214,7 +214,8 @@ function failure(error: SupabaseError) {
     error?.code === "23P01" ||
     // The atomic rollover re-derives the closing balance and uses 40001 for a
     // stale preview/version; treat it as a retryable conflict, not unknown.
-    error?.code === "40001"
+    error?.code === "40001" ||
+    error?.code === "40P01"
   ) {
     return { code: "conflict" as const };
   }
