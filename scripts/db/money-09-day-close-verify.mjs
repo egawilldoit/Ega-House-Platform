@@ -394,8 +394,14 @@ async function main() {
           jsonb_build_object('state','waived','effectiveDate','2027-01-05','version',2)),
         NULL,'canonical-waived',repeat('3',64),'2027-01-01T12:00:00Z'),
        ($1,'bill','future window commitment',1500,'2027-01-19','2027-01-25','2027-01-20',
-        'fixed',false,'pending','2027-01-01','[]'::jsonb,NULL,'canonical-future-window',repeat('a',64),'2027-01-01T12:00:00Z')`, [D]);
-    await user(D, tx => tx.unsafe("SELECT * FROM public.money_rebase_day_start_baseline($1)", [canonicalPeriod]));
+        'fixed',false,'pending','2027-01-01','[]'::jsonb,NULL,'canonical-future-window',repeat('a',64),'2027-01-01T12:00:00Z'),
+       ($1,'bill','future recorded import',3000,'2027-01-19','2027-01-25','2027-01-20',
+        'fixed',false,'paid','2027-01-01','[]'::jsonb,
+        jsonb_build_object('kind','reconciled_historical_import','reference','future-proof','note',NULL,'importedAt','2027-01-19T00:00:00Z'),
+        'canonical-future-import',repeat('b',64),'2027-01-19T12:00:00Z')`, [D]);
+    const canonicalBaseline = await user(D, tx => tx.unsafe("SELECT * FROM public.money_rebase_day_start_baseline($1)", [canonicalPeriod]));
+    assert(canonicalBaseline[0].availability === "available" && canonicalBaseline[0].commitments_minor === 3500,
+      "a later-recorded paid import does not make the earlier baseline unknown or change commitments");
     const canonicalExpense = await user(D, tx => tx.unsafe(`INSERT INTO public.personal_expenses
       (owner_user_id,period_id,booking_date,kind,direction,amount_minor,currency,
        category,need_vs_want,purpose,counts_in_daily,idempotency_key,create_fingerprint)

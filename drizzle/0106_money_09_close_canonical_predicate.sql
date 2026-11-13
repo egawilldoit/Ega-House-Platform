@@ -371,7 +371,10 @@ BEGIN
   SELECT COALESCE(bool_or(state_history = '[]'::jsonb AND state_effective_date < p_date AND state <> 'pending'), false)
     INTO v_unknown_obligations FROM public.money_obligations
    WHERE owner_user_id = auth.uid()
-     AND due_date >= v_period.start_date AND due_date <= v_period.end_date;
+     AND due_date >= v_period.start_date AND due_date <= v_period.end_date
+     -- An occurrence first recorded on or after this exclusive cutoff is
+     -- excluded by money_outstanding_commitments_minor and needs no history.
+     AND created_at::date < p_date;
   v_unknown := v_unknown_opening OR v_unknown_obligations;
   IF v_savings_target IS NULL OR v_emergency_target IS NULL OR v_unknown THEN
     INSERT INTO public.money_day_start_baselines
