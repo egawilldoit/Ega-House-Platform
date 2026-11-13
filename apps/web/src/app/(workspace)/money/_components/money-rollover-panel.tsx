@@ -69,7 +69,9 @@ export function MoneyRolloverPanel({
     (difference !== null && difference !== 0) ||
     (restatedCloses !== null && restatedCloses > 0) ||
     preview.reconciliation.differences.some(
-      (entry) => entry.status === "choice_required",
+      (entry) =>
+        entry.status === "choice_required" &&
+        entry.code !== "unpaid_occurrences",
     );
 
   async function submit(formData: FormData) {

@@ -164,6 +164,8 @@ test("money routes require a verified bearer token", async () => {
     ["POST", "/api/money/coffee-visits"],
     ["POST", "/api/money/classify"],
     ["POST", "/api/money/day-close"],
+    ["GET", "/api/money/periods/period-1/rollover/preview"],
+    ["POST", "/api/money/periods/period-1/rollover"],
   ] as const) {
     const res = await app.request(path, {
       method,
