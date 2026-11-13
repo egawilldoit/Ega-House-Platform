@@ -721,6 +721,21 @@ export async function updateMoneySettings(
         "validation",
       );
     }
+    // Once durable close evidence exists, the active date is close-driven. A
+    // settings update cannot skip an unclosed day, advance twice or rewind a
+    // closed date; those transitions would bypass the retained close.
+    if (values.activeDate !== period.activeDate && repository.listDayCloses) {
+      const closes = await repository.listDayCloses(actor, period.id, 1);
+      if (!closes.ok) {
+        return fromRepository(closes, "Unable to inspect the retained day closes right now.");
+      }
+      if (closes.value.length > 0) {
+        return applicationFailure(
+          "The active date moves only by closing the active day. Close the day to advance; a closed date is corrected through the versioned movement path.",
+          "validation",
+        );
+      }
+    }
   }
 
   let opening: MoneyOpening | null = null;

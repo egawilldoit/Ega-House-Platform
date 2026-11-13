@@ -158,3 +158,23 @@ test("MONEY-09 migration stores immutable close evidence and advances once", () 
   assert.doesNotMatch(migration, /daily_checkins/i);
   assert.doesNotMatch(migration, /INSERT INTO public\.money_periods/i);
 });
+
+test("MONEY-09 review fixes keep close evidence coherent and close-driven", () => {
+  const migration = readFileSync(
+    new URL("../../../drizzle/0105_money_09_close_review_fixes.sql", import.meta.url),
+    "utf8",
+  );
+  assert.match(migration, /money_refresh_day_start_baseline/);
+  assert.match(migration, /money_calculate_day_start_baseline\(p_period_id, p_date, true\)/);
+  assert.match(migration, /PERFORM public\.money_refresh_day_start_baseline\(p_period_id, v_period\.active_date\)/);
+  assert.match(migration, /v_safe_cutoff := v_cash - v_commitments/);
+  assert.match(migration, /'safeFlexibleMinor', v_safe_cutoff/);
+  assert.match(migration, /'safePoolMinor', v_safe_start/);
+  assert.match(migration, /booking_date <= p_date/);
+  assert.match(migration, /effectiveDate'\)::date <= p_date/);
+  assert.match(migration, /money_periods_close_transition_guard/);
+  assert.match(migration, /The active date advances only through the atomic day close/);
+  assert.match(migration, /A period ends only by closing its final active day/);
+  assert.match(migration, /REVOKE INSERT ON public\.money_day_start_baselines FROM authenticated/);
+  assert.match(migration, /REVOKE INSERT ON public\.money_policy_versions FROM authenticated/);
+});

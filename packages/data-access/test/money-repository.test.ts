@@ -192,6 +192,62 @@ test("daily included outflow total is incomplete when its sum exceeds safe integ
   assert.ok(call.includes(`eq:period_id=${PERIOD_ID}`));
 });
 
+test("daily included outflow total pages past the PostgREST row cap", async () => {
+  const fake = new FakeSupabase();
+  fake.push("personal_expenses", {
+    data: Array.from({ length: 1_000 }, () => ({ amount_minor: 1 })),
+    error: null,
+  });
+  fake.push("personal_expenses", { data: [{ amount_minor: 500 }], error: null });
+  const result = await repository(fake).getDailyIncludedExpenseTotal(ACTOR, PERIOD_ID, "2026-11-11");
+  assert.equal(result.ok, true);
+  if (result.ok) {
+    assert.equal(result.value.amountMinor, 1_500);
+    assert.equal(result.value.complete, true);
+  }
+  const calls = fake.calls.filter((call) => call.table === "personal_expenses");
+  assert.equal(calls.length, 2);
+  assert.ok(calls[0]!.steps.includes("range:0-999"));
+  assert.ok(calls[1]!.steps.includes("range:1000-1999"));
+  assert.ok(!calls.some((call) => call.steps.some((step) => step.startsWith("limit:"))));
+});
+
+test("restated close totals page past the PostgREST row cap instead of truncating", async () => {
+  const fake = new FakeSupabase();
+  fake.push("personal_expenses", {
+    data: Array.from({ length: 1_000 }, () => ({
+      amount_minor: 1,
+      counts_in_daily: true,
+      purpose: "flexible",
+      category: "coffee",
+    })),
+    error: null,
+  });
+  fake.push("personal_expenses", {
+    data: [{ amount_minor: 500, counts_in_daily: false, purpose: "fixed", category: "bills" }],
+    error: null,
+  });
+  const result = await repository(fake).getDayCloseCurrentTotals(
+    ACTOR,
+    PERIOD_ID,
+    "2026-11-11",
+  );
+  assert.equal(result.ok, true);
+  if (result.ok) {
+    assert.equal(result.value.complete, true);
+    assert.equal(result.value.expenseTotalMinor, 1_500);
+    assert.equal(result.value.dailyIncludedSpendMinor, 1_000);
+    assert.equal(result.value.flexibleExpenseTotalMinor, 1_000);
+    assert.equal(result.value.fixedExpenseTotalMinor, 500);
+    assert.deepEqual(result.value.categoryTotals, { coffee: 1_000, bills: 500 });
+  }
+  const calls = fake.calls.filter((call) => call.table === "personal_expenses");
+  assert.equal(calls.length, 2);
+  assert.ok(calls[0]!.steps.includes("range:0-999"));
+  assert.ok(calls[1]!.steps.includes("range:1000-1999"));
+  assert.ok(!calls.some((call) => call.steps.some((step) => step.startsWith("limit:"))));
+});
+
 test("overlap and list queries are owner-scoped and inclusive", async () => {
   const fake = new FakeSupabase();
   fake.push("money_periods", { data: [PERIOD_ROW], error: null });

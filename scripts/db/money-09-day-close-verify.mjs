@@ -84,7 +84,36 @@ async function main() {
        'coffee','want','flexible',true,'close-purchase-1',repeat('b',64)) RETURNING id`, [A, period]));
     const expenseId = expense[0].id;
 
+    // A pre-close forward/rewind cycle leaves an older baseline for the next
+    // day. Closing must refresh that date instead of reusing the stale row.
+    const afterExpense = (await sql.unsafe("SELECT version FROM public.money_periods WHERE id=$1", [period]))[0];
+    const forward = await user(A, tx => tx.unsafe(`SELECT * FROM public.money_update_period(
+      $1,$2,'2026-11-10'::date,NULL::jsonb,NULL::integer,NULL::text,NULL::text,
+      NULL::jsonb,NULL::text,'2026-11-09T12:00:00.000Z'::timestamptz)`, [period, afterExpense.version]));
+    assert(forward.length === 1 && day(forward[0].active_date) === "2026-11-10",
+      "pre-close setup can move the active date forward");
+    const staleBaseline = await sql.unsafe(`SELECT version,cash_minor FROM public.money_day_start_baselines
+      WHERE owner_user_id=$1 AND period_id=$2 AND date='2026-11-10' ORDER BY version DESC LIMIT 1`, [A, period]);
+    assert(staleBaseline.length === 1 && staleBaseline[0].version === 1 && staleBaseline[0].cash_minor === 48900,
+      "the pre-close forward move materializes an older next-day baseline");
+    const rewind = await user(A, tx => tx.unsafe(`SELECT * FROM public.money_update_period(
+      $1,$2,'2026-11-09'::date,NULL::jsonb,NULL::integer,NULL::text,NULL::text,
+      NULL::jsonb,NULL::text,'2026-11-09T12:05:00.000Z'::timestamptz)`, [period, forward[0].version]));
+    assert(rewind.length === 1 && day(rewind[0].active_date) === "2026-11-09",
+      "pre-close setup can rewind before any close evidence exists");
+    // A later movement on the closed day makes the older next-day baseline
+    // stale. The close must refresh it rather than inherit the old row.
+    await user(A, tx => tx.unsafe(`INSERT INTO public.personal_expenses
+      (owner_user_id,period_id,booking_date,kind,direction,amount_minor,currency,
+       category,need_vs_want,idempotency_key,create_fingerprint)
+      VALUES ($1,$2,'2026-11-09','income','in',1000,'MAD',
+       NULL,NULL,'close-income-1',repeat('f',64))`, [A, period]));
+
     const periodRow = (await sql.unsafe("SELECT version FROM public.money_periods WHERE id=$1", [period]))[0];
+
+    const readerRefresh = await user(A, tx => tx.unsafe("SELECT * FROM public.money_refresh_day_start_baseline($1,'2026-11-10'::date)", [period]), "money-read")
+      .then(() => false, e => e.code === "42501");
+    assert(readerRefresh, "MCP read grant cannot refresh a baseline");
 
     // Reader grant cannot close; writer grant can.
     const readerClose = await user(A, tx => close(tx, period, periodRow.version, "2026-11-09", "10000000-0000-4000-8000-000000000001", repeat('c',64), [expenseId]), "money-read")
@@ -102,18 +131,30 @@ async function main() {
       && closedResult.close.snapshot.flexibleExpenseTotalMinor === 1100
       && closedResult.close.snapshot.categoryTotals.coffee === 1100,
       "close stores day/category/flexible totals from canonical expenses");
-    assert(closedResult.close.snapshot.recordedCashMinor === 48900, "close stores recorded cash through the closed day");
+    assert(closedResult.close.snapshot.recordedCashMinor === 49900, "close stores recorded cash through the closed day");
     assert(closedResult.close.snapshot.dailyReference.referenceMinor === 1590
       && closedResult.close.snapshot.dailyReference.dailyRemainingMinor === 490,
       "close stores the versioned day-start reference and remaining allowance");
-    assert(closedResult.close.snapshot.reserves.safeFlexibleMinor === 35000,
-      "close stores the disjoint reserve snapshot");
+    assert(closedResult.close.snapshot.reserves.safeFlexibleMinor === 34900,
+      "close stores the coherent end-of-day reserve snapshot");
+    assert(closedResult.close.snapshot.reserves.recordedCashMinor === 49900
+      && closedResult.close.snapshot.reserves.unpaidCommitmentsMinor === 0
+      && closedResult.close.snapshot.reserves.fundedSavingsMinor === 0
+      && closedResult.close.snapshot.reserves.unfundedSavingsMinor === 12000
+      && closedResult.close.snapshot.reserves.emergencyUsedMinor === 0
+      && closedResult.close.snapshot.reserves.remainingEmergencyMinor === 3000,
+      "close reserves use the close-date cutoff, not mixed day-start funding");
     assert(closedResult.close.algorithm_version === "safe-flexible-start-of-day-v1",
       "close stores the algorithm version");
-    const nextBaseline = await sql.unsafe(`SELECT availability,cash_minor FROM public.money_day_start_baselines
+    const nextBaseline = await sql.unsafe(`SELECT version,availability,cash_minor FROM public.money_day_start_baselines
       WHERE owner_user_id=$1 AND period_id=$2 AND date='2026-11-10' ORDER BY version DESC LIMIT 1`, [A, period]);
-    assert(nextBaseline.length === 1 && nextBaseline[0].availability === "available" && nextBaseline[0].cash_minor === 48900,
-      "the next active day has its own day-start baseline");
+    assert(nextBaseline.length === 1 && nextBaseline[0].version === 2
+      && nextBaseline[0].availability === "available" && nextBaseline[0].cash_minor === 49900,
+      "the next active day is refreshed from the committed close, not the stale baseline");
+    const staleRetained = await sql.unsafe(`SELECT cash_minor FROM public.money_day_start_baselines
+      WHERE owner_user_id=$1 AND period_id=$2 AND date='2026-11-10' AND version=1`, [A, period]);
+    assert(staleRetained.length === 1 && staleRetained[0].cash_minor === 48900,
+      "the stale preexisting baseline remains as retained history");
     console.log("[CLOSE] evidence, reference and one-day advance are committed");
 
     const current = (await sql.unsafe("SELECT active_date,version FROM public.money_periods WHERE id=$1", [period]))[0];
@@ -186,7 +227,7 @@ async function main() {
         AND booking_date='2026-11-09' AND kind='expense' AND deleted_at IS NULL`, [A, period]);
     assert(retained[0].snapshot.expenseTotalMinor === 1100
       && retained[0].snapshot.categoryTotals.coffee === 1100
-      && retained[0].snapshot.recordedCashMinor === 48900,
+      && retained[0].snapshot.recordedCashMinor === 49900,
       "a later correction never rewrites the retained close snapshot");
     assert(liveExpense[0].total === 2100, "live restated totals differ from the retained snapshot, enabling changed-since-close");
     const evidence = await user(A, tx => tx.unsafe(`SELECT close_date,note,snapshot FROM public.money_day_closes
@@ -197,6 +238,36 @@ async function main() {
     const foreignClose = await user(B, tx => close(tx, period, current.version, "2026-11-10", "20000000-0000-4000-8000-000000000001", repeat('a',64)));
     assert(foreignClose[0].result.status === "not_found", "another owner cannot close this period");
     console.log("[HISTORY] original close is immutable; live totals restate beside it; owner RLS isolates evidence");
+
+    // Once close evidence exists, active-date/lifecycle transitions are
+    // close-driven. Direct table updates and the settings RPC cannot skip an
+    // unclosed day, advance twice or rewind a closed date.
+    const guard = async (label, fn, code = "23514") => {
+      const denied = await fn().then(() => false, e => e.code === code);
+      assert(denied, label);
+    };
+    await guard("direct update cannot skip an unclosed day after a close", () => user(A, tx => tx.unsafe(
+      "UPDATE public.money_periods SET active_date='2026-11-11', version=version+1 WHERE id=$1", [period])));
+    await guard("direct update cannot rewind a closed date", () => user(A, tx => tx.unsafe(
+      "UPDATE public.money_periods SET active_date='2026-11-09', version=version+1 WHERE id=$1", [period])));
+    await guard("direct update cannot end a period without its final close", () => user(A, tx => tx.unsafe(
+      "UPDATE public.money_periods SET lifecycle='ended', version=version+1 WHERE id=$1", [period])));
+    await guard("period settings cannot skip an unclosed day after a close", () => user(A, tx => tx.unsafe(
+      `SELECT * FROM public.money_update_period($1,$2,'2026-11-11'::date,NULL::jsonb,NULL::integer,NULL::text,NULL::text,NULL::jsonb,NULL::text,now()::timestamptz)`,
+      [period, current.version])));
+    await guard("direct baseline inserts are not a write path", () => user(A, tx => tx.unsafe(
+      `INSERT INTO public.money_day_start_baselines(owner_user_id,period_id,date,version,algorithm_version,availability,unavailable_reason)
+       VALUES($1,$2,'2026-11-10',99,'v1','unavailable','forged')`, [A, period])), "42501");
+    await guard("direct policy inserts are not a write path", () => user(A, tx => tx.unsafe(
+      `INSERT INTO public.money_policy_versions(owner_user_id,period_id,version,effective_date,policy)
+       VALUES($1,$2,99,'2026-11-10','{}'::jsonb)`, [A, period])), "42501");
+    const sameDateUpdate = await user(A, tx => tx.unsafe(
+      "UPDATE public.money_periods SET settings=settings, version=version+1 WHERE id=$1 RETURNING id", [period]));
+    assert(sameDateUpdate.length === 1, "same-date settings updates remain allowed after a close");
+    const afterGuard = (await sql.unsafe("SELECT active_date,version FROM public.money_periods WHERE id=$1", [period]))[0];
+    assert(day(afterGuard.active_date) === "2026-11-10" && afterGuard.version === current.version + 1,
+      "only the allowed same-date settings update changed the period");
+    console.log("[GUARD] close evidence makes transitions close-driven; forged evidence inserts are denied");
 
     // Final tracked day: retain the end date, end the period and require rollover.
     const finalPeriodRows = await user(B, tx => tx.unsafe(`SELECT (p).id AS id, (p).version AS version
@@ -226,6 +297,58 @@ async function main() {
     assert(endedBaseline[0].n === 0, "final-day close materializes no baseline beyond the period");
     console.log("[FINAL] final day retains end date, ends the period and requires explicit rollover");
 
+    // Coherent cutoff reserves: end-of-day cash, funded savings, emergency usage
+    // and a same-day waived commitment all share the close-date cutoff, while
+    // the daily reference keeps the day-start baseline.
+    const cutoffRows = await user(B, tx => tx.unsafe(`SELECT (p).id AS id, (p).version AS version
+      FROM (SELECT public.money_create_period(
+        '2026-12-01'::date,'2026-12-31'::date,'Africa/Casablanca'::text,
+        '2026-12-01'::date,'initialized'::text,100000::integer,'2026-12-01'::date,
+        repeat('a',64)::text,'{"opening":{"source":"user_entered"}}'::jsonb,
+        '{"savingsTargetMinor":20000,"emergencyTargetMinor":5000}'::jsonb,
+        '2026-12-01T08:00:00.000Z'::timestamptz) AS p) created`));
+    const cutoffPeriod = cutoffRows[0].id;
+    await sql.unsafe(`INSERT INTO public.money_obligations
+      (owner_user_id,kind,description,amount_minor,period_start,period_end,due_date,
+       purpose,counts_in_daily,state,state_effective_date,state_history,
+       idempotency_key,create_fingerprint,created_at)
+      VALUES ($1,'bill','same-day waiver',2000,'2026-12-01','2026-12-31','2026-12-10',
+       'fixed',true,'waived','2026-12-01',
+       jsonb_build_array(
+         jsonb_build_object('state','pending','effectiveDate','2026-11-30','version',1),
+         jsonb_build_object('state','waived','effectiveDate','2026-12-01','version',2)),
+       'cutoff-waiver',repeat('1',64),'2026-11-30T12:00:00Z')`, [B]);
+    await user(B, tx => tx.unsafe("SELECT * FROM public.money_rebase_day_start_baseline($1)", [cutoffPeriod]));
+    await user(B, tx => tx.unsafe(`INSERT INTO public.personal_expenses
+      (owner_user_id,period_id,booking_date,kind,direction,amount_minor,currency,
+       category,need_vs_want,purpose,counts_in_daily,idempotency_key,create_fingerprint)
+      VALUES
+       ($1,$2,'2026-12-01','savings_transfer','out',5000,'MAD',NULL,NULL,NULL,false,'cutoff-savings',repeat('2',64)),
+       ($1,$2,'2026-12-01','expense','out',1000,'MAD','health','need','emergency',true,'cutoff-emergency',repeat('3',64)),
+       ($1,$2,'2026-12-01','expense','out',3000,'MAD','groceries','need','flexible',true,'cutoff-expense',repeat('4',64))`,
+      [B, cutoffPeriod]));
+    const cutoffVersion = (await sql.unsafe("SELECT version FROM public.money_periods WHERE id=$1", [cutoffPeriod]))[0].version;
+    const cutoffClose = await user(B, tx => close(tx, cutoffPeriod, cutoffVersion, "2026-12-01",
+      "20000000-0000-4000-8000-000000000004", repeat('e',64)));
+    const cutoffResult = cutoffClose[0].result;
+    assert(cutoffResult.status === "closed", "cutoff reserve scenario closes the day");
+    const cutoffSnapshot = cutoffResult.close.snapshot;
+    assert(cutoffSnapshot.recordedCashMinor === 91000,
+      "cutoff cash includes the day's savings, emergency and flexible outflows");
+    assert(cutoffSnapshot.reserves.recordedCashMinor === 91000
+      && cutoffSnapshot.reserves.unpaidCommitmentsMinor === 0
+      && cutoffSnapshot.reserves.fundedSavingsMinor === 5000
+      && cutoffSnapshot.reserves.unfundedSavingsMinor === 15000
+      && cutoffSnapshot.reserves.emergencyUsedMinor === 1000
+      && cutoffSnapshot.reserves.remainingEmergencyMinor === 4000
+      && cutoffSnapshot.reserves.safeFlexibleMinor === 72000,
+      "cutoff reserves use end-of-day cash, funding, emergency use and waived commitments coherently");
+    assert(cutoffSnapshot.dailyReference.safePoolMinor === 73000
+      && cutoffSnapshot.dailyReference.referenceMinor === 2354
+      && cutoffSnapshot.dailyReference.dailyRemainingMinor === -1646,
+      "the daily reference remains the separate day-start projection");
+    console.log("[CUTOFF] reserves use one close-date cutoff; the daily reference keeps day-start inputs");
+
     // Baseline remains unavailable without explicit setup, so a close cannot
     // invent a zero baseline.
     const unsetRows = await user(C, tx => tx.unsafe(`SELECT (p).id AS id, (p).version AS version
@@ -245,7 +368,7 @@ async function main() {
     assert(unsetCloses[0].n === 0, "an unavailable baseline stores no close");
     console.log("[BASELINE] incomplete setup refuses close instead of inventing zero inputs");
 
-    console.log("MONEY-09 day-close proof passed (through 0104).");
+    console.log("MONEY-09 day-close proof passed (through 0105).");
   } catch (error) {
     console.error(error);
     exit(1);
