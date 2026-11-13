@@ -194,9 +194,9 @@ BEGIN
               (e->>'version')::integer DESC
             LIMIT 1
           ), 'pending')
-        WHEN o.created_at::date > p_cutoff THEN NULL
+        WHEN (o.created_at AT TIME ZONE v_period.timezone)::date > p_cutoff THEN NULL
         WHEN NOT p_include_cutoff
-          AND o.created_at::date = p_cutoff
+          AND (o.created_at AT TIME ZONE v_period.timezone)::date = p_cutoff
           AND NOT (p_cutoff = v_period.start_date AND o.state = 'pending') THEN NULL
         WHEN p_include_cutoff
           AND (o.state = 'pending' OR o.state_effective_date <= p_cutoff)
@@ -374,7 +374,8 @@ BEGIN
      AND due_date >= v_period.start_date AND due_date <= v_period.end_date
      -- An occurrence first recorded on or after this exclusive cutoff is
      -- excluded by money_outstanding_commitments_minor and needs no history.
-     AND created_at::date < p_date;
+     AND (created_at AT TIME ZONE v_period.timezone)::date < p_date
+     AND NOT (state = 'paid' AND COALESCE(payment_evidence->>'kind', '') = 'reconciled_historical_import');
   v_unknown := v_unknown_opening OR v_unknown_obligations;
   IF v_savings_target IS NULL OR v_emergency_target IS NULL OR v_unknown THEN
     INSERT INTO public.money_day_start_baselines
@@ -736,3 +737,55 @@ REVOKE ALL ON FUNCTION public.money_close_day(
 GRANT EXECUTE ON FUNCTION public.money_close_day(
   uuid, integer, date, text, uuid, text, uuid[], timestamp with time zone
 ) TO authenticated;
+
+--> statement-breakpoint
+-- Period creation writes baselines and opening movements: enforce the MCP write grant.
+CREATE OR REPLACE FUNCTION public.money_create_period(
+  p_start_date date,
+  p_end_date date,
+  p_timezone text,
+  p_active_date date,
+  p_initialization text,
+  p_opening_amount_minor integer,
+  p_opening_booking_date date,
+  p_opening_create_fingerprint text,
+  p_provenance jsonb,
+  p_settings jsonb,
+  p_created_at timestamp with time zone
+)
+RETURNS public.money_periods
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $create_period$
+DECLARE
+  v_period public.money_periods;
+  v_policy_id uuid;
+BEGIN
+  IF (auth.jwt() ->> 'client_id') IS NOT NULL
+     AND NOT public.mcp_finance_grant_allows('personal_ops.write') THEN
+    RAISE EXCEPTION 'Money write grant required' USING ERRCODE = '42501';
+  END IF;
+  v_period := public.money_create_period_v3(
+    p_start_date, p_end_date, p_timezone, p_active_date, p_initialization,
+    p_opening_amount_minor, p_opening_booking_date, p_opening_create_fingerprint,
+    p_provenance, p_settings, p_created_at
+  );
+  INSERT INTO public.money_policy_versions
+    (owner_user_id, period_id, version, effective_date, policy, created_at)
+  VALUES (auth.uid(), v_period.id, 1, p_active_date,
+    jsonb_build_object('settings', p_settings, 'algorithmVersion', 'safe-flexible-start-of-day-v1'), p_created_at)
+  RETURNING id INTO v_policy_id;
+  INSERT INTO public.money_day_start_baselines
+    (owner_user_id, period_id, date, version, policy_version_id, algorithm_version,
+     availability, unavailable_reason, inputs, created_at)
+  VALUES (auth.uid(), v_period.id, p_active_date, 1, v_policy_id,
+    'safe-flexible-start-of-day-v1', 'unavailable', 'initial_setup_incomplete',
+    jsonb_build_object('setupComplete', false), p_created_at);
+  RETURN v_period;
+END
+$create_period$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION public.money_create_period_v3(
+  date, date, text, date, text, integer, date, text, jsonb, jsonb, timestamp with time zone
+) FROM PUBLIC, anon, authenticated;
