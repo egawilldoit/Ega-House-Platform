@@ -60,11 +60,12 @@ export type MoneyCashPosition =
 
 export async function getMoneyCashPosition(
   actor: AuthenticatedActor,
-  repository: MoneyPeriodRepository,
+  repository: Pick<MoneyPeriodRepository, "sumLedgerByDirection">,
   period: MoneyPeriod,
   opening: Pick<MoneyOpening, "amountMinor"> | null,
+  cutoffOverride?: string,
 ): Promise<ApplicationResult<MoneyCashPosition>> {
-  const cutoffDate = period.activeDate;
+  const cutoffDate = cutoffOverride ?? period.activeDate;
 
   if (opening === null) {
     return applicationSuccess({

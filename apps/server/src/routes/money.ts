@@ -3,6 +3,7 @@ import type { Context } from "hono";
 
 import {
   classifyMoneyExpense,
+  closeMoneyDay,
   correctObligationPayment,
   createMoneyPeriod,
   createMovement,
@@ -38,6 +39,7 @@ import {
 } from "@ega/application";
 import type {
   ClassifyMoneyExpenseResponse,
+  CloseMoneyDayResponse,
   CreateMoneyPeriodResponse,
   CreateMovementResponse,
   CreateObligationResponse,
@@ -357,6 +359,44 @@ export function createMoneyRoutes(
     if (!result.ok) return errorResponse(c, result.code, result.errorMessage);
     const response: UpdateMovementResponse = { ok: true, movement: result.data };
     return c.json(response);
+  });
+
+  // MONEY-09: durable day close. The same transaction stores the CLOSED note
+  // and snapshot and advances the active date once; a replay returns the
+  // retained close. Final purchases are recorded first through the canonical
+  // movement path.
+  routes.post("/day-close", async (c) => {
+    const { actor, client } = c.var;
+    const body = await readJsonBody(c);
+    if (!body) {
+      return c.json({ error: { code: "VALIDATION", message: VALIDATION_MESSAGE } }, 400);
+    }
+    try {
+      const result = await closeMoneyDay(
+        actor,
+        {
+          periods: new SupabaseMoneyPeriodRepository(client),
+          movements: new SupabaseMoneyRepository(client),
+        },
+        body,
+      );
+      if (!result.ok) {
+        return errorResponse(c, result.code, result.errorMessage);
+      }
+      const response: CloseMoneyDayResponse = {
+        ok: true,
+        close: result.data.close,
+        period: result.data.period,
+        replayed: result.data.replayed,
+        committedPurchases: result.data.committedPurchases,
+      };
+      return c.json(response, result.data.replayed ? 200 : 201);
+    } catch {
+      return c.json(
+        { error: { code: "INTERNAL", message: "Unable to close the Money day right now." } },
+        500,
+      );
+    }
   });
 
   // MONEY-05: period budget plan. The canonical period row owns its dates; the

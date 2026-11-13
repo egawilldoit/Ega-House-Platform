@@ -7,6 +7,7 @@ import {
   parseCreateMoneyPeriodInput,
   parseUpdateMoneySettingsInput,
   validateOpeningAgainstPeriod,
+  type MoneyDayClose,
   type MoneyOpening,
   type MoneyOpeningCorrection,
   type MoneyOpeningInput,
@@ -32,6 +33,7 @@ import {
   type RepositoryFailure,
   type RepositoryResult,
 } from "../shared/result";
+import { loadMoneyDayCloseViews, type MoneyDayCloseView } from "./day-close-read";
 import { getMoneyCashPosition, type MoneyCashPosition } from "./summary";
 import type { MoneyDayStartBaseline, MoneyPeriodRepository } from "./ports";
 
@@ -131,6 +133,12 @@ export type MoneyState = Readonly<{
   cash: MoneyCashPosition;
   dayStartBaseline: (MoneyDayStartBaseline & { dailyReference: ReturnType<typeof calculateMoneyDailyReference> | null }) | null;
   dayStartBaselineUnavailable: boolean;
+  /** Close evidence for the resolved date, when that day was closed. */
+  dayClose: MoneyDayCloseView | null;
+  /** Latest retained close for the selected period (the active day may be newer). */
+  lastClose: MoneyDayCloseView | null;
+  recentCloses: readonly MoneyDayClose[];
+  dayClosesUnavailable: boolean;
   dateResolution: MoneyStateDateResolution;
   history: readonly MoneyStatePeriodSummary[];
   historyUnavailable: boolean;
@@ -487,6 +495,27 @@ export async function getMoneyState(
     history.unshift(summarizePeriod(selected));
   }
 
+  let dayClose: MoneyDayCloseView | null = null;
+  let lastClose: MoneyDayCloseView | null = null;
+  let recentCloses: readonly MoneyDayClose[] = [];
+  let dayClosesUnavailable = false;
+  if (selected) {
+    const closes = await loadMoneyDayCloseViews(
+      actor,
+      repository,
+      selected,
+      opening,
+      resolvedDate,
+    );
+    if (closes.ok) {
+      dayClose = closes.data.dayClose;
+      lastClose = closes.data.lastClose;
+      recentCloses = closes.data.recentCloses;
+    } else {
+      dayClosesUnavailable = true;
+    }
+  }
+
   return applicationSuccess({
     localToday,
     timezone,
@@ -511,6 +540,10 @@ export async function getMoneyState(
     cash,
     dayStartBaseline,
     dayStartBaselineUnavailable,
+    dayClose,
+    lastClose,
+    recentCloses,
+    dayClosesUnavailable,
     dateResolution: {
       localToday,
       timezone,

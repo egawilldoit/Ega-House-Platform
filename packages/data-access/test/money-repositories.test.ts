@@ -57,6 +57,14 @@ class FakeBuilder {
     this.steps.push(`lte:${column}=${String(value)}`);
     return this;
   }
+  is(column: string, value: unknown) {
+    this.steps.push(`is:${column}=${String(value)}`);
+    return this;
+  }
+  limit(value: number) {
+    this.steps.push(`limit:${value}`);
+    return this;
+  }
   order(column: string, options?: { ascending?: boolean }) {
     this.steps.push(`order:${column}:${String(options?.ascending)}`);
     return this;
@@ -263,4 +271,170 @@ test("coffee visit creation commits identity and lines through one RPC", async (
   // Only the post-commit owner-scoped read follows the atomic RPC.
   assert.equal(calls.length, 1);
   assert.ok(calls[0]!.steps.includes(`eq:owner_user_id=${ACTOR.userId}`));
+});
+
+const CLOSE_SNAPSHOT = {
+  currency: "MAD",
+  expenseTotalMinor: 1_100,
+  dailyIncludedSpendMinor: 1_100,
+  flexibleExpenseTotalMinor: 1_100,
+  fixedExpenseTotalMinor: 0,
+  emergencyExpenseTotalMinor: 0,
+  categoryTotals: { coffee: 1_100 },
+  recordedCashMinor: 48_900,
+  recordedCashBasis: "recorded",
+  dayStartBaseline: {
+    date: "2026-11-11",
+    version: 1,
+    availability: "available",
+    policyVersionId: null,
+    cashMinor: 50_000,
+    commitmentsMinor: 0,
+    savingsTargetMinor: 0,
+    savingsFundedMinor: 0,
+    emergencyTargetMinor: 0,
+    emergencyUsedMinor: 0,
+  },
+  dailyReference: {
+    available: true,
+    algorithm: "safe-flexible-start-of-day-v1",
+    daysRemaining: 20,
+    safePoolMinor: 50_000,
+    referenceMinor: 2_500,
+    dailyRemainingMinor: 1_400,
+  },
+  reserves: {
+    recordedCashMinor: 48_900,
+    unpaidCommitmentsMinor: 0,
+    savingsTargetMinor: 0,
+    fundedSavingsMinor: 0,
+    unfundedSavingsMinor: 0,
+    emergencyTargetMinor: 0,
+    emergencyUsedMinor: 0,
+    remainingEmergencyMinor: 0,
+    safeFlexibleMinor: 50_000,
+  },
+};
+
+const CLOSE_ROW = {
+  id: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+  period_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+  close_date: "2026-11-11",
+  status: "closed",
+  note: "Closed with chicken",
+  operation_id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+  close_fingerprint: "a".repeat(64),
+  expected_period_version: 1,
+  period_version_after: 2,
+  active_date_after: "2026-11-12",
+  lifecycle_after: "tracking",
+  is_final_day: false,
+  algorithm_version: "safe-flexible-start-of-day-v1",
+  policy_version_id: null,
+  policy_version: null,
+  baseline_version: 1,
+  included_movement_ids: [],
+  snapshot: CLOSE_SNAPSHOT,
+  created_at: "2026-11-11T20:00:00.000Z",
+};
+
+test("close adapter calls the atomic RPC with every snapshot input and maps evidence", async () => {
+  const { client, rpcCalls } = fakeClient([
+    {
+      data: {
+        status: "closed",
+        close: CLOSE_ROW,
+        period: {
+          id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+          owner_user_id: ACTOR.userId,
+          start_date: "2026-11-09",
+          end_date: "2026-11-30",
+          currency: "MAD",
+          timezone: "Africa/Casablanca",
+          active_date: "2026-11-12",
+          lifecycle: "tracking",
+          initialization: "initialized",
+          opening_movement_id: null,
+          provenance: {},
+          settings: {},
+          version: 2,
+          created_at: "2026-11-09T00:00:00.000Z",
+          updated_at: "2026-11-11T20:00:00.000Z",
+        },
+      },
+      error: null,
+    },
+  ]);
+  const repository = new SupabaseMoneyPeriodRepository(client);
+  const result = await repository.closeDay(ACTOR, {
+    periodId: CLOSE_ROW.period_id,
+    expectedVersion: 1,
+    date: "2026-11-11",
+    note: "Closed with chicken",
+    operationId: CLOSE_ROW.operation_id,
+    closeFingerprint: CLOSE_ROW.close_fingerprint,
+    includedMovementIds: [],
+    createdAt: "2026-11-11T20:00:00.000Z",
+  });
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.value.status, "closed");
+  assert.equal(result.value.period?.activeDate, "2026-11-12");
+  assert.equal(result.value.close?.snapshot.expenseTotalMinor, 1_100);
+  assert.equal(result.value.close?.snapshot.dailyReference.available, true);
+  assert.equal(rpcCalls[0]!.name, "money_close_day");
+  assert.equal(rpcCalls[0]!.args.p_expected_version, 1);
+  assert.equal(rpcCalls[0]!.args.p_operation_id, CLOSE_ROW.operation_id);
+});
+
+test("close adapter preserves an actionable refusal status", async () => {
+  const { client } = fakeClient([
+    { data: { status: "baseline_unavailable", detail: "initial_setup_incomplete" }, error: null },
+  ]);
+  const result = await new SupabaseMoneyPeriodRepository(client).closeDay(ACTOR, {
+    periodId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    expectedVersion: 1,
+    date: "2026-11-11",
+    note: null,
+    operationId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+    closeFingerprint: "a".repeat(64),
+    includedMovementIds: [],
+    createdAt: "2026-11-11T20:00:00.000Z",
+  });
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.value.status, "baseline_unavailable");
+  assert.equal(result.value.detail, "initial_setup_incomplete");
+  assert.equal(result.value.close, null);
+});
+
+test("restated close totals use only canonical expense outflows on the closed day", async () => {
+  const { client, calls } = fakeClient([
+    {
+      data: [
+        { amount_minor: 1_100, counts_in_daily: true, purpose: "flexible", category: "coffee" },
+        { amount_minor: 1_000, counts_in_daily: false, purpose: "fixed", category: "bills" },
+      ],
+      error: null,
+    },
+  ]);
+  const result = await new SupabaseMoneyPeriodRepository(client).getDayCloseCurrentTotals(
+    ACTOR,
+    "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    "2026-11-11",
+  );
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.value.complete, true);
+  assert.equal(result.value.expenseTotalMinor, 2_100);
+  assert.equal(result.value.dailyIncludedSpendMinor, 1_100);
+  assert.equal(result.value.flexibleExpenseTotalMinor, 1_100);
+  assert.equal(result.value.fixedExpenseTotalMinor, 1_000);
+  assert.deepEqual(result.value.categoryTotals, { coffee: 1_100, bills: 1_000 });
+  const steps = calls[0]!.steps;
+  assert.ok(steps.includes(`eq:owner_user_id=${ACTOR.userId}`));
+  assert.ok(steps.includes("eq:kind=expense"));
+  assert.ok(steps.includes("eq:direction=out"));
+  assert.ok(steps.includes("is:deleted_at=null"));
+  assert.ok(steps.includes("eq:booking_date=2026-11-11"));
 });

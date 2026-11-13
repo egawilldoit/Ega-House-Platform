@@ -13,6 +13,10 @@ import {
   type McpMoneyBudgetHandlers,
 } from "./budget-handlers";
 import {
+  createMcpMoneyCloseHandlers,
+  type McpMoneyCloseHandlers,
+} from "./day-close-handlers";
+import {
   createMcpMoneyExpenseHandlers,
   type McpMoneyExpenseHandlers,
 } from "./expense-handlers";
@@ -50,7 +54,8 @@ export type McpMoneyDependencies = {
 export type McpMoneyHandlers = McpMoneyExpenseHandlers &
   McpMoneyPeriodHandlers &
   McpMoneyMovementHandlers &
-  McpMoneyBudgetHandlers;
+  McpMoneyBudgetHandlers &
+  McpMoneyCloseHandlers;
 
 export function createMcpMoneyHandlers(
   dependencies: McpMoneyDependencies,
@@ -60,6 +65,7 @@ export function createMcpMoneyHandlers(
     ...createMcpMoneyPeriodHandlers(dependencies),
     ...createMcpMoneyMovementHandlers(dependencies),
     ...createMcpMoneyBudgetHandlers(dependencies),
+    ...createMcpMoneyCloseHandlers(dependencies),
   };
 }
 
@@ -85,6 +91,10 @@ export type {
   McpMoneyMovementListInput,
   McpMoneyUpdateMovementInput,
 } from "./movement-handlers";
+export type {
+  McpMoneyCloseFinalPurchase,
+  McpMoneyCloseInput,
+} from "./day-close-handlers";
 export type {
   McpMoneyOpeningInput,
   McpMoneyStateInput,

@@ -964,6 +964,66 @@ export function createMcpWriteToolHandlers(
         return errorResult(error);
       }
     },
+    // MONEY-09: durable day close. The receipt binds the full semantic close
+    // input, including every final purchase and its stable identity, so a
+    // changed request cannot replay an earlier close.
+    async closeMoneyDay(
+      authInfo: AuthInfo | undefined,
+      input: {
+        version: number;
+        periodId?: string;
+        date?: string;
+        note?: string | null;
+        operationId: string;
+        finalPurchases?: ReadonlyArray<{
+          amountMinor: number;
+          category: string;
+          note?: string | null;
+          merchant?: string | null;
+          needVsWant: "need" | "want";
+          paymentMethod?: string | null;
+          purpose?: "fixed" | "flexible" | "emergency" | null;
+          countsInDaily?: boolean;
+          idempotencyKey: string;
+        }>;
+      },
+    ): Promise<CallToolResult> {
+      try {
+        assertWritesEnabled(writesEnabled);
+        requireMcpPermission(authInfo, "personal_ops.write");
+        const client = dependencies.createUserClient(authInfo!.token);
+        const finalPurchases = (input.finalPurchases ?? [])
+          .map((purchase) => ({
+            amountMinor: purchase.amountMinor,
+            category: purchase.category,
+            note: canonicalReceiptText(purchase.note),
+            merchant: canonicalReceiptText(purchase.merchant),
+            needVsWant: purchase.needVsWant,
+            paymentMethod: purchase.paymentMethod ?? null,
+            purpose: purchase.purpose ?? null,
+            countsInDaily: purchase.countsInDaily ?? true,
+            idempotencyKey: purchase.idempotencyKey,
+          }))
+          .sort((left, right) =>
+            left.idempotencyKey.localeCompare(right.idempotencyKey),
+          );
+        return await withExclusiveMutation(
+          client,
+          "ega_money_close_day",
+          input.operationId,
+          {
+            periodId: input.periodId ?? null,
+            version: input.version,
+            date: input.date ?? null,
+            note: canonicalReceiptText(input.note),
+            finalPurchases,
+          },
+          () => moneyHandlers.closeMoneyDay(authInfo, input as never),
+        );
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
     // MONEY-04: one canonical ledger for income/savings/adjustment movements.
     async createMoneyMovement(
       authInfo: AuthInfo | undefined,
