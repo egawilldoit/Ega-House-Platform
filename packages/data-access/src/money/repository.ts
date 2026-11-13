@@ -1172,9 +1172,9 @@ export class SupabaseMoneyRepository implements MoneyMovementRepository {
       if (error) return { ok: false, error: moneyFailure(error) };
       const page = (data ?? []) as typeof rows;
       if (expected === null && typeof count === "number") expected = count;
+      rows.push(...page);
       // A matching count above the bound cannot be represented completely.
       if (expected !== null && expected > MAX_ROWS) break;
-      rows.push(...page);
       offset += page.length;
       if (expected !== null) {
         if (rows.length >= expected) {

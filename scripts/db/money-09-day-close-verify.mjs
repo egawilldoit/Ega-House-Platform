@@ -78,6 +78,19 @@ async function main() {
         VALUES (${A}::uuid,${clientId},${RESOURCE},'proof','active',${profile},${sql.json(permissions)},1,now())`;
     }
 
+    // Read RPCs must enforce the same finance grant as the underlying RLS.
+    for (const [query, params] of [
+      ["SELECT public.money_ledger_direction_totals('2026-11-09','2026-11-09')", []],
+      ["SELECT public.money_day_expense_totals($1,'2026-11-09')", [period]],
+      ["SELECT public.money_reserve_inputs($1,'2026-11-09')", [period]],
+    ]) {
+      const denied = await user(A, tx => tx.unsafe(query, params), "no-such-grant")
+        .then(() => false, e => e.code === "42501");
+      assert(denied, "an ungranted MCP client cannot call Money read RPCs");
+      await user(A, tx => tx.unsafe(query, params), "money-read");
+      await user(A, tx => tx.unsafe(query, params));
+    }
+
     const expense = await user(A, tx => tx.unsafe(`INSERT INTO public.personal_expenses
       (owner_user_id,period_id,booking_date,kind,direction,amount_minor,currency,
        category,need_vs_want,purpose,counts_in_daily,idempotency_key,create_fingerprint)

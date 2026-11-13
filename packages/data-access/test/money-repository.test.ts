@@ -547,6 +547,25 @@ test("a bounded movement aggregate proves completeness with the server count and
   ));
 });
 
+test("an over-cap movement aggregate retains the fetched lower bound", async () => {
+  const fake = new FakeSupabase();
+  fake.push("personal_expenses", {
+    data: [{ id: "expense-1", kind: "expense", direction: "out", amount_minor: 100,
+      counts_in_daily: true, purpose: "flexible", booking_date: "2026-11-11" }],
+    error: null,
+    count: 10_001,
+  });
+  const result = await new SupabaseMoneyRepository(
+    fake as unknown as SupabaseClient,
+  ).aggregate(ACTOR, { cutoff: "2026-11-30", startDate: "2026-11-09" });
+  assert.equal(result.ok, true);
+  if (result.ok) {
+    assert.equal(result.value.truncated, true);
+    assert.equal(result.value.rows.length, 1);
+    assert.equal(result.value.rows[0]?.amountMinor, 100);
+  }
+});
+
 test("a bounded movement aggregate stays incomplete when the server count is unavailable", async () => {
   const fake = new FakeSupabase();
   fake.push("personal_expenses", {
