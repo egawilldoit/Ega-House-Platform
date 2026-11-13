@@ -471,6 +471,24 @@ export function createMcpReadToolHandlers(
       return moneyHandlers.moneyState(authInfo, input);
     },
 
+    // MONEY-10 rollover preview. Read-only: it never closes a day and never
+    // creates a successor.
+    async moneyRolloverPreview(
+      authInfo: AuthInfo | undefined,
+      input: { periodId: string },
+    ): Promise<CallToolResult> {
+      return moneyHandlers.moneyRolloverPreview(authInfo, input.periodId);
+    },
+
+    // MONEY-10 historical correction disclosure. Read-only and usable on a
+    // tracking successor; `complete=false` is an explicit truncation signal.
+    async moneyRolloverVariances(
+      authInfo: AuthInfo | undefined,
+      input: { periodId: string },
+    ): Promise<CallToolResult> {
+      return moneyHandlers.moneyRolloverVariances(authInfo, input.periodId);
+    },
+
     // MONEY-04 movement reads. These are deliberately separate tools from the
     // MONEY-02 expense ledger reads so neither surface can silently widen the
     // other's kind filter.

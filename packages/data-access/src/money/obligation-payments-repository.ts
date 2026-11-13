@@ -72,6 +72,7 @@ function paymentFailure(error: SupabaseError): RepositoryFailure {
     case "23505":
     case "23514":
     case "40001":
+    case "40P01":
       return { code: "conflict" };
     default:
       return { code: "unknown" };

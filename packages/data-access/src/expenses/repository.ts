@@ -85,6 +85,7 @@ type ExpenseSupabaseError = {
 function expenseFailure(error: ExpenseSupabaseError): RepositoryFailure {
   if (!error) return { code: "unknown" };
   if (error.code === "42501") return { code: "forbidden" };
+  if (error.code === "40P01") return { code: "conflict" };
   if (error.code === "23505") return { code: "unknown" };
   return sanitizeSupabaseError(error, { conflictCode: "__none__" });
 }

@@ -70,7 +70,7 @@ test("Money survives reload, exports only the owner, then edits and deletes", as
   await countVisit.click();
   await expect(row.getByRole("status")).toContainText("Saved.");
   const a = await ownerClient(owners.ownerA);
-  const expenses = await a.from("personal_expenses").select("id,amount_minor,occurred_at").is("deleted_at", null);
+  const expenses = await a.from("personal_expenses").select("id,amount_minor,occurred_at,booking_date").is("deleted_at", null);
   expect(expenses.error).toBeNull();
   expect(expenses.data).toHaveLength(1);
   const expense = expenses.data?.[0];
@@ -90,9 +90,10 @@ test("Money survives reload, exports only the owner, then edits and deletes", as
     owner_user_id: owners.ownerB.id, amount_minor: 9900, currency: "MAD", category: "coffee",
     merchant: "E2E private B expense", need_vs_want: "want", occurred_at: expense.occurred_at,
     idempotency_key: "e2e-export-b", create_fingerprint: "b".repeat(64),
-  });
+  }).select("booking_date").single();
   expect(seededB.error).toBeNull();
-  const day = new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Casablanca", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(expense.occurred_at));
+  const day = expense.booking_date;
+  expect(seededB.data?.booking_date).toBe(day);
   const downloadPromise = page.waitForEvent("download");
   await page.evaluate(href => {
     const link = document.createElement("a"); link.href = href; link.download = "expenses.csv"; document.body.append(link); link.click(); link.remove();

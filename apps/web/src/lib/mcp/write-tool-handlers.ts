@@ -964,6 +964,64 @@ export function createMcpWriteToolHandlers(
         return errorResult(error);
       }
     },
+    // MONEY-10 explicit rollover. The full semantic request is in the outer
+    // receipt: a changed date, opening, unpaid treatment or acceptance note
+    // conflicts instead of replaying a different successor.
+    async rolloverMoneyPeriod(
+      authInfo: AuthInfo | undefined,
+      input: {
+        operationId: string;
+        periodId: string;
+        expectedVersion: number;
+        startDate: string;
+        endDate: string;
+        opening:
+          | { mode: "carry_forward" }
+          | {
+              mode: "verified_source";
+              amountMinor: number;
+              cutoffDate: string;
+              evidence: string;
+              note?: string | null;
+            };
+        unpaidItems?:
+          | {
+              treatment: "keep_pending" | "carry_forward" | "cancel";
+              reason?: string | null;
+            }
+          | null;
+        settingsOverrides?: Record<string, unknown> | null;
+        allowUncoveredDays?: boolean;
+        acceptClosingDifferenceNote?: string | null;
+      },
+    ): Promise<CallToolResult> {
+      try {
+        assertWritesEnabled(writesEnabled);
+        requireMcpPermission(authInfo, "personal_ops.write");
+        const client = dependencies.createUserClient(authInfo!.token);
+        const semantic = {
+          periodId: input.periodId,
+          expectedVersion: input.expectedVersion,
+          startDate: input.startDate,
+          endDate: input.endDate,
+          opening: input.opening,
+          unpaidItems: input.unpaidItems ?? null,
+          settingsOverrides: input.settingsOverrides ?? null,
+          allowUncoveredDays: input.allowUncoveredDays ?? false,
+          acceptClosingDifferenceNote:
+            input.acceptClosingDifferenceNote ?? null,
+        };
+        return await withExclusiveMutation(
+          client,
+          "ega_money_rollover_period",
+          input.operationId,
+          semantic,
+          () => moneyHandlers.rolloverMoneyPeriod(authInfo, input),
+        );
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
     // MONEY-09: durable day close. The receipt binds the full semantic close
     // input, including every final purchase and its stable identity, so a
     // changed request cannot replay an earlier close.

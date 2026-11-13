@@ -13,6 +13,7 @@ import {
   generateObligations,
   getMoneyBudgetPlan,
   getMoneyCoffeeWindowForPlan,
+  getMoneyRolloverPreviewForPeriod,
   getMoneyState,
   getMovement,
   getObligation,
@@ -27,6 +28,7 @@ import {
   patchMoneyBudgetPlan,
   recordMoneyCoffeeVisit,
   resolveTimeContext,
+  rolloverMoneyPeriod,
   saveMoneyBudgetPlan,
   transitionObligation,
   undoObligationPayment,
@@ -64,12 +66,17 @@ import type {
   UpdateMovementResponse,
   UpdateObligationResponse,
 } from "@ega/contracts/money";
+import type {
+  MoneyRolloverPreviewResponse,
+  MoneyRolloverResponse,
+} from "@ega/contracts/money-rollover";
 import {
   SupabaseExpenseRepository,
   SupabaseMoneyBudgetRepository,
   SupabaseMoneyCoffeeRepository,
   SupabaseMoneyPeriodRepository,
   SupabaseMoneyRepository,
+  SupabaseMoneyRolloverRepository,
   SupabaseObligationPaymentRepository,
   SupabaseObligationRepository,
   SupabaseTimeContextRepository,
@@ -277,6 +284,77 @@ export function createMoneyRoutes(
     } catch {
       return c.json(
         { error: { code: "INTERNAL", message: "Unable to save Money settings right now." } },
+        500,
+      );
+    }
+  });
+
+  routes.get("/periods/:id/rollover/preview", async (c) => {
+    const { actor, client } = c.var;
+    try {
+      const timezone = await ownerTimezone(
+        actor,
+        new SupabaseTimeContextRepository(client),
+      );
+      const result = await getMoneyRolloverPreviewForPeriod(
+        actor,
+        {
+          repository: new SupabaseMoneyRolloverRepository(client),
+          obligations: new SupabaseObligationRepository(client),
+        },
+        c.req.param("id"),
+        { now: dependencies.now?.() ?? new Date(), timezone },
+      );
+      if (!result.ok) {
+        return errorResponse(c, result.code, result.errorMessage);
+      }
+      const response: MoneyRolloverPreviewResponse = { ok: true, ...result.data };
+      return c.json(response);
+    } catch {
+      return c.json(
+        { error: { code: "INTERNAL", message: "Unable to preview the period rollover right now." } },
+        500,
+      );
+    }
+  });
+
+  routes.post("/periods/:id/rollover", async (c) => {
+    const { actor, client } = c.var;
+    const body = await readJsonBody(c);
+    if (!body) {
+      return c.json({ error: { code: "VALIDATION", message: VALIDATION_MESSAGE } }, 400);
+    }
+    try {
+      const timezone = await ownerTimezone(
+        actor,
+        new SupabaseTimeContextRepository(client),
+      );
+      const payload = { ...body, sourcePeriodId: c.req.param("id") };
+      const operationId = operationIdOf(body);
+      const result = await rolloverMoneyPeriod(
+        actor,
+        {
+          repository: new SupabaseMoneyRolloverRepository(client),
+          obligations: new SupabaseObligationRepository(client),
+        },
+        payloadOf(payload),
+        operationId,
+        { now: dependencies.now?.() ?? new Date(), timezone, surface: "web" },
+      );
+      if (!result.ok) {
+        return errorResponse(c, result.code, result.errorMessage);
+      }
+      const response: MoneyRolloverResponse = {
+        ok: true,
+        record: result.data.record,
+        replayed: result.data.replayed,
+        reconciliation: result.data.reconciliation,
+        weekWindows: result.data.weekWindows,
+      };
+      return c.json(response, result.data.replayed ? 200 : 201);
+    } catch {
+      return c.json(
+        { error: { code: "INTERNAL", message: "Unable to roll over the Money period right now." } },
         500,
       );
     }

@@ -13,6 +13,7 @@ import {
   getExpense,
   recordMoneyCoffeeVisit,
   rebaseMoneyDayStartBaseline,
+  rolloverMoneyPeriod,
   saveMoneyBudgetPlan,
   updateExpense,
   updateMoneySettings,
@@ -27,6 +28,8 @@ import {
   SupabaseMoneyCoffeeRepository,
   SupabaseMoneyPeriodRepository,
   SupabaseMoneyRepository,
+  SupabaseMoneyRolloverRepository,
+  SupabaseObligationRepository,
 } from "@ega/data-access";
 import {
   mapApplicationCode,
@@ -813,4 +816,91 @@ export async function classifyExpenseCategoryAction(
   }
   revalidatePath("/money");
   return { ok: true, countedCoffeeUsageChanged: result.data.countedCoffeeUsageChanged };
+}
+
+// ---------------------------------------------------------------------------
+// MONEY-10: explicit period rollover. The action composes the same application
+// use case as HTTP/MCP. The source must already be finished by the durable day
+// close; this action never closes a day and never creates a second period.
+// ---------------------------------------------------------------------------
+
+export async function rolloverMoneyPeriodAction(
+  formData: FormData,
+): Promise<MoneyFormActionResult> {
+  try {
+    const context = await moneyActionContext();
+    if (!context) return { ok: false, error: "Sign in to roll over Money." };
+
+    const sourcePeriodId = formText(formData, "periodId");
+    const expectedVersion = Number(formText(formData, "version"));
+    const startDate = formText(formData, "startDate");
+    const endDate = formText(formData, "endDate");
+    const operationId = formText(formData, "operationId");
+    if (!sourcePeriodId || !operationId) {
+      return { ok: false, error: "A Money period and operation id are required." };
+    }
+
+    const openingMode = formText(formData, "openingMode");
+    let opening: Record<string, unknown>;
+    if (openingMode === "verified_source") {
+      const amount = parseOpeningAmountToMinor(formText(formData, "verifiedAmount"));
+      if (!amount.ok) {
+        return {
+          ok: false,
+          error: "Enter the independently verified opening amount in MAD.",
+        };
+      }
+      const cutoffDate = formText(formData, "verifiedCutoffDate");
+      const evidence = formText(formData, "verifiedEvidence");
+      if (!cutoffDate || !evidence) {
+        return {
+          ok: false,
+          error: "A verified opening needs its balance date and retained evidence.",
+        };
+      }
+      opening = {
+        mode: "verified_source",
+        amountMinor: amount.value,
+        cutoffDate,
+        evidence,
+        note: formText(formData, "verifiedNote") || null,
+      };
+    } else if (openingMode === "carry_forward") {
+      opening = { mode: "carry_forward" };
+    } else {
+      return { ok: false, error: "Choose how the successor opening is established." };
+    }
+
+    const unpaidTreatment = formText(formData, "unpaidTreatment");
+    const unpaidReason = formText(formData, "unpaidReason");
+
+    const result = await rolloverMoneyPeriod(
+      context.actor,
+      {
+        repository: new SupabaseMoneyRolloverRepository(context.client),
+        obligations: new SupabaseObligationRepository(context.client),
+      },
+      {
+        sourcePeriodId,
+        expectedVersion,
+        startDate,
+        endDate,
+        allowUncoveredDays: false,
+        opening,
+        unpaidItems: unpaidTreatment
+          ? { treatment: unpaidTreatment, reason: unpaidReason || null }
+          : null,
+        settingsOverrides: null,
+        acceptClosingDifferenceNote:
+          formText(formData, "acceptClosingDifferenceNote") || null,
+      },
+      operationId,
+      { now: context.now, timezone: context.timezone, surface: "web" },
+    );
+    if (!result.ok) return { ok: false, error: result.errorMessage };
+    revalidatePath("/money");
+    return { ok: true, error: null };
+  } catch {
+    return { ok: false, error: "Unable to roll over the Money period right now." };
+  }
 }
