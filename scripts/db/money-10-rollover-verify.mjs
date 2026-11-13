@@ -15,6 +15,7 @@ const A = "11111111-1111-4111-8111-111111111111";
 const B = "22222222-2222-4222-8222-222222222222";
 const C = "33333333-3333-4333-8333-333333333333";
 const D = "44444444-4444-4444-8444-444444444444";
+const E = "55555555-5555-4555-8555-555555555555";
 const RESOURCE = "https://ega.example.com/api/mcp";
 
 const tags = JSON.parse(
@@ -94,6 +95,7 @@ async function main() {
       "INSERT INTO auth.users VALUES ($1, 'a@example.test'), ($2, 'b@example.test'), ($3, 'c@example.test'), ($4, 'd@example.test')",
       [A, B, C, D],
     );
+    await sql.unsafe("INSERT INTO auth.users VALUES ($1, 'e@example.test')", [E]);
     await sql.unsafe("UPDATE auth.users SET email='ab.mortaki@gmail.com' WHERE id=$1", [A]);
     await sql.unsafe(
       "CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$ SELECT NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid $$",
@@ -1516,6 +1518,63 @@ async function main() {
     }
     assert(directInsertDenied, "clients cannot insert rollover receipts directly");
     console.log("[RLS] rollover receipts are owner-readable and not client-writable");
+
+    // Hold rollover after it has read cash and created its successor, then start
+    // a correction before commit. The correction must wait and bridge afterward.
+    const raceCreated = await user(E, (tx) => tx.unsafe(`SELECT (p).id AS id FROM
+      (SELECT public.money_create_period('2027-06-01','2027-06-01','UTC',
+       '2027-06-01','initialized',10000,'2027-06-01',repeat('a',64),
+       '{"opening":{"source":"user_entered","recordedAt":"2027-06-01T00:00:00.000Z","cutoffDate":"2027-06-01","evidence":null,"note":null,"corrections":[]}}'::jsonb,
+       '{"savingsTargetMinor":0,"emergencyTargetMinor":0}'::jsonb,now()) AS p) created`));
+    const raceId = raceCreated[0].id;
+    const raceMovement = await user(E, (tx) => tx.unsafe(`INSERT INTO public.personal_expenses
+      (owner_user_id,amount_minor,currency,note,idempotency_key,create_fingerprint,kind,direction,
+       booking_date,counts_in_daily,period_id,category,need_vs_want,purpose)
+      VALUES ($1,1000,'MAD','race','m10-race',repeat('c',64),'expense','out',
+       '2027-06-01',true,$2,'groceries','need','flexible') RETURNING id`, [E, raceId]));
+    await user(E, (tx) => tx.unsafe("SELECT public.money_rebase_day_start_baseline($1)", [raceId]));
+    const raceVersion = await sql.unsafe("SELECT version FROM public.money_periods WHERE id=$1", [raceId]);
+    await user(E, (tx) => tx.unsafe(`SELECT public.money_close_day($1::uuid,$2::integer,
+      '2027-06-01'::date,'CLOSED'::text,'c0de0000-0000-4000-8000-000000000099'::uuid,
+      repeat('c',64)::text,ARRAY[]::uuid[],now())`, [raceId, raceVersion[0].version]));
+    const endedRace = await sql.unsafe("SELECT version FROM public.money_periods WHERE id=$1", [raceId]);
+    const raceArgs = [raceId, endedRace[0].version, "2027-06-02", "2027-06-02", "2027-06-02",
+      "UTC", "initialized", false, 9000, "2027-06-01", null, "Carried forward", hex("a"),
+      { opening: { source: "carry_forward", recordedAt: "2027-06-02T09:00:00.000Z",
+        cutoffDate: "2027-06-01", evidence: null, note: "Carried forward", corrections: [] }, createdFrom: "web" },
+      {}, "m10-op-race", hex("b"), "carry_forward", null, null, null,
+      { modeledClosingCashMinor: 9000, pendingOccurrenceCount: 0 }, [], [], "2027-06-02T09:00:00.000Z"];
+    let releaseRollover;
+    let rolloverReady;
+    const hold = new Promise((resolve) => { releaseRollover = resolve; });
+    const ready = new Promise((resolve) => { rolloverReady = resolve; });
+    const rolloverTask = user(E, async (tx) => {
+      const result = await callRollover(tx, raceArgs);
+      rolloverReady(result[0].result.rollover.successor_period_id);
+      await hold;
+    });
+    const raceSuccessorId = await Promise.race([ready, rolloverTask.then(() => { throw new Error("rollover ended before synchronization"); })]);
+    const correctionTask = user(E, async (tx) => {
+      await tx.unsafe("SET LOCAL application_name = 'money10-race-correction'");
+      await tx.unsafe("UPDATE public.personal_expenses SET amount_minor=1500, version=version+1 WHERE id=$1", [raceMovement[0].id]);
+    });
+    const monitor = postgres(url, { max: 1, onnotice: () => {} });
+    let blocked = false;
+    try {
+      for (let attempt = 0; attempt < 100; attempt += 1) {
+        const state = await monitor.unsafe("SELECT wait_event_type FROM pg_stat_activity WHERE application_name='money10-race-correction'");
+        if (state[0]?.wait_event_type === "Lock") { blocked = true; break; }
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+    } finally {
+      releaseRollover();
+      await monitor.end();
+    }
+    await Promise.all([rolloverTask, correctionTask]);
+    assert(blocked, "correction waits for the in-flight rollover period lock");
+    assert(Number(await periodCash(raceSuccessorId, E)) === 8500,
+      "correction committed during rollover is bridged into successor cash");
+    console.log("[CONCURRENCY] rollover serializes a concurrent correction and bridges its delta");
 
     console.log(`[DONE] MONEY-10 rollover proof through ${tags.at(-1)} passed`);
   } finally {

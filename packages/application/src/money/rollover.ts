@@ -382,6 +382,13 @@ async function prepareRollover(
         message:
           "Closing cash is unknown, so it cannot be carried forward as zero. Initialize the source period or supply a verified opening.",
       };
+    } else if (source.modeledClosingCashMinor < 0) {
+      openingFailure = {
+        ok: false,
+        code: "validation",
+        message:
+          "Closing cash is negative and cannot be carried forward as an opening. Supply an independently verified opening instead.",
+      };
     } else {
       opening = buildCarryForwardOpening({
         sourcePeriodId: source.period.id,
