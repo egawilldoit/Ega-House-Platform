@@ -15,6 +15,7 @@ import type {
   MoneyPeriodCreateRecordInput,
   MoneyPeriodRepository,
   MoneyPeriodUpdateRecordInput,
+  MoneyReserveInputs,
   MoneyUpdateRecordInput,
   RepositoryFailure,
   RepositoryResult,
@@ -60,12 +61,6 @@ import {
 const PERIOD_TABLE = "money_periods";
 const LEDGER_TABLE = "personal_expenses";
 const IDEMPOTENCY_CONSTRAINT = "personal_expenses_owner_idempotency_key_unique";
-
-// PostgREST may cap a single response below the requested range (the common
-// `db-max-rows` default is 1000), so completeness is proven by paging until a
-// short page, never by assuming one `limit` returned every row.
-const LEDGER_PAGE_SIZE = 1_000;
-const LEDGER_PAGED_MAX_ROWS = 100_000;
 
 const PERIOD_COLUMNS =
   "id, owner_user_id, start_date, end_date, currency, timezone, active_date, lifecycle, initialization, opening_movement_id, provenance, settings, version, created_at, updated_at";
@@ -450,35 +445,25 @@ export class SupabaseMoneyPeriodRepository implements MoneyPeriodRepository {
   }
 
   async getDailyIncludedExpenseTotal(actor: AuthenticatedActor, periodId: string, date: string) {
-    let amountMinor = 0;
-    let complete = false;
-    let safe = true;
-    for (let offset = 0; offset < LEDGER_PAGED_MAX_ROWS; offset += LEDGER_PAGE_SIZE) {
-      const { data, error } = await this.supabase
-        .from(LEDGER_TABLE)
-        .select("amount_minor")
-        .eq("owner_user_id", actor.userId)
-        .eq("period_id", periodId)
-        .eq("booking_date", date)
-        .eq("kind", "expense")
-        .eq("direction", "out")
-        .eq("counts_in_daily", true)
-        .is("deleted_at", null)
-        .order("id", { ascending: true })
-        .range(offset, offset + LEDGER_PAGE_SIZE - 1);
-      if (error) return { ok: false as const, error: moneyFailure(error) };
-      const rows = (data ?? []) as Array<{ amount_minor: number }>;
-      for (const row of rows) {
-        const amount = Number(row.amount_minor);
-        if (!Number.isSafeInteger(amount) || !Number.isSafeInteger(amountMinor + amount)) safe = false;
-        amountMinor += amount;
-      }
-      if (rows.length < LEDGER_PAGE_SIZE) {
-        complete = true;
-        break;
-      }
+    // The RPC derives the owner from auth.uid(); actor is part of the port.
+    void actor;
+    // One database aggregate, so a PostgREST response cap can never turn a
+    // partial page into a "complete" daily total.
+    const { data, error } = await this.supabase.rpc("money_day_expense_totals", {
+      p_period_id: periodId,
+      p_date: date,
+    });
+    if (error) return { ok: false as const, error: moneyFailure(error) };
+    const row = firstRow(data);
+    if (!row) return { ok: false as const, error: { code: "unknown" as const } };
+    const amountMinor = toMinor(row.dailyIncludedSpendMinor);
+    if (amountMinor === null) {
+      return { ok: true as const, value: { amountMinor: 0, complete: false } };
     }
-    return { ok: true as const, value: { amountMinor, complete: complete && safe } };
+    return {
+      ok: true as const,
+      value: { amountMinor, complete: row.complete === true },
+    };
   }
 
   async findTracking(
@@ -709,66 +694,112 @@ export class SupabaseMoneyPeriodRepository implements MoneyPeriodRepository {
     return { ok: true, value: data ? toClose(data as CloseRow) : null };
   }
 
+  async getDayCloseForDate(
+    actor: AuthenticatedActor,
+    periodId: string,
+    date: string,
+  ): Promise<RepositoryResult<MoneyDayClose | null>> {
+    // Exact owner/period/date evidence. The recent-history strip is not used
+    // to decide which close a historical date shows.
+    const { data, error } = await this.supabase
+      .from("money_day_closes")
+      .select(CLOSE_COLUMNS)
+      .eq("owner_user_id", actor.userId)
+      .eq("period_id", periodId)
+      .eq("close_date", date)
+      .maybeSingle();
+    if (error) return { ok: false, error: moneyFailure(error) };
+    return { ok: true, value: data ? toClose(data as CloseRow) : null };
+  }
+
+  async getReserveInputs(
+    actor: AuthenticatedActor,
+    periodId: string,
+    cutoffDate: string,
+  ): Promise<RepositoryResult<MoneyReserveInputs>> {
+    // The database read is shared with durable close evidence. The RPC derives
+    // the owner from auth.uid(); actor is part of the port contract.
+    void actor;
+    const { data, error } = await this.supabase.rpc("money_reserve_inputs", {
+      p_period_id: periodId,
+      p_cutoff: cutoffDate,
+    });
+    if (error) return { ok: false, error: moneyFailure(error) };
+    const row = firstRow(data);
+    if (!row) return { ok: false, error: { code: "unknown" } };
+    if (row.available !== true) {
+      return {
+        ok: true,
+        value: {
+          available: false,
+          reason: typeof row.reason === "string" ? row.reason : "reserve_inputs_incomplete",
+        },
+      };
+    }
+    const recordedCashMinor = toMinor(row.recordedCashMinor);
+    const unpaidCommitmentsMinor = toMinor(row.unpaidCommitmentsMinor);
+    const savingsFundedMinor = toMinor(row.savingsFundedMinor);
+    const emergencyUsedMinor = toMinor(row.emergencyUsedMinor);
+    if (
+      recordedCashMinor === null
+      || unpaidCommitmentsMinor === null
+      || savingsFundedMinor === null
+      || emergencyUsedMinor === null
+    ) {
+      return {
+        ok: true,
+        value: { available: false, reason: "reserve_inputs_incomplete" },
+      };
+    }
+    return {
+      ok: true,
+      value: {
+        available: true,
+        recordedCashMinor,
+        unpaidCommitmentsMinor,
+        savingsFundedMinor,
+        emergencyUsedMinor,
+      },
+    };
+  }
+
   async getDayCloseCurrentTotals(
     actor: AuthenticatedActor,
     periodId: string,
     date: string,
   ): Promise<RepositoryResult<MoneyDayCloseCurrentTotals>> {
-    let expenseTotalMinor = 0;
-    let dailyIncludedSpendMinor = 0;
-    let flexibleExpenseTotalMinor = 0;
-    let fixedExpenseTotalMinor = 0;
-    let emergencyExpenseTotalMinor = 0;
-    const categoryTotals: Partial<Record<ExpenseCategory, number>> = {};
-    let complete = false;
-
-    for (let offset = 0; offset < LEDGER_PAGED_MAX_ROWS; offset += LEDGER_PAGE_SIZE) {
-      const { data, error } = await this.supabase
-        .from(LEDGER_TABLE)
-        .select("amount_minor, counts_in_daily, purpose, category")
-        .eq("owner_user_id", actor.userId)
-        .eq("period_id", periodId)
-        .eq("booking_date", date)
-        .eq("kind", "expense")
-        .eq("direction", "out")
-        .is("deleted_at", null)
-        .order("id", { ascending: true })
-        .range(offset, offset + LEDGER_PAGE_SIZE - 1);
-      if (error) return { ok: false, error: moneyFailure(error) };
-      const rows = (data ?? []) as Array<{
-        amount_minor: number;
-        counts_in_daily: boolean;
-        purpose: string | null;
-        category: string | null;
-      }>;
-      for (const row of rows) {
-        const amount = Number(row.amount_minor);
-        expenseTotalMinor += amount;
-        if (row.counts_in_daily) dailyIncludedSpendMinor += amount;
-        if (row.purpose === "flexible") flexibleExpenseTotalMinor += amount;
-        if (row.purpose === "fixed") fixedExpenseTotalMinor += amount;
-        if (row.purpose === "emergency") emergencyExpenseTotalMinor += amount;
-        if (row.category) {
-          const category = row.category as ExpenseCategory;
-          categoryTotals[category] = (categoryTotals[category] ?? 0) + amount;
-        }
-      }
-      if (rows.length < LEDGER_PAGE_SIZE) {
-        complete = true;
-        break;
-      }
-    }
-
+    // The RPC derives the owner from auth.uid(); actor is part of the port.
+    void actor;
+    // Same canonical day aggregate as the stored close snapshot: owner +
+    // booking date, no `period_id` filter, and no page/cap truncation.
+    const { data, error } = await this.supabase.rpc("money_day_expense_totals", {
+      p_period_id: periodId,
+      p_date: date,
+    });
+    if (error) return { ok: false, error: moneyFailure(error) };
+    const row = firstRow(data);
+    if (!row) return { ok: false, error: { code: "unknown" } };
+    const expenseTotalMinor = toMinor(row.expenseTotalMinor);
+    const dailyIncludedSpendMinor = toMinor(row.dailyIncludedSpendMinor);
+    const flexibleExpenseTotalMinor = toMinor(row.flexibleExpenseTotalMinor);
+    const fixedExpenseTotalMinor = toMinor(row.fixedExpenseTotalMinor);
+    const emergencyExpenseTotalMinor = toMinor(row.emergencyExpenseTotalMinor);
+    const complete = row.complete === true
+      && expenseTotalMinor !== null
+      && dailyIncludedSpendMinor !== null
+      && flexibleExpenseTotalMinor !== null
+      && fixedExpenseTotalMinor !== null
+      && emergencyExpenseTotalMinor !== null;
     return {
       ok: true,
       value: {
         complete,
-        expenseTotalMinor,
-        dailyIncludedSpendMinor,
-        flexibleExpenseTotalMinor,
-        fixedExpenseTotalMinor,
-        emergencyExpenseTotalMinor,
-        categoryTotals,
+        expenseTotalMinor: expenseTotalMinor ?? 0,
+        dailyIncludedSpendMinor: dailyIncludedSpendMinor ?? 0,
+        flexibleExpenseTotalMinor: flexibleExpenseTotalMinor ?? 0,
+        fixedExpenseTotalMinor: fixedExpenseTotalMinor ?? 0,
+        emergencyExpenseTotalMinor: emergencyExpenseTotalMinor ?? 0,
+        categoryTotals: toCategoryTotals(row.categoryTotals),
       },
     };
   }
@@ -793,48 +824,25 @@ export class SupabaseMoneyPeriodRepository implements MoneyPeriodRepository {
     actor: AuthenticatedActor,
     window: MoneyLedgerWindow,
   ): Promise<RepositoryResult<MoneyLedgerDirectionTotals>> {
-    const PAGE_SIZE = 1000;
-    const MAX_ROWS = 10_000;
-    let inflowsMinor = 0;
-    let outflowsMinor = 0;
-    let recordCount = 0;
-    let truncated = false;
-
-    for (let offset = 0; offset < MAX_ROWS; offset += PAGE_SIZE) {
-      const { data, error } = await this.supabase
-        .from(LEDGER_TABLE)
-        .select("direction, amount_minor")
-        .eq("owner_user_id", actor.userId)
-        .is("deleted_at", null)
-        .neq("kind", "opening")
-        .gte("booking_date", window.startDate)
-        .lte("booking_date", window.endDateInclusive)
-        .order("booking_date", { ascending: false })
-        .order("id", { ascending: false })
-        .range(offset, offset + PAGE_SIZE - 1);
-      if (error) return { ok: false, error: moneyFailure(error) };
-      const rows = (data ?? []) as Array<{
-        direction: string;
-        amount_minor: number;
-      }>;
-      for (const row of rows) {
-        if (row.direction === "in") {
-          inflowsMinor += Number(row.amount_minor);
-        } else if (row.direction === "out") {
-          outflowsMinor += Number(row.amount_minor);
-        }
-        recordCount += 1;
-      }
-      if (rows.length < PAGE_SIZE) break;
-      if (recordCount >= MAX_ROWS) {
-        truncated = true;
-        break;
-      }
+    // Canonical owner + booking-date cash aggregate. One SQL statement is
+    // complete regardless of the PostgREST response row cap.
+    void actor;
+    const { data, error } = await this.supabase.rpc("money_ledger_direction_totals", {
+      p_start_date: window.startDate,
+      p_end_date: window.endDateInclusive,
+    });
+    if (error) return { ok: false, error: moneyFailure(error) };
+    const row = firstRow(data);
+    if (!row) return { ok: false, error: { code: "unknown" } };
+    const inflowsMinor = toMinor(row.inflowsMinor);
+    const outflowsMinor = toMinor(row.outflowsMinor);
+    const recordCount = toMinor(row.recordCount);
+    if (inflowsMinor === null || outflowsMinor === null || recordCount === null) {
+      return { ok: false, error: { code: "unknown" } };
     }
-
     return {
       ok: true,
-      value: { inflowsMinor, outflowsMinor, recordCount, truncated },
+      value: { inflowsMinor, outflowsMinor, recordCount, truncated: false },
     };
   }
 
@@ -1121,8 +1129,10 @@ export class SupabaseMoneyRepository implements MoneyMovementRepository {
 
   /**
    * Bounded projection (kind/direction/amount/daily flag/date only) in pages
-   * of 1000 up to 10000 rows. Reaching the cap reports `truncated`, which the
-   * application turns into an incomplete reading rather than a fake total.
+   * up to 10000 rows. Completeness is proven with the server's exact matching
+   * count and by advancing the offset by the rows actually returned, so a
+   * PostgREST `db-max-rows` cap below the requested page cannot silently skip
+   * rows or turn a partial result into a complete total.
    */
   async aggregate(
     actor: AuthenticatedActor,
@@ -1139,27 +1149,42 @@ export class SupabaseMoneyRepository implements MoneyMovementRepository {
       purpose: MoneyPurpose | null;
       booking_date: string;
     }> = [];
-    let truncated = false;
+    let expected: number | null = null;
+    let offset = 0;
+    let complete = false;
 
-    for (let offset = 0; offset < MAX_ROWS; offset += PAGE_SIZE) {
+    while (offset < MAX_ROWS) {
       let request = this.supabase
         .from(LEDGER_TABLE)
-        .select("id, kind, direction, amount_minor, counts_in_daily, purpose, booking_date")
+        .select(
+          "id, kind, direction, amount_minor, counts_in_daily, purpose, booking_date",
+          { count: "exact" },
+        )
         .eq("owner_user_id", actor.userId)
         .is("deleted_at", null)
         .lte("booking_date", query.cutoff);
       if (query.startDate) request = request.gte("booking_date", query.startDate);
 
-      const { data, error } = await request
+      const { data, error, count } = await request
         .order("booking_date", { ascending: false })
         .order("id", { ascending: false })
         .range(offset, offset + PAGE_SIZE - 1);
       if (error) return { ok: false, error: moneyFailure(error) };
       const page = (data ?? []) as typeof rows;
+      if (expected === null && typeof count === "number") expected = count;
+      // A matching count above the bound cannot be represented completely.
+      if (expected !== null && expected > MAX_ROWS) break;
       rows.push(...page);
-      if (page.length < PAGE_SIZE) break;
-      if (rows.length >= MAX_ROWS) {
-        truncated = true;
+      offset += page.length;
+      if (expected !== null) {
+        if (rows.length >= expected) {
+          complete = rows.length === expected;
+          break;
+        }
+        if (page.length === 0) break;
+      } else {
+        // Without a reliable total a short page could be a server cap, so the
+        // result must stay incomplete instead of claiming a full history.
         break;
       }
     }
@@ -1181,7 +1206,7 @@ export class SupabaseMoneyRepository implements MoneyMovementRepository {
             bookingDate: String(row.booking_date),
           };
         }),
-        truncated,
+        truncated: !complete,
       },
     };
   }

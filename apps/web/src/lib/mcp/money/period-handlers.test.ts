@@ -210,7 +210,7 @@ describe("Money MCP tools", () => {
       dayStartBaseline: { dailyReference: { referenceMinor: 2445 } },
       reserves: { available: true, cutoffDate: PERIOD.activeDate },
     });
-    expect(mocks.getCurrentMoneyReserves).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ period: PERIOD, opening: STATE.opening }));
+    expect(mocks.getCurrentMoneyReserves).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ period: PERIOD }));
   });
 
   it("labels ended-period analytics as historical without a spending allowance", async () => {

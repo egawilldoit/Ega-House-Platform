@@ -125,6 +125,7 @@ export type MoneyDayCloseAttempt = Readonly<{
 }>;
 
 export type MoneyDayCloseCurrentTotals = Readonly<{
+  /** Single SQL aggregate: a PostgREST row cap cannot truncate it silently. */
   complete: boolean;
   expenseTotalMinor: number;
   dailyIncludedSpendMinor: number;
@@ -133,6 +134,21 @@ export type MoneyDayCloseCurrentTotals = Readonly<{
   emergencyExpenseTotalMinor: number;
   categoryTotals: Partial<Record<ExpenseCategory, number>>;
 }>;
+
+/**
+ * Canonical reserve inputs at one inclusive cutoff. Close evidence and the live
+ * current-reserve projection read the same database function, so their cash,
+ * commitments, funded savings and emergency usage cannot drift by predicate.
+ */
+export type MoneyReserveInputs =
+  | Readonly<{ available: false; reason: string }>
+  | Readonly<{
+      available: true;
+      recordedCashMinor: number;
+      unpaidCommitmentsMinor: number;
+      savingsFundedMinor: number;
+      emergencyUsedMinor: number;
+    }>;
 
 export type MoneyPeriodRepository = {
   ensureDayStartBaseline?(actor: AuthenticatedActor, periodId: string, date: string): Promise<RepositoryResult<MoneyDayStartBaseline>>;
@@ -152,6 +168,11 @@ export type MoneyPeriodRepository = {
     periodId: string,
     limit: number,
   ): Promise<RepositoryResult<MoneyDayClose[]>>;
+  getDayCloseForDate(
+    actor: AuthenticatedActor,
+    periodId: string,
+    date: string,
+  ): Promise<RepositoryResult<MoneyDayClose | null>>;
   getDayCloseByOperation?(
     actor: AuthenticatedActor,
     operationId: string,
@@ -161,6 +182,11 @@ export type MoneyPeriodRepository = {
     periodId: string,
     date: string,
   ): Promise<RepositoryResult<MoneyDayCloseCurrentTotals>>;
+  getReserveInputs(
+    actor: AuthenticatedActor,
+    periodId: string,
+    cutoffDate: string,
+  ): Promise<RepositoryResult<MoneyReserveInputs>>;
   findTracking(
     actor: AuthenticatedActor,
   ): Promise<RepositoryResult<MoneyPeriod | null>>;

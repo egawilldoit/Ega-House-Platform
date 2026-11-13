@@ -124,15 +124,27 @@ export async function loadMoneyDayCloseViews(
       recentCloses: [],
     });
   }
-  const result = await repository.listDayCloses(actor, period.id, 12);
+  // The selected date is fetched exactly (owner + period + date). The recent
+  // list is only the history strip and must never decide which close evidence a
+  // historical date shows.
+  const [result, exact] = await Promise.all([
+    repository.listDayCloses(actor, period.id, 12),
+    repository.getDayCloseForDate(actor, period.id, resolvedDate),
+  ]);
   if (!result.ok) {
     return applicationFailure(
       "Unable to load retained day closes right now.",
       result.error.code,
     );
   }
+  if (!exact.ok) {
+    return applicationFailure(
+      "Unable to load the retained close for this date right now.",
+      exact.error.code,
+    );
+  }
   const closes = result.value;
-  const forDate = closes.find((close) => close.closeDate === resolvedDate) ?? null;
+  const forDate = exact.value;
   const latest = closes[0] ?? null;
 
   if (forDate && latest && forDate.id === latest.id) {

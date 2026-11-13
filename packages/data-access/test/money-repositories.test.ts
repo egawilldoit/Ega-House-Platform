@@ -408,13 +408,19 @@ test("close adapter preserves an actionable refusal status", async () => {
   assert.equal(result.value.close, null);
 });
 
-test("restated close totals use only canonical expense outflows on the closed day", async () => {
-  const { client, calls } = fakeClient([
+test("restated close totals use the canonical day aggregate, not a capped page", async () => {
+  const { client, rpcCalls, calls } = fakeClient([
     {
-      data: [
-        { amount_minor: 1_100, counts_in_daily: true, purpose: "flexible", category: "coffee" },
-        { amount_minor: 1_000, counts_in_daily: false, purpose: "fixed", category: "bills" },
-      ],
+      data: {
+        complete: true,
+        rowCount: 2,
+        expenseTotalMinor: 2_100,
+        dailyIncludedSpendMinor: 1_100,
+        flexibleExpenseTotalMinor: 1_100,
+        fixedExpenseTotalMinor: 1_000,
+        emergencyExpenseTotalMinor: 0,
+        categoryTotals: { coffee: 1_100, bills: 1_000 },
+      },
       error: null,
     },
   ]);
@@ -431,10 +437,12 @@ test("restated close totals use only canonical expense outflows on the closed da
   assert.equal(result.value.flexibleExpenseTotalMinor, 1_100);
   assert.equal(result.value.fixedExpenseTotalMinor, 1_000);
   assert.deepEqual(result.value.categoryTotals, { coffee: 1_100, bills: 1_000 });
-  const steps = calls[0]!.steps;
-  assert.ok(steps.includes(`eq:owner_user_id=${ACTOR.userId}`));
-  assert.ok(steps.includes("eq:kind=expense"));
-  assert.ok(steps.includes("eq:direction=out"));
-  assert.ok(steps.includes("is:deleted_at=null"));
-  assert.ok(steps.includes("eq:booking_date=2026-11-11"));
+  assert.deepEqual(rpcCalls, [{
+    name: "money_day_expense_totals",
+    args: {
+      p_period_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      p_date: "2026-11-11",
+    },
+  }]);
+  assert.equal(calls.length, 0);
 });

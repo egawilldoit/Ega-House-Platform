@@ -37,9 +37,11 @@ test("money page composes the shared period state and shows local today separate
 
 test("money page reads shared reserves with request-scoped repositories and renders every input", () => {
   assert.match(source, /getCurrentMoneyReserves\(actor/);
-  assert.match(source, /new SupabaseMoneyRepository\(client\)/);
+  assert.match(source, /new SupabaseMoneyPeriodRepository\(client\)/);
   assert.match(source, /new SupabaseMoneyBudgetRepository\(client\)/);
-  assert.match(source, /new SupabaseObligationRepository\(client\)/);
+  // Reserve cash/commitments/funding come from the canonical period repository
+  // read, not a second client-side obligation or movement aggregate.
+  assert.doesNotMatch(source, /new SupabaseObligationRepository\(client\)/);
   for (const field of ["recordedCashMinor", "unpaidCommitmentsMinor", "savingsTargetMinor", "fundedSavingsMinor", "unfundedSavingsMinor", "emergencyTargetMinor", "emergencyUsedMinor", "remainingEmergencyMinor", "safeFlexibleMinor"]) {
     assert.match(source, new RegExp(`reserves\\.${field}`));
   }

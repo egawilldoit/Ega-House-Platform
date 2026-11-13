@@ -6,6 +6,7 @@ import {
   closeMoneyDay,
   createAuthenticatedActor,
   getMoneyDayCloseView,
+  loadMoneyDayCloseViews,
   moneyDayCloseFingerprint,
   type MoneyDayCloseRecordInput,
   type MoneyMovementRepository,
@@ -409,6 +410,120 @@ test("retained close evidence is compared with restated live totals", async () =
   assert.ok(view.data.comparison.changedFields.includes("categoryTotals"));
   assert.ok(view.data.comparison.changedFields.includes("recordedCash"));
   assert.equal(view.data.comparison.restated.recordedCashMinor, 47900);
+});
+
+test("an unchanged close has no false changed-since-close fields", async () => {
+  const period = makePeriod();
+  const close = makeClose();
+  const view = await getMoneyDayCloseView(
+    ACTOR,
+    {
+      periods: {
+        async sumLedgerByDirection() {
+          return {
+            ok: true,
+            value: {
+              inflowsMinor: 0,
+              outflowsMinor: 1_100,
+              recordCount: 1,
+              truncated: false,
+            },
+          };
+        },
+        async getDayCloseCurrentTotals() {
+          return {
+            ok: true,
+            value: {
+              complete: true,
+              expenseTotalMinor: 1_100,
+              dailyIncludedSpendMinor: 1_100,
+              flexibleExpenseTotalMinor: 1_100,
+              fixedExpenseTotalMinor: 0,
+              emergencyExpenseTotalMinor: 0,
+              categoryTotals: { coffee: 1_100 },
+            },
+          };
+        },
+      },
+    },
+    period,
+    { amountMinor: 50000 },
+    close,
+  );
+  assert.equal(view.ok, true);
+  if (!view.ok) return;
+  assert.deepEqual(view.data.comparison, {
+    available: true,
+    changed: false,
+    changedFields: [],
+    restated: {
+      complete: true,
+      expenseTotalMinor: 1_100,
+      dailyIncludedSpendMinor: 1_100,
+      flexibleExpenseTotalMinor: 1_100,
+      fixedExpenseTotalMinor: 0,
+      emergencyExpenseTotalMinor: 0,
+      categoryTotals: { coffee: 1_100 },
+      recordedCashMinor: 48_900,
+    },
+  });
+});
+
+test("a historical selected date loads its exact close even outside the recent strip", async () => {
+  const period = makePeriod({ activeDate: "2026-11-12" });
+  const latest = makeClose({
+    id: "dddddddd-dddd-4ddd-8ddd-ddddddddddd1",
+    closeDate: "2026-11-11",
+    activeDateAfter: "2026-11-12",
+  });
+  const historical = makeClose({
+    id: "dddddddd-dddd-4ddd-8ddd-ddddddddddd2",
+    closeDate: "2026-11-09",
+    activeDateAfter: "2026-11-10",
+  });
+  const exactCalls: string[] = [];
+  const repository = {
+    async listDayCloses() {
+      return { ok: true as const, value: [latest] };
+    },
+    async getDayCloseForDate(_actor: unknown, _periodId: string, date: string) {
+      exactCalls.push(date);
+      return { ok: true as const, value: date === "2026-11-09" ? historical : null };
+    },
+    async sumLedgerByDirection() {
+      return {
+        ok: true as const,
+        value: { inflowsMinor: 0, outflowsMinor: 1_100, recordCount: 1, truncated: false },
+      };
+    },
+    async getDayCloseCurrentTotals() {
+      return {
+        ok: true as const,
+        value: {
+          complete: true,
+          expenseTotalMinor: 1_100,
+          dailyIncludedSpendMinor: 1_100,
+          flexibleExpenseTotalMinor: 1_100,
+          fixedExpenseTotalMinor: 0,
+          emergencyExpenseTotalMinor: 0,
+          categoryTotals: { coffee: 1_100 },
+        },
+      };
+    },
+  } as unknown as MoneyPeriodRepository;
+
+  const result = await loadMoneyDayCloseViews(
+    ACTOR,
+    repository,
+    period,
+    { amountMinor: 50000 },
+    "2026-11-09",
+  );
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.data.dayClose?.close.id, historical.id);
+  assert.equal(result.data.lastClose?.close.id, latest.id);
+  assert.deepEqual(exactCalls, ["2026-11-09"]);
 });
 
 test("after the final day, routine entries require an explicit rollover or correction", async () => {
