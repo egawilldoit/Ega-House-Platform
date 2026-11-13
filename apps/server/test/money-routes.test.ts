@@ -19,6 +19,14 @@ class FakeSupabase {
     return new FakeBuilder(table, this);
   }
 
+  rpc(name: string, args: unknown) {
+    this.calls.push({
+      table: `rpc:${name}`,
+      steps: [{ method: "rpc", args }],
+    });
+    return Promise.resolve(this.pop("<rpc>"));
+  }
+
   push(table: string, result: QueryResult) {
     const queue = this.queues.get(table) ?? [];
     queue.push(result);
@@ -56,6 +64,14 @@ class FakeBuilder {
   }
   order(...args: unknown[]) {
     this.steps.push({ method: "order", args });
+    return this;
+  }
+  is(...args: unknown[]) {
+    this.steps.push({ method: "is", args });
+    return this;
+  }
+  limit(...args: unknown[]) {
+    this.steps.push({ method: "limit", args });
     return this;
   }
   range(...args: unknown[]) {
@@ -147,6 +163,7 @@ test("money routes require a verified bearer token", async () => {
     ["PATCH", "/api/money/budget"],
     ["POST", "/api/money/coffee-visits"],
     ["POST", "/api/money/classify"],
+    ["POST", "/api/money/day-close"],
   ] as const) {
     const res = await app.request(path, {
       method,
@@ -248,4 +265,135 @@ test("GET /api/money/coffee-visits normalizes numeric pagination query values", 
       (step) => step.method === "range" && step.args[0] === 0 && step.args[1] === 24,
     ),
   );
+});
+
+const CLOSE_SNAPSHOT = {
+  currency: "MAD",
+  expenseTotalMinor: 1_100,
+  dailyIncludedSpendMinor: 1_100,
+  flexibleExpenseTotalMinor: 1_100,
+  fixedExpenseTotalMinor: 0,
+  emergencyExpenseTotalMinor: 0,
+  categoryTotals: { coffee: 1_100 },
+  recordedCashMinor: 48_900,
+  recordedCashBasis: "recorded",
+  dayStartBaseline: {
+    date: "2026-11-11",
+    version: 1,
+    availability: "available",
+    policyVersionId: null,
+    cashMinor: 50_000,
+    commitmentsMinor: 0,
+    savingsTargetMinor: 0,
+    savingsFundedMinor: 0,
+    emergencyTargetMinor: 0,
+    emergencyUsedMinor: 0,
+  },
+  dailyReference: {
+    available: true,
+    algorithm: "safe-flexible-start-of-day-v1",
+    daysRemaining: 20,
+    safePoolMinor: 50_000,
+    referenceMinor: 2_500,
+    dailyRemainingMinor: 1_400,
+  },
+  reserves: {
+    recordedCashMinor: 48_900,
+    unpaidCommitmentsMinor: 0,
+    savingsTargetMinor: 0,
+    fundedSavingsMinor: 0,
+    unfundedSavingsMinor: 0,
+    emergencyTargetMinor: 0,
+    emergencyUsedMinor: 0,
+    remainingEmergencyMinor: 0,
+    safeFlexibleMinor: 50_000,
+  },
+};
+
+test("POST /api/money/day-close validates before persistence and returns retained evidence", async () => {
+  const invalid = await makeApp(new FakeSupabase()).request("/api/money/day-close", {
+    method: "POST",
+    headers: { ...AUTH, "content-type": "application/json" },
+    body: JSON.stringify({ operationId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc" }),
+  });
+  assert.equal(invalid.status, 400);
+
+  const fake = new FakeSupabase();
+  fake.push("money_day_closes", { data: null, error: null });
+  fake.push("money_periods", {
+    data: { ...PERIOD_ROW, opening_movement_id: "opening-1" },
+    error: null,
+  });
+  fake.push("money_day_start_baselines", {
+    data: {
+      date: "2026-11-11",
+      version: 1,
+      availability: "available",
+      unavailable_reason: null,
+      cash_minor: 50_000,
+      commitments_minor: 0,
+      savings_target_minor: 0,
+      savings_funded_minor: 0,
+      emergency_target_minor: 0,
+      emergency_used_minor: 0,
+    },
+    error: null,
+  });
+  fake.push("<rpc>", {
+    data: {
+      status: "closed",
+      close: {
+        id: "close-1",
+        period_id: PERIOD_ROW.id,
+        close_date: "2026-11-11",
+        status: "closed",
+        note: "Closed with chicken",
+        operation_id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+        close_fingerprint: "a".repeat(64),
+        expected_period_version: 1,
+        period_version_after: 2,
+        active_date_after: "2026-11-12",
+        lifecycle_after: "tracking",
+        is_final_day: false,
+        algorithm_version: "safe-flexible-start-of-day-v1",
+        policy_version_id: null,
+        policy_version: null,
+        baseline_version: 1,
+        included_movement_ids: [],
+        snapshot: CLOSE_SNAPSHOT,
+        created_at: "2026-11-11T20:00:00.000Z",
+      },
+      period: {
+        ...PERIOD_ROW,
+        active_date: "2026-11-12",
+        version: 2,
+        updated_at: "2026-11-11T20:00:00.000Z",
+      },
+    },
+    error: null,
+  });
+
+  const res = await makeApp(fake).request("/api/money/day-close", {
+    method: "POST",
+    headers: { ...AUTH, "content-type": "application/json" },
+    body: JSON.stringify({
+      version: 1,
+      operationId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+      note: "Closed with chicken",
+    }),
+  });
+  assert.equal(res.status, 201);
+  const body = await res.json();
+  assert.equal(body.ok, true);
+  assert.equal(body.close.closeDate, "2026-11-11");
+  assert.equal(body.close.activeDateAfter, "2026-11-12");
+  assert.equal(body.close.snapshot.expenseTotalMinor, 1_100);
+  assert.equal(body.period.activeDate, "2026-11-12");
+  assert.equal(body.replayed, false);
+  const rpc = fake.calls.find((call) => call.table === "rpc:money_close_day");
+  assert.ok(rpc);
+  const args = rpc.steps[0]!.args as Record<string, unknown>;
+  assert.equal(args.p_expected_version, 1);
+  assert.equal(args.p_date, "2026-11-11");
+  assert.equal(args.p_operation_id, "cccccccc-cccc-4ccc-8ccc-cccccccccccc");
 });

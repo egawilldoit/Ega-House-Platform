@@ -692,6 +692,10 @@ jobs:
         env:
           PROOF_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ega_proof
         run: node scripts/db/money-08-day-start-verify.mjs --url "$PROOF_DATABASE_URL"
+      - name: Prove MONEY-09 durable day close, replay, rollback and final-day boundary
+        env:
+          PROOF_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ega_proof
+        run: node scripts/db/money-09-day-close-verify.mjs --url "$PROOF_DATABASE_URL"
   hygiene:
     needs: [changes, workspace, contracts, domain, application, data-access, regressions, lint-changed, lint-report, web, web-typecheck, web-tests, mobile, server, api-client, db-invariants]
     if: always()

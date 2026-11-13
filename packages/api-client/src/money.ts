@@ -1,6 +1,8 @@
 import type {
   ClassifyMoneyExpenseRequest,
   ClassifyMoneyExpenseResponse,
+  CloseMoneyDayRequest,
+  CloseMoneyDayResponse,
   CorrectObligationPaymentRequest,
   CreateMoneyPeriodRequest,
   CreateMoneyPeriodResponse,
@@ -114,6 +116,10 @@ export type MoneyApi = {
   classifyExpense(
     request: ClassifyMoneyExpenseRequest,
   ): Promise<ApiResult<ClassifyMoneyExpenseResponse>>;
+  /** POST /api/money/day-close - durable close, 200 on idempotent replay. */
+  closeDay(
+    request: CloseMoneyDayRequest,
+  ): Promise<ApiResult<CloseMoneyDayResponse>>;
 };
 
 function periodSettingsPath(id: string): string {
@@ -247,6 +253,13 @@ export function createMoneyApi(http: HttpClient): MoneyApi {
     classifyExpense(request) {
       return http.request<ClassifyMoneyExpenseResponse>({
         path: "/api/money/classify",
+        method: "POST",
+        body: request,
+      });
+    },
+    closeDay(request) {
+      return http.request<CloseMoneyDayResponse>({
+        path: "/api/money/day-close",
         method: "POST",
         body: request,
       });

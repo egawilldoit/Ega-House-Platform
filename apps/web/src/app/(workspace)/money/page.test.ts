@@ -127,3 +127,19 @@ test("page query values succeed through the actual listExpenses parser and repos
     endBookingDateExclusive: null,
   });
 });
+
+test("money page renders durable day close evidence and restated totals", () => {
+  assert.match(source, /MoneyDayClosePanel/);
+  assert.match(source, /dayClose=\{moneyState\.dayClose\}/);
+  assert.match(source, /lastClose=\{moneyState\.lastClose\}/);
+  assert.match(source, /recentCloses=\{moneyState\.recentCloses\}/);
+  assert.match(source, /dayClosesUnavailable=\{moneyState\.dayClosesUnavailable\}/);
+  assert.match(source, /closeMoneyDayAction/);
+});
+
+test("daily reference shows the active day's included spending even when it is zero", () => {
+  assert.match(source, /Daily included spending/);
+  assert.match(source, /dailyReference\.dailyIncludedExpenseMinor/);
+  assert.match(source, /Days left in period/);
+  assert.match(source, /dailyReference\.daysRemaining/);
+});

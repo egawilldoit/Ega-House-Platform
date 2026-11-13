@@ -3,6 +3,9 @@ import type {
   MoneyAggregate,
   MoneyAggregateQuery,
   MoneyCreateRecordInput,
+  MoneyDayCloseAttempt,
+  MoneyDayCloseCurrentTotals,
+  MoneyDayCloseRecordInput,
   MoneyIdempotencyReceipt,
   MoneyLedgerDirectionTotals,
   MoneyLedgerOverview,
@@ -24,6 +27,7 @@ import {
 } from "@ega/domain/expenses";
 import {
   isMoneyKind,
+  type MoneyDayClose,
   type MoneyLedgerRow,
   type MoneyOpening,
   type MoneyOpeningCorrection,
@@ -218,6 +222,142 @@ function toOpening(row: OpeningRow): MoneyOpening {
     version: Number(row.version),
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at),
+  };
+}
+
+/* ---------------------------------------------------------------------------
+ * MONEY-09 day close rows
+ * ------------------------------------------------------------------------- */
+
+type CloseRow = {
+  id: string;
+  period_id: string;
+  close_date: string;
+  status: string;
+  note: string | null;
+  operation_id: string;
+  close_fingerprint: string;
+  expected_period_version: number;
+  period_version_after: number;
+  active_date_after: string;
+  lifecycle_after: string;
+  is_final_day: boolean;
+  algorithm_version: string;
+  policy_version_id: string | null;
+  policy_version: number | null;
+  baseline_version: number;
+  included_movement_ids: unknown;
+  snapshot: unknown;
+  created_at: string;
+};
+
+const CLOSE_COLUMNS =
+  "id, period_id, close_date, status, note, operation_id, close_fingerprint, expected_period_version, period_version_after, active_date_after, lifecycle_after, is_final_day, algorithm_version, policy_version_id, policy_version, baseline_version, included_movement_ids, snapshot, created_at";
+
+function toMinor(value: unknown): number | null {
+  return typeof value === "number" && Number.isSafeInteger(value) ? value : null;
+}
+
+function toCategoryTotals(value: unknown): Partial<Record<ExpenseCategory, number>> {
+  if (!isRecord(value)) return {};
+  const totals: Partial<Record<ExpenseCategory, number>> = {};
+  for (const [category, amount] of Object.entries(value)) {
+    const minor = toMinor(amount);
+    if (minor !== null) totals[category as ExpenseCategory] = minor;
+  }
+  return totals;
+}
+
+function toClose(row: CloseRow): MoneyDayClose | null {
+  if (!isRecord(row.snapshot)) return null;
+  const snapshot = row.snapshot;
+  const baseline = isRecord(snapshot.dayStartBaseline)
+    ? snapshot.dayStartBaseline
+    : null;
+  const reference = isRecord(snapshot.dailyReference)
+    ? snapshot.dailyReference
+    : null;
+  const reserves = isRecord(snapshot.reserves) ? snapshot.reserves : null;
+  if (!baseline || !reference || !reserves) return null;
+
+  const baselineSnapshot = {
+    date: String(baseline.date),
+    version: Number(baseline.version),
+    availability: baseline.availability === "available" ? ("available" as const) : ("unavailable" as const),
+    policyVersionId:
+      typeof baseline.policyVersionId === "string" ? baseline.policyVersionId : null,
+    cashMinor: toMinor(baseline.cashMinor),
+    commitmentsMinor: toMinor(baseline.commitmentsMinor),
+    savingsTargetMinor: toMinor(baseline.savingsTargetMinor),
+    savingsFundedMinor: toMinor(baseline.savingsFundedMinor),
+    emergencyTargetMinor: toMinor(baseline.emergencyTargetMinor),
+    emergencyUsedMinor: toMinor(baseline.emergencyUsedMinor),
+  };
+  const referenceSnapshot =
+    reference.available === true
+      ? {
+          available: true as const,
+          algorithm: String(reference.algorithm),
+          daysRemaining: Number(reference.daysRemaining),
+          safePoolMinor: Number(reference.safePoolMinor),
+          referenceMinor: Number(reference.referenceMinor),
+          dailyRemainingMinor: Number(reference.dailyRemainingMinor),
+        }
+      : {
+          available: false as const,
+          reason: typeof reference.reason === "string" ? reference.reason : "baseline_unavailable",
+        };
+  const reserveNumbers = {
+    recordedCashMinor: toMinor(reserves.recordedCashMinor),
+    unpaidCommitmentsMinor: toMinor(reserves.unpaidCommitmentsMinor),
+    savingsTargetMinor: toMinor(reserves.savingsTargetMinor),
+    fundedSavingsMinor: toMinor(reserves.fundedSavingsMinor),
+    unfundedSavingsMinor: toMinor(reserves.unfundedSavingsMinor),
+    emergencyTargetMinor: toMinor(reserves.emergencyTargetMinor),
+    emergencyUsedMinor: toMinor(reserves.emergencyUsedMinor),
+    remainingEmergencyMinor: toMinor(reserves.remainingEmergencyMinor),
+    safeFlexibleMinor: toMinor(reserves.safeFlexibleMinor),
+  };
+  if (Object.values(reserveNumbers).some((value) => value === null)) return null;
+  const recordedCash = toMinor(snapshot.recordedCashMinor);
+  if (recordedCash === null) return null;
+
+  return {
+    id: String(row.id),
+    periodId: String(row.period_id),
+    closeDate: String(row.close_date),
+    status: "closed",
+    note: row.note == null ? null : String(row.note),
+    operationId: String(row.operation_id),
+    closeFingerprint: String(row.close_fingerprint),
+    expectedPeriodVersion: Number(row.expected_period_version),
+    periodVersionAfter: Number(row.period_version_after),
+    activeDateAfter: String(row.active_date_after),
+    lifecycleAfter: row.lifecycle_after === "ended" ? "ended" : "tracking",
+    isFinalDay: Boolean(row.is_final_day),
+    algorithmVersion: String(row.algorithm_version),
+    policyVersionId:
+      row.policy_version_id == null ? null : String(row.policy_version_id),
+    policyVersion: row.policy_version == null ? null : Number(row.policy_version),
+    baselineVersion: Number(row.baseline_version),
+    includedMovementIds: Array.isArray(row.included_movement_ids)
+      ? row.included_movement_ids.map((id) => String(id))
+      : [],
+    snapshot: {
+      currency: "MAD",
+      expenseTotalMinor: Number(snapshot.expenseTotalMinor),
+      dailyIncludedSpendMinor: Number(snapshot.dailyIncludedSpendMinor),
+      flexibleExpenseTotalMinor: Number(snapshot.flexibleExpenseTotalMinor),
+      fixedExpenseTotalMinor: Number(snapshot.fixedExpenseTotalMinor),
+      emergencyExpenseTotalMinor: Number(snapshot.emergencyExpenseTotalMinor),
+      categoryTotals: toCategoryTotals(snapshot.categoryTotals),
+      recordedCashMinor: recordedCash,
+      recordedCashBasis: "recorded",
+      dayStartBaseline: baselineSnapshot,
+      dailyReference: referenceSnapshot,
+      reserves: reserveNumbers as MoneyDayClose["snapshot"]["reserves"],
+    },
+    createdAt: String(row.created_at),
   };
 }
 
@@ -466,6 +606,147 @@ export class SupabaseMoneyPeriodRepository implements MoneyPeriodRepository {
     return {
       ok: false,
       error: { code: current.value ? "conflict" : "notFound" },
+    };
+  }
+
+  async closeDay(
+    actor: AuthenticatedActor,
+    input: MoneyDayCloseRecordInput,
+  ): Promise<RepositoryResult<MoneyDayCloseAttempt>> {
+    // The RPC owns the period row lock, snapshot calculation, close insert and
+    // the single active-date advance. Its jsonb status vocabulary keeps the
+    // refusal reason exact instead of collapsing validation into a generic
+    // conflict; a transport failure is still a repository failure.
+    void actor;
+    const { data, error } = await this.supabase.rpc("money_close_day", {
+      p_period_id: input.periodId,
+      p_expected_version: input.expectedVersion,
+      p_date: input.date,
+      p_note: input.note,
+      p_operation_id: input.operationId,
+      p_close_fingerprint: input.closeFingerprint,
+      p_included_movement_ids: input.includedMovementIds,
+      p_created_at: input.createdAt,
+    });
+    if (error) return { ok: false, error: moneyFailure(error) };
+    if (!isRecord(data)) return { ok: false, error: { code: "unknown" } };
+    const status = String(data.status ?? "");
+    const allowed = new Set([
+      "closed",
+      "replayed",
+      "not_found",
+      "stale_version",
+      "period_not_tracking",
+      "date_out_of_period",
+      "close_date_not_active",
+      "operation_conflict",
+      "duplicate_close",
+      "baseline_unavailable",
+      "opening_unknown",
+      "included_movement_invalid",
+    ]);
+    if (!allowed.has(status)) return { ok: false, error: { code: "unknown" } };
+    const closeRow = isRecord(data.close) ? (data.close as unknown as CloseRow) : null;
+    const periodRow = isRecord(data.period)
+      ? (data.period as unknown as PeriodRow)
+      : null;
+    return {
+      ok: true,
+      value: {
+        status: status as MoneyDayCloseAttempt["status"],
+        detail: typeof data.detail === "string" ? data.detail : null,
+        close: closeRow ? toClose(closeRow) : null,
+        period: periodRow ? toPeriod(periodRow) : null,
+      },
+    };
+  }
+
+  async listDayCloses(
+    actor: AuthenticatedActor,
+    periodId: string,
+    limit: number,
+  ): Promise<RepositoryResult<MoneyDayClose[]>> {
+    const { data, error } = await this.supabase
+      .from("money_day_closes")
+      .select(CLOSE_COLUMNS)
+      .eq("owner_user_id", actor.userId)
+      .eq("period_id", periodId)
+      .order("close_date", { ascending: false })
+      .order("created_at", { ascending: false })
+      .limit(limit);
+    if (error) return { ok: false, error: moneyFailure(error) };
+    const closes = ((data ?? []) as CloseRow[])
+      .map(toClose)
+      .filter((close): close is MoneyDayClose => close !== null);
+    return { ok: true, value: closes };
+  }
+
+  async getDayCloseByOperation(
+    actor: AuthenticatedActor,
+    operationId: string,
+  ): Promise<RepositoryResult<MoneyDayClose | null>> {
+    const { data, error } = await this.supabase
+      .from("money_day_closes")
+      .select(CLOSE_COLUMNS)
+      .eq("owner_user_id", actor.userId)
+      .eq("operation_id", operationId)
+      .maybeSingle();
+    if (error) return { ok: false, error: moneyFailure(error) };
+    return { ok: true, value: data ? toClose(data as CloseRow) : null };
+  }
+
+  async getDayCloseCurrentTotals(
+    actor: AuthenticatedActor,
+    periodId: string,
+    date: string,
+  ): Promise<RepositoryResult<MoneyDayCloseCurrentTotals>> {
+    const { data, error } = await this.supabase
+      .from(LEDGER_TABLE)
+      .select("amount_minor, counts_in_daily, purpose, category")
+      .eq("owner_user_id", actor.userId)
+      .eq("period_id", periodId)
+      .eq("booking_date", date)
+      .eq("kind", "expense")
+      .eq("direction", "out")
+      .is("deleted_at", null)
+      .order("id", { ascending: true })
+      .limit(10001);
+    if (error) return { ok: false, error: moneyFailure(error) };
+    const rows = (data ?? []) as Array<{
+      amount_minor: number;
+      counts_in_daily: boolean;
+      purpose: string | null;
+      category: string | null;
+    }>;
+    let expenseTotalMinor = 0;
+    let dailyIncludedSpendMinor = 0;
+    let flexibleExpenseTotalMinor = 0;
+    let fixedExpenseTotalMinor = 0;
+    let emergencyExpenseTotalMinor = 0;
+    const categoryTotals: Partial<Record<ExpenseCategory, number>> = {};
+    for (const row of rows) {
+      const amount = Number(row.amount_minor);
+      expenseTotalMinor += amount;
+      if (row.counts_in_daily) dailyIncludedSpendMinor += amount;
+      if (row.purpose === "flexible") flexibleExpenseTotalMinor += amount;
+      if (row.purpose === "fixed") fixedExpenseTotalMinor += amount;
+      if (row.purpose === "emergency") emergencyExpenseTotalMinor += amount;
+      if (row.category) {
+        const category = row.category as ExpenseCategory;
+        categoryTotals[category] = (categoryTotals[category] ?? 0) + amount;
+      }
+    }
+    return {
+      ok: true,
+      value: {
+        complete: rows.length <= 10_000,
+        expenseTotalMinor,
+        dailyIncludedSpendMinor,
+        flexibleExpenseTotalMinor,
+        fixedExpenseTotalMinor,
+        emergencyExpenseTotalMinor,
+        categoryTotals,
+      },
     };
   }
 

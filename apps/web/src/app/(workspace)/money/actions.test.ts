@@ -384,3 +384,22 @@ test("expense rows are isolated between owners", async () => {
   assert.equal(foreignList.ok, true);
   if (foreignList.ok) assert.deepEqual(foreignList.value, []);
 });
+
+test("day close action composes the shared close use case with stable purchase keys", () => {
+  const closeStart = actionsSource.indexOf("closeMoneyDayAction");
+  const closeBody = actionsSource.slice(
+    closeStart,
+    actionsSource.indexOf("rebaseMoneyDayStartBaselineAction", closeStart),
+  );
+  assert.match(closeBody, /closeMoneyDay\(/);
+  assert.match(closeBody, /new SupabaseMoneyRepository\(context\.client\)/);
+  assert.match(closeBody, /final:\$\{index\}:idempotencyKey/);
+  assert.match(closeBody, /operationId/);
+  assert.match(closeBody, /parseMadAmountToMinor/);
+  assert.match(closeBody, /revalidatePath\("\/money"\)/);
+  assert.match(closeBody, /committedPurchases/);
+  assert.doesNotMatch(closeBody, /owner_user_id\s*:/);
+  // The close never becomes a check-in or a second period owner.
+  assert.doesNotMatch(closeBody, /daily_checkins/);
+  assert.doesNotMatch(closeBody, /createMoneyPeriod/);
+});
