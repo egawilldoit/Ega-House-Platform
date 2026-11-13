@@ -157,6 +157,8 @@ export const MONEY_SETTINGS_MAX_KEYS = 100;
 export const MONEY_OPENING_EVIDENCE_MAX_LENGTH = 500;
 export const MONEY_OPENING_NOTE_MAX_LENGTH = 500;
 export const MONEY_TIMEZONE_MAX_LENGTH = 128;
+export const MONEY_DAY_CLOSE_NOTE_MAX_LENGTH = 500;
+export const MONEY_DAY_CLOSE_MAX_FINAL_PURCHASES = 20;
 
 /** Persisted ledger shape from the frozen shared contract. */
 export type MoneyLedgerRow = Readonly<{
@@ -311,6 +313,462 @@ export type MoneyStateValues = Readonly<{
   cutoff: string | null;
   timezone: string | null;
 }>;
+
+/* ------------------------------------------------------------------ */
+/* MONEY-09: durable day close and retained correction history         */
+/* ------------------------------------------------------------------ */
+
+/** One final purchase submitted with the close request. */
+export type MoneyDayCloseFinalPurchaseInput = Readonly<{
+  amountMinor: number;
+  category: ExpenseCategory;
+  note: string | null;
+  merchant: string | null;
+  needVsWant: ExpenseNeedVsWant;
+  paymentMethod: ExpensePaymentMethod | null;
+  purpose: MoneyPurpose | null;
+  countsInDaily: boolean | null;
+  idempotencyKey: string;
+}>;
+
+export type MoneyDayCloseValues = Readonly<{
+  expectedVersion: number;
+  periodId: string | null;
+  /** Null resolves to the current active tracking date. */
+  date: string | null;
+  note: string | null;
+  operationId: string;
+  finalPurchases: readonly MoneyDayCloseFinalPurchaseInput[];
+}>;
+
+/** The frozen day-start inputs used by the stored close snapshot. */
+export type MoneyDayCloseBaselineSnapshot = Readonly<{
+  date: string;
+  version: number;
+  availability: "available" | "unavailable";
+  policyVersionId: string | null;
+  cashMinor: number | null;
+  commitmentsMinor: number | null;
+  savingsTargetMinor: number | null;
+  savingsFundedMinor: number | null;
+  emergencyTargetMinor: number | null;
+  emergencyUsedMinor: number | null;
+}>;
+
+export type MoneyDayCloseReferenceSnapshot =
+  | Readonly<{ available: false; reason: string }>
+  | Readonly<{
+      available: true;
+      algorithm: string;
+      daysRemaining: number;
+      safePoolMinor: number;
+      referenceMinor: number;
+      dailyRemainingMinor: number;
+    }>;
+
+export type MoneyDayCloseReserveSnapshot = Readonly<{
+  recordedCashMinor: number;
+  unpaidCommitmentsMinor: number;
+  savingsTargetMinor: number;
+  fundedSavingsMinor: number;
+  unfundedSavingsMinor: number;
+  emergencyTargetMinor: number;
+  emergencyUsedMinor: number;
+  remainingEmergencyMinor: number;
+  safeFlexibleMinor: number;
+}>;
+
+/**
+ * Evidence stored with one closed day. The amounts are the values observed in
+ * the same transaction that advanced the active date; later corrections never
+ * rewrite them. `recordedCashMinor` and `reserves` use the inclusive close-date
+ * cutoff, while `dailyReference` is the separate retained day-start projection.
+ */
+export type MoneyDayCloseSnapshot = Readonly<{
+  currency: "MAD";
+  expenseTotalMinor: number;
+  dailyIncludedSpendMinor: number;
+  flexibleExpenseTotalMinor: number;
+  fixedExpenseTotalMinor: number;
+  emergencyExpenseTotalMinor: number;
+  categoryTotals: Partial<Record<ExpenseCategory, number>>;
+  recordedCashMinor: number;
+  recordedCashBasis: "recorded";
+  dayStartBaseline: MoneyDayCloseBaselineSnapshot;
+  dailyReference: MoneyDayCloseReferenceSnapshot;
+  reserves: MoneyDayCloseReserveSnapshot;
+}>;
+
+export type MoneyDayClose = Readonly<{
+  id: string;
+  periodId: string;
+  closeDate: string;
+  status: "closed";
+  note: string | null;
+  operationId: string;
+  closeFingerprint: string;
+  expectedPeriodVersion: number;
+  periodVersionAfter: number;
+  activeDateAfter: string;
+  lifecycleAfter: "tracking" | "ended";
+  isFinalDay: boolean;
+  algorithmVersion: string;
+  policyVersionId: string | null;
+  policyVersion: number | null;
+  baselineVersion: number;
+  includedMovementIds: readonly string[];
+  snapshot: MoneyDayCloseSnapshot;
+  createdAt: string;
+}>;
+
+/** Live owner-scoped totals recomputed for one close date. */
+export type MoneyDayCloseRestatedTotals = Readonly<{
+  complete: boolean;
+  expenseTotalMinor: number;
+  dailyIncludedSpendMinor: number;
+  flexibleExpenseTotalMinor: number;
+  fixedExpenseTotalMinor: number;
+  emergencyExpenseTotalMinor: number;
+  categoryTotals: Partial<Record<ExpenseCategory, number>>;
+  recordedCashMinor: number | null;
+}>;
+
+export const MONEY_DAY_CLOSE_CHANGED_FIELDS = [
+  "expenseTotal",
+  "dailyIncludedSpend",
+  "flexibleExpenseTotal",
+  "fixedExpenseTotal",
+  "emergencyExpenseTotal",
+  "categoryTotals",
+  "recordedCash",
+] as const;
+export type MoneyDayCloseChangedField =
+  (typeof MONEY_DAY_CLOSE_CHANGED_FIELDS)[number];
+
+export type MoneyDayCloseComparison =
+  | Readonly<{ available: false; reason: string }>
+  | Readonly<{
+      available: true;
+      changed: boolean;
+      changedFields: readonly MoneyDayCloseChangedField[];
+      restated: MoneyDayCloseRestatedTotals;
+    }>;
+
+export type MoneyDayCloseTransitionFailure =
+  | "period_not_tracking"
+  | "stale_period"
+  | "invalid_period"
+  | "date_not_active"
+  | "date_after_active";
+
+/** The next period state after closing exactly the currently tracked day. */
+export function moneyDayCloseTransition(
+  period: Pick<MoneyPeriod, "activeDate" | "endDate" | "lifecycle" | "version">,
+  request: Readonly<{ date: string; expectedVersion: number }>,
+):
+  | Readonly<{ ok: false; reason: MoneyDayCloseTransitionFailure }>
+  | Readonly<{
+      ok: true;
+      activeDate: string;
+      lifecycle: "tracking" | "ended";
+      isFinalDay: boolean;
+    }> {
+  if (period.lifecycle !== "tracking") {
+    return { ok: false, reason: "period_not_tracking" };
+  }
+  if (
+    !isIsoDate(period.activeDate) ||
+    !isIsoDate(period.endDate) ||
+    !isIsoDate(request.date) ||
+    period.activeDate > period.endDate ||
+    request.date > period.endDate
+  ) {
+    return { ok: false, reason: "invalid_period" };
+  }
+  if (request.expectedVersion !== period.version) {
+    return { ok: false, reason: "stale_period" };
+  }
+  if (request.date !== period.activeDate) {
+    return {
+      ok: false,
+      reason: request.date > period.activeDate ? "date_after_active" : "date_not_active",
+    };
+  }
+  if (period.activeDate === period.endDate) {
+    return {
+      ok: true,
+      activeDate: period.endDate,
+      lifecycle: "ended",
+      isFinalDay: true,
+    };
+  }
+  return {
+    ok: true,
+    activeDate: addDaysToIsoDate(period.activeDate, 1),
+    lifecycle: "tracking",
+    isFinalDay: false,
+  };
+}
+
+function categoryTotalsEqual(
+  left: Partial<Record<ExpenseCategory, number>>,
+  right: Partial<Record<ExpenseCategory, number>>,
+): boolean {
+  const keys = new Set([...Object.keys(left), ...Object.keys(right)]);
+  for (const key of keys) {
+    const category = key as ExpenseCategory;
+    if ((left[category] ?? 0) !== (right[category] ?? 0)) return false;
+  }
+  return true;
+}
+
+/**
+ * Compare retained close evidence with recomputed live totals. A generic edit
+ * never rewrites the close; callers show the restated values beside it.
+ */
+export function moneyDayCloseChangedFields(
+  snapshot: MoneyDayCloseSnapshot,
+  restated: MoneyDayCloseRestatedTotals,
+): MoneyDayCloseChangedField[] {
+  const changed: MoneyDayCloseChangedField[] = [];
+  if (snapshot.expenseTotalMinor !== restated.expenseTotalMinor) {
+    changed.push("expenseTotal");
+  }
+  if (snapshot.dailyIncludedSpendMinor !== restated.dailyIncludedSpendMinor) {
+    changed.push("dailyIncludedSpend");
+  }
+  if (snapshot.flexibleExpenseTotalMinor !== restated.flexibleExpenseTotalMinor) {
+    changed.push("flexibleExpenseTotal");
+  }
+  if (snapshot.fixedExpenseTotalMinor !== restated.fixedExpenseTotalMinor) {
+    changed.push("fixedExpenseTotal");
+  }
+  if (snapshot.emergencyExpenseTotalMinor !== restated.emergencyExpenseTotalMinor) {
+    changed.push("emergencyExpenseTotal");
+  }
+  if (!categoryTotalsEqual(snapshot.categoryTotals, restated.categoryTotals)) {
+    changed.push("categoryTotals");
+  }
+  if (snapshot.recordedCashMinor !== restated.recordedCashMinor) {
+    changed.push("recordedCash");
+  }
+  return changed;
+}
+
+const CLOSE_KEYS = new Set([
+  "version",
+  "periodId",
+  "date",
+  "note",
+  "operationId",
+  "finalPurchases",
+]);
+
+/**
+ * Validate the close envelope. Each final purchase is parsed by the canonical
+ * movement parser after the application resolves the authoritative booking
+ * date, so this module never invents a date or a second purchase contract.
+ */
+export function parseMoneyDayCloseInput(
+  input: unknown,
+):
+  | { ok: true; value: MoneyDayCloseValues }
+  | MoneyValidationFailure {
+  if (!isRecord(input)) {
+    return failure("body", "Request body must be a JSON object.");
+  }
+  const unknownKey = findUnknownKey(input, CLOSE_KEYS);
+  if (unknownKey) return failure(unknownKey, `Unknown field "${unknownKey}".`);
+
+  if (
+    typeof input.version !== "number" ||
+    !Number.isInteger(input.version) ||
+    input.version < 1
+  ) {
+    return failure("version", "A positive expected period version is required.");
+  }
+
+  const periodIdRaw = input.periodId;
+  if (periodIdRaw !== undefined && periodIdRaw !== null) {
+    if (typeof periodIdRaw !== "string" || !UUID_RE.test(periodIdRaw.trim())) {
+      return failure("periodId", "periodId must be a valid UUID.");
+    }
+  }
+
+  const dateRaw = input.date;
+  if (dateRaw !== undefined && dateRaw !== null) {
+    if (typeof dateRaw !== "string" || !isIsoDate(dateRaw.trim())) {
+      return failure("date", "Close date must be a valid YYYY-MM-DD date.");
+    }
+  }
+
+  const note = parseBoundedText(
+    input.note,
+    "note",
+    MONEY_DAY_CLOSE_NOTE_MAX_LENGTH,
+    { required: false, allowLineControls: true },
+  );
+  if (!note.ok) return note;
+
+  if (
+    typeof input.operationId !== "string" ||
+    !UUID_RE.test(input.operationId.trim())
+  ) {
+    return failure("operationId", "operationId must be a valid UUID.");
+  }
+
+  const purchasesRaw = input.finalPurchases;
+  let finalPurchases: MoneyDayCloseFinalPurchaseInput[] = [];
+  if (purchasesRaw !== undefined && purchasesRaw !== null) {
+    if (!Array.isArray(purchasesRaw)) {
+      return failure("finalPurchases", "finalPurchases must be an array.");
+    }
+    if (purchasesRaw.length > MONEY_DAY_CLOSE_MAX_FINAL_PURCHASES) {
+      return failure(
+        "finalPurchases",
+        `A close records at most ${MONEY_DAY_CLOSE_MAX_FINAL_PURCHASES} final purchases.`,
+      );
+    }
+    const parsedPurchases: MoneyDayCloseFinalPurchaseInput[] = [];
+    for (const [index, entry] of purchasesRaw.entries()) {
+      const parsed = parseCloseFinalPurchase(entry, index);
+      if (!parsed.ok) return parsed;
+      parsedPurchases.push(parsed.value);
+    }
+    finalPurchases = parsedPurchases;
+  }
+
+  return {
+    ok: true,
+    value: {
+      expectedVersion: input.version,
+      periodId:
+        typeof periodIdRaw === "string" ? periodIdRaw.trim().toLowerCase() : null,
+      date: typeof dateRaw === "string" ? dateRaw.trim() : null,
+      note: note.value,
+      operationId: (input.operationId as string).trim().toLowerCase(),
+      finalPurchases,
+    },
+  };
+}
+
+const FINAL_PURCHASE_KEYS = new Set([
+  "amountMinor",
+  "category",
+  "note",
+  "merchant",
+  "needVsWant",
+  "paymentMethod",
+  "purpose",
+  "countsInDaily",
+  "idempotencyKey",
+]);
+
+function parseCloseFinalPurchase(
+  input: unknown,
+  index: number,
+): { ok: true; value: MoneyDayCloseFinalPurchaseInput } | MoneyValidationFailure {
+  const field = `finalPurchases[${index}]`;
+  if (!isRecord(input)) {
+    return failure(field, "Each final purchase must be an object.");
+  }
+  const unknownKey = findUnknownKey(input, FINAL_PURCHASE_KEYS);
+  if (unknownKey) {
+    return failure(`${field}.${unknownKey}`, `Unknown field "${unknownKey}".`);
+  }
+
+  const amountMinor = parseAmountMinor(input.amountMinor);
+  if (!amountMinor.ok) return failure(`${field}.${amountMinor.field}`, amountMinor.message);
+
+  const category = parseEnum(
+    input.category,
+    "category",
+    isExpenseCategory,
+    "Choose a supported category.",
+  );
+  if (!category.ok) return failure(`${field}.${category.field}`, category.message);
+
+  const needVsWant = parseEnum(
+    input.needVsWant,
+    "needVsWant",
+    isExpenseNeedVsWant,
+    "Choose need or want.",
+  );
+  if (!needVsWant.ok) return failure(`${field}.${needVsWant.field}`, needVsWant.message);
+
+  const note = parseBoundedText(
+    input.note,
+    "note",
+    EXPENSE_NOTE_MAX_LENGTH,
+    { required: false, allowLineControls: true },
+  );
+  if (!note.ok) return failure(`${field}.${note.field}`, note.message);
+
+  const merchant = parseBoundedText(
+    input.merchant,
+    "merchant",
+    EXPENSE_MERCHANT_MAX_LENGTH,
+    { required: false, allowLineControls: true },
+  );
+  if (!merchant.ok) return failure(`${field}.${merchant.field}`, merchant.message);
+
+  let paymentMethod: ExpensePaymentMethod | null = null;
+  if (input.paymentMethod !== undefined && input.paymentMethod !== null) {
+    const parsed = parseEnum(
+      input.paymentMethod,
+      "paymentMethod",
+      isExpensePaymentMethod,
+      "Choose a supported payment method.",
+    );
+    if (!parsed.ok) return failure(`${field}.${parsed.field}`, parsed.message);
+    paymentMethod = parsed.value;
+  }
+
+  let purpose: MoneyPurpose | null = null;
+  if (input.purpose !== undefined && input.purpose !== null) {
+    const parsed = parseEnum(
+      input.purpose,
+      "purpose",
+      isExpensePurpose,
+      "Choose fixed, flexible or emergency.",
+    );
+    if (!parsed.ok) return failure(`${field}.${parsed.field}`, parsed.message);
+    purpose = parsed.value;
+  }
+
+  let countsInDaily: boolean | null = null;
+  if (input.countsInDaily !== undefined && input.countsInDaily !== null) {
+    if (typeof input.countsInDaily !== "boolean") {
+      return failure(`${field}.countsInDaily`, "countsInDaily must be a boolean.");
+    }
+    countsInDaily = input.countsInDaily;
+  }
+
+  const idempotencyKey = parseBoundedText(
+    input.idempotencyKey,
+    "idempotencyKey",
+    EXPENSE_IDEMPOTENCY_KEY_MAX_LENGTH,
+    { required: true, allowLineControls: false },
+  );
+  if (!idempotencyKey.ok) {
+    return failure(`${field}.${idempotencyKey.field}`, idempotencyKey.message);
+  }
+
+  return {
+    ok: true,
+    value: {
+      amountMinor: amountMinor.value,
+      category: category.value,
+      note: note.value,
+      merchant: merchant.value,
+      needVsWant: needVsWant.value,
+      paymentMethod,
+      purpose,
+      countsInDaily,
+      idempotencyKey: idempotencyKey.value as string,
+    },
+  };
+}
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

@@ -389,6 +389,29 @@ export type McpWriteToolHandlers = {
     },
     context?: McpProtocolContext,
   ) => Promise<CallToolResult>;
+  /** MONEY-09 durable close of the active day. */
+  closeMoneyDay: (
+    authInfo: AuthInfo | undefined,
+    input: {
+      version: number;
+      periodId?: string;
+      date?: string;
+      note?: string | null;
+      operationId: string;
+      finalPurchases?: ReadonlyArray<{
+        amountMinor: number;
+        category: string;
+        note?: string | null;
+        merchant?: string | null;
+        needVsWant: "need" | "want";
+        paymentMethod?: string | null;
+        purpose?: "fixed" | "flexible" | "emergency" | null;
+        countsInDaily?: boolean;
+        idempotencyKey: string;
+      }>;
+    },
+    context?: McpProtocolContext,
+  ) => Promise<CallToolResult>;
   /** MONEY-04 movement writes on the one ledger. */
   createMoneyMovement: (
     authInfo: AuthInfo | undefined,
@@ -824,6 +847,27 @@ const moneyRolloverInputSchema = z
     acceptClosingDifferenceNote: z.string().min(3).max(500).nullable().optional(),
   })
   .strict();
+
+const moneyCloseDayFinalPurchaseSchema = z.object({
+  amountMinor: z.number().int().positive(),
+  category: z.enum(EXPENSE_CATEGORY_VALUES),
+  note: nullableStringSchema.optional(),
+  merchant: nullableStringSchema.optional(),
+  needVsWant: z.enum(["need", "want"]),
+  paymentMethod: nullableStringSchema.optional(),
+  purpose: z.enum(["fixed", "flexible", "emergency"]).nullable().optional(),
+  countsInDaily: z.boolean().optional(),
+  idempotencyKey: z.string().min(1),
+}).strict();
+
+const moneyCloseDayInputSchema = z.object({
+  version: z.number().int().positive(),
+  periodId: uuidSchema.optional(),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  note: nullableStringSchema.optional(),
+  operationId: z.string().uuid(),
+  finalPurchases: z.array(moneyCloseDayFinalPurchaseSchema).max(20).optional(),
+}).strict();
 
 const moneyStateOutputSchema = z.object({
   ok: z.literal(true),
@@ -2184,6 +2228,23 @@ const WRITE_TOOL_REGISTRATIONS: readonly WriteToolRegistration[] = [
             input,
             getProtocolContext(ctx as unknown as ServerContext),
           ),
+      ),
+  },
+  {
+    name: "ega_money_close_day",
+    register: (server, handlers) =>
+      server.registerTool(
+        "ega_money_close_day",
+        {
+          title: "Close a Money day",
+          description:
+            "Close the current active day in the canonical Money period. `version` must be the current positive period version and `date` (when supplied) must equal the active date; today never replaces a lagging active date and an earlier day is not skipped. Any `finalPurchases` are first recorded as canonical expenses on that day with their own stable idempotency keys; if one fails, the day is not closed and already committed purchases are returned for reconciliation. One transaction stores the CLOSED note, category/flexible totals, recorded cash, day-start reference and reserve snapshot, algorithm/policy/baseline versions and the close identity, then advances the active date exactly one calendar day. Closing the final period day retains the end date and sets lifecycle to ended/rollover-required; no new period is created. Repeating the same close operation returns the retained close, while changed evidence or a stale version conflicts. Later corrections keep the original snapshot and the shared read reports restated totals with a changed-since-close indicator. Requires the explicit personal_ops.write grant.",
+          inputSchema: moneyCloseDayInputSchema,
+          outputSchema: genericWriteOutputSchema,
+          annotations: WRITE_ANNOTATIONS,
+        },
+        async (input, ctx) =>
+          handlers.closeMoneyDay(getAuthInfo(ctx as unknown as ServerContext), input),
       ),
   },
   {

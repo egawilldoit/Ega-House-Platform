@@ -152,16 +152,47 @@ export function inclusiveDayCount(startDate: string, endDate: string): number {
   return Math.round((end - start) / 86_400_000) + 1;
 }
 
+function isoParts(date: string): { year: number; month: number; day: number } {
+  const [year, month, day] = date.split("-").map(Number);
+  return { year, month, day };
+}
+
+function daysInMonth(year: number, month: number): number {
+  return new Date(Date.UTC(year, month, 0)).getUTCDate();
+}
+
 /**
- * Default successor dates: the day after the source end, with the same
- * inclusive length. A partial source period therefore yields a partial
- * successor, and the owner can supply a full calendar month explicitly.
+ * Default successor dates. A full calendar-month source maps to the same
+ * number of full calendar months, so January 1–31 becomes February 1–28/29
+ * rather than a 31-day March spill. Every other (partial) source keeps its
+ * inclusive length, which is what the documented partial-period behavior
+ * requires.
  */
 export function defaultMoneyRolloverRange(source: Pick<MoneyPeriod, "startDate" | "endDate">): {
   startDate: string;
   endDate: string;
 } {
   const startDate = addDaysToIsoDate(source.endDate, 1);
+  const sourceStart = isoParts(source.startDate);
+  const sourceEnd = isoParts(source.endDate);
+  const fullMonths =
+    sourceStart.day === 1 &&
+    sourceEnd.day === daysInMonth(sourceEnd.year, sourceEnd.month);
+  if (fullMonths) {
+    const monthSpan =
+      (sourceEnd.year - sourceStart.year) * 12 +
+      (sourceEnd.month - sourceStart.month) +
+      1;
+    const successorStart = isoParts(startDate);
+    const endMonthIndex = successorStart.month - 1 + (monthSpan - 1);
+    const endYear = successorStart.year + Math.floor(endMonthIndex / 12);
+    const endMonth = (endMonthIndex % 12) + 1;
+    const endDay = daysInMonth(endYear, endMonth);
+    return {
+      startDate,
+      endDate: `${String(endYear).padStart(4, "0")}-${String(endMonth).padStart(2, "0")}-${String(endDay).padStart(2, "0")}`,
+    };
+  }
   const length = inclusiveDayCount(source.startDate, source.endDate);
   return {
     startDate,
@@ -464,7 +495,10 @@ export type MoneyRolloverDifference = Readonly<{
     | "modeled_vs_verified_closing_cash"
     | "unknown_closing_cash"
     | "unpaid_occurrences"
-    | "close_snapshot_restatement";
+    | "close_snapshot_restatement"
+    | "paid_obligation_payment_mismatch"
+    | "counted_coffee_visit_mismatch"
+    | "savings_target_vs_transfers";
   amountMinor: number | null;
   status: "ok" | "choice_required" | "accepted" | "unavailable";
   message: string;
@@ -487,6 +521,37 @@ export type MoneyRolloverReconciliation = Readonly<{
 }>;
 
 /**
+ * MONEY-09 close evidence read for rollover. A close snapshot is compared with
+ * the live restated totals for its date; an unavailable comparison is reported
+ * as such instead of being treated as a passed check.
+ */
+export type MoneyRolloverCloseSnapshotDifference = Readonly<{
+  closeId: string;
+  closeDate: string;
+  changedFields: readonly string[];
+}>;
+
+export type MoneyRolloverCloseSnapshotAssessment =
+  | Readonly<{
+      available: true;
+      closeCount: number;
+      lastClosedDate: string | null;
+      comparableToRestatedTotals: true;
+      restatedDifferenceCount: number;
+      restatedDifferences: readonly MoneyRolloverCloseSnapshotDifference[];
+      /** Paid occurrences checked against their one canonical ledger payment. */
+      paidObligationCount: number;
+      paidObligationMismatchCount: number;
+      /** Counted coffee visits checked against their live ledger lines. */
+      countedVisitCount: number;
+      countedVisitMismatchCount: number;
+      /** Period savings target and the actual posted savings transfers. */
+      savingsTargetMinor: number | null;
+      savingsTransferredMinor: number;
+    }>
+  | Readonly<{ available: false; reason: string }>;
+
+/**
  * Compare the modeled closing balance with every supplied reconciliation input.
  * Unknown is never zero: a missing source opening blocks a carry-forward and is
  * reported instead of being modeled as a zero balance.
@@ -502,8 +567,7 @@ export function assessMoneyRollover(input: Readonly<{
   >[];
   unpaidChoice: MoneyRolloverUnpaidTreatmentChoice | null;
   openingMode: MoneyRolloverOpeningMode;
-  closeSnapshotAvailable: boolean;
-  closeSnapshotReason?: string | null;
+  closeSnapshots: MoneyRolloverCloseSnapshotAssessment;
 }>): MoneyRolloverReconciliation {
   const choices: string[] = [];
   const blockers: string[] = [];
@@ -572,15 +636,92 @@ export function assessMoneyRollover(input: Readonly<{
     }
   }
 
-  if (!input.closeSnapshotAvailable) {
+  if (!input.closeSnapshots.available) {
+    differences.push({
+      code: "close_snapshot_restatement",
+      amountMinor: null,
+      status: "unavailable",
+      message: `Stored day-close snapshots are unavailable (${input.closeSnapshots.reason}), so the required close-to-restated comparison cannot run.`,
+    });
+    blockers.push(
+      "The source period needs retained day-close evidence with a comparable restatement before it can be rolled over.",
+    );
+  } else if (!input.closeSnapshots.comparableToRestatedTotals) {
     differences.push({
       code: "close_snapshot_restatement",
       amountMinor: null,
       status: "unavailable",
       message:
-        input.closeSnapshotReason ??
-        "Stored day-close snapshots are not available in this build, so close-to-restated comparisons cannot run. Carry-forward cash remains labeled as modeled.",
+        "Stored day-close snapshots could not be compared with live restated totals.",
     });
+    blockers.push(
+      "The close-to-restated comparison is incomplete. Repair the source ledger or close evidence before rolling over.",
+    );
+  } else if (input.closeSnapshots.restatedDifferenceCount > 0) {
+    const changed = input.closeSnapshots.restatedDifferenceCount;
+    const accepted = input.differenceAccepted;
+    differences.push({
+      code: "close_snapshot_restatement",
+      amountMinor: null,
+      status: accepted ? "accepted" : "choice_required",
+      message: `${changed} stored day close${changed === 1 ? "" : "s"} no longer match${changed === 1 ? "es" : ""} the live restated totals. The original close evidence stays retained; accept the restatement explicitly or correct the ledger before rolling over.`,
+    });
+    if (!accepted) {
+      choices.push(
+        "Review the restated close snapshots and accept them with a retained note, or correct the affected source movements first.",
+      );
+    }
+  } else {
+    differences.push({
+      code: "close_snapshot_restatement",
+      amountMinor: null,
+      status: "ok",
+      message: `${input.closeSnapshots.closeCount} stored day close${input.closeSnapshots.closeCount === 1 ? "" : "s"} match the live restated totals.`,
+    });
+
+    if (input.closeSnapshots.paidObligationMismatchCount > 0) {
+      const mismatched = input.closeSnapshots.paidObligationMismatchCount;
+      differences.push({
+        code: "paid_obligation_payment_mismatch",
+        amountMinor: null,
+        status: input.differenceAccepted ? "accepted" : "choice_required",
+        message: `${mismatched} paid obligation${mismatched === 1 ? "" : "s"} do not match exactly one live canonical payment. Review the MONEY-07 payment links before rolling over.`,
+      });
+      if (!input.differenceAccepted) {
+        choices.push(
+          "Resolve or explicitly accept the paid-obligation payment mismatches before rollover.",
+        );
+      }
+    }
+
+    if (input.closeSnapshots.countedVisitMismatchCount > 0) {
+      const mismatched = input.closeSnapshots.countedVisitMismatchCount;
+      differences.push({
+        code: "counted_coffee_visit_mismatch",
+        amountMinor: null,
+        status: input.differenceAccepted ? "accepted" : "choice_required",
+        message: `${mismatched} counted coffee visit${mismatched === 1 ? "" : "s"} no longer link to a live ledger expense. Review the visit lines before rolling over.`,
+      });
+      if (!input.differenceAccepted) {
+        choices.push(
+          "Resolve or explicitly accept the counted-visit ledger mismatches before rollover.",
+        );
+      }
+    }
+
+    if (input.closeSnapshots.savingsTargetMinor !== null) {
+      const target = input.closeSnapshots.savingsTargetMinor;
+      const transferred = input.closeSnapshots.savingsTransferredMinor;
+      differences.push({
+        code: "savings_target_vs_transfers",
+        amountMinor: transferred - target,
+        status: "ok",
+        message:
+          transferred === target
+            ? `Savings transfers (${transferred} centimes) match the period target (${target} centimes).`
+            : `Savings target is ${target} centimes and ${transferred} centimes were actually transferred. This is a target outcome, not a cash discrepancy.`,
+      });
+    }
   }
 
   return {
@@ -654,6 +795,8 @@ export function moneyRolloverBridgeIdentity(
  */
 export function planMoneyRolloverBridge(input: Readonly<{
   sourcePeriodId: string;
+  /** Inclusive source end; a correction after it never touched the close. */
+  sourceEndDate: string;
   correctionVersion: number;
   movementBookingDate: string;
   previousCashDeltaMinor: number;
@@ -666,7 +809,7 @@ export function planMoneyRolloverBridge(input: Readonly<{
     correctionVersion: input.correctionVersion,
     deltaMinor,
   };
-  if (deltaMinor === 0) {
+  if (deltaMinor === 0 || input.movementBookingDate > input.sourceEndDate) {
     return { ...base, postings: [], variances: [], noBridge: true };
   }
 

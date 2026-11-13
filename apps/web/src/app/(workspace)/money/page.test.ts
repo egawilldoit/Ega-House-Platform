@@ -37,9 +37,15 @@ test("money page composes the shared period state and shows local today separate
 
 test("money page reads shared reserves with request-scoped repositories and renders every input", () => {
   assert.match(source, /getCurrentMoneyReserves\(actor/);
-  assert.match(source, /new SupabaseMoneyRepository\(client\)/);
+  assert.match(source, /new SupabaseMoneyPeriodRepository\(client\)/);
   assert.match(source, /new SupabaseMoneyBudgetRepository\(client\)/);
-  assert.match(source, /new SupabaseObligationRepository\(client\)/);
+  // Reserve cash/commitments/funding come from the canonical period and budget
+  // repositories. Obligations are used by the separate MONEY-10 template read,
+  // never as a reserve calculation input.
+  assert.match(
+    source,
+    /getCurrentMoneyReserves\(actor,\s*\{\s*period: moneyState\.period,\s*periods: new SupabaseMoneyPeriodRepository\(client\),\s*budgets: new SupabaseMoneyBudgetRepository\(client\),\s*\}\)/,
+  );
   for (const field of ["recordedCashMinor", "unpaidCommitmentsMinor", "savingsTargetMinor", "fundedSavingsMinor", "unfundedSavingsMinor", "emergencyTargetMinor", "emergencyUsedMinor", "remainingEmergencyMinor", "safeFlexibleMinor"]) {
     assert.match(source, new RegExp(`reserves\\.${field}`));
   }
@@ -126,4 +132,30 @@ test("page query values succeed through the actual listExpenses parser and repos
     startBookingDate: null,
     endBookingDateExclusive: null,
   });
+});
+
+test("money page renders durable day close evidence and restated totals", () => {
+  assert.match(source, /MoneyDayClosePanel/);
+  assert.match(source, /dayClose=\{moneyState\.dayClose\}/);
+  assert.match(source, /lastClose=\{moneyState\.lastClose\}/);
+  assert.match(source, /recentCloses=\{moneyState\.recentCloses\}/);
+  assert.match(source, /dayClosesUnavailable=\{moneyState\.dayClosesUnavailable\}/);
+  assert.match(source, /closeMoneyDayAction/);
+});
+
+test("money page previews rollover only for an ended source through shared use cases", () => {
+  assert.match(source, /MoneyRolloverPanel/);
+  assert.match(source, /moneyState\.period\?\.lifecycle === "ended"/);
+  assert.match(source, /getMoneyRolloverPreviewForPeriod\(/);
+  assert.match(source, /new SupabaseMoneyRolloverRepository\(client\)/);
+  assert.match(source, /new SupabaseObligationRepository\(client\)/);
+  assert.match(source, /rolloverMoneyPeriodAction/);
+  assert.doesNotMatch(source, /owner_user_id\s*:/);
+});
+
+test("daily reference shows the active day's included spending even when it is zero", () => {
+  assert.match(source, /Daily included spending/);
+  assert.match(source, /dailyReference\.dailyIncludedExpenseMinor/);
+  assert.match(source, /Days left in period/);
+  assert.match(source, /dailyReference\.daysRemaining/);
 });

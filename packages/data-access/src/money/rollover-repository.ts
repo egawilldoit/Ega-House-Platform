@@ -1,8 +1,5 @@
 import type {
   AuthenticatedActor,
-  MoneyRolloverBridgeRepository,
-  MoneyRolloverBridgeWriteInput,
-  MoneyRolloverBridgeWriteResult,
   MoneyRolloverRecord,
   MoneyRolloverRepository,
   MoneyRolloverSourceContext,
@@ -11,6 +8,10 @@ import type {
   RepositoryResult,
 } from "@ega/application";
 import type { MoneyPeriod } from "@ega/domain/money";
+import type {
+  MoneyRolloverCloseSnapshotAssessment,
+  MoneyRolloverCloseSnapshotDifference,
+} from "@ega/domain/money-rollover";
 import type { ExpenseCategory } from "@ega/domain/expenses";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -52,6 +53,81 @@ type RolloverRow = {
   created_at: string;
 };
 
+function toCloseSnapshotAssessment(
+  value: unknown,
+): MoneyRolloverCloseSnapshotAssessment {
+  if (!value || typeof value !== "object") {
+    return { available: false, reason: "close_snapshot_summary_invalid" };
+  }
+  const row = value as Record<string, unknown>;
+  if (row.available !== true) {
+    return {
+      available: false,
+      reason:
+        typeof row.reason === "string" && row.reason.trim()
+          ? row.reason
+          : "close_snapshot_summary_unavailable",
+    };
+  }
+  if (
+    typeof row.closeCount !== "number" ||
+    !Number.isInteger(row.closeCount) ||
+    row.closeCount < 0 ||
+    row.comparableToRestatedTotals !== true ||
+    typeof row.restatedDifferenceCount !== "number" ||
+    !Number.isInteger(row.restatedDifferenceCount) ||
+    row.restatedDifferenceCount < 0 ||
+    !Array.isArray(row.restatedDifferences) ||
+    typeof row.paidObligationCount !== "number" ||
+    typeof row.paidObligationMismatchCount !== "number" ||
+    typeof row.countedVisitCount !== "number" ||
+    typeof row.countedVisitMismatchCount !== "number" ||
+    typeof row.savingsTransferredMinor !== "number" ||
+    (row.savingsTargetMinor !== null &&
+      typeof row.savingsTargetMinor !== "number")
+  ) {
+    return { available: false, reason: "close_snapshot_summary_invalid" };
+  }
+  const differences: MoneyRolloverCloseSnapshotDifference[] = [];
+  for (const entry of row.restatedDifferences) {
+    if (!entry || typeof entry !== "object") {
+      return { available: false, reason: "close_snapshot_summary_invalid" };
+    }
+    const item = entry as Record<string, unknown>;
+    if (
+      typeof item.closeId !== "string" ||
+      typeof item.closeDate !== "string" ||
+      !Array.isArray(item.changedFields) ||
+      !item.changedFields.every((field) => typeof field === "string")
+    ) {
+      return { available: false, reason: "close_snapshot_summary_invalid" };
+    }
+    differences.push({
+      closeId: item.closeId,
+      closeDate: item.closeDate,
+      changedFields: item.changedFields.map(String),
+    });
+  }
+  if (differences.length !== row.restatedDifferenceCount) {
+    return { available: false, reason: "close_snapshot_summary_incomplete" };
+  }
+  return {
+    available: true,
+    closeCount: row.closeCount,
+    lastClosedDate:
+      typeof row.lastClosedDate === "string" ? row.lastClosedDate : null,
+    comparableToRestatedTotals: true,
+    restatedDifferenceCount: row.restatedDifferenceCount,
+    restatedDifferences: differences,
+    paidObligationCount: row.paidObligationCount,
+    paidObligationMismatchCount: row.paidObligationMismatchCount,
+    countedVisitCount: row.countedVisitCount,
+    countedVisitMismatchCount: row.countedVisitMismatchCount,
+    savingsTargetMinor: row.savingsTargetMinor,
+    savingsTransferredMinor: row.savingsTransferredMinor,
+  };
+}
+
 type SupabaseError = {
   code?: string;
   message?: string;
@@ -61,11 +137,15 @@ type SupabaseError = {
 
 function failure(error: SupabaseError) {
   if (error?.code === "42501") return { code: "forbidden" as const };
+  if (error?.code === "P0002") return { code: "notFound" as const };
   if (
     error?.code === "23505" ||
     error?.code === "23503" ||
     error?.code === "23514" ||
-    error?.code === "23P01"
+    error?.code === "23P01" ||
+    // The atomic rollover re-derives the closing balance and uses 40001 for a
+    // stale preview/version; treat it as a retryable conflict, not unknown.
+    error?.code === "40001"
   ) {
     return { code: "conflict" as const };
   }
@@ -110,8 +190,14 @@ export class SupabaseMoneyRolloverRepository implements MoneyRolloverRepository 
     const period = periodResult.value;
     if (!period) return { ok: true, value: null };
 
-    const [openingResult, totalsResult, pendingResult, successorResult, rolloverResult] =
-      await Promise.all([
+    const [
+      openingResult,
+      totalsResult,
+      pendingResult,
+      successorResult,
+      rolloverResult,
+      closeSnapshotResult,
+    ] = await Promise.all([
         period.openingMovementId
           ? this.periods.getOpening(actor, period.openingMovementId)
           : Promise.resolve({ ok: true as const, value: null }),
@@ -142,6 +228,9 @@ export class SupabaseMoneyRolloverRepository implements MoneyRolloverRepository 
           .eq("owner_user_id", actor.userId)
           .eq("source_period_id", period.id)
           .maybeSingle(),
+        this.supabase.rpc("money_rollover_close_snapshot_summary", {
+          p_period_id: period.id,
+        }),
       ]);
 
     if (!openingResult.ok) return openingResult;
@@ -154,6 +243,9 @@ export class SupabaseMoneyRolloverRepository implements MoneyRolloverRepository 
     }
     if (rolloverResult.error) {
       return { ok: false, error: failure(rolloverResult.error) };
+    }
+    if (closeSnapshotResult.error) {
+      return { ok: false, error: failure(closeSnapshotResult.error) };
     }
 
     const opening = openingResult.value;
@@ -198,11 +290,7 @@ export class SupabaseMoneyRolloverRepository implements MoneyRolloverRepository 
           countsInDaily: row.counts_in_daily === true,
           category: (row.category ?? null) as ExpenseCategory | null,
         })),
-        closeSnapshots: {
-          available: false,
-          reason:
-            "Stored day-close evidence is not available in this build, so close-to-restated comparisons cannot run. Carry-forward cash remains labeled as modeled.",
-        },
+        closeSnapshots: toCloseSnapshotAssessment(closeSnapshotResult.data),
         existingSuccessorPeriodId:
           successorResult.data?.successor_period_id == null
             ? null
@@ -285,51 +373,6 @@ export class SupabaseMoneyRolloverRepository implements MoneyRolloverRepository 
       value: {
         record,
         replayed: payload?.replayed === true,
-      },
-    };
-  }
-}
-
-export class SupabaseMoneyRolloverBridgeRepository
-  implements MoneyRolloverBridgeRepository
-{
-  constructor(private readonly supabase: SupabaseClient) {}
-
-  async applyBridge(
-    actor: AuthenticatedActor,
-    input: MoneyRolloverBridgeWriteInput,
-  ): Promise<RepositoryResult<MoneyRolloverBridgeWriteResult>> {
-    void actor;
-    const { data, error } = await this.supabase.rpc("money_apply_rollover_bridge", {
-      p_movement_id: input.movementId,
-      p_previous_cash_delta_minor: input.previousCashDeltaMinor,
-      p_new_cash_delta_minor: input.newCashDeltaMinor,
-      p_correction_version: input.correctionVersion,
-      p_correction_date: input.correctionDate,
-      p_created_at: input.createdAt,
-    });
-    if (error) return { ok: false, error: failure(error) };
-    const payload = data as
-      | {
-          postings?: number;
-          variances?: number;
-          replayed?: number;
-          destination_period_ids?: unknown;
-        }
-      | null
-      | undefined;
-    if (!payload || typeof payload !== "object") {
-      return { ok: false, error: { code: "unknown" } };
-    }
-    return {
-      ok: true,
-      value: {
-        postings: Number(payload.postings ?? 0),
-        variances: Number(payload.variances ?? 0),
-        replayed: Number(payload.replayed ?? 0),
-        destinationPeriodIds: Array.isArray(payload.destination_period_ids)
-          ? payload.destination_period_ids.map(String)
-          : [],
       },
     };
   }

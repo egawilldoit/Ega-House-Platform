@@ -136,6 +136,7 @@ const HANDLER_TOOL_NAMES: Readonly<Record<keyof McpWriteToolHandlers, string>> =
   updateMoneySettings: "ega_money_update_settings",
   rebaseMoneyDayStartBaseline: "ega_money_rebase_day_start_baseline",
   rolloverMoneyPeriod: "ega_money_rollover_period",
+  closeMoneyDay: "ega_money_close_day",
   createMoneyMovement: "ega_money_create_movement",
   updateMoneyMovement: "ega_money_update_movement",
   setMoneyAllocation: "ega_money_set_allocation",

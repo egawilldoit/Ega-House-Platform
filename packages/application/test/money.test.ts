@@ -9,9 +9,11 @@ import type {
 
 import {
   createAuthenticatedActor,
+  getCurrentMoneyReserves,
   getMoneyCashPosition,
   projectMoneyReserves,
   type MoneyAggregate,
+  type MoneyBudgetRepository,
   type MoneyCreateRecordInput,
   type MoneyIdempotencyReceipt,
   type MoneyMovementRepository,
@@ -51,6 +53,72 @@ test("MONEY-08 current reserve projection preserves disjoint protections and rel
   const incomplete = projectMoneyReserves({ ...base, savingsFundedMinor: null });
   assert.deepEqual(incomplete, { available: false, currency: "MAD", reason: "reserve_inputs_incomplete", cutoffDate: base.cutoffDate });
 });
+
+test("current reserves use the one canonical cutoff read shared with close evidence", async () => {
+  const period = periodRecord();
+  const cutoffs: Array<{ periodId: string; cutoff: string }> = [];
+  const result = await getCurrentMoneyReserves(ACTOR, {
+    period,
+    periods: {
+      async getReserveInputs(_actor: unknown, periodId: string, cutoff: string) {
+        cutoffs.push({ periodId, cutoff });
+        return {
+          ok: true as const,
+          value: {
+            available: true as const,
+            recordedCashMinor: 68_900,
+            unpaidCommitmentsMinor: 10_000,
+            savingsFundedMinor: 0,
+            emergencyUsedMinor: 0,
+          },
+        };
+      },
+    } as unknown as MoneyPeriodRepository,
+    budgets: {
+      async getPlan() {
+        return {
+          ok: true as const,
+          value: { savingsTargetMinor: 20_000, emergencyTargetMinor: 5_000 },
+        };
+      },
+    } as unknown as MoneyBudgetRepository,
+  });
+  assert.deepEqual(cutoffs, [{ periodId: period.id, cutoff: period.activeDate }]);
+  assert.equal(result.ok, true);
+  if (result.ok && result.data.available) {
+    assert.equal(result.data.reserves.unpaidCommitmentsMinor, 10_000);
+    assert.equal(result.data.reserves.safeFlexibleMinor, 33_900);
+  }
+});
+
+test("an unavailable canonical reserve read stays unavailable, never zero", async () => {
+  const result = await getCurrentMoneyReserves(ACTOR, {
+    period: periodRecord(),
+    periods: {
+      async getReserveInputs() {
+        return { ok: true as const, value: { available: false as const, reason: "opening_unknown" } };
+      },
+    } as unknown as MoneyPeriodRepository,
+    budgets: {
+      async getPlan() {
+        return {
+          ok: true as const,
+          value: { savingsTargetMinor: 20_000, emergencyTargetMinor: 5_000 },
+        };
+      },
+    } as unknown as MoneyBudgetRepository,
+  });
+  assert.deepEqual(result, {
+    ok: true,
+    data: {
+      available: false,
+      currency: "MAD",
+      reason: "opening_unknown",
+      cutoffDate: "2026-11-11",
+    },
+  });
+});
+
 
 type Stored = MoneyLedgerRow & {
   ownerUserId: string;
@@ -280,6 +348,8 @@ function makeRepository(options: { periods?: MoneyPeriod[] } = {}) {
     create: UNUSED,
     update: UNUSED,
     getOpening: UNUSED,
+    getDayCloseForDate: UNUSED,
+    getReserveInputs: UNUSED,
     ledgerOverview: UNUSED,
   };
 

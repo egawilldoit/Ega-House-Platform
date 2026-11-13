@@ -1,8 +1,7 @@
 # MONEY-10 rollover slice and integration dependencies
 
-Status: implementation candidate on `t3/money-10-mcp-delivery`, based on
-`origin/main` at `698adeac` (MONEY-08). MONEY-09 (durable day close) is being
-implemented concurrently and is a prerequisite for the end-to-end journey.
+Status: implementation candidate on `t3/money-10-mcp-delivery`, rebased onto
+`origin/main` at `0e684ae4` with MONEY-09 (durable day close) integrated.
 
 ## What this branch delivers
 
@@ -14,11 +13,11 @@ implemented concurrently and is a prerequisite for the end-to-end journey.
   write use cases. The successor occurrence plan is composed from the existing
   MONEY-06 recurrence rules, never re-implemented.
 - `packages/data-access/src/money/rollover-repository.ts`: request-scoped
-  Supabase reads plus the atomic RPC and the bridge RPC.
-- `drizzle/0110_money_10_period_rollover.sql`: successor link, rollover receipt,
-  bridge/variance rows, the single-transaction rollover function and the
-  compound correction-bridge seam. Journal `when` 1787880000073 and tag `0110`
-  are deliberately reserved above the 0104–0109 range for MONEY-09.
+  Supabase reads, the close-snapshot comparison RPC and the atomic rollover RPC.
+- `drizzle/0107_money_10_period_rollover.sql`: successor link, rollover receipt,
+  bridge/variance rows, the single-transaction rollover function,
+  `money_rollover_close_snapshot_summary`, and the ledger correction trigger.
+  Journal position `0107` follows MONEY-09's `0104`–`0106` migrations.
 - Wire contracts (`packages/contracts/src/money-rollover.ts`), Hono routes
   (`GET /api/money/periods/:id/rollover/preview`,
   `POST /api/money/periods/:id/rollover`), typed api-client methods, a web
@@ -28,35 +27,38 @@ implemented concurrently and is a prerequisite for the end-to-end journey.
   `packages/application/test/money-rollover.test.ts` and
   `scripts/db/money-10-rollover-verify.mjs`.
 
-## MONEY-09 integration dependencies (not implemented here)
+## MONEY-09 integration (implemented here)
 
 1. **Finished source state.** Rollover requires
-   `money_periods.lifecycle = 'ended'` and `active_date = end_date`. Only the
-   durable day close (MONEY-09) should produce that state. Until MONEY-09 is
-   merged, the UI/ MCP preview will report "Close the final day" and the feature
-   is intentionally unreachable through the normal journey.
-2. **Close snapshots.** `MoneyRolloverSourceContext.closeSnapshots` is the seam.
-   This branch returns `available: false` with a reason, so the preview reports
-   close-to-restated comparison as `unavailable` instead of claiming it passed.
-   MONEY-09 should implement that port method from its close table and add
-   `comparableToRestatedTotals`. No close data is fabricated here.
-3. **Correction path.** `money_apply_rollover_bridge(...)` must be called inside
-   MONEY-09's correction transaction (edit/delete of a movement in an ended or
-   rolled-over period) with the movement's previous and new signed cash effect
-   and the new movement version. It is idempotent on
+   `money_periods.lifecycle = 'ended'` and `active_date = end_date`. The durable
+   day close is the only normal producer of that state; the preview tells the
+   owner to close the final day when it is missing.
+2. **Close snapshots.** `MoneyRolloverSourceContext.closeSnapshots` is read from
+   `money_day_closes` by `money_rollover_close_snapshot_summary`. Every retained
+   close is compared with the same canonical aggregates used by the MONEY-09
+   restated read. A changed snapshot requires `acceptClosingDifferenceNote`;
+   missing or incomparable evidence blocks rollover instead of passing silently.
+   The atomic rollover repeats this check, so a stale preview cannot bypass it.
+3. **Correction path.** `personal_expenses_rollover_bridge` is an
+   `AFTER UPDATE OR DELETE` trigger on the canonical ledger. Every correction
+   path — web, HTTP, MCP or a direct versioned PostgREST update — calls
+   `money_apply_rollover_bridge(...)` inside the same transaction. It measures
+   the old and new signed cash effect against the source window, is idempotent on
    `bridge:<source>:<correctionVersion>:<destination>`, posts only the
    incremental delta, and stops at a verified opening with a variance row. A
-   generic expense edit that bypasses this call would not reconcile successor
-   cash; the integration must not expose such a path for post-rollover periods.
-4. **Preview surface.** If MONEY-09 adds close controls to
-   `money-period-panel.tsx`, keep the rollover panel as a separate component
-   (`money-rollover-panel.tsx`) to avoid reworking the close form.
+   failed bridge aborts the correction, so successor cash cannot commit
+   inconsistent. Post-cutoff corrections are not bridged.
+4. **Preview surface.** `money-day-close-panel.tsx` and
+   `money-rollover-panel.tsx` remain separate components; the Money page renders
+   close evidence for the selected period and rollover only for an ended source.
 
 ## Deliberate limits
 
-- The web panel confirms the documented default successor range (the day after
-  the source ends, same inclusive length). Custom dates and `settingsOverrides`
-  are available through MCP/HTTP; the panel does not edit dates.
+- The web panel confirms the documented default successor range. A full
+  calendar-month source keeps its month span (January 1–31 → February 1–28/29);
+  a partial source keeps its inclusive length. Custom dates and
+  `settingsOverrides` are available through MCP/HTTP; the panel does not edit
+  dates.
 - `carry_forward` for unpaid items applies only to one-off occurrences
   (`template_id IS NULL`). Template-backed occurrences are regenerated by their
   template for the new period; carrying them too would duplicate the obligation.
@@ -65,24 +67,25 @@ implemented concurrently and is a prerequisite for the end-to-end journey.
   allowance to the successor opening.
 - Unknown closing cash is never carried as zero. A verified opening needs an
   amount, a cutoff date and retained evidence.
+- The successor day-start baseline starts as MONEY-08 `initial_setup_incomplete`
+  because a historical rollover cannot prove its initial obligation/funding
+  history from current state. The Money period panel offers the existing explicit
+  rebase/complete-setup action before the first successor day is closed.
 
 ## Verification run on this branch
 
 - Full migration journal applied cleanly to a disposable PostgreSQL 17 cluster
-  (all entries through `0110_money_10_period_rollover`).
-- A psql behavioural proof (same fixtures as `scripts/db/money-10-rollover-verify.mjs`)
-  passed: one atomic successor + opening, replay without duplicates, unpaid
-  one-off carried with reason history, bridge delta/idempotency, incremental
-  second correction, verified-opening stop with variance disclosure, and
-  owner-scoped receipts. See the handoff report for exact results.
-- `node --check` passes on every new `.ts`/`.mjs` file (syntax only).
-- Not run in this worktree: TypeScript typecheck, unit tests, lint and the JS
-  database proof. The checkout has no `node_modules` and the VM heavy slot was
-  occupied by another agent's queued install for the whole session
-  (`heavy --status` reported head-of-line blocking). Parent integration must run
-  `npm run domain:test`, `npm run application:test`, `npm run data-access:test`,
-  `npm run contracts:test`, `npm run web:typecheck`, `npm run server:typecheck`
-  and the DB proof job after installing dependencies.
-- The disposable proof is not wired into the CI workflow by this branch to avoid
-  conflicting with MONEY-09's workflow edits; add it beside the MONEY-08 job.
+  (all entries through `0107_money_10_period_rollover`).
+- `scripts/db/money-10-rollover-verify.mjs` passed against that cluster. It
+  finishes the source and middle periods through real `money_close_day` calls,
+  asserts two retained close snapshots compare cleanly with restated totals, then
+  proves one atomic successor + opening, replay without duplicates, unpaid
+  one-off carry with reason history, the ledger trigger's incremental bridge,
+  bridge replay idempotency, a verified-opening stop with variance disclosure,
+  and owner-scoped receipts.
+- `npm run domain:test`, `npm run application:test`, `npm run data-access:test`
+  and `npm run contracts:test` passed.
+- `npm run web:typecheck` and `npm run server:typecheck` passed.
+- Focused MCP Money, Money page/actions and Money HTTP route tests passed.
+- The disposable proof is wired into the `db-invariants` job beside MONEY-09.
 

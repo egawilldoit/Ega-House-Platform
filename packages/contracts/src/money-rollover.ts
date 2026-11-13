@@ -59,7 +59,10 @@ export type MoneyRolloverDifferenceDto = Readonly<{
     | "modeled_vs_verified_closing_cash"
     | "unknown_closing_cash"
     | "unpaid_occurrences"
-    | "close_snapshot_restatement";
+    | "close_snapshot_restatement"
+    | "paid_obligation_payment_mismatch"
+    | "counted_coffee_visit_mismatch"
+    | "savings_target_vs_transfers";
   amountMinor: number | null;
   status: "ok" | "choice_required" | "accepted" | "unavailable";
   message: string;
@@ -78,6 +81,29 @@ export type MoneyRolloverReconciliationDto = Readonly<{
   blockers: readonly string[];
   differences: readonly MoneyRolloverDifferenceDto[];
 }>;
+
+export type MoneyRolloverCloseSnapshotDifferenceDto = Readonly<{
+  closeId: string;
+  closeDate: string;
+  changedFields: readonly string[];
+}>;
+
+export type MoneyRolloverCloseSnapshotDto =
+  | Readonly<{
+      available: true;
+      closeCount: number;
+      lastClosedDate: string | null;
+      comparableToRestatedTotals: true;
+      restatedDifferenceCount: number;
+      restatedDifferences: readonly MoneyRolloverCloseSnapshotDifferenceDto[];
+      paidObligationCount: number;
+      paidObligationMismatchCount: number;
+      countedVisitCount: number;
+      countedVisitMismatchCount: number;
+      savingsTargetMinor: number | null;
+      savingsTransferredMinor: number;
+    }>
+  | Readonly<{ available: false; reason: string }>;
 
 export type MoneyRolloverPendingOccurrenceDto = Readonly<{
   id: string;
@@ -124,6 +150,7 @@ export type MoneyRolloverPreviewResponse = Readonly<{
   proposedOpeningMinor: number | null;
   settings: Readonly<Record<string, unknown>>;
   reconciliation: MoneyRolloverReconciliationDto;
+  closeSnapshots: MoneyRolloverCloseSnapshotDto;
   pendingOccurrences: readonly MoneyRolloverPendingOccurrenceDto[];
   generatedObligations: readonly Readonly<{
     templateId: string;
@@ -169,12 +196,4 @@ export type MoneyRolloverResponse = Readonly<{
   replayed: boolean;
   reconciliation: MoneyRolloverReconciliationDto;
   weekWindows: readonly MoneyRolloverWeekWindowDto[];
-}>;
-
-export type MoneyRolloverBridgeResponse = Readonly<{
-  ok: true;
-  postings: number;
-  variances: number;
-  replayed: number;
-  destinationPeriodIds: readonly string[];
 }>;

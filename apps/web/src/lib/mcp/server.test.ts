@@ -250,6 +250,42 @@ describe("registerMcpReadTools", () => {
     expect(updateSchema.safeParse({ movementId, operationId }).success).toBe(false);
   });
 
+  it("registers the MONEY-09 close tool with full final-purchase shape and no owner field", () => {
+    const fake = createFakeServer();
+    registerMcpReadTools(fake.server, createHandlers());
+    registerMcpWriteTools(fake.server, {} as McpWriteToolHandlers);
+    const close = fake.registrations.find(
+      (item) => item.name === "ega_money_close_day",
+    )!;
+    expect(close).toBeTruthy();
+    const schema = getInputSchema(close);
+    const operationId = "750e8400-e29b-41d4-a716-446655440001";
+    expect(
+      schema.safeParse({
+        version: 3,
+        operationId,
+        note: "Closed with chicken",
+        finalPurchases: [
+          {
+            amountMinor: 1100,
+            category: "coffee",
+            needVsWant: "want",
+            countsInDaily: true,
+            idempotencyKey: "close-purchase-1",
+          },
+        ],
+      }).success,
+    ).toBe(true);
+    expect(schema.safeParse({ operationId }).success).toBe(false);
+    expect(
+      schema.safeParse({
+        version: 3,
+        operationId,
+        ownerUserId: "attacker",
+      }).success,
+    ).toBe(false);
+  });
+
   it("validates UUID project and goal filters", () => {
     const fake = createFakeServer();
     registerMcpReadTools(fake.server, createHandlers());
