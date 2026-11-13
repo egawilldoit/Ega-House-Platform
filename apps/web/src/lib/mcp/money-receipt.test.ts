@@ -264,3 +264,64 @@ describe("ega_money_update_movement receipt fingerprint", () => {
     expect(hashes[2]).not.toBe(hashes[1]);
   });
 });
+
+describe("ega_money_close_day receipt fingerprint", () => {
+  const closeInput = () => ({
+    version: 3,
+    operationId: OPERATION_ID,
+    note: "Closed with chicken",
+    finalPurchases: [
+      {
+        amountMinor: 1100,
+        category: "coffee",
+        needVsWant: "want" as const,
+        countsInDaily: true,
+        idempotencyKey: "close-purchase-1",
+      },
+      {
+        amountMinor: 2500,
+        category: "eating_out",
+        needVsWant: "need" as const,
+        purpose: "flexible" as const,
+        idempotencyKey: "close-purchase-2",
+      },
+    ],
+  });
+
+  it("binds the identical retry and every purchase field to one hash", async () => {
+    const { handlers, hashes } = handlerWithRecordedHashes();
+    await handlers.closeMoneyDay(authInfo, closeInput());
+    await handlers.closeMoneyDay(authInfo, closeInput());
+    expect(hashes).toHaveLength(2);
+    expect(hashes[0]).toBe(hashes[1]);
+
+    await handlers.closeMoneyDay(authInfo, { ...closeInput(), note: "different" });
+    await handlers.closeMoneyDay(authInfo, {
+      ...closeInput(),
+      finalPurchases: [
+        { ...closeInput().finalPurchases[0]!, amountMinor: 1200 },
+        closeInput().finalPurchases[1]!,
+      ],
+    });
+    await handlers.closeMoneyDay(authInfo, {
+      ...closeInput(),
+      finalPurchases: [
+        { ...closeInput().finalPurchases[0]!, countsInDaily: false },
+        closeInput().finalPurchases[1]!,
+      ],
+    });
+    expect(hashes[2]).not.toBe(hashes[0]);
+    expect(hashes[3]).not.toBe(hashes[0]);
+    expect(hashes[4]).not.toBe(hashes[0]);
+  });
+
+  it("keeps purchase ordering semantically irrelevant", async () => {
+    const { handlers, hashes } = handlerWithRecordedHashes();
+    await handlers.closeMoneyDay(authInfo, closeInput());
+    await handlers.closeMoneyDay(authInfo, {
+      ...closeInput(),
+      finalPurchases: [...closeInput().finalPurchases].reverse(),
+    });
+    expect(hashes[0]).toBe(hashes[1]);
+  });
+});
