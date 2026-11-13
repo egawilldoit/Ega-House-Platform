@@ -698,6 +698,39 @@ async function main() {
     );
     console.log("[VERIFIED] variance is disclosed, never written into the verified snapshot");
 
+    // --- Bridge identity is movement-scoped ---------------------------------
+    // A second source movement corrected to the same version number must get a
+    // distinct bridge identity; otherwise one correction would mask the other.
+    const secondSourceExpense = await sql.unsafe(
+      `INSERT INTO public.personal_expenses
+        (owner_user_id,amount_minor,currency,note,idempotency_key,create_fingerprint,kind,direction,
+         booking_date,counts_in_daily,period_id,category,need_vs_want,purpose)
+       VALUES ($1,300,'MAD','second correction','m10-second-correction',repeat('8',64),
+         'expense','out','2026-11-29',true,$2,'groceries','need','flexible')
+       RETURNING id`,
+      [A, sourceId],
+    );
+    await user(A, (tx) =>
+      tx.unsafe(
+        `UPDATE public.personal_expenses
+         SET amount_minor=500, version=version+1, updated_at=now()
+         WHERE id=$1 AND owner_user_id=$2`,
+        [secondSourceExpense[0].id, A],
+      ),
+    );
+    const versionTwoBridges = await sql.unsafe(
+      "SELECT identity, movement_id FROM public.money_period_rollover_bridges WHERE owner_user_id=$1 AND correction_version=2",
+      [A],
+    );
+    assert(
+      versionTwoBridges.length >= 2 &&
+        new Set(versionTwoBridges.map((row) => row.identity)).size ===
+          versionTwoBridges.length &&
+        new Set(versionTwoBridges.map((row) => row.movement_id)).size >= 2,
+      "two movements corrected at version 2 keep distinct bridge identities",
+    );
+    console.log("[BRIDGE] identity is movement-scoped, so concurrent corrections never collide");
+
     // --- Owner isolation and no direct write surface ------------------------
     const bVisible = await user(B, (tx) =>
       tx.unsafe("SELECT count(*)::int AS n FROM public.money_period_rollovers"),

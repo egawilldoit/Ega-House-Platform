@@ -27,7 +27,7 @@
 --      different opening.
 --   5. `money_apply_rollover_bridge(...)`: the compound correction operation. It
 --      applies only the incremental delta, is idempotent on
---      `bridge:<source>:<correctionVersion>:<destination>` and never mutates a
+--      `bridge:<source>:<movement>:<correctionVersion>:<destination>` and never mutates a
 --      verified opening snapshot.
 --   6. `money_bridge_rolled_over_correction`: an AFTER UPDATE/DELETE trigger on
 --      the canonical ledger. Every correction path (web, HTTP, MCP or direct
@@ -948,6 +948,10 @@ BEGIN
   IF NOT FOUND THEN
     RAISE EXCEPTION 'The corrected movement was not found.' USING ERRCODE = 'P0002';
   END IF;
+  IF v_movement.version <> p_correction_version THEN
+    RAISE EXCEPTION 'The correction version does not match the current movement; reload and retry.'
+      USING ERRCODE = '40001';
+  END IF;
 
   v_delta := p_new_cash_delta_minor - p_previous_cash_delta_minor;
   IF v_delta = 0 OR v_movement.period_id IS NULL THEN
@@ -987,7 +991,10 @@ BEGIN
     FOR UPDATE;
     EXIT WHEN NOT FOUND;
 
-    v_identity := 'bridge:' || v_current.id || ':' || p_correction_version || ':' || v_next.id;
+    -- The movement id is part of the identity so two different movements
+    -- corrected to the same version number never collide.
+    v_identity := 'bridge:' || v_current.id || ':' || v_movement.id || ':'
+      || p_correction_version || ':' || v_next.id;
     v_direction := CASE WHEN v_delta > 0 THEN 'in' ELSE 'out' END;
     v_bridge_id := NULL;
 

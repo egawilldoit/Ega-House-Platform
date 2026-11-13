@@ -44,7 +44,7 @@ Status: implementation candidate on `t3/money-10-mcp-delivery`, rebased onto
    path — web, HTTP, MCP or a direct versioned PostgREST update — calls
    `money_apply_rollover_bridge(...)` inside the same transaction. It measures
    the old and new signed cash effect against the source window, is idempotent on
-   `bridge:<source>:<correctionVersion>:<destination>`, posts only the
+   `bridge:<source>:<movement>:<correctionVersion>:<destination>`, posts only the
    incremental delta, and stops at a verified opening with a variance row. A
    failed bridge aborts the correction, so successor cash cannot commit
    inconsistent. Post-cutoff corrections are not bridged.

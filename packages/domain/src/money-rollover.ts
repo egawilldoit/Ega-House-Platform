@@ -779,10 +779,14 @@ export type MoneyRolloverBridgePlan = Readonly<{
 
 export function moneyRolloverBridgeIdentity(
   sourcePeriodId: string,
+  movementId: string,
   correctionVersion: number,
   destinationPeriodId: string,
 ): string {
-  return `bridge:${sourcePeriodId}:${correctionVersion}:${destinationPeriodId}`;
+  // The movement id is part of the identity: two different movements can both
+  // be corrected to the same version number, and their bridges must never
+  // collide in one source period.
+  return `bridge:${sourcePeriodId}:${movementId}:${correctionVersion}:${destinationPeriodId}`;
 }
 
 /**
@@ -795,6 +799,7 @@ export function moneyRolloverBridgeIdentity(
  */
 export function planMoneyRolloverBridge(input: Readonly<{
   sourcePeriodId: string;
+  movementId: string;
   /** Inclusive source end; a correction after it never touched the close. */
   sourceEndDate: string;
   correctionVersion: number;
@@ -843,6 +848,7 @@ export function planMoneyRolloverBridge(input: Readonly<{
       direction: deltaMinor > 0 ? "in" : "out",
       identity: moneyRolloverBridgeIdentity(
         input.sourcePeriodId,
+        input.movementId,
         input.correctionVersion,
         successor.periodId,
       ),
