@@ -89,6 +89,16 @@ async function main() {
       assert(denied, `read-only MCP client cannot invoke ${name}`);
     }
 
+    const internalPrivilege = await sql.unsafe(`SELECT has_function_privilege(
+      'authenticated',
+      'public.money_create_period_v3(date,date,text,date,text,integer,date,text,jsonb,jsonb,timestamptz)',
+      'EXECUTE') AS allowed`);
+    assert(internalPrivilege[0].allowed === false,
+      'authenticated clients cannot execute the internal period creation function');
+    const internalWriterDenied = await user(A, tx => tx.unsafe(`SELECT public.money_create_period_v3${createArgs}`), 'money-write')
+      .then(() => false, e => e.code === '42501');
+    assert(internalWriterDenied, 'write-granted MCP clients cannot bypass the period creation wrapper');
+
     // Read RPCs must enforce the same finance grant as the underlying RLS.
     for (const [query, params] of [
       ["SELECT public.money_ledger_direction_totals('2026-11-09','2026-11-09')", []],
