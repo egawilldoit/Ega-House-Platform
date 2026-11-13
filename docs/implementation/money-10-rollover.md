@@ -64,7 +64,9 @@ Status: implementation candidate on `t3/money-10-mcp-delivery`, rebased onto
    sources; nested bridge postings are not re-bridged. A failed bridge aborts the
    correction, so successor cash cannot commit inconsistent. Post-cutoff
    corrections are not bridged. The bridge RPC is not granted to clients; only
-   the definer trigger invokes it.
+   the definer trigger invokes it. Ledger writes lock affected periods to
+   serialize with rollover. Concurrent obligation writes can deadlock; the
+   database aborts one transaction and the affected operation can be retried.
 4. **Preview surface.** `money-day-close-panel.tsx` and
    `money-rollover-panel.tsx` remain separate components; the Money page renders
    close evidence for the selected period and rollover only for an ended source.

@@ -1296,7 +1296,7 @@ BEGIN
 
   -- Serialize with rollover before checking lifecycle. A concurrent rollover
   -- holds this same lock while it snapshots cash and links the successor.
-  -- Lock both windows in a stable order for movements moved between periods.
+  -- Lock the directly affected windows by id; bridge propagation can lock more.
   PERFORM id FROM public.money_periods
   WHERE owner_user_id = v_owner
     AND (v_old_date BETWEEN start_date AND end_date
