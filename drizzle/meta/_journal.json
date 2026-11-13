@@ -673,6 +673,13 @@
       "when": 1787880000066,
       "tag": "0103_money_08_active_date_baseline",
       "breakpoints": true
+    },
+    {
+      "idx": 123,
+      "version": "7",
+      "when": 1787880000073,
+      "tag": "0110_money_10_period_rollover",
+      "breakpoints": true
     }
   ]
 }

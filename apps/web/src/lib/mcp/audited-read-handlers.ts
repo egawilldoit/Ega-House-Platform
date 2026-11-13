@@ -372,6 +372,18 @@ export function createAuditedMcpReadHandlers(
       );
     },
 
+    moneyRolloverPreview(
+      authInfo: AuthInfo | undefined,
+      input: Parameters<BaseReadHandlers["moneyRolloverPreview"]>[1],
+      context?: ProtocolContext,
+    ): Promise<CallToolResult> {
+      return execute(
+        "ega_money_rollover_preview",
+        authInfo,
+        context,
+        () => handlers.moneyRolloverPreview(authInfo, input),
+      );
+    },
     moneyMovementList(
       authInfo: AuthInfo | undefined,
       input: Parameters<BaseReadHandlers["moneyMovementList"]>[1],

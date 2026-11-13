@@ -5,14 +5,17 @@ import {
   createAuthenticatedActor,
   createMoneyPeriod,
   getCurrentMoneyReserves,
+  getMoneyRolloverPreviewForPeriod,
   getMoneyState,
   rebaseMoneyDayStartBaseline,
+  rolloverMoneyPeriod,
   updateMoneySettings,
 } from "@ega/application";
 import {
   SupabaseMoneyPeriodRepository,
   SupabaseMoneyRepository,
   SupabaseMoneyBudgetRepository,
+  SupabaseMoneyRolloverRepository,
   SupabaseObligationRepository,
   SupabaseTimeContextRepository,
 } from "@ega/data-access";
@@ -66,7 +69,41 @@ export type McpMoneyPeriodHandlers = {
     operationId: string,
   ): Promise<CallToolResult>;
   rebaseMoneyDayStartBaseline(authInfo: AuthInfo | undefined, periodId: string): Promise<CallToolResult>;
+  /** MONEY-10 rollover preview for one finished source period. */
+  moneyRolloverPreview(
+    authInfo: AuthInfo | undefined,
+    periodId: string,
+  ): Promise<CallToolResult>;
+  /** MONEY-10 explicit rollover write. */
+  rolloverMoneyPeriod(
+    authInfo: AuthInfo | undefined,
+    input: McpMoneyRolloverInput,
+  ): Promise<CallToolResult>;
 };
+
+export type McpMoneyRolloverInput = Readonly<{
+  operationId: string;
+  periodId: string;
+  expectedVersion: number;
+  startDate: string;
+  endDate: string;
+  opening:
+    | { mode: "carry_forward" }
+    | {
+        mode: "verified_source";
+        amountMinor: number;
+        cutoffDate: string;
+        evidence: string;
+        note?: string | null;
+      };
+  unpaidItems?: {
+    treatment: "keep_pending" | "carry_forward" | "cancel";
+    reason?: string | null;
+  } | null;
+  settingsOverrides?: Record<string, unknown> | null;
+  allowUncoveredDays?: boolean;
+  acceptClosingDifferenceNote?: string | null;
+}>;
 
 type ToolPayload = {
   ok: boolean;
@@ -317,6 +354,78 @@ export function createMcpMoneyPeriodHandlers(
           return errorResult({ code: error.code, message: error.message });
         }
         return errorResult({ code: "INTERNAL_ERROR", message: "The MCP tool could not complete the request." });
+      }
+    },
+
+    async moneyRolloverPreview(authInfo, periodId) {
+      try {
+        const { actor, client, now } = contextOf(authInfo, "personal_ops.read");
+        const timezone = await resolveOwnerTimezone(client, actor);
+        const result = await getMoneyRolloverPreviewForPeriod(
+          actor,
+          {
+            repository: new SupabaseMoneyRolloverRepository(client as never),
+            obligations: new SupabaseObligationRepository(client as never),
+          },
+          periodId,
+          { now, timezone },
+        );
+        if (!result.ok) return mapApplicationError(result);
+        return resultFromPayload({ ok: true, ...result.data });
+      } catch (error) {
+        if (error instanceof McpToolAuthorizationError) {
+          return errorResult({ code: error.code, message: error.message });
+        }
+        return errorResult({
+          code: "DEPENDENCY_UNAVAILABLE",
+          message: "The rollover preview is temporarily unavailable.",
+        });
+      }
+    },
+
+    async rolloverMoneyPeriod(authInfo, input) {
+      try {
+        if (!input.operationId) return invalidArgument("An operation id is required.");
+        const { actor, client, now } = contextOf(authInfo, "personal_ops.write");
+        const timezone = await resolveOwnerTimezone(client, actor);
+        const result = await rolloverMoneyPeriod(
+          actor,
+          {
+            repository: new SupabaseMoneyRolloverRepository(client as never),
+            obligations: new SupabaseObligationRepository(client as never),
+          },
+          {
+            sourcePeriodId: input.periodId,
+            expectedVersion: input.expectedVersion,
+            startDate: input.startDate,
+            endDate: input.endDate,
+            opening: input.opening,
+            unpaidItems: input.unpaidItems ?? null,
+            settingsOverrides: input.settingsOverrides ?? null,
+            allowUncoveredDays: input.allowUncoveredDays ?? false,
+            acceptClosingDifferenceNote:
+              input.acceptClosingDifferenceNote ?? null,
+          },
+          input.operationId,
+          { now, timezone, surface: "mcp" },
+        );
+        if (!result.ok) return mapApplicationError(result);
+        return resultFromPayload({
+          ok: true,
+          record: result.data.record,
+          replayed: result.data.replayed,
+          reconciliation: result.data.reconciliation,
+          weekWindows: result.data.weekWindows,
+          operationId: input.operationId,
+        });
+      } catch (error) {
+        if (error instanceof McpToolAuthorizationError) {
+          return errorResult({ code: error.code, message: error.message });
+        }
+        return errorResult({
+          code: "INTERNAL_ERROR",
+          message: "The MCP tool could not complete the rollover.",
+        });
       }
     },
   };
