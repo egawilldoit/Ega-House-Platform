@@ -927,7 +927,7 @@ delivery report; never include credentials or private source exports.
 | MONEY-07 | Merged | PR #400 / merge `9c1ba4d2` | `0099_money_07_obligation_payments` and atomic pay/correct/undo proof merged; branch follow-ups corrected payment-date and daily-flag reconciliation | Migration apply and runtime app/MCP journey remain for delivery verification |
 | MONEY-08 | Implemented (branch) | — | Pure versioned reserve and daily-reference calculations with hand-calculated regression cases; workbook B15 remains unavailable, so implementation uses the documented fallback | Integrate calculation with persisted baseline/read model and Money/MCP surfaces; prove historical inputs and both surfaces |
 | MONEY-09 | Implemented (branch) | — | Durable `money_day_closes` evidence plus one atomic `money_close_day` transaction; disposable PostgreSQL proof covers replay, rollback, final-day boundary and retained-then-restated history | Independent review, merge and hosted migration remain |
-| MONEY-10 | Planned | — | — | — |
+| MONEY-10 | Implemented (branch) | — | Explicit rollover with effective-policy copy, complete close evidence, paid/visit reconciliation choices, MCP write-grant checks, booking-date correction bridging (including inserts/legacy rows), verified-opening variance disclosure and complete pending pagination; disposable PostgreSQL proof and package tests pass | Independent review, PR/CI, merge and hosted migration remain |
 | MONEY-11 | Planned | — | — | — |
 | MONEY-12 | Planned | — | — | — |
 | MONEY-13 | Planned | — | — | Live source values/access not verified |

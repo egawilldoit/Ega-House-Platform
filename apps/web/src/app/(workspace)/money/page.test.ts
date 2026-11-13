@@ -39,9 +39,13 @@ test("money page reads shared reserves with request-scoped repositories and rend
   assert.match(source, /getCurrentMoneyReserves\(actor/);
   assert.match(source, /new SupabaseMoneyPeriodRepository\(client\)/);
   assert.match(source, /new SupabaseMoneyBudgetRepository\(client\)/);
-  // Reserve cash/commitments/funding come from the canonical period repository
-  // read, not a second client-side obligation or movement aggregate.
-  assert.doesNotMatch(source, /new SupabaseObligationRepository\(client\)/);
+  // Reserve cash/commitments/funding come from the canonical period and budget
+  // repositories. Obligations are used by the separate MONEY-10 template read,
+  // never as a reserve calculation input.
+  assert.match(
+    source,
+    /getCurrentMoneyReserves\(actor,\s*\{\s*period: moneyState\.period,\s*periods: new SupabaseMoneyPeriodRepository\(client\),\s*budgets: new SupabaseMoneyBudgetRepository\(client\),\s*\}\)/,
+  );
   for (const field of ["recordedCashMinor", "unpaidCommitmentsMinor", "savingsTargetMinor", "fundedSavingsMinor", "unfundedSavingsMinor", "emergencyTargetMinor", "emergencyUsedMinor", "remainingEmergencyMinor", "safeFlexibleMinor"]) {
     assert.match(source, new RegExp(`reserves\\.${field}`));
   }
@@ -137,6 +141,20 @@ test("money page renders durable day close evidence and restated totals", () => 
   assert.match(source, /recentCloses=\{moneyState\.recentCloses\}/);
   assert.match(source, /dayClosesUnavailable=\{moneyState\.dayClosesUnavailable\}/);
   assert.match(source, /closeMoneyDayAction/);
+});
+
+test("money page previews rollover only for an ended source through shared use cases", () => {
+  assert.match(source, /MoneyRolloverPanel/);
+  assert.match(source, /moneyState\.period\?\.lifecycle === "ended"/);
+  assert.match(source, /getMoneyRolloverPreviewForPeriod\(/);
+  assert.match(source, /new SupabaseMoneyRolloverRepository\(client\)/);
+  assert.match(source, /new SupabaseObligationRepository\(client\)/);
+  assert.match(source, /rolloverMoneyPeriodAction/);
+  assert.match(source, /MoneyRolloverVariancePanel/);
+  assert.match(source, /listMoneyRolloverBridges\(/);
+  assert.match(source, /bridges=\{rolloverBridges\}/);
+  assert.match(source, /truncated=\{rolloverBridgesTruncated\}/);
+  assert.doesNotMatch(source, /owner_user_id\s*:/);
 });
 
 test("daily reference shows the active day's included spending even when it is zero", () => {

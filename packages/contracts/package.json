@@ -23,6 +23,7 @@
     "./task-comments": "./src/task-comments.ts",
     "./expenses": "./src/expenses.ts",
     "./money": "./src/money.ts",
+    "./money-rollover": "./src/money-rollover.ts",
     "./checkins": "./src/checkins.ts"
   },
   "scripts": {

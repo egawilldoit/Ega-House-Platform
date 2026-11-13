@@ -694,6 +694,13 @@
       "when": 1787880000069,
       "tag": "0106_money_09_close_canonical_predicate",
       "breakpoints": true
+    },
+    {
+      "idx": 120,
+      "version": "7",
+      "when": 1787880000070,
+      "tag": "0107_money_10_period_rollover",
+      "breakpoints": true
     }
   ]
 }

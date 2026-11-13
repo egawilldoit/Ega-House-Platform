@@ -7,13 +7,17 @@ import {
   getMoneyMovementTotals,
   getMoneyPeriodSpending,
   getCurrentMoneyReserves,
+  getMoneyRolloverPreviewForPeriod,
   getMoneyState,
   listExpenses,
+  listMoneyRolloverBridges,
   listMovements,
   movementEffect,
   type MoneyMovementTotals,
   type MoneyCoffeeUsage,
   type MoneyPeriodSpending,
+  type MoneyRolloverBridgeRecord,
+  type MoneyRolloverPreview,
   type MoneyState,
 } from "@ega/application";
 import {
@@ -22,6 +26,8 @@ import {
   SupabaseMoneyCoffeeRepository,
   SupabaseMoneyPeriodRepository,
   SupabaseMoneyRepository,
+  SupabaseMoneyRolloverRepository,
+  SupabaseObligationRepository,
 } from "@ega/data-access";
 import {
   MONEY_ADVISORY_CAP_LABEL,
@@ -39,6 +45,8 @@ import { getWebTimeContext } from "@/lib/services/time-context-service";
 import { MoneyCreatePanel } from "./_components/money-create-panel";
 import { MoneyRowActions } from "./_components/money-row-actions";
 import { MoneyPeriodPanel } from "./_components/money-period-panel";
+import { MoneyRolloverPanel } from "./_components/money-rollover-panel";
+import { MoneyRolloverVariancePanel } from "./_components/money-rollover-variance-panel";
 import { MoneyDayClosePanel } from "./_components/money-day-close-panel";
 import { MoneyMovementPanel } from "./_components/money-movement-panel";
 import { MoneyMovementActions } from "./_components/money-movement-actions";
@@ -51,6 +59,7 @@ import {
   createMoneyPeriodAction,
   recordCoffeeVisitAction,
   rebaseMoneyDayStartBaselineAction,
+  rolloverMoneyPeriodAction,
   saveBudgetPlanAction,
   saveCategoryCapsAction,
   updateMoneySettingsAction,
@@ -98,6 +107,11 @@ export default async function MoneyPage({ searchParams }: Props) {
   let movements: MoneyLedgerRow[] | null = null;
   let movementTotals: MoneyMovementTotals | null = null;
   let reserveResult: Awaited<ReturnType<typeof getCurrentMoneyReserves>> | null = null;
+  let rolloverPreview: MoneyRolloverPreview | null = null;
+  let rolloverPreviewError: string | null = null;
+  let rolloverBridges: readonly MoneyRolloverBridgeRecord[] | null = null;
+  let rolloverBridgesTruncated = false;
+  let rolloverBridgesError: string | null = null;
   let movementsHasMore = false;
   let timezone: string = MONEY_DEFAULT_TIMEZONE;
   let timeContextFailed = false;
@@ -211,6 +225,42 @@ export default async function MoneyPage({ searchParams }: Props) {
         periods: new SupabaseMoneyPeriodRepository(client),
         budgets: new SupabaseMoneyBudgetRepository(client),
       }).catch(() => null);
+
+      // MONEY-10: only a finished period can be rolled over. The preview is
+      // read-only and never closes a day or writes a successor.
+      if (moneyState.period.lifecycle === "ended") {
+        const previewResult = await getMoneyRolloverPreviewForPeriod(
+          actor,
+          {
+            repository: new SupabaseMoneyRolloverRepository(client),
+            obligations: new SupabaseObligationRepository(client),
+          },
+          moneyState.period.id,
+          { now: new Date(), timezone: time.persistedTimezone },
+        ).catch(() => null);
+        rolloverPreview = previewResult?.ok ? previewResult.data : null;
+        rolloverPreviewError =
+          previewResult && !previewResult.ok ? previewResult.errorMessage : null;
+      }
+
+      // Variance disclosure follows the period, not only the ended-source
+      // preview: a tracking successor can receive a correction variance from a
+      // rolled-over predecessor.
+      const bridgesResult = await listMoneyRolloverBridges(
+        actor,
+        new SupabaseMoneyRolloverRepository(client),
+        moneyState.period.id,
+      ).catch(() => null);
+      rolloverBridges = bridgesResult?.ok
+        ? bridgesResult.data.bridges
+        : null;
+      rolloverBridgesTruncated = bridgesResult?.ok
+        ? bridgesResult.data.truncated
+        : false;
+      rolloverBridgesError =
+        bridgesResult && !bridgesResult.ok
+          ? "Historical correction variances could not be loaded right now."
+          : null;
     }
   } catch {
     result = null;
@@ -312,6 +362,13 @@ export default async function MoneyPage({ searchParams }: Props) {
         initialSetupIncomplete={moneyState.dayStartBaseline?.unavailableReason === "initial_setup_incomplete"}
       />
       {moneyState.period ? (
+        <MoneyRolloverVariancePanel
+          bridges={rolloverBridges}
+          truncated={rolloverBridgesTruncated}
+          unavailableReason={rolloverBridgesError}
+        />
+      ) : null}
+      {moneyState.period ? (
         <MoneyDayClosePanel
           key={`close:${moneyState.period.id}:${moneyState.period.version}`}
           period={moneyState.period}
@@ -320,6 +377,13 @@ export default async function MoneyPage({ searchParams }: Props) {
           recentCloses={moneyState.recentCloses}
           dayClosesUnavailable={moneyState.dayClosesUnavailable}
           action={closeMoneyDayAction}
+        />
+      ) : null}
+      {moneyState.period?.lifecycle === "ended" ? (
+        <MoneyRolloverPanel
+          preview={rolloverPreview}
+          previewUnavailableReason={rolloverPreviewError}
+          action={rolloverMoneyPeriodAction}
         />
       ) : null}
       </>

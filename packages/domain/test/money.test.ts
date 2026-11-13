@@ -267,6 +267,20 @@ test("settings are bounded JSON and reject prototype keys", () => {
   assert.equal(parseMoneySettings({ value: "x".repeat(20_000) }).ok, false);
 });
 
+test("settings align known target amounts with the persisted integer centimes", () => {
+  assert.equal(parseMoneySettings({ savingsTargetMinor: 0 }).ok, true);
+  assert.equal(parseMoneySettings({ emergencyTargetMinor: 2_147_483_647 }).ok, true);
+  assert.equal(parseMoneySettings({ savingsTargetMinor: null, emergencyTargetMinor: null }).ok, true);
+  for (const invalid of [-1, 1.5, "100", 2_147_483_648]) {
+    const savings = parseMoneySettings({ savingsTargetMinor: invalid });
+    const emergency = parseMoneySettings({ emergencyTargetMinor: invalid });
+    assert.equal(savings.ok, false);
+    assert.equal(emergency.ok, false);
+    assert.match(!savings.ok ? savings.message : "", /whole non-negative/);
+    assert.match(!emergency.ok ? emergency.message : "", /whole non-negative/);
+  }
+});
+
 test("update requires a version and at least one change", () => {
   assert.equal(parseUpdateMoneySettingsInput({}).ok, false);
   assert.equal(parseUpdateMoneySettingsInput({ version: 1 }).ok, false);
