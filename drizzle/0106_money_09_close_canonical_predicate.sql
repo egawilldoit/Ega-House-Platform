@@ -22,9 +22,14 @@ CREATE OR REPLACE FUNCTION public.money_ledger_direction_totals(
   p_start_date date,
   p_end_date date
 ) RETURNS jsonb
-LANGUAGE sql STABLE SECURITY DEFINER SET search_path = ''
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = ''
 AS $ledger$
-  SELECT jsonb_build_object(
+BEGIN
+  IF ((SELECT auth.jwt()) ->> 'client_id') IS NOT NULL
+     AND NOT public.mcp_finance_grant_allows('personal_ops.read') THEN
+    RAISE EXCEPTION 'Money read grant required' USING ERRCODE = '42501';
+  END IF;
+  RETURN (SELECT jsonb_build_object(
     'inflowsMinor', COALESCE(sum(CASE WHEN direction = 'in' THEN amount_minor ELSE 0 END), 0)::integer,
     'outflowsMinor', COALESCE(sum(CASE WHEN direction = 'out' THEN amount_minor ELSE 0 END), 0)::integer,
     'recordCount', count(*)::integer
@@ -34,7 +39,8 @@ AS $ledger$
     AND deleted_at IS NULL
     AND kind <> 'opening'
     AND booking_date >= p_start_date
-    AND booking_date <= p_end_date
+    AND booking_date <= p_end_date);
+END
 $ledger$;
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION public.money_ledger_direction_totals(date, date) FROM PUBLIC, anon;
@@ -60,6 +66,10 @@ DECLARE
   v_emergency integer := 0;
   v_categories jsonb := '{}'::jsonb;
 BEGIN
+  IF ((SELECT auth.jwt()) ->> 'client_id') IS NOT NULL
+     AND NOT public.mcp_finance_grant_allows('personal_ops.read') THEN
+    RAISE EXCEPTION 'Money read grant required' USING ERRCODE = '42501';
+  END IF;
   PERFORM 1 FROM public.money_periods
     WHERE id = p_period_id AND owner_user_id = auth.uid();
   IF NOT FOUND THEN
@@ -223,6 +233,10 @@ DECLARE
   v_ledger jsonb;
   v_funding jsonb;
 BEGIN
+  IF ((SELECT auth.jwt()) ->> 'client_id') IS NOT NULL
+     AND NOT public.mcp_finance_grant_allows('personal_ops.read') THEN
+    RAISE EXCEPTION 'Money read grant required' USING ERRCODE = '42501';
+  END IF;
   SELECT * INTO v_period FROM public.money_periods
     WHERE id = p_period_id AND owner_user_id = auth.uid();
   IF NOT FOUND THEN
