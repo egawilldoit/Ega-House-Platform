@@ -419,6 +419,19 @@ test("preview surfaces the choices without writing", async () => {
   assert.equal(result.ok && result.data.targets.startDate, "2026-12-01");
 });
 
+test("negative closing cash blocks carry forward without hiding the preview", async () => {
+  const fake = fakeRepository(context({ modeledClosingCashMinor: -100 }));
+  const result = await getMoneyRolloverPreviewForPeriod(
+    actor,
+    { repository: fake.repository, obligations: noTemplates },
+    "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+  );
+  assert.equal(result.ok, true);
+  assert.equal(result.ok && result.data.ready, false);
+  assert.match(result.ok ? result.data.blockers.join(" ") : "", /negative.*verified opening/i);
+  assert.equal(fake.writes.length, 0);
+});
+
 test("preview copies the source's effective policy, never the mutable period copy", async () => {
   const fake = fakeRepository(
     context({
