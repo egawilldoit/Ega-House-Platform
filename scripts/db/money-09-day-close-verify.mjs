@@ -400,8 +400,10 @@ async function main() {
         jsonb_build_object('kind','reconciled_historical_import','reference','future-proof','note',NULL,'importedAt','2027-01-19T00:00:00Z'),
         'canonical-future-import',repeat('b',64),'2027-01-19T12:00:00Z')`, [D]);
     const canonicalBaseline = await user(D, tx => tx.unsafe("SELECT * FROM public.money_rebase_day_start_baseline($1)", [canonicalPeriod]));
-    assert(canonicalBaseline[0].availability === "available" && canonicalBaseline[0].commitments_minor === 3500,
-      "a later-recorded paid import does not make the earlier baseline unknown or change commitments");
+    // The paid and waived transitions occur on the close date, so both remain
+    // pending at the exclusive day-start cutoff: 2000 + 7000 + 900 + 1500.
+    assert(canonicalBaseline[0].availability === "available" && canonicalBaseline[0].commitments_minor === 11400,
+      "the day-start baseline includes same-day transitions and excludes the later-recorded paid import");
     const canonicalExpense = await user(D, tx => tx.unsafe(`INSERT INTO public.personal_expenses
       (owner_user_id,period_id,booking_date,kind,direction,amount_minor,currency,
        category,need_vs_want,purpose,counts_in_daily,idempotency_key,create_fingerprint)
