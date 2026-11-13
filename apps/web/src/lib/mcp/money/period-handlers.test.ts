@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   createMoneyPeriod: vi.fn(),
   updateMoneySettings: vi.fn(),
   rebaseMoneyDayStartBaseline: vi.fn(),
+  listMoneyRolloverBridges: vi.fn(),
   timezoneGet: vi.fn(),
 }));
 
@@ -23,6 +24,7 @@ vi.mock("@ega/application", async (importOriginal) => {
     createMoneyPeriod: mocks.createMoneyPeriod,
     updateMoneySettings: mocks.updateMoneySettings,
     rebaseMoneyDayStartBaseline: mocks.rebaseMoneyDayStartBaseline,
+    listMoneyRolloverBridges: mocks.listMoneyRolloverBridges,
   };
 });
 
@@ -30,6 +32,7 @@ vi.mock("@ega/data-access", () => ({
   SupabaseMoneyPeriodRepository: class {},
   SupabaseMoneyRepository: class {},
   SupabaseMoneyBudgetRepository: class {},
+  SupabaseMoneyRolloverRepository: class {},
   SupabaseObligationRepository: class {},
   SupabaseTimeContextRepository: class {
     getTimezone = mocks.timezoneGet;
@@ -377,5 +380,68 @@ describe("Money MCP tools", () => {
       "",
     );
     expect(structured(missingOperation).error?.code).toBe("INVALID_ARGUMENT");
+  });
+
+  it("exposes variance history for a tracking successor with completeness disclosure", async () => {
+    mocks.listMoneyRolloverBridges.mockResolvedValue({
+      ok: true,
+      data: {
+        truncated: true,
+        bridges: [
+          {
+            id: "bridge-1",
+            sourcePeriodId: "00000000-0000-4000-8000-000000000010",
+            destinationPeriodId: PERIOD.id,
+            movementId: "00000000-0000-4000-8000-000000000011",
+            correctionVersion: 2,
+            amountMinor: 500,
+            direction: "out",
+            bookingDate: "2026-11-20",
+            applied: false,
+            varianceReason: "verified_opening_excludes_correction",
+            createdAt: "2026-12-02T00:00:00.000Z",
+          },
+        ],
+      },
+    });
+    const h = handlers();
+
+    const denied = await h.moneyRolloverVariances(
+      authInfo(WORKSPACE_PRINCIPAL),
+      PERIOD.id,
+    );
+    expect(structured(denied).error?.code).toBe("PERMISSION_DENIED");
+    expect(mocks.listMoneyRolloverBridges).not.toHaveBeenCalled();
+
+    const allowed = await h.moneyRolloverVariances(
+      authInfo(READER_PRINCIPAL),
+      PERIOD.id,
+    );
+    expect(structured(allowed)).toMatchObject({
+      ok: true,
+      periodId: PERIOD.id,
+      count: 1,
+      varianceCount: 1,
+      appliedAdjustmentCount: 0,
+      complete: false,
+      truncated: true,
+      bridges: [{ id: "bridge-1", applied: false }],
+    });
+    expect(structured(allowed).note).toMatch(/Do not treat the list as complete/);
+    expect(mocks.listMoneyRolloverBridges).toHaveBeenCalledTimes(1);
+  });
+
+  it("surfaces a failed variance read as unavailable, not an empty history", async () => {
+    mocks.listMoneyRolloverBridges.mockResolvedValue({
+      ok: false,
+      code: "unknown",
+      errorMessage: "unavailable",
+    });
+    const result = await handlers().moneyRolloverVariances(
+      authInfo(READER_PRINCIPAL),
+      PERIOD.id,
+    );
+    expect(structured(result).ok).toBe(false);
+    expect(structured(result).error?.code).toBe("DEPENDENCY_UNAVAILABLE");
   });
 });

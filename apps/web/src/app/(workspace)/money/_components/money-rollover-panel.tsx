@@ -142,9 +142,16 @@ export function MoneyRolloverPanel({
         </ul>
       ) : null}
 
-      {preview.priorCorrectionBridges.some((bridge) => !bridge.applied) ? (
+      {preview.priorCorrectionBridgesTruncated ||
+      preview.priorCorrectionBridges.some((bridge) => !bridge.applied) ? (
         <div className="mt-3 rounded border border-ega-border p-3">
           <h3 className="font-medium">Historical correction variances</h3>
+          {preview.priorCorrectionBridgesTruncated ? (
+            <p role="alert" className="feedback-block feedback-block-error mt-1 text-[length:var(--text-meta)]">
+              The bounded variance read returned only part of this period&apos;s
+              correction history.
+            </p>
+          ) : null}
           <ul className="mt-1 flex flex-col gap-1 text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
             {preview.priorCorrectionBridges
               .filter((bridge) => !bridge.applied)

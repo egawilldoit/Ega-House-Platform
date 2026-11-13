@@ -57,6 +57,8 @@ export type MoneyRolloverSourceContext = Readonly<{
   closeSnapshots: MoneyRolloverCloseSnapshotAssessment;
   /** Corrections from a rolled-over predecessor that targeted this period. */
   priorCorrectionBridges: readonly MoneyRolloverBridgeRecord[];
+  /** True when the bounded bridge read could not prove the full list. */
+  priorCorrectionBridgesTruncated: boolean;
   existingSuccessorPeriodId: string | null;
   /** Already-created successor for a replayed operation, if any. */
   existingRollover: MoneyRolloverRecord | null;
@@ -77,6 +79,12 @@ export type MoneyRolloverBridgeRecord = Readonly<{
     | "verified_opening_excludes_correction"
     | null;
   createdAt: string;
+}>;
+
+export type MoneyRolloverBridgeList = Readonly<{
+  bridges: readonly MoneyRolloverBridgeRecord[];
+  /** False when the bounded read could not prove every row was returned. */
+  truncated: boolean;
 }>;
 
 export type MoneyRolloverRecord = Readonly<{
@@ -143,7 +151,7 @@ export type MoneyRolloverRepository = {
   listCorrectionBridges(
     actor: AuthenticatedActor,
     destinationPeriodId: string,
-  ): Promise<RepositoryResult<readonly MoneyRolloverBridgeRecord[]>>;
+  ): Promise<RepositoryResult<MoneyRolloverBridgeList>>;
   findRolloverByOperation(
     actor: AuthenticatedActor,
     operationId: string,

@@ -20,8 +20,8 @@ import {
  *
  * Rollover is a manual, owner-confirmed operation. It never runs implicitly on
  * a date boundary and it never recreates historical rows:
- *   * the source period must be finished (`lifecycle = 'ended'`, every day
- *     closed, `activeDate = endDate`), which MONEY-09's final-day close
+ *   * the source period must be finished (`lifecycle = 'ended'`, every tracked
+ *     day closed, `activeDate = endDate`), which MONEY-09's final-day close
  *     produces;
  *   * exactly one successor period and one opening movement are created, so a
  *     carried balance is never both an opening and duplicated income;
@@ -541,8 +541,16 @@ export type MoneyRolloverCloseSnapshotAssessment =
   | Readonly<{
       available: true;
       closeCount: number;
-      /** Inclusive days in the source period that each need retained close evidence. */
+      /**
+       * Inclusive days from the first retained close (tracking start) through
+       * the source end that each need retained close evidence. Leading calendar
+       * days before tracking began are not required.
+       */
       requiredCloseCount: number;
+      /** First retained close date: the day tracking began. */
+      trackedFromDate: string | null;
+      /** Tracked days with no retained close; empty means complete evidence. */
+      missingCloseDates: readonly string[];
       completeCloseEvidence: boolean;
       lastClosedDate: string | null;
       comparableToRestatedTotals: true;
@@ -674,14 +682,22 @@ export function assessMoneyRollover(input: Readonly<{
   } else {
     if (!completeCloseEvidence) {
       const required = closeSnapshot.requiredCloseCount;
+      const missing = closeSnapshot.missingCloseDates;
+      const firstMissing = missing[0];
+      const missingLabel =
+        missing.length > 0
+          ? `${missing.length} tracked day${missing.length === 1 ? "" : "s"} (${missing.slice(0, 5).join(", ")}${missing.length > 5 ? ", …" : ""})`
+          : `${Math.max(required - closeSnapshot.closeCount, 0)} tracked day${required - closeSnapshot.closeCount === 1 ? "" : "s"}`;
       differences.push({
         code: "incomplete_close_evidence",
         amountMinor: null,
         status: "unavailable",
-        message: `Only ${closeSnapshot.closeCount} of ${required ?? "the required"} source days have retained close evidence. Every tracked day must be closed before rollover.`,
+        message: `Retained close evidence is missing for ${missingLabel}. Tracking began on ${closeSnapshot.trackedFromDate ?? "an unknown date"}; leading days before tracking began are not required, but every tracked day through the source end must be closed.`,
       });
       blockers.push(
-        "Every tracked source day needs retained close evidence before rollover. Close the missing days first.",
+        firstMissing
+          ? `The retained day closes have a gap inside the tracked range (first missing ${firstMissing}). Restore the missing close evidence before rollover; untracked leading days are not a gap.`
+          : "Every tracked source day needs retained close evidence before rollover. Restore the missing close evidence before rolling over.",
       );
     } else if (closeSnapshot.restatedDifferenceCount > 0) {
       const changed = closeSnapshot.restatedDifferenceCount;

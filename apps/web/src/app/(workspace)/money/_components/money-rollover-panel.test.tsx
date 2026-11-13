@@ -47,6 +47,8 @@ function preview(overrides: Partial<MoneyRolloverPreview> = {}): MoneyRolloverPr
       available: true,
       closeCount: 30,
       requiredCloseCount: 30,
+      trackedFromDate: "2026-11-01",
+      missingCloseDates: [],
       completeCloseEvidence: true,
       lastClosedDate: "2026-11-30",
       comparableToRestatedTotals: true,
@@ -62,6 +64,7 @@ function preview(overrides: Partial<MoneyRolloverPreview> = {}): MoneyRolloverPr
     pendingOccurrences: [],
     pendingOccurrencesTruncated: false,
     priorCorrectionBridges: [],
+    priorCorrectionBridgesTruncated: false,
     generatedObligations: [],
     carriedOccurrences: [],
     weekWindows: [],
@@ -110,4 +113,16 @@ test("rollover panel discloses a prior verified-opening variance", () => {
   );
   assert.match(html, /Historical correction variances/);
   assert.match(html, /verified opening excludes correction/);
+});
+
+test("rollover panel discloses a truncated variance history", () => {
+  const html = renderToStaticMarkup(
+    <MoneyRolloverPanel
+      preview={preview({ priorCorrectionBridgesTruncated: true })}
+      previewUnavailableReason={null}
+      action={async () => ({ ok: true, error: null })}
+    />,
+  );
+  assert.match(html, /Historical correction variances/);
+  assert.match(html, /only part of this period/i);
 });

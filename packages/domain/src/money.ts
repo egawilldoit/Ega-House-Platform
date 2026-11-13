@@ -1008,6 +1008,27 @@ export function parseMoneySettings(
   if (!isValidSettingsValue(raw, 0)) {
     return failure("settings", "Settings contain unsupported or oversized values.");
   }
+  // Known target keys are persisted as integer centimes by the period and
+  // rollover SQL. Reject the same shapes here so an MCP/HTTP caller gets a
+  // field validation error instead of a generic database conflict.
+  if (
+    raw.savingsTargetMinor !== undefined &&
+    !isMoneyBudgetAmountMinor(raw.savingsTargetMinor)
+  ) {
+    return failure(
+      "settings",
+      "savingsTargetMinor must be a whole non-negative amount of MAD centimes.",
+    );
+  }
+  if (
+    raw.emergencyTargetMinor !== undefined &&
+    !isMoneyBudgetAmountMinor(raw.emergencyTargetMinor)
+  ) {
+    return failure(
+      "settings",
+      "emergencyTargetMinor must be a whole non-negative amount of MAD centimes.",
+    );
+  }
   let serialized: string;
   try {
     serialized = JSON.stringify(raw);

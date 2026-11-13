@@ -14,6 +14,7 @@ import postgres from "postgres";
 const A = "11111111-1111-4111-8111-111111111111";
 const B = "22222222-2222-4222-8222-222222222222";
 const C = "33333333-3333-4333-8333-333333333333";
+const D = "44444444-4444-4444-8444-444444444444";
 const RESOURCE = "https://ega.example.com/api/mcp";
 
 const tags = JSON.parse(
@@ -36,6 +37,27 @@ function assert(ok, message) {
 }
 function hex(char) {
   return char.repeat(64);
+}
+
+async function periodCash(periodId, owner) {
+  const rows = await sql.unsafe(
+    `SELECT opening.amount_minor + COALESCE((
+       SELECT sum(CASE WHEN movement.direction = 'in' THEN movement.amount_minor
+                       ELSE -movement.amount_minor END)
+       FROM public.personal_expenses AS movement
+       WHERE movement.owner_user_id = period.owner_user_id
+         AND movement.deleted_at IS NULL
+         AND movement.kind <> 'opening'
+         AND movement.booking_date BETWEEN period.start_date AND period.end_date
+     ), 0)::integer AS cash
+     FROM public.money_periods AS period
+     JOIN public.personal_expenses AS opening
+       ON opening.id = period.opening_movement_id
+      AND opening.owner_user_id = period.owner_user_id
+     WHERE period.id = $1 AND period.owner_user_id = $2`,
+    [periodId, owner],
+  );
+  return rows[0].cash;
 }
 
 async function user(owner, fn, clientId = null) {
@@ -69,8 +91,8 @@ async function main() {
     await sql.unsafe("GRANT USAGE ON SCHEMA public, auth TO anon, authenticated");
     await sql.unsafe("CREATE TABLE auth.users (id uuid PRIMARY KEY, email text NOT NULL)");
     await sql.unsafe(
-      "INSERT INTO auth.users VALUES ($1, 'a@example.test'), ($2, 'b@example.test'), ($3, 'c@example.test')",
-      [A, B, C],
+      "INSERT INTO auth.users VALUES ($1, 'a@example.test'), ($2, 'b@example.test'), ($3, 'c@example.test'), ($4, 'd@example.test')",
+      [A, B, C, D],
     );
     await sql.unsafe("UPDATE auth.users SET email='ab.mortaki@gmail.com' WHERE id=$1", [A]);
     await sql.unsafe(
@@ -850,6 +872,71 @@ async function main() {
     );
     console.log("[BRIDGE] backdated inserts and cross-window moves resolve sources by booking date");
 
+    // --- A soft delete is a correction like any other ------------------------
+    // The source outflow was already corrected to 3100 at version 4. Deleting
+    // it restores the full 3100 in the derived carried successor and stops at
+    // the independently verified opening with a disclosed variance. The source
+    // close snapshots stay frozen.
+    const snapshotBeforeDelete = await sql.unsafe(
+      `SELECT snapshot ->> 'recordedCashMinor' AS recorded_cash
+       FROM public.money_day_closes
+       WHERE owner_user_id=$1 AND period_id=$2 AND close_date='2026-11-29'`,
+      [A, sourceId],
+    );
+    const successorCashBefore = await periodCash(successorId, A);
+    const verifiedCashBefore = await periodCash(verifiedPeriodId, A);
+    await user(A, (tx) =>
+      tx.unsafe(
+        `UPDATE public.personal_expenses
+         SET deleted_at='2027-01-03T09:00:00.000Z'::timestamptz,
+             version=version+1, updated_at=now()
+         WHERE id=$1 AND owner_user_id=$2`,
+        [expenseId, A],
+      ),
+    );
+    const deleteBridges = await sql.unsafe(
+      "SELECT destination_period_id, applied, variance_reason, amount_minor, direction FROM public.money_period_rollover_bridges WHERE owner_user_id=$1 AND movement_id=$2 AND correction_version=5 ORDER BY applied DESC",
+      [A, expenseId],
+    );
+    assert(
+      deleteBridges.some(
+        (row) =>
+          row.destination_period_id === successorId &&
+          row.applied === true &&
+          row.amount_minor === 3100 &&
+          row.direction === "in",
+      ) &&
+        deleteBridges.some(
+          (row) =>
+            row.destination_period_id === verifiedPeriodId &&
+            row.applied === false &&
+            row.variance_reason === "verified_opening_covered_cutoff" &&
+            row.amount_minor === 3100,
+        ),
+      "a source soft delete posts the restored cash to the derived successor and discloses the variance at the verified opening",
+    );
+    assert(
+      (await periodCash(successorId, A)) === successorCashBefore + 3100,
+      "the derived successor cash moves by the restored source amount",
+    );
+    assert(
+      (await periodCash(verifiedPeriodId, A)) === verifiedCashBefore,
+      "the verified opening cash is never altered by a later source correction",
+    );
+    const snapshotAfterDelete = await sql.unsafe(
+      `SELECT count(*)::int AS n, max(snapshot ->> 'recordedCashMinor') FILTER (WHERE close_date='2026-11-29') AS recorded_cash
+       FROM public.money_day_closes
+       WHERE owner_user_id=$1 AND period_id=$2`,
+      [A, sourceId],
+    );
+    assert(
+      snapshotAfterDelete[0].n === 2 &&
+        snapshotAfterDelete[0].recorded_cash ===
+          snapshotBeforeDelete[0].recorded_cash,
+      "the original source close snapshots remain retained and unchanged",
+    );
+    console.log("[BRIDGE] a soft delete restores successor cash and retains the frozen source snapshot");
+
     // --- MCP read grant cannot write through the SECURITY DEFINER RPCs -----
     await sql.unsafe(
       `INSERT INTO public.mcp_authorization_grants
@@ -893,87 +980,224 @@ async function main() {
     );
     console.log("[SECURITY] read grants never imply write; bridge RPC is not client-callable");
 
-    // --- A final day without every earlier close cannot roll over ----------
-    const incompleteCreated = await user(B, (tx) =>
-      tx.unsafe(`SELECT (p).id AS id, (p).version AS version
+    // The positive grant path is the discriminating half of the same check: a
+    // personal_operations_writer grant passes authorization and reaches the
+    // source precondition instead of failing with 42501.
+    await sql.unsafe(
+      `INSERT INTO public.mcp_authorization_grants
+        (owner_user_id, oauth_client_id, resource_uri, client_name, status,
+         permission_profile, permissions, permissions_version, approved_at)
+       VALUES ($1, 'm10-writer', $2, 'Proof writer', 'active',
+         'personal_operations_writer',
+         '["today.read","timer.read","personal_ops.read","personal_ops.write"]'::jsonb, 1, now())`,
+      [A, RESOURCE],
+    );
+    const writerArgs = rolloverArgs("m10-op-writer-grant", hex("b"));
+    writerArgs[0] = "99999999-9999-4999-8999-999999999999";
+    let writerErrorCode = null;
+    try {
+      await user(A, (tx) => callRollover(tx, writerArgs), "m10-writer");
+    } catch (error) {
+      writerErrorCode = error.code;
+    }
+    assert(
+      writerErrorCode === "P0002",
+      "an explicit writer grant passes the grant check and reaches the source-not-found precondition",
+    );
+    console.log("[SECURITY] the writer grant path is allowed, not merely unproven");
+
+    // --- Default midmonth tracking: leading untracked days are allowed ------
+    // The canonical create form defaults the range to the month boundaries and
+    // the active date to today. Closing from that active date through the end
+    // is complete evidence: the leading days were never tracked.
+    const midmonthCreated = await user(B, (tx) =>
+      tx.unsafe(`SELECT (p).id AS id
         FROM (SELECT public.money_create_period(
-          '2027-02-01'::date,'2027-02-02'::date,'Africa/Casablanca'::text,
-          '2027-02-02'::date,'initialized'::text,5000::integer,'2027-02-01'::date,
+          '2027-02-01'::date,'2027-02-28'::date,'Africa/Casablanca'::text,
+          '2027-02-15'::date,'initialized'::text,5000::integer,'2027-02-01'::date,
           repeat('d',64)::text,'{"opening":{"source":"user_entered","recordedAt":"2027-02-01T00:00:00.000Z","cutoffDate":"2027-02-01","evidence":null,"note":null,"corrections":[]}}'::jsonb,
           '{"savingsTargetMinor":1000,"emergencyTargetMinor":100}'::jsonb,
           now()::timestamptz) AS p) created`),
     );
-    const incompleteId = incompleteCreated[0].id;
-    const incompletePolicy = await sql.unsafe(
-      "SELECT id FROM public.money_policy_versions WHERE owner_user_id=$1 AND period_id=$2 ORDER BY version DESC LIMIT 1",
-      [B, incompleteId],
-    );
-    await sql.unsafe(
-      `UPDATE public.money_day_start_baselines
-       SET policy_version_id=$1, availability='available', unavailable_reason=NULL,
-           cash_minor=5000, commitments_minor=0, savings_target_minor=1000,
-           savings_funded_minor=0, emergency_target_minor=100, emergency_used_minor=0,
-           inputs='{"setupComplete":true}'::jsonb
-       WHERE owner_user_id=$2 AND period_id=$3 AND date='2027-02-02'`,
-      [incompletePolicy[0].id, B, incompleteId],
-    );
-    await sql.unsafe(
-      `UPDATE public.money_periods
-       SET day_start_setup_completed=true, version=version+1, updated_at=now()
-       WHERE id=$1 AND owner_user_id=$2`,
-      [incompleteId, B],
-    );
-    const incompleteVersion = await sql.unsafe(
-      "SELECT version FROM public.money_periods WHERE id=$1",
-      [incompleteId],
-    );
+    const midmonthId = midmonthCreated[0].id;
     await user(B, (tx) =>
+      tx.unsafe("SELECT public.money_rebase_day_start_baseline($1::uuid)", [midmonthId]),
+    );
+    for (let day = 15; day <= 28; day += 1) {
+      const current = await sql.unsafe(
+        "SELECT version FROM public.money_periods WHERE id=$1",
+        [midmonthId],
+      );
+      const date = `2027-02-${String(day).padStart(2, "0")}`;
+      await user(B, (tx) =>
+        tx.unsafe(
+          `SELECT public.money_close_day($1::uuid,$2::integer,$3::date,$4::text,$5::uuid,$6::text,$7::uuid[],$8::timestamptz)`,
+          [
+            midmonthId,
+            current[0].version,
+            date,
+            "CLOSED",
+            `c0de0000-0000-4000-8000-0000000000${String(day).padStart(2, "0")}`,
+            hex("c"),
+            [],
+            "2027-02-28T20:00:00.000Z",
+          ],
+        ),
+      );
+    }
+    const midmonthSummary = await user(B, (tx) =>
       tx.unsafe(
-        `SELECT public.money_close_day($1::uuid,$2::integer,$3::date,$4::text,$5::uuid,$6::text,$7::uuid[],$8::timestamptz)`,
-        [
-          incompleteId,
-          incompleteVersion[0].version,
-          "2027-02-02",
-          "CLOSED",
-          "750e8400-e29b-41d4-a716-4466554402aa",
-          hex("c"),
-          [],
-          "2027-02-02T20:00:00.000Z",
-        ],
+        "SELECT public.money_rollover_close_snapshot_summary($1::uuid) AS summary",
+        [midmonthId],
       ),
     );
-    let incompleteDenied = false;
-    let incompleteMessage = "";
+    assert(
+      midmonthSummary[0].summary.available === true &&
+        midmonthSummary[0].summary.closeCount === 14 &&
+        midmonthSummary[0].summary.requiredCloseCount === 14 &&
+        midmonthSummary[0].summary.trackedFromDate === "2027-02-15" &&
+        midmonthSummary[0].summary.missingCloseDates.length === 0 &&
+        midmonthSummary[0].summary.completeCloseEvidence === true,
+      "leading untracked days are not mistaken for a close-evidence gap",
+    );
+    const midmonthVersion = await sql.unsafe(
+      "SELECT version FROM public.money_periods WHERE id=$1",
+      [midmonthId],
+    );
+    const midmonthRollover = await user(B, (tx) =>
+      callRollover(tx, [
+        midmonthId,
+        midmonthVersion[0].version,
+        "2027-03-01",
+        "2027-03-31",
+        "2027-03-01",
+        "Africa/Casablanca",
+        "initialized",
+        false,
+        5000,
+        "2027-02-28",
+        null,
+        "Carried forward",
+        hex("d"),
+        {
+          opening: {
+            source: "carry_forward",
+            recordedAt: "2027-03-01T09:00:00.000Z",
+            cutoffDate: "2027-02-28",
+            evidence: null,
+            note: "Carried forward",
+            corrections: [],
+          },
+          createdFrom: "web",
+        },
+        {},
+        "m10-op-midmonth",
+        hex("e"),
+        "carry_forward",
+        null,
+        null,
+        null,
+        { modeledClosingCashMinor: 5000, pendingOccurrenceCount: 0 },
+        [],
+        [],
+        "2027-03-01T09:00:00.000Z",
+      ]),
+    );
+    assert(
+      midmonthRollover[0].result.rollover?.successor_period_id,
+      "a default midmonth period rolls over from its first tracked day",
+    );
+    console.log("[CLOSE] default midmonth tracking rolls over without requiring untracked leading days");
+
+    // --- A real gap inside the tracked range is still detected ---------------
+    // Production close only advances one day, so an interior gap is a tampered
+    // evidence state. Seed it directly for owner D and prove the read model and
+    // atomic write both refuse it instead of treating it as complete.
+    const gapCreated = await user(D, (tx) =>
+      tx.unsafe(`SELECT (p).id AS id
+        FROM (SELECT public.money_create_period(
+          '2027-03-01'::date,'2027-03-05'::date,'Africa/Casablanca'::text,
+          '2027-03-05'::date,'initialized'::text,1000::integer,'2027-03-01'::date,
+          repeat('5',64)::text,'{"opening":{"source":"user_entered","recordedAt":"2027-03-01T00:00:00.000Z","cutoffDate":"2027-03-01","evidence":null,"note":null,"corrections":[]}}'::jsonb,
+          '{}'::jsonb, now()::timestamptz) AS p) created`),
+    );
+    const gapId = gapCreated[0].id;
+    for (const [index, date] of ["2027-03-01", "2027-03-02", "2027-03-04", "2027-03-05"].entries()) {
+      const final = date === "2027-03-05";
+      await sql.unsafe(
+        `INSERT INTO public.money_day_closes
+          (owner_user_id, period_id, close_date, status, note, operation_id,
+           close_fingerprint, expected_period_version, period_version_after,
+           active_date_after, lifecycle_after, is_final_day, algorithm_version,
+           baseline_version, included_movement_ids, snapshot, created_at)
+         VALUES ($1,$2,$3::date,'closed','CLOSED',$4::uuid,$5,1,2,
+           $6::date + CASE WHEN $8::boolean THEN 0 ELSE 1 END,$7,$8,'gap-proof-v1',1,'{}'::uuid[],'{}'::jsonb,now())`,
+        [
+          D,
+          gapId,
+          date,
+          `c0de1000-0000-4000-8000-0000000000${String(index).padStart(2, "0")}`,
+          hex("f"),
+          final ? "2027-03-05" : date,
+          final ? "ended" : "tracking",
+          final,
+        ],
+      );
+    }
+    await sql.begin(async (tx) => {
+      await tx.unsafe(
+        "ALTER TABLE public.money_periods DISABLE TRIGGER money_periods_close_transition_guard",
+      );
+      await tx.unsafe(
+        "UPDATE public.money_periods SET lifecycle='ended', active_date=end_date, version=version+1, updated_at=now() WHERE id=$1 AND owner_user_id=$2",
+        [gapId, D],
+      );
+      await tx.unsafe(
+        "ALTER TABLE public.money_periods ENABLE TRIGGER money_periods_close_transition_guard",
+      );
+    });
+    const gapSummary = await user(D, (tx) =>
+      tx.unsafe(
+        "SELECT public.money_rollover_close_snapshot_summary($1::uuid) AS summary",
+        [gapId],
+      ),
+    );
+    const gapVersion = await sql.unsafe(
+      "SELECT version FROM public.money_periods WHERE id=$1",
+      [gapId],
+    );
+    assert(
+      gapSummary[0].summary.available === true &&
+        gapSummary[0].summary.closeCount === 4 &&
+        gapSummary[0].summary.requiredCloseCount === 5 &&
+        gapSummary[0].summary.trackedFromDate === "2027-03-01" &&
+        JSON.stringify(gapSummary[0].summary.missingCloseDates) ===
+          JSON.stringify(["2027-03-03"]) &&
+        gapSummary[0].summary.completeCloseEvidence === false,
+      "an interior missing day is reported as an explicit gap",
+    );
+    let gapDenied = false;
+    let gapDetail = "";
     try {
-      await user(B, (tx) =>
+      await user(D, (tx) =>
         callRollover(tx, [
-          incompleteId,
-          incompleteVersion[0].version + 1,
-          "2027-02-03",
-          "2027-02-10",
-          "2027-02-03",
+          gapId,
+          gapVersion[0].version,
+          "2027-03-06",
+          "2027-03-10",
+          "2027-03-06",
           "Africa/Casablanca",
           "initialized",
           false,
-          5000,
-          "2027-02-02",
+          1000,
+          "2027-03-05",
           null,
           "Carried forward",
-          hex("d"),
-          {
-            opening: {
-              source: "carry_forward",
-              recordedAt: "2027-02-03T09:00:00.000Z",
-              cutoffDate: "2027-02-02",
-              evidence: null,
-              note: "Carried forward",
-              corrections: [],
-            },
-            createdFrom: "web",
-          },
+          hex("1"),
+          { opening: { source: "carry_forward", recordedAt: "2027-03-06T09:00:00.000Z", cutoffDate: "2027-03-05", evidence: null, note: "Carried forward", corrections: [] }, createdFrom: "web" },
           {},
-          "m10-op-incomplete",
-          hex("e"),
+          "m10-op-gap",
+          hex("2"),
           "carry_forward",
           null,
           null,
@@ -981,18 +1205,142 @@ async function main() {
           {},
           [],
           [],
-          "2027-02-03T09:00:00.000Z",
+          "2027-03-06T09:00:00.000Z",
         ]),
       );
     } catch (error) {
-      incompleteDenied = error.code === "23514";
-      incompleteMessage = error.message ?? "";
+      gapDenied = error.code === "23514";
+      gapDetail = error.detail ?? "";
     }
     assert(
-      incompleteDenied && /Every source day/.test(incompleteMessage),
-      "a source with an unclosed earlier day cannot roll over",
+      gapDenied && /2027-03-03/.test(gapDetail),
+      "rollover refuses a tracked-range gap and names the missing date",
     );
-    console.log("[CLOSE] every tracked source day must have retained close evidence");
+    console.log("[CLOSE] a real gap inside the tracked range is detected and blocks rollover");
+
+    // --- A paid-obligation mismatch gates the write independently -----------
+    // The payment is soft-deleted before the final close, so the close snapshot
+    // matches its restated totals and the acceptance-note requirement can only
+    // be explained by the paid-payment mismatch.
+    const paidCreated = await user(D, (tx) =>
+      tx.unsafe(`SELECT (p).id AS id
+        FROM (SELECT public.money_create_period(
+          '2027-06-01'::date,'2027-06-30'::date,'Africa/Casablanca'::text,
+          '2027-06-30'::date,'initialized'::text,10000::integer,'2027-06-01'::date,
+          repeat('3',64)::text,'{"opening":{"source":"user_entered","recordedAt":"2027-06-01T00:00:00.000Z","cutoffDate":"2027-06-01","evidence":null,"note":null,"corrections":[]}}'::jsonb,
+          '{"savingsTargetMinor":0,"emergencyTargetMinor":0}'::jsonb, now()::timestamptz) AS p) created`),
+    );
+    const paidPeriodId = paidCreated[0].id;
+    await user(D, (tx) =>
+      tx.unsafe("SELECT public.money_rebase_day_start_baseline($1::uuid)", [paidPeriodId]),
+    );
+    const paidPayment = await sql.unsafe(
+      `INSERT INTO public.personal_expenses
+        (owner_user_id,amount_minor,currency,note,idempotency_key,create_fingerprint,
+         kind,direction,booking_date,counts_in_daily,period_id,category,need_vs_want,purpose)
+       VALUES ($1,3000,'MAD','paid bill','m10-paid-payment',repeat('4',64),
+         'expense','out','2027-06-10',true,$2,'bills','need','fixed')
+       RETURNING id`,
+      [D, paidPeriodId],
+    );
+    await sql.unsafe(
+      `INSERT INTO public.money_obligations
+        (owner_user_id,kind,description,amount_minor,currency,period_start,period_end,due_date,
+         need_vs_want,purpose,counts_in_daily,category,state,state_effective_date,state_history,
+         payment_expense_id,idempotency_key,create_fingerprint)
+       VALUES ($1,'bill','Paid bill',3000,'MAD','2027-06-01','2027-06-30','2027-06-10',
+         'need','fixed',false,'bills','paid','2027-06-10','[]'::jsonb,
+         $2,'m10-paid-obligation',repeat('5',64))`,
+      [D, paidPayment[0].id],
+    );
+    await sql.begin(async (tx) => {
+      await tx.unsafe("ALTER TABLE public.personal_expenses DISABLE TRIGGER USER");
+      await tx.unsafe(
+        "UPDATE public.personal_expenses SET deleted_at='2027-06-20T00:00:00.000Z'::timestamptz, version=version+1, updated_at=now() WHERE id=$1 AND owner_user_id=$2",
+        [paidPayment[0].id, D],
+      );
+      await tx.unsafe("ALTER TABLE public.personal_expenses ENABLE TRIGGER USER");
+    });
+    const paidVersion = await sql.unsafe(
+      "SELECT version FROM public.money_periods WHERE id=$1",
+      [paidPeriodId],
+    );
+    const paidClose = await user(D, (tx) =>
+      tx.unsafe(
+        `SELECT public.money_close_day($1::uuid,$2::integer,$3::date,$4::text,$5::uuid,$6::text,$7::uuid[],$8::timestamptz) AS close`,
+        [
+          paidPeriodId,
+          paidVersion[0].version,
+          "2027-06-30",
+          "CLOSED",
+          "c0de2000-0000-4000-8000-000000000001",
+          hex("6"),
+          [],
+          "2027-06-30T20:00:00.000Z",
+        ],
+      ),
+    );
+    assert(
+      paidClose[0].close.status === "closed",
+      "the paid-mismatch period closes its final tracked day",
+    );
+    const paidSummary = await user(D, (tx) =>
+      tx.unsafe(
+        "SELECT public.money_rollover_close_snapshot_summary($1::uuid) AS summary",
+        [paidPeriodId],
+      ),
+    );
+    assert(
+      paidSummary[0].summary.available === true &&
+        paidSummary[0].summary.completeCloseEvidence === true &&
+        paidSummary[0].summary.restatedDifferenceCount === 0 &&
+        paidSummary[0].summary.paidObligationMismatchCount === 1 &&
+        paidSummary[0].summary.countedVisitMismatchCount === 0,
+      "the paid-payment mismatch is isolated from restated closes and visits",
+    );
+    const paidRolloverArgs = [
+      paidPeriodId,
+      paidVersion[0].version + 1,
+      "2027-07-01",
+      "2027-07-31",
+      "2027-07-01",
+      "Africa/Casablanca",
+      "initialized",
+      false,
+      10000,
+      "2027-06-30",
+      null,
+      "Carried forward",
+      hex("7"),
+      { opening: { source: "carry_forward", recordedAt: "2027-07-01T09:00:00.000Z", cutoffDate: "2027-06-30", evidence: null, note: "Carried forward", corrections: [] }, createdFrom: "web" },
+      {},
+      "m10-op-paid-mismatch",
+      hex("8"),
+      "carry_forward",
+      null,
+      null,
+      null,
+      {},
+      [],
+      [],
+      "2027-07-01T09:00:00.000Z",
+    ];
+    let paidDenied = false;
+    try {
+      await user(D, (tx) => callRollover(tx, paidRolloverArgs));
+    } catch (error) {
+      paidDenied = error.code === "23514";
+    }
+    assert(paidDenied, "a paid-payment mismatch needs an explicit acceptance note");
+    paidRolloverArgs[20] = "paid payment mismatch reviewed";
+    const paidRollover = await user(D, (tx) =>
+      callRollover(tx, paidRolloverArgs),
+    );
+    assert(
+      paidRollover[0].result.rollover?.successor_period_id,
+      "the accepted paid-payment mismatch proceeds to the atomic rollover",
+    );
+    console.log("[CLOSE] a paid-obligation mismatch gates rollover until explicitly accepted");
 
     // --- Past-dated setup is allowed by the current MONEY-08 rebase ---------
     // A late rollover leaves the successor active date in the past. The current
@@ -1022,6 +1370,118 @@ async function main() {
     );
     console.log("[SETUP] past-dated successor setup is not restricted to today");
 
+    // --- A counted-visit mismatch also gates the write ----------------------
+    // The linked expense is soft-deleted before the final close, so the close
+    // snapshot stays clean and only the counted-visit mismatch can explain the
+    // acceptance-note requirement. The leading untracked Oct 1 is also allowed.
+    const coffeeExpense = await sql.unsafe(
+      `INSERT INTO public.personal_expenses
+        (owner_user_id,amount_minor,currency,note,idempotency_key,create_fingerprint,
+         kind,direction,booking_date,counts_in_daily,period_id,category,need_vs_want,purpose)
+       VALUES ($1,1500,'MAD','coffee','m10-visit-expense',repeat('a',64),
+         'expense','out','2026-10-02',true,$2,'coffee','want','flexible')
+       RETURNING id`,
+      [C, lateCreated[0].id],
+    );
+    const coffeeVisit = await sql.unsafe(
+      `INSERT INTO public.money_coffee_visits
+        (owner_user_id,visit_key,visit_fingerprint,local_date,timezone)
+       VALUES ($1,'m10-visit',repeat('b',64),'2026-10-02','Africa/Casablanca')
+       RETURNING id`,
+      [C],
+    );
+    await sql.unsafe(
+      `INSERT INTO public.money_coffee_visit_lines(owner_user_id,visit_id,expense_id)
+       VALUES ($1,$2,$3)`,
+      [C, coffeeVisit[0].id, coffeeExpense[0].id],
+    );
+    await user(C, (tx) =>
+      tx.unsafe(
+        `UPDATE public.personal_expenses
+         SET deleted_at='2026-10-02T21:00:00.000Z'::timestamptz,
+             version=version+1, updated_at=now()
+         WHERE id=$1 AND owner_user_id=$2`,
+        [coffeeExpense[0].id, C],
+      ),
+    );
+    const visitVersion = await sql.unsafe(
+      "SELECT version FROM public.money_periods WHERE id=$1",
+      [lateCreated[0].id],
+    );
+    await user(C, (tx) =>
+      tx.unsafe(
+        `SELECT public.money_close_day($1::uuid,$2::integer,$3::date,$4::text,$5::uuid,$6::text,$7::uuid[],$8::timestamptz)`,
+        [
+          lateCreated[0].id,
+          visitVersion[0].version,
+          "2026-10-02",
+          "CLOSED",
+          "c0de3000-0000-4000-8000-000000000001",
+          hex("c"),
+          [],
+          "2026-10-02T22:00:00.000Z",
+        ],
+      ),
+    );
+    const visitSummary = await user(C, (tx) =>
+      tx.unsafe(
+        "SELECT public.money_rollover_close_snapshot_summary($1::uuid) AS summary",
+        [lateCreated[0].id],
+      ),
+    );
+    assert(
+      visitSummary[0].summary.available === true &&
+        visitSummary[0].summary.completeCloseEvidence === true &&
+        visitSummary[0].summary.restatedDifferenceCount === 0 &&
+        visitSummary[0].summary.paidObligationMismatchCount === 0 &&
+        visitSummary[0].summary.countedVisitMismatchCount === 1,
+      "the counted-visit mismatch is isolated from restated closes and paid payments",
+    );
+    const visitRolloverArgs = [
+      lateCreated[0].id,
+      visitVersion[0].version + 1,
+      "2026-10-03",
+      "2026-10-04",
+      "2026-10-03",
+      "Africa/Casablanca",
+      "initialized",
+      false,
+      1000,
+      "2026-10-02",
+      null,
+      "Carried forward",
+      hex("d"),
+      { opening: { source: "carry_forward", recordedAt: "2026-10-03T09:00:00.000Z", cutoffDate: "2026-10-02", evidence: null, note: "Carried forward", corrections: [] }, createdFrom: "web" },
+      {},
+      "m10-op-visit-mismatch",
+      hex("e"),
+      "carry_forward",
+      null,
+      null,
+      null,
+      {},
+      [],
+      [],
+      "2026-10-03T09:00:00.000Z",
+    ];
+    let visitDenied = false;
+    try {
+      await user(C, (tx) => callRollover(tx, visitRolloverArgs));
+    } catch (error) {
+      visitDenied = error.code === "23514";
+    }
+    assert(visitDenied, "a counted-visit mismatch needs an explicit acceptance note");
+    visitRolloverArgs[20] = "counted visit mismatch reviewed";
+    const visitRollover = await user(C, (tx) =>
+      callRollover(tx, visitRolloverArgs),
+    );
+    assert(
+      visitRollover[0].result.rollover?.successor_period_id,
+      "the accepted counted-visit mismatch proceeds to the atomic rollover",
+    );
+    console.log("[CLOSE] a counted-visit mismatch gates rollover until explicitly accepted");
+
+
     // --- Owner isolation and no direct write surface ------------------------
     const bVisible = await user(B, (tx) =>
       tx.unsafe("SELECT count(*)::int AS n FROM public.money_period_rollovers"),
@@ -1029,7 +1489,10 @@ async function main() {
     const aVisible = await user(A, (tx) =>
       tx.unsafe("SELECT count(*)::int AS n FROM public.money_period_rollovers"),
     );
-    assert(bVisible[0].n === 0 && aVisible[0].n === 2, "RLS exposes only the owner's rollover receipts");
+    assert(
+      bVisible[0].n === 1 && aVisible[0].n === 2,
+      "RLS exposes only the owner's rollover receipts",
+    );
     let directInsertDenied = false;
     try {
       await user(A, (tx) =>

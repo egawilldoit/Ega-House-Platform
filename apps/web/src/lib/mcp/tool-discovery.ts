@@ -57,6 +57,7 @@ const ALL_TOOLS: readonly McpToolDefinition[] = [
   { name: "ega_money_update_settings", requiredPermission: "personal_ops.write", writesEnabledRequired: true },
   { name: "ega_money_rebase_day_start_baseline", requiredPermission: "personal_ops.write", writesEnabledRequired: true },
   { name: "ega_money_rollover_preview", requiredPermission: "personal_ops.read" },
+  { name: "ega_money_rollover_variances", requiredPermission: "personal_ops.read" },
   { name: "ega_money_rollover_period", requiredPermission: "personal_ops.write", writesEnabledRequired: true },
   // Durable day close (MONEY-09): one transaction stores evidence and advances
   // the active date once; the close is not a status-only annotation.

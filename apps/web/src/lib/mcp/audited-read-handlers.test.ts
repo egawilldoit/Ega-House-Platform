@@ -55,6 +55,7 @@ function createBaseHandlers() {
     listMoneyLedger: vi.fn().mockResolvedValue(successResult(0)),
     moneyState: vi.fn().mockResolvedValue(successResult(0)),
     moneyRolloverPreview: vi.fn().mockResolvedValue(successResult(0)),
+    moneyRolloverVariances: vi.fn().mockResolvedValue(successResult(0)),
     moneyMovementList: vi.fn().mockResolvedValue(successResult(0)),
     moneyMovementGet: vi.fn().mockResolvedValue(successResult(0)),
     moneyBudgetGet: vi.fn().mockResolvedValue(successResult(0)),
