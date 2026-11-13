@@ -135,4 +135,3 @@ Status: implementation candidate on `t3/money-10-mcp-delivery`, rebased onto
 - Focused rollover panel/variance tests, MCP read-handler tests, the Money page
   test, the server Money route test and the disposable rollover proof passed.
 - The disposable proof is wired into the `db-invariants` job beside MONEY-09.
-
