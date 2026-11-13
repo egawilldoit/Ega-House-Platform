@@ -22,7 +22,6 @@ import {
   SupabaseMoneyCoffeeRepository,
   SupabaseMoneyPeriodRepository,
   SupabaseMoneyRepository,
-  SupabaseObligationRepository,
 } from "@ega/data-access";
 import {
   MONEY_ADVISORY_CAP_LABEL,
@@ -209,11 +208,8 @@ export default async function MoneyPage({ searchParams }: Props) {
     if (moneyState?.period) {
       reserveResult = await getCurrentMoneyReserves(actor, {
         period: moneyState.period,
-        opening: moneyState.opening.status === "known" ? moneyState.opening : null,
         periods: new SupabaseMoneyPeriodRepository(client),
-        movements: moneyRepository,
         budgets: new SupabaseMoneyBudgetRepository(client),
-        obligations: new SupabaseObligationRepository(client),
       }).catch(() => null);
     }
   } catch {

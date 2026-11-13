@@ -4,7 +4,7 @@ import test from "node:test";
 import { createAuthenticatedActor } from "@ega/application";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-import { SupabaseMoneyPeriodRepository } from "../src/money/repository";
+import { SupabaseMoneyPeriodRepository, SupabaseMoneyRepository } from "../src/money/repository";
 
 const ACTOR = createAuthenticatedActor("owner-money");
 const PERIOD_ID = "00000000-0000-4000-8000-000000000001";
@@ -178,55 +178,66 @@ test("findTracking scopes owner and lifecycle and maps provenance/settings", asy
   assert.ok(call.includes("eq:lifecycle=tracking"));
 });
 
-test("daily included outflow total is incomplete when its sum exceeds safe integer range", async () => {
-  const fake = new FakeSupabase();
-  fake.push("personal_expenses", { data: [{ amount_minor: 9_007_199_254_740_991 }, { amount_minor: 1 }], error: null });
+test("daily included total is one canonical owner/date SQL aggregate", async () => {
+  const fake = new FakeSupabase([
+    {
+      data: {
+        complete: true,
+        rowCount: 3,
+        expenseTotalMinor: 2_100,
+        dailyIncludedSpendMinor: 1_100,
+        flexibleExpenseTotalMinor: 1_100,
+        fixedExpenseTotalMinor: 1_000,
+        emergencyExpenseTotalMinor: 0,
+        categoryTotals: { coffee: 1_100, bills: 1_000 },
+      },
+      error: null,
+    },
+  ]);
   const result = await repository(fake).getDailyIncludedExpenseTotal(ACTOR, PERIOD_ID, "2026-11-11");
   assert.equal(result.ok, true);
   if (result.ok) {
-    assert.equal(result.value.amountMinor, 9_007_199_254_740_992);
-    assert.equal(result.value.complete, false);
-  }
-  const call = steps(fake, "personal_expenses");
-  assert.ok(call.includes("eq:owner_user_id=owner-money"));
-  assert.ok(call.includes(`eq:period_id=${PERIOD_ID}`));
-});
-
-test("daily included outflow total pages past the PostgREST row cap", async () => {
-  const fake = new FakeSupabase();
-  fake.push("personal_expenses", {
-    data: Array.from({ length: 1_000 }, () => ({ amount_minor: 1 })),
-    error: null,
-  });
-  fake.push("personal_expenses", { data: [{ amount_minor: 500 }], error: null });
-  const result = await repository(fake).getDailyIncludedExpenseTotal(ACTOR, PERIOD_ID, "2026-11-11");
-  assert.equal(result.ok, true);
-  if (result.ok) {
-    assert.equal(result.value.amountMinor, 1_500);
+    assert.equal(result.value.amountMinor, 1_100);
     assert.equal(result.value.complete, true);
   }
-  const calls = fake.calls.filter((call) => call.table === "personal_expenses");
-  assert.equal(calls.length, 2);
-  assert.ok(calls[0]!.steps.includes("range:0-999"));
-  assert.ok(calls[1]!.steps.includes("range:1000-1999"));
-  assert.ok(!calls.some((call) => call.steps.some((step) => step.startsWith("limit:"))));
+  assert.equal(fake.rpcCalls.length, 1);
+  assert.equal(fake.rpcCalls[0]!.name, "money_day_expense_totals");
+  assert.deepEqual(fake.rpcCalls[0]!.params, {
+    p_period_id: PERIOD_ID,
+    p_date: "2026-11-11",
+  });
+  // No PostgREST table read exists to truncate at a server row cap.
+  assert.equal(fake.calls.some((call) => call.table === "personal_expenses"), false);
 });
 
-test("restated close totals page past the PostgREST row cap instead of truncating", async () => {
-  const fake = new FakeSupabase();
-  fake.push("personal_expenses", {
-    data: Array.from({ length: 1_000 }, () => ({
-      amount_minor: 1,
-      counts_in_daily: true,
-      purpose: "flexible",
-      category: "coffee",
-    })),
-    error: null,
-  });
-  fake.push("personal_expenses", {
-    data: [{ amount_minor: 500, counts_in_daily: false, purpose: "fixed", category: "bills" }],
-    error: null,
-  });
+test("daily included total is reported incomplete when the aggregate is unusable", async () => {
+  const fake = new FakeSupabase([
+    { data: { complete: false, dailyIncludedSpendMinor: 2_100 }, error: null },
+  ]);
+  const result = await repository(fake).getDailyIncludedExpenseTotal(ACTOR, PERIOD_ID, "2026-11-11");
+  assert.equal(result.ok, true);
+  if (result.ok) {
+    assert.equal(result.value.amountMinor, 2_100);
+    assert.equal(result.value.complete, false);
+  }
+});
+
+test("restated close totals use the same canonical day aggregate as the close", async () => {
+  const fake = new FakeSupabase([
+    {
+      data: {
+        complete: true,
+        rowCount: 2,
+        expenseTotalMinor: 2_100,
+        dailyIncludedSpendMinor: 1_100,
+        flexibleExpenseTotalMinor: 1_100,
+        fixedExpenseTotalMinor: 1_000,
+        emergencyExpenseTotalMinor: 0,
+        categoryTotals: { coffee: 1_100, bills: 1_000 },
+      },
+      error: null,
+    },
+  ]);
   const result = await repository(fake).getDayCloseCurrentTotals(
     ACTOR,
     PERIOD_ID,
@@ -235,17 +246,77 @@ test("restated close totals page past the PostgREST row cap instead of truncatin
   assert.equal(result.ok, true);
   if (result.ok) {
     assert.equal(result.value.complete, true);
-    assert.equal(result.value.expenseTotalMinor, 1_500);
-    assert.equal(result.value.dailyIncludedSpendMinor, 1_000);
-    assert.equal(result.value.flexibleExpenseTotalMinor, 1_000);
-    assert.equal(result.value.fixedExpenseTotalMinor, 500);
-    assert.deepEqual(result.value.categoryTotals, { coffee: 1_000, bills: 500 });
+    assert.equal(result.value.expenseTotalMinor, 2_100);
+    assert.equal(result.value.dailyIncludedSpendMinor, 1_100);
+    assert.equal(result.value.flexibleExpenseTotalMinor, 1_100);
+    assert.equal(result.value.fixedExpenseTotalMinor, 1_000);
+    assert.deepEqual(result.value.categoryTotals, { coffee: 1_100, bills: 1_000 });
   }
-  const calls = fake.calls.filter((call) => call.table === "personal_expenses");
-  assert.equal(calls.length, 2);
-  assert.ok(calls[0]!.steps.includes("range:0-999"));
-  assert.ok(calls[1]!.steps.includes("range:1000-1999"));
-  assert.ok(!calls.some((call) => call.steps.some((step) => step.startsWith("limit:"))));
+  assert.equal(fake.rpcCalls[0]!.name, "money_day_expense_totals");
+  assert.deepEqual(fake.rpcCalls[0]!.params, {
+    p_period_id: PERIOD_ID,
+    p_date: "2026-11-11",
+  });
+  // The canonical predicate is owner + booking date; a `period_id` table filter
+  // would recreate the legacy unassigned-row changed-since-close defect.
+  assert.equal(fake.calls.some((call) => call.table === "personal_expenses"), false);
+});
+
+test("historical close evidence is fetched exactly by owner, period and date", async () => {
+  const fake = new FakeSupabase();
+  fake.push("money_day_closes", { data: null, error: null });
+  const result = await repository(fake).getDayCloseForDate(
+    ACTOR,
+    PERIOD_ID,
+    "2026-11-09",
+  );
+  assert.equal(result.ok, true);
+  if (result.ok) assert.equal(result.value, null);
+  const call = steps(fake, "money_day_closes");
+  assert.ok(call.includes("eq:owner_user_id=owner-money"));
+  assert.ok(call.includes(`eq:period_id=${PERIOD_ID}`));
+  assert.ok(call.includes("eq:close_date=2026-11-09"));
+  assert.ok(!call.some((step) => step.startsWith("limit:")));
+  assert.ok(!call.some((step) => step.startsWith("range:")));
+});
+
+test("reserve inputs map one canonical database read", async () => {
+  const fake = new FakeSupabase([
+    {
+      data: {
+        available: true,
+        recordedCashMinor: 49_900,
+        unpaidCommitmentsMinor: 3_000,
+        fundedSavingsMinor: 5_000,
+        emergencyUsedMinor: 1_000,
+      },
+      error: null,
+    },
+  ]);
+  const result = await repository(fake).getReserveInputs(ACTOR, PERIOD_ID, "2026-11-11");
+  assert.equal(result.ok, true);
+  if (result.ok && result.value.available) {
+    assert.equal(result.value.recordedCashMinor, 49_900);
+    assert.equal(result.value.unpaidCommitmentsMinor, 3_000);
+    assert.equal(result.value.savingsFundedMinor, 5_000);
+    assert.equal(result.value.emergencyUsedMinor, 1_000);
+  }
+  assert.equal(fake.rpcCalls[0]!.name, "money_reserve_inputs");
+  assert.deepEqual(fake.rpcCalls[0]!.params, {
+    p_period_id: PERIOD_ID,
+    p_cutoff: "2026-11-11",
+  });
+});
+
+test("reserve inputs preserve an actionable unknown-opening state", async () => {
+  const fake = new FakeSupabase([
+    { data: { available: false, reason: "opening_unknown" }, error: null },
+  ]);
+  const result = await repository(fake).getReserveInputs(ACTOR, PERIOD_ID, "2026-11-11");
+  assert.equal(result.ok, true);
+  if (result.ok && !result.value.available) {
+    assert.equal(result.value.reason, "opening_unknown");
+  }
 });
 
 test("overlap and list queries are owner-scoped and inclusive", async () => {
@@ -408,54 +479,97 @@ test("opening reads only the opening kind and non-deleted rows", async () => {
   assert.ok(call.includes("eq:owner_user_id=owner-money"));
 });
 
-test("cash aggregation excludes the opening movement and sums integer directions", async () => {
-  const fake = new FakeSupabase();
-  fake.push("personal_expenses", {
-    data: [
-      { direction: "out", amount_minor: 1100 },
-      { direction: "out", amount_minor: 2500 },
-      { direction: "in", amount_minor: 20000 },
-    ],
-    error: null,
-  });
+test("cash aggregation calls the canonical owner/date SQL aggregate", async () => {
+  const fake = new FakeSupabase([
+    {
+      data: { inflowsMinor: 20_000, outflowsMinor: 3_600, recordCount: 3 },
+      error: null,
+    },
+  ]);
   const result = await repository(fake).sumLedgerByDirection(ACTOR, {
     startDate: "2026-11-09",
     endDateInclusive: "2026-11-11",
   });
   assert.equal(result.ok, true);
   if (result.ok) {
-    assert.equal(result.value.outflowsMinor, 3600);
-    assert.equal(result.value.inflowsMinor, 20000);
+    assert.equal(result.value.outflowsMinor, 3_600);
+    assert.equal(result.value.inflowsMinor, 20_000);
     assert.equal(result.value.recordCount, 3);
     assert.equal(result.value.truncated, false);
   }
-  const call = steps(fake, "personal_expenses");
-  assert.ok(call.includes("neq:kind=opening"));
-  assert.ok(call.includes("gte:booking_date=2026-11-09"));
-  assert.ok(call.includes("lte:booking_date=2026-11-11"));
-  assert.ok(call.includes("eq:owner_user_id=owner-money"));
+  assert.equal(fake.rpcCalls[0]!.name, "money_ledger_direction_totals");
+  assert.deepEqual(fake.rpcCalls[0]!.params, {
+    p_start_date: "2026-11-09",
+    p_end_date: "2026-11-11",
+  });
+  assert.equal(fake.calls.some((call) => call.table === "personal_expenses"), false);
 });
 
-test("truncation is reported, never a fake complete cash total", async () => {
+test("a bounded movement aggregate proves completeness with the server count and cap-aware offsets", async () => {
   const fake = new FakeSupabase();
-  for (let page = 0; page < 10; page += 1) {
+  // A server cap of 250 returns the first 250 rows of each requested 0-999
+  // range. The adapter must advance by the rows actually returned, not by the
+  // requested page size, or rows 250-999 would be skipped.
+  for (let page = 0; page < 4; page += 1) {
     fake.push("personal_expenses", {
-      data: Array.from({ length: 1000 }, () => ({
+      data: Array.from({ length: 250 }, (_, index) => ({
+        id: `expense-${page * 250 + index}`,
+        kind: "expense",
         direction: "out",
         amount_minor: 100,
+        counts_in_daily: true,
+        purpose: "flexible",
+        booking_date: "2026-11-11",
       })),
       error: null,
+      count: 1_000,
     });
   }
-  const result = await repository(fake).sumLedgerByDirection(ACTOR, {
+  const result = await new SupabaseMoneyRepository(
+    fake as unknown as SupabaseClient,
+  ).aggregate(ACTOR, {
+    cutoff: "2026-11-30",
     startDate: "2026-11-09",
-    endDateInclusive: "2026-11-30",
   });
   assert.equal(result.ok, true);
   if (result.ok) {
-    assert.equal(result.value.truncated, true);
-    assert.equal(result.value.recordCount, 10000);
+    assert.equal(result.value.rows.length, 1_000);
+    assert.equal(result.value.truncated, false);
   }
+  const calls = fake.calls.filter((call) => call.table === "personal_expenses");
+  assert.equal(calls.length, 4);
+  assert.ok(calls[0]!.steps.includes("range:0-999"));
+  assert.ok(calls[1]!.steps.includes("range:250-1249"));
+  assert.ok(calls[2]!.steps.includes("range:500-1499"));
+  assert.ok(calls[3]!.steps.includes("range:750-1749"));
+  assert.ok(calls.every((call) =>
+    call.steps.some((step) => step.includes('"count":"exact"')),
+  ));
+});
+
+test("a bounded movement aggregate stays incomplete when the server count is unavailable", async () => {
+  const fake = new FakeSupabase();
+  fake.push("personal_expenses", {
+    data: Array.from({ length: 100 }, () => ({
+      id: "expense-1",
+      kind: "expense",
+      direction: "out",
+      amount_minor: 100,
+      counts_in_daily: true,
+      purpose: "flexible",
+      booking_date: "2026-11-11",
+    })),
+    error: null,
+    count: null,
+  });
+  const result = await new SupabaseMoneyRepository(
+    fake as unknown as SupabaseClient,
+  ).aggregate(ACTOR, {
+    cutoff: "2026-11-30",
+    startDate: "2026-11-09",
+  });
+  assert.equal(result.ok, true);
+  if (result.ok) assert.equal(result.value.truncated, true);
 });
 
 test("ledger overview counts expenses with and without the period assignment", async () => {

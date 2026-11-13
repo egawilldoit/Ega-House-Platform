@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/** Disposable PostgreSQL proof for MONEY-09 durable day close through 0104. */
+/** Disposable PostgreSQL proof for MONEY-09 durable day close through 0106. */
 import { readFile } from "node:fs/promises";
 import { argv, exit } from "node:process";
 import postgres from "postgres";
@@ -7,6 +7,7 @@ import postgres from "postgres";
 const A = "11111111-1111-4111-8111-111111111111";
 const B = "22222222-2222-4222-8222-222222222222";
 const C = "33333333-3333-4333-8333-333333333333";
+const D = "44444444-4444-4444-8444-444444444444";
 const RESOURCE = "https://ega.example.com/api/mcp";
 const READ = ["today.read", "timer.read", "personal_ops.read"];
 const WRITE = [...READ, "personal_ops.write"];
@@ -42,7 +43,7 @@ async function main() {
     await sql.unsafe("CREATE SCHEMA auth");
     await sql.unsafe("GRANT USAGE ON SCHEMA public, auth TO anon, authenticated");
     await sql.unsafe("CREATE TABLE auth.users (id uuid PRIMARY KEY, email text NOT NULL)");
-    await sql.unsafe("INSERT INTO auth.users VALUES ($1, 'a@example.test'), ($2, 'b@example.test'), ($3, 'c@example.test')", [A,B,C]);
+    await sql.unsafe("INSERT INTO auth.users VALUES ($1, 'a@example.test'), ($2, 'b@example.test'), ($3, 'c@example.test'), ($4, 'd@example.test')", [A,B,C,D]);
     await sql.unsafe("UPDATE auth.users SET email='ab.mortaki@gmail.com' WHERE id=$1", [A]);
     await sql.unsafe("CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$ SELECT NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid $$");
     await sql.unsafe("CREATE FUNCTION auth.jwt() RETURNS jsonb LANGUAGE sql STABLE AS $$ SELECT COALESCE(NULLIF(current_setting('request.jwt.claims', true), '')::jsonb, '{}'::jsonb) $$");
@@ -349,6 +350,131 @@ async function main() {
       "the daily reference remains the separate day-start projection");
     console.log("[CUTOFF] reserves use one close-date cutoff; the daily reference keeps day-start inputs");
 
+    // Canonical predicate parity: an unassigned legacy ledger row (period_id
+    // NULL) is part of canonical owner + booking-date cash/day totals, so the
+    // stored close and the live restated reads must agree immediately. Future
+    // commitments stay reserved, and only expense outflows may be included.
+    const canonicalRows = await user(D, tx => tx.unsafe(`SELECT (p).id AS id, (p).version AS version, (p).opening_movement_id AS opening
+      FROM (SELECT public.money_create_period(
+        '2027-01-05'::date,'2027-01-31'::date,'Africa/Casablanca'::text,
+        '2027-01-05'::date,'initialized'::text,100000::integer,'2027-01-05'::date,
+        repeat('a',64)::text,'{"opening":{"source":"user_entered"}}'::jsonb,
+        '{"savingsTargetMinor":10000,"emergencyTargetMinor":2000}'::jsonb,
+        '2027-01-05T08:00:00.000Z'::timestamptz) AS p) created`));
+    const canonicalPeriod = canonicalRows[0].id;
+    await sql.unsafe(`INSERT INTO public.money_obligations
+      (owner_user_id,kind,description,amount_minor,period_start,period_end,due_date,
+       purpose,counts_in_daily,state,state_effective_date,state_history,payment_evidence,
+       idempotency_key,create_fingerprint,created_at)
+      VALUES
+       ($1,'bill','future due commitment',2000,'2027-01-05','2027-01-31','2027-01-20',
+        'fixed',false,'pending','2027-01-01','[]'::jsonb,NULL,'canonical-future',repeat('1',64),'2027-01-01T12:00:00Z'),
+       ($1,'bill','paid before close',7000,'2027-01-05','2027-01-31','2027-01-06',
+        'fixed',false,'paid','2027-01-05',jsonb_build_array(
+          jsonb_build_object('state','pending','effectiveDate','2027-01-01','version',1),
+          jsonb_build_object('state','paid','effectiveDate','2027-01-05','version',2)),
+        jsonb_build_object('kind','reconciled_historical_import','reference','proof','note',NULL,'importedAt','2027-01-05T00:00:00Z'),
+        'canonical-paid',repeat('2',64),'2027-01-01T12:00:00Z'),
+       ($1,'bill','waived on close date',900,'2027-01-05','2027-01-31','2027-01-25',
+        'fixed',false,'waived','2027-01-05',jsonb_build_array(
+          jsonb_build_object('state','pending','effectiveDate','2027-01-01','version',1),
+          jsonb_build_object('state','waived','effectiveDate','2027-01-05','version',2)),
+        NULL,'canonical-waived',repeat('3',64),'2027-01-01T12:00:00Z'),
+       ($1,'bill','future window commitment',1500,'2027-01-19','2027-01-25','2027-01-20',
+        'fixed',false,'pending','2027-01-01','[]'::jsonb,NULL,'canonical-future-window',repeat('a',64),'2027-01-01T12:00:00Z')`, [D]);
+    await user(D, tx => tx.unsafe("SELECT * FROM public.money_rebase_day_start_baseline($1)", [canonicalPeriod]));
+    const canonicalExpense = await user(D, tx => tx.unsafe(`INSERT INTO public.personal_expenses
+      (owner_user_id,period_id,booking_date,kind,direction,amount_minor,currency,
+       category,need_vs_want,purpose,counts_in_daily,idempotency_key,create_fingerprint)
+      VALUES ($1,$2,'2027-01-05','expense','out',1100,'MAD',
+       'coffee','want','flexible',true,'canonical-expense',repeat('4',64)) RETURNING id`, [D, canonicalPeriod]));
+    await user(D, tx => tx.unsafe(`INSERT INTO public.personal_expenses
+      (owner_user_id,period_id,booking_date,kind,direction,amount_minor,currency,
+       category,need_vs_want,purpose,counts_in_daily,idempotency_key,create_fingerprint)
+      VALUES ($1,NULL,'2027-01-05','expense','out',2200,'MAD',
+       'groceries','need','flexible',true,'canonical-legacy-out',repeat('5',64))`, [D]));
+    const canonicalIncome = await user(D, tx => tx.unsafe(`INSERT INTO public.personal_expenses
+      (owner_user_id,period_id,booking_date,kind,direction,amount_minor,currency,
+       idempotency_key,create_fingerprint)
+      VALUES ($1,$2,'2027-01-05','income','in',5000,'MAD',
+       'canonical-income',repeat('6',64)) RETURNING id`, [D, canonicalPeriod]));
+    await user(D, tx => tx.unsafe(`INSERT INTO public.personal_expenses
+      (owner_user_id,period_id,booking_date,kind,direction,amount_minor,currency,
+       idempotency_key,create_fingerprint)
+      VALUES ($1,NULL,'2027-01-05','income','in',1000,'MAD',
+       'canonical-legacy-in',repeat('7',64))`, [D]));
+    const canonicalSavings = await user(D, tx => tx.unsafe(`INSERT INTO public.personal_expenses
+      (owner_user_id,period_id,booking_date,kind,direction,amount_minor,currency,
+       idempotency_key,create_fingerprint)
+      VALUES ($1,$2,'2027-01-05','savings_transfer','out',3000,'MAD',
+       'canonical-savings',repeat('8',64)) RETURNING id`, [D, canonicalPeriod]));
+    await user(D, tx => tx.unsafe(`INSERT INTO public.personal_expenses
+      (owner_user_id,period_id,booking_date,kind,direction,amount_minor,currency,
+       category,need_vs_want,purpose,counts_in_daily,idempotency_key,create_fingerprint)
+      VALUES ($1,$2,'2027-01-05','expense','out',500,'MAD',
+       'health','need','emergency',true,'canonical-emergency',repeat('9',64))`, [D, canonicalPeriod]));
+
+    const canonicalVersion = (await sql.unsafe("SELECT version FROM public.money_periods WHERE id=$1", [canonicalPeriod]))[0].version;
+    const rejectNonExpense = async (label, id, operationId) => {
+      const attempt = await user(D, tx => close(tx, canonicalPeriod, canonicalVersion, "2027-01-05", operationId, repeat('a',64), [id]));
+      assert(attempt[0].result.status === "included_movement_invalid", label);
+    };
+    await rejectNonExpense("an included income row is not a final purchase", canonicalIncome[0].id, "40000000-0000-4000-8000-000000000001");
+    await rejectNonExpense("an included savings transfer is not a final purchase", canonicalSavings[0].id, "40000000-0000-4000-8000-000000000002");
+    await rejectNonExpense("an included opening row is not a final purchase", canonicalRows[0].opening, "40000000-0000-4000-8000-000000000003");
+    const canonicalBeforeClose = (await sql.unsafe("SELECT active_date,version FROM public.money_periods WHERE id=$1", [canonicalPeriod]))[0];
+    const canonicalCloseCount = await sql.unsafe("SELECT count(*)::int n FROM public.money_day_closes WHERE owner_user_id=$1 AND period_id=$2", [D, canonicalPeriod]);
+    assert(day(canonicalBeforeClose.active_date) === "2027-01-05"
+      && canonicalBeforeClose.version === canonicalVersion && canonicalCloseCount[0].n === 0,
+      "non-expense inclusion refusals leave the period and close evidence unchanged");
+
+    const canonicalClose = await user(D, tx => close(tx, canonicalPeriod, canonicalVersion, "2027-01-05",
+      "40000000-0000-4000-8000-000000000004", repeat('a',64), [canonicalExpense[0].id]));
+    const canonicalResult = canonicalClose[0].result;
+    assert(canonicalResult.status === "closed", "canonical close scenario closes the day");
+    const canonicalSnapshot = canonicalResult.close.snapshot;
+    assert(canonicalSnapshot.expenseTotalMinor === 3800
+      && canonicalSnapshot.dailyIncludedSpendMinor === 3800
+      && canonicalSnapshot.flexibleExpenseTotalMinor === 3300
+      && canonicalSnapshot.fixedExpenseTotalMinor === 0
+      && canonicalSnapshot.emergencyExpenseTotalMinor === 500
+      && canonicalSnapshot.categoryTotals.coffee === 1100
+      && canonicalSnapshot.categoryTotals.groceries === 2200
+      && canonicalSnapshot.categoryTotals.health === 500,
+      "close day totals include legacy unassigned rows from the canonical owner/date predicate");
+    assert(canonicalSnapshot.recordedCashMinor === 99200,
+      "close cash includes unassigned legacy inflows and outflows");
+    assert(canonicalSnapshot.reserves.recordedCashMinor === 99200
+      && canonicalSnapshot.reserves.unpaidCommitmentsMinor === 3500
+      && canonicalSnapshot.reserves.fundedSavingsMinor === 3000
+      && canonicalSnapshot.reserves.unfundedSavingsMinor === 7000
+      && canonicalSnapshot.reserves.emergencyUsedMinor === 500
+      && canonicalSnapshot.reserves.remainingEmergencyMinor === 1500
+      && canonicalSnapshot.reserves.safeFlexibleMinor === 87200,
+      "close reserves keep both future-due commitments and use one cutoff");
+    assert(canonicalSnapshot.dailyReference.safePoolMinor === 76600
+      && canonicalSnapshot.dailyReference.referenceMinor === 2837
+      && canonicalSnapshot.dailyReference.dailyRemainingMinor === -963,
+      "day-start reference reserves the same future commitments before the date");
+
+    const canonicalLive = await user(D, tx => tx.unsafe("SELECT public.money_reserve_inputs($1,'2027-01-05'::date) AS result", [canonicalPeriod]));
+    assert(canonicalLive[0].result.available === true
+      && canonicalLive[0].result.recordedCashMinor === canonicalSnapshot.reserves.recordedCashMinor
+      && canonicalLive[0].result.unpaidCommitmentsMinor === canonicalSnapshot.reserves.unpaidCommitmentsMinor
+      && canonicalLive[0].result.fundedSavingsMinor === canonicalSnapshot.reserves.fundedSavingsMinor
+      && canonicalLive[0].result.emergencyUsedMinor === canonicalSnapshot.reserves.emergencyUsedMinor,
+      "close reserve evidence and the live reserve read are the same canonical inputs");
+    const canonicalDay = await user(D, tx => tx.unsafe("SELECT public.money_day_expense_totals($1,'2027-01-05'::date) AS result", [canonicalPeriod]));
+    const canonicalLedger = await user(D, tx => tx.unsafe("SELECT public.money_ledger_direction_totals('2027-01-05'::date,'2027-01-05'::date) AS result"));
+    assert(canonicalDay[0].result.complete === true
+      && canonicalDay[0].result.expenseTotalMinor === canonicalSnapshot.expenseTotalMinor
+      && canonicalDay[0].result.dailyIncludedSpendMinor === canonicalSnapshot.dailyIncludedSpendMinor
+      && canonicalDay[0].result.categoryTotals.groceries === 2200,
+      "live day totals are the same canonical aggregate as the stored close");
+    assert(canonicalLedger[0].result.inflowsMinor === 6000 && canonicalLedger[0].result.outflowsMinor === 6800,
+      "canonical cash aggregate includes legacy unassigned movements and excludes opening");
+    console.log("[CANONICAL] legacy rows, future commitments and expense-only inclusion match close and live reads");
+
     // Baseline remains unavailable without explicit setup, so a close cannot
     // invent a zero baseline.
     const unsetRows = await user(C, tx => tx.unsafe(`SELECT (p).id AS id, (p).version AS version
@@ -368,7 +494,31 @@ async function main() {
     assert(unsetCloses[0].n === 0, "an unavailable baseline stores no close");
     console.log("[BASELINE] incomplete setup refuses close instead of inventing zero inputs");
 
-    console.log("MONEY-09 day-close proof passed (through 0105).");
+    // Pre-first-close active-date positioning is explicit MONEY-03/08 setup, not
+    // a close: it creates no close evidence, and a close request still cannot
+    // skip the positioned active date. Once close evidence exists the transition
+    // guard makes every later move close-driven.
+    const setupBefore = (await sql.unsafe("SELECT version,active_date FROM public.money_periods WHERE id=$1", [unsetPeriod]))[0];
+    assert(day(setupBefore.active_date) === "2026-10-05", "the fresh period starts on its active date");
+    const positioned = await user(C, tx => tx.unsafe(`SELECT * FROM public.money_update_period(
+      $1,$2,'2026-10-06'::date,NULL::jsonb,NULL::integer,NULL::text,NULL::text,
+      NULL::jsonb,NULL::text,'2026-10-05T20:00:00.000Z'::timestamptz)`, [unsetPeriod, setupBefore.version]));
+    assert(positioned.length === 1 && day(positioned[0].active_date) === "2026-10-06",
+      "pre-first-close positioning remains explicit setup and never claims a close");
+    const positionedCloses = await sql.unsafe("SELECT count(*)::int n FROM public.money_day_closes WHERE owner_user_id=$1 AND period_id=$2", [C, unsetPeriod]);
+    assert(positionedCloses[0].n === 0, "pre-close positioning creates no close evidence");
+    const prepSkip = await user(C, tx => close(tx, unsetPeriod, positioned[0].version, "2026-10-05",
+      "30000000-0000-4000-8000-000000000002", repeat('b',64)));
+    assert(prepSkip[0].result.status === "close_date_not_active",
+      "a distinct-date close cannot skip the positioned active date");
+    await user(C, tx => tx.unsafe(`SELECT * FROM public.money_update_period(
+      $1,$2,'2026-10-05'::date,NULL::jsonb,NULL::integer,NULL::text,NULL::text,
+      NULL::jsonb,NULL::text,'2026-10-05T20:05:00.000Z'::timestamptz)`, [unsetPeriod, positioned[0].version]));
+    const rewound = (await sql.unsafe("SELECT active_date FROM public.money_periods WHERE id=$1", [unsetPeriod]))[0];
+    assert(day(rewound.active_date) === "2026-10-05", "pre-close setup can still rewind without close evidence");
+    console.log("[SETUP] pre-first-close positioning is explicit setup; close requests still cannot skip");
+
+    console.log("MONEY-09 day-close proof passed (through 0106).");
   } catch (error) {
     console.error(error);
     exit(1);

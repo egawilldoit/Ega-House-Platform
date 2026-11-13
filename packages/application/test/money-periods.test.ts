@@ -73,6 +73,15 @@ function makeRepository() {
       const amount = ledger.filter((row) => row.ownerUserId === actor.userId && row.periodId === periodId && row.bookingDate === date && !row.deletedAt).reduce((sum, row) => sum + row.amountMinor, 0);
       return { ok: true as const, value: { ...dailyTotal, amountMinor: amount || dailyTotal.amountMinor } };
     },
+    async getDayCloseForDate() {
+      return { ok: true as const, value: null };
+    },
+    async getReserveInputs() {
+      return {
+        ok: true as const,
+        value: { available: false as const, reason: "reserve_inputs_incomplete" },
+      };
+    },
     async findTracking(actor) {
       return {
         ok: true as const,

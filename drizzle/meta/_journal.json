@@ -687,6 +687,13 @@
       "when": 1787880000068,
       "tag": "0105_money_09_close_review_fixes",
       "breakpoints": true
+    },
+    {
+      "idx": 119,
+      "version": "7",
+      "when": 1787880000069,
+      "tag": "0106_money_09_close_canonical_predicate",
+      "breakpoints": true
     }
   ]
 }
