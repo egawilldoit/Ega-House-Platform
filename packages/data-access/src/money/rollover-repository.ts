@@ -1,5 +1,6 @@
 import type {
   AuthenticatedActor,
+  MoneyRolloverBridgeList,
   MoneyRolloverBridgeRecord,
   MoneyRolloverPendingOccurrence,
   MoneyRolloverRecord,
@@ -47,6 +48,7 @@ const BRIDGE_COLUMNS =
 
 const PENDING_PAGE_SIZE = 1000;
 const PENDING_MAX_ROWS = 10000;
+const BRIDGE_READ_LIMIT = 500;
 
 type PolicyRow = { policy: unknown };
 
@@ -114,6 +116,7 @@ function toCloseSnapshotAssessment(
           : "close_snapshot_summary_unavailable",
     };
   }
+  const missingCloseDates = row.missingCloseDates;
   if (
     typeof row.closeCount !== "number" ||
     !Number.isInteger(row.closeCount) ||
@@ -121,8 +124,19 @@ function toCloseSnapshotAssessment(
     typeof row.requiredCloseCount !== "number" ||
     !Number.isInteger(row.requiredCloseCount) ||
     row.requiredCloseCount < 1 ||
+    (row.trackedFromDate !== null && typeof row.trackedFromDate !== "string") ||
+    !Array.isArray(missingCloseDates) ||
+    !missingCloseDates.every(
+      (date) => typeof date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(date),
+    ) ||
+    new Set(missingCloseDates).size !== missingCloseDates.length ||
     typeof row.completeCloseEvidence !== "boolean" ||
-    row.completeCloseEvidence !== (row.closeCount >= row.requiredCloseCount) ||
+    row.completeCloseEvidence !==
+      (missingCloseDates.length === 0 &&
+        row.closeCount === row.requiredCloseCount) ||
+    // Every close is inside [first close, end], so the tracked days without a
+    // close must exactly account for the required-minus-retained difference.
+    row.requiredCloseCount - missingCloseDates.length !== row.closeCount ||
     row.comparableToRestatedTotals !== true ||
     typeof row.restatedDifferenceCount !== "number" ||
     !Number.isInteger(row.restatedDifferenceCount) ||
@@ -165,6 +179,9 @@ function toCloseSnapshotAssessment(
     available: true,
     closeCount: row.closeCount,
     requiredCloseCount: row.requiredCloseCount,
+    trackedFromDate:
+      typeof row.trackedFromDate === "string" ? row.trackedFromDate : null,
+    missingCloseDates: missingCloseDates.map(String),
     completeCloseEvidence: row.completeCloseEvidence,
     lastClosedDate:
       typeof row.lastClosedDate === "string" ? row.lastClosedDate : null,
@@ -327,18 +344,26 @@ export class SupabaseMoneyRolloverRepository implements MoneyRolloverRepository 
   async listCorrectionBridges(
     actor: AuthenticatedActor,
     destinationPeriodId: string,
-  ): Promise<RepositoryResult<readonly MoneyRolloverBridgeRecord[]>> {
-    const { data, error } = await this.supabase
+  ): Promise<RepositoryResult<MoneyRolloverBridgeList>> {
+    const { data, error, count } = await this.supabase
       .from(BRIDGE_TABLE)
-      .select(BRIDGE_COLUMNS)
+      .select(BRIDGE_COLUMNS, { count: "exact" })
       .eq("owner_user_id", actor.userId)
       .eq("destination_period_id", destinationPeriodId)
       .order("created_at", { ascending: false })
-      .limit(500);
+      .limit(BRIDGE_READ_LIMIT);
     if (error) return { ok: false, error: failure(error) };
+    const bridges = ((data ?? []) as BridgeRow[]).map(toBridgeRecord);
+    // The read is bounded. When the exact total is unavailable we cannot prove
+    // the list is complete, so the caller must disclose that rather than render
+    // a silently shortened variance history.
     return {
       ok: true,
-      value: ((data ?? []) as BridgeRow[]).map(toBridgeRecord),
+      value: {
+        bridges,
+        truncated:
+          typeof count !== "number" || count > bridges.length,
+      },
     };
   }
 
@@ -454,7 +479,8 @@ export class SupabaseMoneyRolloverRepository implements MoneyRolloverRepository 
         pendingOccurrences: pendingResult.value.rows,
         pendingOccurrencesTruncated: pendingResult.value.truncated,
         closeSnapshots: toCloseSnapshotAssessment(closeSnapshotResult.data),
-        priorCorrectionBridges: bridgesResult.value,
+        priorCorrectionBridges: bridgesResult.value.bridges,
+        priorCorrectionBridgesTruncated: bridgesResult.value.truncated,
         existingSuccessorPeriodId:
           successorResult.data?.successor_period_id == null
             ? null

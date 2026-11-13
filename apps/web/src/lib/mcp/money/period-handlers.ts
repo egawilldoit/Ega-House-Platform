@@ -7,6 +7,7 @@ import {
   getCurrentMoneyReserves,
   getMoneyRolloverPreviewForPeriod,
   getMoneyState,
+  listMoneyRolloverBridges,
   rebaseMoneyDayStartBaseline,
   rolloverMoneyPeriod,
   updateMoneySettings,
@@ -70,6 +71,14 @@ export type McpMoneyPeriodHandlers = {
   rebaseMoneyDayStartBaseline(authInfo: AuthInfo | undefined, periodId: string): Promise<CallToolResult>;
   /** MONEY-10 rollover preview for one finished source period. */
   moneyRolloverPreview(
+    authInfo: AuthInfo | undefined,
+    periodId: string,
+  ): Promise<CallToolResult>;
+  /**
+   * MONEY-10 historical correction variances that targeted one period,
+   * including a tracking successor with an explicit completeness disclosure.
+   */
+  moneyRolloverVariances(
     authInfo: AuthInfo | undefined,
     periodId: string,
   ): Promise<CallToolResult>;
@@ -375,6 +384,42 @@ export function createMcpMoneyPeriodHandlers(
         return errorResult({
           code: "DEPENDENCY_UNAVAILABLE",
           message: "The rollover preview is temporarily unavailable.",
+        });
+      }
+    },
+
+    async moneyRolloverVariances(authInfo, periodId) {
+      try {
+        const { actor, client } = contextOf(authInfo, "personal_ops.read");
+        const result = await listMoneyRolloverBridges(
+          actor,
+          new SupabaseMoneyRolloverRepository(client as never),
+          periodId,
+        );
+        if (!result.ok) return mapApplicationError(result);
+        const bridges = result.data.bridges;
+        return resultFromPayload({
+          ok: true,
+          periodId,
+          currency: "MAD",
+          bridges,
+          count: bridges.length,
+          appliedAdjustmentCount: bridges.filter((bridge) => bridge.applied)
+            .length,
+          varianceCount: bridges.filter((bridge) => !bridge.applied).length,
+          complete: !result.data.truncated,
+          truncated: result.data.truncated,
+          note: result.data.truncated
+            ? "The bounded variance read returned only part of this period's correction history. Do not treat the list as complete or as proof that no variance exists."
+            : "All correction bridges that targeted this period are included. Variance rows stopped at an independently verified opening and did not alter it.",
+        });
+      } catch (error) {
+        if (error instanceof McpToolAuthorizationError) {
+          return errorResult({ code: error.code, message: error.message });
+        }
+        return errorResult({
+          code: "DEPENDENCY_UNAVAILABLE",
+          message: "Historical rollover variances are temporarily unavailable.",
         });
       }
     },

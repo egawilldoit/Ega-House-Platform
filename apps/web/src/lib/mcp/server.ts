@@ -101,6 +101,12 @@ export type McpReadToolHandlers = {
     input: { periodId: string },
     context?: McpProtocolContext,
   ) => Promise<CallToolResult>;
+  /** MONEY-10 historical correction variances for any owner period. */
+  moneyRolloverVariances: (
+    authInfo: AuthInfo | undefined,
+    input: { periodId: string },
+    context?: McpProtocolContext,
+  ) => Promise<CallToolResult>;
   /** MONEY-04 movement reads (distinct from the expense ledger reads). */
   moneyMovementList: (
     authInfo: AuthInfo | undefined,
@@ -1581,13 +1587,34 @@ const READ_TOOL_REGISTRATIONS: readonly ReadToolRegistration[] = [
         {
           title: "Preview a Money period rollover",
           description:
-            "Preview the one explicit successor for a finished Money period. The source must be ended with every tracked day closed and retained close evidence for each day. Returns the default successor dates (full calendar months keep their month span; partial periods keep their inclusive length), the effective source policy copied to the successor, the modeled closing cash, retained close evidence compared with live restated totals, linked paid-obligation and counted-visit consistency, savings target versus actual transfers, unpaid occurrences (paginated completely or blocked when the bounded read is exceeded), regenerated occurrences, derived coffee week windows, prior correction-variance disclosures, and any choices or blockers. `choices` must be resolved by the owner, including restated closes, payment/visit mismatches and unpaid-item treatment; `blockers` mean rollover cannot proceed. Unknown closing cash is never zero. Requires the explicit personal_ops.read grant.",
+            "Preview the one explicit successor for a finished Money period. The source must be ended with every tracked day closed and retained close evidence for each day. Returns the default successor dates (full calendar months keep their month span; partial periods keep their inclusive length), the effective source policy copied to the successor, the modeled closing cash, retained close evidence compared with live restated totals, linked paid-obligation and counted-visit consistency, savings target versus actual transfers, unpaid occurrences (paginated completely or blocked when the bounded read is exceeded), regenerated occurrences, derived coffee week windows, prior correction-variance disclosures with a `priorCorrectionBridgesTruncated` completeness flag, and any choices or blockers. `choices` must be resolved by the owner, including restated closes, payment/visit mismatches and unpaid-item treatment; `blockers` mean rollover cannot proceed. Unknown closing cash is never zero. Requires the explicit personal_ops.read grant.",
           inputSchema: moneyRolloverPreviewInputSchema,
           outputSchema: moneyStateOutputSchema,
           annotations: READ_ONLY_ANNOTATIONS,
         },
         async (input, ctx) =>
           handlers.moneyRolloverPreview(
+            getAuthInfo(ctx as unknown as ServerContext),
+            input,
+            getProtocolContext(ctx as unknown as ServerContext),
+          ),
+      ),
+  },
+  {
+    name: "ega_money_rollover_variances",
+    register: (server, handlers) =>
+      server.registerTool(
+        "ega_money_rollover_variances",
+        {
+          title: "List Money rollover correction variances",
+          description:
+            "List the historical correction bridges that targeted one Money period, including a tracking successor that received a correction from a rolled-over predecessor. `bridges` with `applied=false` are disclosed variances: the correction stopped at an independently verified opening and did not alter that snapshot. `applied=true` rows are real reconciliation adjustments already posted in this period. `complete` is false when the bounded read could not prove the full history; never treat `complete=false` as no variance. Amounts are integer MAD centimes. Requires the explicit personal_ops.read grant.",
+          inputSchema: moneyRolloverPreviewInputSchema,
+          outputSchema: moneyStateOutputSchema,
+          annotations: READ_ONLY_ANNOTATIONS,
+        },
+        async (input, ctx) =>
+          handlers.moneyRolloverVariances(
             getAuthInfo(ctx as unknown as ServerContext),
             input,
             getProtocolContext(ctx as unknown as ServerContext),

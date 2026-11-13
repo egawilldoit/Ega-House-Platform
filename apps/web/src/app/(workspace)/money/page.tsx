@@ -19,7 +19,8 @@ import {
   type MoneyRolloverBridgeRecord,
   type MoneyRolloverPreview,
   type MoneyState,
-} from "@ega/application";import {
+} from "@ega/application";
+import {
   SupabaseExpenseRepository,
   SupabaseMoneyBudgetRepository,
   SupabaseMoneyCoffeeRepository,
@@ -109,6 +110,7 @@ export default async function MoneyPage({ searchParams }: Props) {
   let rolloverPreview: MoneyRolloverPreview | null = null;
   let rolloverPreviewError: string | null = null;
   let rolloverBridges: readonly MoneyRolloverBridgeRecord[] | null = null;
+  let rolloverBridgesTruncated = false;
   let rolloverBridgesError: string | null = null;
   let movementsHasMore = false;
   let timezone: string = MONEY_DEFAULT_TIMEZONE;
@@ -249,7 +251,12 @@ export default async function MoneyPage({ searchParams }: Props) {
         new SupabaseMoneyRolloverRepository(client),
         moneyState.period.id,
       ).catch(() => null);
-      rolloverBridges = bridgesResult?.ok ? bridgesResult.data : null;
+      rolloverBridges = bridgesResult?.ok
+        ? bridgesResult.data.bridges
+        : null;
+      rolloverBridgesTruncated = bridgesResult?.ok
+        ? bridgesResult.data.truncated
+        : false;
       rolloverBridgesError =
         bridgesResult && !bridgesResult.ok
           ? "Historical correction variances could not be loaded right now."
@@ -357,6 +364,7 @@ export default async function MoneyPage({ searchParams }: Props) {
       {moneyState.period ? (
         <MoneyRolloverVariancePanel
           bridges={rolloverBridges}
+          truncated={rolloverBridgesTruncated}
           unavailableReason={rolloverBridgesError}
         />
       ) : null}

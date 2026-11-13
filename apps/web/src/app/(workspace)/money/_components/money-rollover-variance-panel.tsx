@@ -3,6 +3,8 @@ import { formatMinorToMad } from "@/lib/money/money-amount";
 
 type MoneyRolloverVariancePanelProps = {
   bridges: readonly MoneyRolloverBridgeRecord[] | null;
+  /** True when the bounded read could not prove the full variance history. */
+  truncated?: boolean;
   unavailableReason: string | null;
 };
 
@@ -14,10 +16,11 @@ type MoneyRolloverVariancePanelProps = {
  */
 export function MoneyRolloverVariancePanel({
   bridges,
+  truncated = false,
   unavailableReason,
 }: MoneyRolloverVariancePanelProps) {
   const variances = (bridges ?? []).filter((bridge) => !bridge.applied);
-  if (unavailableReason === null && variances.length === 0) return null;
+  if (unavailableReason === null && variances.length === 0 && !truncated) return null;
 
   return (
     <section
@@ -36,23 +39,38 @@ export function MoneyRolloverVariancePanel({
         </p>
       ) : (
         <>
-          <p className="mt-2 text-[color:var(--ega-text-secondary)]">
-            A correction to the previous period could not be posted into this
-            period&apos;s independently verified opening. The variance is disclosed
-            here and the verified snapshot stays unchanged.
-          </p>
-          <ul className="mt-3 flex flex-col gap-1">
-            {variances.map((bridge) => (
-              <li key={bridge.id}>
-                <span className="font-medium">
-                  {formatMinorToMad(bridge.amountMinor)}{" "}
-                  {bridge.direction === "in" ? "in" : "out"}
-                </span>{" "}
-                — {bridge.varianceReason?.replaceAll("_", " ")} (movement{" "}
-                {bridge.movementId}, version {bridge.correctionVersion})
-              </li>
-            ))}
-          </ul>
+          {truncated ? (
+            <p role="alert" className="feedback-block feedback-block-error mt-2">
+              The bounded correction-variance read returned only part of this
+              period&apos;s history. Do not treat this list as complete or as
+              proof that no variance exists.
+            </p>
+          ) : null}
+          {variances.length > 0 ? (
+            <>
+              <p className="mt-2 text-[color:var(--ega-text-secondary)]">
+                A correction to the previous period could not be posted into this
+                period&apos;s independently verified opening. The variance is
+                disclosed here and the verified snapshot stays unchanged.
+              </p>
+              <ul className="mt-3 flex flex-col gap-1">
+                {variances.map((bridge) => (
+                  <li key={bridge.id}>
+                    <span className="font-medium">
+                      {formatMinorToMad(bridge.amountMinor)}{" "}
+                      {bridge.direction === "in" ? "in" : "out"}
+                    </span>{" "}
+                    — {bridge.varianceReason?.replaceAll("_", " ")} (movement{" "}
+                    {bridge.movementId}, version {bridge.correctionVersion})
+                  </li>
+                ))}
+              </ul>
+            </>
+          ) : (
+            <p className="mt-2 text-[color:var(--ega-text-secondary)]">
+              No complete variance is available from the bounded read.
+            </p>
+          )}
         </>
       )}
     </section>

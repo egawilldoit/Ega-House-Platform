@@ -49,3 +49,15 @@ test("variance panel reports an unavailable disclosure read", () => {
   );
   assert.match(html, /could not be loaded/);
 });
+
+test("variance panel never presents a truncated read as a complete history", () => {
+  const html = renderToStaticMarkup(
+    <MoneyRolloverVariancePanel
+      bridges={[bridge]}
+      truncated
+      unavailableReason={null}
+    />,
+  );
+  assert.match(html, /only part of this period/i);
+  assert.match(html, /Do not treat this list as complete/);
+});

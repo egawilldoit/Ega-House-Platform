@@ -23,7 +23,8 @@ Status: implementation candidate on `t3/money-10-mcp-delivery`, rebased onto
   (`GET /api/money/periods/:id/rollover/preview`,
   `POST /api/money/periods/:id/rollover`), typed api-client methods, a web
   server action and a rollover panel, and the MCP tools
-  `ega_money_rollover_preview` (read) and `ega_money_rollover_period` (write).
+  `ega_money_rollover_preview` and `ega_money_rollover_variances` (read) and
+  `ega_money_rollover_period` (write).
 - Proofs: `packages/domain/test/money-rollover.test.ts`,
   `packages/application/test/money-rollover.test.ts` and
   `scripts/db/money-10-rollover-verify.mjs`.
@@ -31,11 +32,15 @@ Status: implementation candidate on `t3/money-10-mcp-delivery`, rebased onto
 ## MONEY-09 integration (implemented here)
 
 1. **Finished source state.** Rollover requires
-   `money_periods.lifecycle = 'ended'` and `active_date = end_date`, and the
-   retained close count must equal the inclusive source days. The durable day
-   close is the only normal producer of that state; a tracking source fails the
-   preview before the panel is rendered, and a missing earlier close is a
-   blocker rather than a passed comparison.
+   `money_periods.lifecycle = 'ended'` and `active_date = end_date`. Close
+   evidence is complete when every day from the first retained close (the
+   tracking start) through the source end has exactly one close. A period
+   created on a month boundary but tracked from a later active date therefore
+   rolls over normally: its untracked leading calendar days are not evidence
+   gaps. An actual missing day inside the tracked range blocks the preview and
+   the atomic write, and the blocker names the first missing date. The durable
+   day close is the only normal producer of the finished state; a tracking
+   source fails the preview before the panel is rendered.
 2. **Close snapshots.** `MoneyRolloverSourceContext.closeSnapshots` is read from
    `money_day_closes` by `money_rollover_close_snapshot_summary`. Every retained
    close is compared with the same canonical aggregates used by the MONEY-09
@@ -64,7 +69,10 @@ Status: implementation candidate on `t3/money-10-mcp-delivery`, rebased onto
    overrides. Unpaid occurrences are read through bounded pages with an explicit
    truncation blocker. A `money-rollover-variance-panel` on the destination
    period and `priorCorrectionBridges` in the preview/MCP response disclose
-   corrections that stopped at a verified opening.
+   corrections that stopped at a verified opening. The same variance history is
+   reachable over MCP for a tracking successor through
+   `ega_money_rollover_variances`; its bounded read reports `complete=false` and
+   `truncated=true` instead of presenting a shortened list as the full history.
 
 ## Deliberate limits
 
@@ -87,6 +95,12 @@ Status: implementation candidate on `t3/money-10-mcp-delivery`, rebased onto
   rebase/complete-setup action before the first successor day is closed; the
   current MONEY-08 rebase accepts a past active date in a tracking period, so a
   late rollover can still complete setup without moving the date to today.
+- `p_provenance` is composed by the application and is not independently
+  revalidated by the rollover RPC; a direct SQL caller can pass arbitrary JSON,
+  as with the other Money RPCs. The RPC does validate every input that changes
+  cash, policy, or the close/reconciliation gate.
+- The variance read is bounded at 500 rows. It reports truncation rather than
+  silently shortening the history; it does not paginate beyond that bound.
 
 ## Verification run on this branch
 
@@ -99,10 +113,17 @@ Status: implementation candidate on `t3/money-10-mcp-delivery`, rebased onto
   period-settings copy followed by an available explicit setup baseline, replay
   without duplicates, unpaid one-off carry with reason history, the ledger
   trigger's incremental bridge, bridge replay idempotency, a verified-opening stop
-  with variance disclosure, read-grant denial, every-day close evidence,
-  backdated/legacy and cross-window bridging, and owner-scoped receipts.
+  with variance disclosure, read-grant denial plus the positive writer-grant
+  precondition, a default midmonth source that rolls over from its first tracked
+  day, an interior tracked-range gap that is detected and blocks rollover, paid-
+  obligation and counted-visit mismatches that each gate the note independently
+  of restated closes, a source soft delete that restores successor cash and keeps
+  the frozen source snapshot, backdated/legacy and cross-window bridging, and
+  owner-scoped receipts.
 - `npm run domain:test`, `npm run application:test`, `npm run data-access:test`
-  and `npm run contracts:test` passed.
+  and `npm run contracts:test` passed. The data-access suite covers the bounded
+  pending-occurrence pagination, effective-policy read/fallback, bridge
+  truncation disclosure and the stricter close-summary validation.
 - `npm run domain:typecheck`, `npm run application:typecheck`,
   `npm run data-access:typecheck`, `npm run contracts:typecheck`,
   `npm run api-client:typecheck`, `npm run web:typecheck` and

@@ -35,6 +35,7 @@ import {
 import type { ObligationRepository } from "./obligation-ports";
 import { obligationReceiptFingerprint } from "./obligations";
 import type {
+  MoneyRolloverBridgeList,
   MoneyRolloverBridgeRecord,
   MoneyRolloverCarryItem,
   MoneyRolloverObligationPlanItem,
@@ -96,6 +97,8 @@ export type MoneyRolloverPreview = Readonly<{
   pendingOccurrencesTruncated: boolean;
   /** Corrections from a rolled-over predecessor that affected this period. */
   priorCorrectionBridges: readonly MoneyRolloverBridgeRecord[];
+  /** True when the bounded bridge read could not prove the full list. */
+  priorCorrectionBridgesTruncated: boolean;
   generatedObligations: readonly Readonly<{
     templateId: string;
     description: string;
@@ -489,6 +492,7 @@ function previewOf(prepared: Prepared): MoneyRolloverPreview {
     pendingOccurrences: source.pendingOccurrences,
     pendingOccurrencesTruncated: source.pendingOccurrencesTruncated,
     priorCorrectionBridges: source.priorCorrectionBridges,
+    priorCorrectionBridgesTruncated: source.priorCorrectionBridgesTruncated,
     generatedObligations: obligations.map((item) => ({
       templateId: item.values.templateId ?? "",
       description: item.values.description,
@@ -620,7 +624,7 @@ export async function rolloverMoneyPeriod(
 
   const prepared = await prepareRollover(actor, dependencies, parsed.value, options);
   if (!prepared.ok) return applicationFailure(prepared.message, prepared.code);
-  const { source, values, targets, opening, initialized, reconciliation, obligations, carried } =
+  const { values, targets, opening, initialized, reconciliation, obligations, carried } =
     prepared.value;
   if (!prepared.value.ready || opening === null) {
     return applicationFailure(
@@ -679,13 +683,14 @@ export function defaultRolloverRangeFor(source: {
  * Read the correction bridges that targeted one period. This is the disclosure
  * path for a historical variance: the verified opening is never rewritten, but
  * the owner and MCP can see that a later correction was intentionally not
- * posted into it.
+ * posted into it. The bounded read reports `truncated` so an incomplete list is
+ * never presented as the complete variance history.
  */
 export async function listMoneyRolloverBridges(
   actor: AuthenticatedActor,
   repository: MoneyRolloverRepository,
   periodId: unknown,
-): Promise<ApplicationResult<readonly MoneyRolloverBridgeRecord[]>> {
+): Promise<ApplicationResult<MoneyRolloverBridgeList>> {
   if (typeof periodId !== "string" || !periodId.trim()) {
     return applicationFailure("A valid Money period ID is required.", "validation");
   }

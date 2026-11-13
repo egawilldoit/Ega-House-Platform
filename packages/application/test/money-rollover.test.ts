@@ -75,7 +75,13 @@ function fakeRepository(context: MoneyRolloverSourceContext) {
       return { ok: true, value: context };
     },
     async listCorrectionBridges() {
-      return { ok: true, value: context.priorCorrectionBridges };
+      return {
+        ok: true,
+        value: {
+          bridges: context.priorCorrectionBridges,
+          truncated: context.priorCorrectionBridgesTruncated,
+        },
+      };
     },
     async findRolloverByOperation(_actor, operationId) {
       return {
@@ -126,6 +132,8 @@ function context(overrides: Partial<MoneyRolloverSourceContext> = {}): MoneyRoll
       available: true,
       closeCount: 19,
       requiredCloseCount: 19,
+      trackedFromDate: "2026-11-12",
+      missingCloseDates: [],
       completeCloseEvidence: true,
       lastClosedDate: "2026-11-30",
       comparableToRestatedTotals: true,
@@ -139,6 +147,7 @@ function context(overrides: Partial<MoneyRolloverSourceContext> = {}): MoneyRoll
       restatedDifferences: [],
     },
     priorCorrectionBridges: [],
+    priorCorrectionBridgesTruncated: false,
     existingSuccessorPeriodId: null,
     existingRollover: null,
     ...overrides,
@@ -319,6 +328,8 @@ test("restated close snapshots need an acceptance note before the write", async 
     available: true as const,
     closeCount: 19,
     requiredCloseCount: 19,
+    trackedFromDate: "2026-11-12",
+    missingCloseDates: [],
     completeCloseEvidence: true,
     lastClosedDate: "2026-11-30",
     comparableToRestatedTotals: true as const,
@@ -472,6 +483,8 @@ test("a restated close never hides paid-obligation and visit mismatches", async 
         available: true,
         closeCount: 19,
         requiredCloseCount: 19,
+        trackedFromDate: "2026-11-12",
+        missingCloseDates: [],
         completeCloseEvidence: true,
         lastClosedDate: "2026-11-30",
         comparableToRestatedTotals: true,
@@ -512,8 +525,10 @@ test("incomplete close evidence blocks rollover even when the final day closed",
     context({
       closeSnapshots: {
         available: true,
-        closeCount: 1,
-        requiredCloseCount: 2,
+        closeCount: 18,
+        requiredCloseCount: 19,
+        trackedFromDate: "2026-11-13",
+        missingCloseDates: ["2026-11-20"],
         completeCloseEvidence: false,
         lastClosedDate: "2026-11-30",
         comparableToRestatedTotals: true,
@@ -537,7 +552,15 @@ test("incomplete close evidence blocks rollover even when the final day closed",
   assert.equal(preview.ok && preview.data.ready, false);
   assert.match(
     preview.ok ? preview.data.blockers.join(" ") : "",
-    /Every tracked source day/,
+    /gap inside the tracked range/,
+  );
+  assert.match(
+    preview.ok
+      ? preview.data.reconciliation.differences
+          .find((entry) => entry.code === "incomplete_close_evidence")
+          ?.message ?? ""
+      : "",
+    /2026-11-20/,
   );
   assert.equal(
     preview.ok &&
@@ -592,5 +615,26 @@ test("preview and the bridge read expose historical variance disclosures", async
     "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
   );
   assert.equal(listed.ok, true);
-  assert.deepEqual(listed.ok && listed.data, [bridge]);
+  assert.deepEqual(listed.ok && listed.data.bridges, [bridge]);
+  assert.equal(listed.ok && listed.data.truncated, false);
+});
+
+test("a truncated bridge read is disclosed instead of presented as no variance", async () => {
+  const fake = fakeRepository(
+    context({ priorCorrectionBridgesTruncated: true }),
+  );
+  const listed = await listMoneyRolloverBridges(
+    actor,
+    fake.repository,
+    "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+  );
+  assert.equal(listed.ok, true);
+  assert.equal(listed.ok && listed.data.truncated, true);
+
+  const preview = await getMoneyRolloverPreviewForPeriod(
+    actor,
+    { repository: fake.repository, obligations: noTemplates },
+    "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+  );
+  assert.equal(preview.ok && preview.data.priorCorrectionBridgesTruncated, true);
 });

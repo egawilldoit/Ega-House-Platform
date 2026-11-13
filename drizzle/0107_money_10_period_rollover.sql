@@ -285,6 +285,8 @@ DECLARE
   v_savings_transferred integer := 0;
   v_policy public.money_policy_versions;
   v_settings jsonb;
+  v_first_close date;
+  v_missing_dates text[] := ARRAY[]::text[];
   v_required_closes integer;
 BEGIN
   IF v_owner IS NULL THEN
@@ -302,16 +304,35 @@ BEGIN
     RETURN jsonb_build_object('available', false, 'reason', 'source_period_not_found');
   END IF;
 
-  v_required_closes := v_period.end_date - v_period.start_date + 1;
-
-  SELECT count(*)::integer, max(close_date)
-    INTO v_count, v_last
+  SELECT count(*)::integer, max(close_date), min(close_date)
+    INTO v_count, v_last, v_first_close
     FROM public.money_day_closes
     WHERE owner_user_id = v_owner AND period_id = p_period_id;
 
   IF v_count = 0 THEN
     RETURN jsonb_build_object('available', false, 'reason', 'no_close_evidence');
   END IF;
+
+  -- Tracking starts at the first retained close. A period created on a month
+  -- boundary but tracked from a later active date has no closes for the leading
+  -- calendar days; those days were never tracked and must not make rollover
+  -- permanently unsatisfiable. Every day from that tracking start through the
+  -- source end still needs one close, so a real gap is detected explicitly.
+  v_required_closes := v_period.end_date - v_first_close + 1;
+  SELECT COALESCE(array_agg(day::date::text ORDER BY day), ARRAY[]::text[])
+    INTO v_missing_dates
+    FROM generate_series(
+      v_first_close::timestamp,
+      v_period.end_date::timestamp,
+      interval '1 day'
+    ) AS day
+    WHERE NOT EXISTS (
+      SELECT 1
+      FROM public.money_day_closes AS closing
+      WHERE closing.owner_user_id = v_owner
+        AND closing.period_id = p_period_id
+        AND closing.close_date = day::date
+    );
 
   SELECT amount_minor INTO v_opening
   FROM public.personal_expenses
@@ -445,7 +466,10 @@ BEGIN
     'available', true,
     'closeCount', v_count,
     'requiredCloseCount', v_required_closes,
-    'completeCloseEvidence', v_count = v_required_closes,
+    'trackedFromDate', v_first_close,
+    'missingCloseDates', to_jsonb(v_missing_dates),
+    'completeCloseEvidence',
+      v_count = v_required_closes AND cardinality(v_missing_dates) = 0,
     'lastClosedDate', v_last,
     'comparableToRestatedTotals', true,
     'restatedDifferenceCount', v_restated_count,
@@ -662,8 +686,15 @@ BEGIN
   v_required_closes := COALESCE((v_close_summary ->> 'requiredCloseCount')::integer, 0);
   IF COALESCE((v_close_summary ->> 'completeCloseEvidence')::boolean, false) IS NOT TRUE
      OR COALESCE((v_close_summary ->> 'closeCount')::integer, 0) <> v_required_closes THEN
-    RAISE EXCEPTION 'Every source day needs retained close evidence before rollover.'
-      USING ERRCODE = '23514';
+    RAISE EXCEPTION 'Every tracked source day needs retained close evidence before rollover.'
+      USING ERRCODE = '23514',
+            DETAIL = 'Missing close dates: ' || COALESCE(
+              (SELECT string_agg(entry, ', ')
+               FROM jsonb_array_elements_text(
+                 COALESCE(v_close_summary -> 'missingCloseDates', '[]'::jsonb)
+               ) AS entry),
+              'unknown'
+            );
   END IF;
   IF COALESCE((v_close_summary ->> 'comparableToRestatedTotals')::boolean, false) IS NOT TRUE
      OR (v_close_summary ->> 'lastClosedDate')::date IS DISTINCT FROM v_source.end_date THEN
