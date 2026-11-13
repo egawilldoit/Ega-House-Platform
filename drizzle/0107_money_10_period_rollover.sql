@@ -646,7 +646,7 @@ BEGIN
     RAISE EXCEPTION 'Successor settings overrides must be a JSON object.'
       USING ERRCODE = '23514';
   END IF;
-  IF p_settings ? 'savingsTargetMinor' AND (
+  IF p_settings ? 'savingsTargetMinor' AND jsonb_typeof(p_settings -> 'savingsTargetMinor') <> 'null' AND (
     jsonb_typeof(p_settings -> 'savingsTargetMinor') <> 'number'
     OR (p_settings ->> 'savingsTargetMinor')::numeric < 0
     OR (p_settings ->> 'savingsTargetMinor')::numeric > 2147483647
@@ -655,7 +655,7 @@ BEGIN
     RAISE EXCEPTION 'savingsTargetMinor must be a non-negative integer.'
       USING ERRCODE = '23514';
   END IF;
-  IF p_settings ? 'emergencyTargetMinor' AND (
+  IF p_settings ? 'emergencyTargetMinor' AND jsonb_typeof(p_settings -> 'emergencyTargetMinor') <> 'null' AND (
     jsonb_typeof(p_settings -> 'emergencyTargetMinor') <> 'number'
     OR (p_settings ->> 'emergencyTargetMinor')::numeric < 0
     OR (p_settings ->> 'emergencyTargetMinor')::numeric > 2147483647
