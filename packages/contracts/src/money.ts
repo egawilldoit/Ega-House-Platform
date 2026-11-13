@@ -8,6 +8,9 @@ import type { ExpenseDto } from "./expenses";
 import type {
   CoffeeWindowSummary,
   MoneyBudgetAllocations,
+  MoneyDayClose,
+  MoneyDayCloseComparison,
+  MoneyDayCloseRestatedTotals,
   MoneyDirection,
   MoneyKind,
   MoneyOpeningProvenance,
@@ -142,6 +145,10 @@ export type MoneyStateDto = Readonly<{
   period: MoneyPeriodDto | null;
   opening: MoneyOpeningDto;
   cash: MoneyCashDto;
+  dayClose: MoneyDayCloseStateDto | null;
+  lastClose: MoneyDayCloseStateDto | null;
+  recentCloses: readonly MoneyDayCloseDto[];
+  dayClosesUnavailable: boolean;
   dateResolution: MoneyStateDateResolutionDto;
   history: readonly MoneyStatePeriodSummaryDto[];
   historyUnavailable: boolean;
@@ -189,6 +196,61 @@ export type UpdateMoneySettingsRequest = Readonly<{
 export type UpdateMoneySettingsResponse = Readonly<{
   ok: true;
   period: MoneyPeriodDto;
+}>;
+
+/* ------------------------------------------------------------------ */
+/* MONEY-09: durable day close and retained correction evidence        */
+/* ------------------------------------------------------------------ */
+
+export type MoneyDayCloseDto = MoneyDayClose;
+
+export type MoneyDayCloseRestatedTotalsDto = MoneyDayCloseRestatedTotals;
+
+export type MoneyDayCloseComparisonDto = MoneyDayCloseComparison;
+
+export type MoneyDayCloseStateDto = Readonly<{
+  close: MoneyDayCloseDto;
+  comparison: MoneyDayCloseComparisonDto;
+}>;
+
+/**
+ * A final purchase is recorded through the canonical expense path with its own
+ * stable idempotency key before the close transition. `bookingDate` is always
+ * the closed day; a caller never supplies it here.
+ */
+export type MoneyDayCloseFinalPurchaseRequest = Readonly<{
+  amountMinor: number;
+  category: ExpenseCategory;
+  note?: string | null;
+  merchant?: string | null;
+  needVsWant: ExpenseNeedVsWant;
+  paymentMethod?: ExpensePaymentMethod | null;
+  purpose?: MoneyPurpose | null;
+  countsInDaily?: boolean;
+  idempotencyKey: string;
+}>;
+
+export type CloseMoneyDayRequest = Readonly<{
+  /** Expected positive version of the period before the close. */
+  version: number;
+  /** Optional explicit period; defaults to the single tracking period. */
+  periodId?: string;
+  /** Optional explicit date; defaults to the active date and must equal it. */
+  date?: string;
+  /** CLOSED note; it is retained with the close evidence. */
+  note?: string | null;
+  /** Stable retry identity of this close. */
+  operationId: string;
+  finalPurchases?: readonly MoneyDayCloseFinalPurchaseRequest[];
+}>;
+
+export type CloseMoneyDayResponse = Readonly<{
+  ok: true;
+  close: MoneyDayCloseDto;
+  period: MoneyPeriodDto;
+  replayed: boolean;
+  /** Final purchases recorded (or replayed) before this close. */
+  committedPurchases: readonly MoneyMovementDto[];
 }>;
 
 /** One row of the extended `personal_expenses` ledger. */

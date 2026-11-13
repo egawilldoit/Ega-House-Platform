@@ -3,6 +3,9 @@ import type {
   MoneyAggregate,
   MoneyAggregateQuery,
   MoneyCreateRecordInput,
+  MoneyDayCloseAttempt,
+  MoneyDayCloseCurrentTotals,
+  MoneyDayCloseRecordInput,
   MoneyIdempotencyReceipt,
   MoneyLedgerDirectionTotals,
   MoneyLedgerOverview,
@@ -12,6 +15,7 @@ import type {
   MoneyPeriodCreateRecordInput,
   MoneyPeriodRepository,
   MoneyPeriodUpdateRecordInput,
+  MoneyReserveInputs,
   MoneyUpdateRecordInput,
   RepositoryFailure,
   RepositoryResult,
@@ -24,6 +28,7 @@ import {
 } from "@ega/domain/expenses";
 import {
   isMoneyKind,
+  type MoneyDayClose,
   type MoneyLedgerRow,
   type MoneyOpening,
   type MoneyOpeningCorrection,
@@ -221,6 +226,142 @@ function toOpening(row: OpeningRow): MoneyOpening {
   };
 }
 
+/* ---------------------------------------------------------------------------
+ * MONEY-09 day close rows
+ * ------------------------------------------------------------------------- */
+
+type CloseRow = {
+  id: string;
+  period_id: string;
+  close_date: string;
+  status: string;
+  note: string | null;
+  operation_id: string;
+  close_fingerprint: string;
+  expected_period_version: number;
+  period_version_after: number;
+  active_date_after: string;
+  lifecycle_after: string;
+  is_final_day: boolean;
+  algorithm_version: string;
+  policy_version_id: string | null;
+  policy_version: number | null;
+  baseline_version: number;
+  included_movement_ids: unknown;
+  snapshot: unknown;
+  created_at: string;
+};
+
+const CLOSE_COLUMNS =
+  "id, period_id, close_date, status, note, operation_id, close_fingerprint, expected_period_version, period_version_after, active_date_after, lifecycle_after, is_final_day, algorithm_version, policy_version_id, policy_version, baseline_version, included_movement_ids, snapshot, created_at";
+
+function toMinor(value: unknown): number | null {
+  return typeof value === "number" && Number.isSafeInteger(value) ? value : null;
+}
+
+function toCategoryTotals(value: unknown): Partial<Record<ExpenseCategory, number>> {
+  if (!isRecord(value)) return {};
+  const totals: Partial<Record<ExpenseCategory, number>> = {};
+  for (const [category, amount] of Object.entries(value)) {
+    const minor = toMinor(amount);
+    if (minor !== null) totals[category as ExpenseCategory] = minor;
+  }
+  return totals;
+}
+
+function toClose(row: CloseRow): MoneyDayClose | null {
+  if (!isRecord(row.snapshot)) return null;
+  const snapshot = row.snapshot;
+  const baseline = isRecord(snapshot.dayStartBaseline)
+    ? snapshot.dayStartBaseline
+    : null;
+  const reference = isRecord(snapshot.dailyReference)
+    ? snapshot.dailyReference
+    : null;
+  const reserves = isRecord(snapshot.reserves) ? snapshot.reserves : null;
+  if (!baseline || !reference || !reserves) return null;
+
+  const baselineSnapshot = {
+    date: String(baseline.date),
+    version: Number(baseline.version),
+    availability: baseline.availability === "available" ? ("available" as const) : ("unavailable" as const),
+    policyVersionId:
+      typeof baseline.policyVersionId === "string" ? baseline.policyVersionId : null,
+    cashMinor: toMinor(baseline.cashMinor),
+    commitmentsMinor: toMinor(baseline.commitmentsMinor),
+    savingsTargetMinor: toMinor(baseline.savingsTargetMinor),
+    savingsFundedMinor: toMinor(baseline.savingsFundedMinor),
+    emergencyTargetMinor: toMinor(baseline.emergencyTargetMinor),
+    emergencyUsedMinor: toMinor(baseline.emergencyUsedMinor),
+  };
+  const referenceSnapshot =
+    reference.available === true
+      ? {
+          available: true as const,
+          algorithm: String(reference.algorithm),
+          daysRemaining: Number(reference.daysRemaining),
+          safePoolMinor: Number(reference.safePoolMinor),
+          referenceMinor: Number(reference.referenceMinor),
+          dailyRemainingMinor: Number(reference.dailyRemainingMinor),
+        }
+      : {
+          available: false as const,
+          reason: typeof reference.reason === "string" ? reference.reason : "baseline_unavailable",
+        };
+  const reserveNumbers = {
+    recordedCashMinor: toMinor(reserves.recordedCashMinor),
+    unpaidCommitmentsMinor: toMinor(reserves.unpaidCommitmentsMinor),
+    savingsTargetMinor: toMinor(reserves.savingsTargetMinor),
+    fundedSavingsMinor: toMinor(reserves.fundedSavingsMinor),
+    unfundedSavingsMinor: toMinor(reserves.unfundedSavingsMinor),
+    emergencyTargetMinor: toMinor(reserves.emergencyTargetMinor),
+    emergencyUsedMinor: toMinor(reserves.emergencyUsedMinor),
+    remainingEmergencyMinor: toMinor(reserves.remainingEmergencyMinor),
+    safeFlexibleMinor: toMinor(reserves.safeFlexibleMinor),
+  };
+  if (Object.values(reserveNumbers).some((value) => value === null)) return null;
+  const recordedCash = toMinor(snapshot.recordedCashMinor);
+  if (recordedCash === null) return null;
+
+  return {
+    id: String(row.id),
+    periodId: String(row.period_id),
+    closeDate: String(row.close_date),
+    status: "closed",
+    note: row.note == null ? null : String(row.note),
+    operationId: String(row.operation_id),
+    closeFingerprint: String(row.close_fingerprint),
+    expectedPeriodVersion: Number(row.expected_period_version),
+    periodVersionAfter: Number(row.period_version_after),
+    activeDateAfter: String(row.active_date_after),
+    lifecycleAfter: row.lifecycle_after === "ended" ? "ended" : "tracking",
+    isFinalDay: Boolean(row.is_final_day),
+    algorithmVersion: String(row.algorithm_version),
+    policyVersionId:
+      row.policy_version_id == null ? null : String(row.policy_version_id),
+    policyVersion: row.policy_version == null ? null : Number(row.policy_version),
+    baselineVersion: Number(row.baseline_version),
+    includedMovementIds: Array.isArray(row.included_movement_ids)
+      ? row.included_movement_ids.map((id) => String(id))
+      : [],
+    snapshot: {
+      currency: "MAD",
+      expenseTotalMinor: Number(snapshot.expenseTotalMinor),
+      dailyIncludedSpendMinor: Number(snapshot.dailyIncludedSpendMinor),
+      flexibleExpenseTotalMinor: Number(snapshot.flexibleExpenseTotalMinor),
+      fixedExpenseTotalMinor: Number(snapshot.fixedExpenseTotalMinor),
+      emergencyExpenseTotalMinor: Number(snapshot.emergencyExpenseTotalMinor),
+      categoryTotals: toCategoryTotals(snapshot.categoryTotals),
+      recordedCashMinor: recordedCash,
+      recordedCashBasis: "recorded",
+      dayStartBaseline: baselineSnapshot,
+      dailyReference: referenceSnapshot,
+      reserves: reserveNumbers as MoneyDayClose["snapshot"]["reserves"],
+    },
+    createdAt: String(row.created_at),
+  };
+}
+
 export class SupabaseMoneyPeriodRepository implements MoneyPeriodRepository {
   constructor(private readonly supabase: SupabaseClient) {}
 
@@ -304,27 +445,25 @@ export class SupabaseMoneyPeriodRepository implements MoneyPeriodRepository {
   }
 
   async getDailyIncludedExpenseTotal(actor: AuthenticatedActor, periodId: string, date: string) {
-    const { data, error } = await this.supabase
-      .from(LEDGER_TABLE)
-      .select("amount_minor")
-      .eq("owner_user_id", actor.userId)
-      .eq("period_id", periodId)
-      .eq("booking_date", date)
-      .eq("kind", "expense")
-      .eq("direction", "out")
-      .eq("counts_in_daily", true)
-      .is("deleted_at", null)
-      .limit(10001);
+    // The RPC derives the owner from auth.uid(); actor is part of the port.
+    void actor;
+    // One database aggregate, so a PostgREST response cap can never turn a
+    // partial page into a "complete" daily total.
+    const { data, error } = await this.supabase.rpc("money_day_expense_totals", {
+      p_period_id: periodId,
+      p_date: date,
+    });
     if (error) return { ok: false as const, error: moneyFailure(error) };
-    const rows = data ?? [];
-    let total = 0;
-    let safe = true;
-    for (const row of rows) {
-      const amount = Number(row.amount_minor);
-      if (!Number.isSafeInteger(amount) || !Number.isSafeInteger(total + amount)) safe = false;
-      total += amount;
+    const row = firstRow(data);
+    if (!row) return { ok: false as const, error: { code: "unknown" as const } };
+    const amountMinor = toMinor(row.dailyIncludedSpendMinor);
+    if (amountMinor === null) {
+      return { ok: true as const, value: { amountMinor: 0, complete: false } };
     }
-    return { ok: true as const, value: { amountMinor: total, complete: rows.length <= 10000 && safe } };
+    return {
+      ok: true as const,
+      value: { amountMinor, complete: row.complete === true },
+    };
   }
 
   async findTracking(
@@ -469,6 +608,202 @@ export class SupabaseMoneyPeriodRepository implements MoneyPeriodRepository {
     };
   }
 
+  async closeDay(
+    actor: AuthenticatedActor,
+    input: MoneyDayCloseRecordInput,
+  ): Promise<RepositoryResult<MoneyDayCloseAttempt>> {
+    // The RPC owns the period row lock, snapshot calculation, close insert and
+    // the single active-date advance. Its jsonb status vocabulary keeps the
+    // refusal reason exact instead of collapsing validation into a generic
+    // conflict; a transport failure is still a repository failure.
+    void actor;
+    const { data, error } = await this.supabase.rpc("money_close_day", {
+      p_period_id: input.periodId,
+      p_expected_version: input.expectedVersion,
+      p_date: input.date,
+      p_note: input.note,
+      p_operation_id: input.operationId,
+      p_close_fingerprint: input.closeFingerprint,
+      p_included_movement_ids: input.includedMovementIds,
+      p_created_at: input.createdAt,
+    });
+    if (error) return { ok: false, error: moneyFailure(error) };
+    if (!isRecord(data)) return { ok: false, error: { code: "unknown" } };
+    const status = String(data.status ?? "");
+    const allowed = new Set([
+      "closed",
+      "replayed",
+      "not_found",
+      "stale_version",
+      "period_not_tracking",
+      "date_out_of_period",
+      "close_date_not_active",
+      "operation_conflict",
+      "duplicate_close",
+      "baseline_unavailable",
+      "opening_unknown",
+      "included_movement_invalid",
+    ]);
+    if (!allowed.has(status)) return { ok: false, error: { code: "unknown" } };
+    const closeRow = isRecord(data.close) ? (data.close as unknown as CloseRow) : null;
+    const periodRow = isRecord(data.period)
+      ? (data.period as unknown as PeriodRow)
+      : null;
+    return {
+      ok: true,
+      value: {
+        status: status as MoneyDayCloseAttempt["status"],
+        detail: typeof data.detail === "string" ? data.detail : null,
+        close: closeRow ? toClose(closeRow) : null,
+        period: periodRow ? toPeriod(periodRow) : null,
+      },
+    };
+  }
+
+  async listDayCloses(
+    actor: AuthenticatedActor,
+    periodId: string,
+    limit: number,
+  ): Promise<RepositoryResult<MoneyDayClose[]>> {
+    const { data, error } = await this.supabase
+      .from("money_day_closes")
+      .select(CLOSE_COLUMNS)
+      .eq("owner_user_id", actor.userId)
+      .eq("period_id", periodId)
+      .order("close_date", { ascending: false })
+      .order("created_at", { ascending: false })
+      .limit(limit);
+    if (error) return { ok: false, error: moneyFailure(error) };
+    const closes = ((data ?? []) as CloseRow[])
+      .map(toClose)
+      .filter((close): close is MoneyDayClose => close !== null);
+    return { ok: true, value: closes };
+  }
+
+  async getDayCloseByOperation(
+    actor: AuthenticatedActor,
+    operationId: string,
+  ): Promise<RepositoryResult<MoneyDayClose | null>> {
+    const { data, error } = await this.supabase
+      .from("money_day_closes")
+      .select(CLOSE_COLUMNS)
+      .eq("owner_user_id", actor.userId)
+      .eq("operation_id", operationId)
+      .maybeSingle();
+    if (error) return { ok: false, error: moneyFailure(error) };
+    return { ok: true, value: data ? toClose(data as CloseRow) : null };
+  }
+
+  async getDayCloseForDate(
+    actor: AuthenticatedActor,
+    periodId: string,
+    date: string,
+  ): Promise<RepositoryResult<MoneyDayClose | null>> {
+    // Exact owner/period/date evidence. The recent-history strip is not used
+    // to decide which close a historical date shows.
+    const { data, error } = await this.supabase
+      .from("money_day_closes")
+      .select(CLOSE_COLUMNS)
+      .eq("owner_user_id", actor.userId)
+      .eq("period_id", periodId)
+      .eq("close_date", date)
+      .maybeSingle();
+    if (error) return { ok: false, error: moneyFailure(error) };
+    return { ok: true, value: data ? toClose(data as CloseRow) : null };
+  }
+
+  async getReserveInputs(
+    actor: AuthenticatedActor,
+    periodId: string,
+    cutoffDate: string,
+  ): Promise<RepositoryResult<MoneyReserveInputs>> {
+    // The database read is shared with durable close evidence. The RPC derives
+    // the owner from auth.uid(); actor is part of the port contract.
+    void actor;
+    const { data, error } = await this.supabase.rpc("money_reserve_inputs", {
+      p_period_id: periodId,
+      p_cutoff: cutoffDate,
+    });
+    if (error) return { ok: false, error: moneyFailure(error) };
+    const row = firstRow(data);
+    if (!row) return { ok: false, error: { code: "unknown" } };
+    if (row.available !== true) {
+      return {
+        ok: true,
+        value: {
+          available: false,
+          reason: typeof row.reason === "string" ? row.reason : "reserve_inputs_incomplete",
+        },
+      };
+    }
+    const recordedCashMinor = toMinor(row.recordedCashMinor);
+    const unpaidCommitmentsMinor = toMinor(row.unpaidCommitmentsMinor);
+    const savingsFundedMinor = toMinor(row.savingsFundedMinor);
+    const emergencyUsedMinor = toMinor(row.emergencyUsedMinor);
+    if (
+      recordedCashMinor === null
+      || unpaidCommitmentsMinor === null
+      || savingsFundedMinor === null
+      || emergencyUsedMinor === null
+    ) {
+      return {
+        ok: true,
+        value: { available: false, reason: "reserve_inputs_incomplete" },
+      };
+    }
+    return {
+      ok: true,
+      value: {
+        available: true,
+        recordedCashMinor,
+        unpaidCommitmentsMinor,
+        savingsFundedMinor,
+        emergencyUsedMinor,
+      },
+    };
+  }
+
+  async getDayCloseCurrentTotals(
+    actor: AuthenticatedActor,
+    periodId: string,
+    date: string,
+  ): Promise<RepositoryResult<MoneyDayCloseCurrentTotals>> {
+    // The RPC derives the owner from auth.uid(); actor is part of the port.
+    void actor;
+    // Same canonical day aggregate as the stored close snapshot: owner +
+    // booking date, no `period_id` filter, and no page/cap truncation.
+    const { data, error } = await this.supabase.rpc("money_day_expense_totals", {
+      p_period_id: periodId,
+      p_date: date,
+    });
+    if (error) return { ok: false, error: moneyFailure(error) };
+    const row = firstRow(data);
+    if (!row) return { ok: false, error: { code: "unknown" } };
+    const expenseTotalMinor = toMinor(row.expenseTotalMinor);
+    const dailyIncludedSpendMinor = toMinor(row.dailyIncludedSpendMinor);
+    const flexibleExpenseTotalMinor = toMinor(row.flexibleExpenseTotalMinor);
+    const fixedExpenseTotalMinor = toMinor(row.fixedExpenseTotalMinor);
+    const emergencyExpenseTotalMinor = toMinor(row.emergencyExpenseTotalMinor);
+    const complete = row.complete === true
+      && expenseTotalMinor !== null
+      && dailyIncludedSpendMinor !== null
+      && flexibleExpenseTotalMinor !== null
+      && fixedExpenseTotalMinor !== null
+      && emergencyExpenseTotalMinor !== null;
+    return {
+      ok: true,
+      value: {
+        complete,
+        expenseTotalMinor: expenseTotalMinor ?? 0,
+        dailyIncludedSpendMinor: dailyIncludedSpendMinor ?? 0,
+        flexibleExpenseTotalMinor: flexibleExpenseTotalMinor ?? 0,
+        fixedExpenseTotalMinor: fixedExpenseTotalMinor ?? 0,
+        emergencyExpenseTotalMinor: emergencyExpenseTotalMinor ?? 0,
+        categoryTotals: toCategoryTotals(row.categoryTotals),
+      },
+    };
+  }
+
   async getOpening(
     actor: AuthenticatedActor,
     id: string,
@@ -489,48 +824,25 @@ export class SupabaseMoneyPeriodRepository implements MoneyPeriodRepository {
     actor: AuthenticatedActor,
     window: MoneyLedgerWindow,
   ): Promise<RepositoryResult<MoneyLedgerDirectionTotals>> {
-    const PAGE_SIZE = 1000;
-    const MAX_ROWS = 10_000;
-    let inflowsMinor = 0;
-    let outflowsMinor = 0;
-    let recordCount = 0;
-    let truncated = false;
-
-    for (let offset = 0; offset < MAX_ROWS; offset += PAGE_SIZE) {
-      const { data, error } = await this.supabase
-        .from(LEDGER_TABLE)
-        .select("direction, amount_minor")
-        .eq("owner_user_id", actor.userId)
-        .is("deleted_at", null)
-        .neq("kind", "opening")
-        .gte("booking_date", window.startDate)
-        .lte("booking_date", window.endDateInclusive)
-        .order("booking_date", { ascending: false })
-        .order("id", { ascending: false })
-        .range(offset, offset + PAGE_SIZE - 1);
-      if (error) return { ok: false, error: moneyFailure(error) };
-      const rows = (data ?? []) as Array<{
-        direction: string;
-        amount_minor: number;
-      }>;
-      for (const row of rows) {
-        if (row.direction === "in") {
-          inflowsMinor += Number(row.amount_minor);
-        } else if (row.direction === "out") {
-          outflowsMinor += Number(row.amount_minor);
-        }
-        recordCount += 1;
-      }
-      if (rows.length < PAGE_SIZE) break;
-      if (recordCount >= MAX_ROWS) {
-        truncated = true;
-        break;
-      }
+    // Canonical owner + booking-date cash aggregate. One SQL statement is
+    // complete regardless of the PostgREST response row cap.
+    void actor;
+    const { data, error } = await this.supabase.rpc("money_ledger_direction_totals", {
+      p_start_date: window.startDate,
+      p_end_date: window.endDateInclusive,
+    });
+    if (error) return { ok: false, error: moneyFailure(error) };
+    const row = firstRow(data);
+    if (!row) return { ok: false, error: { code: "unknown" } };
+    const inflowsMinor = toMinor(row.inflowsMinor);
+    const outflowsMinor = toMinor(row.outflowsMinor);
+    const recordCount = toMinor(row.recordCount);
+    if (inflowsMinor === null || outflowsMinor === null || recordCount === null) {
+      return { ok: false, error: { code: "unknown" } };
     }
-
     return {
       ok: true,
-      value: { inflowsMinor, outflowsMinor, recordCount, truncated },
+      value: { inflowsMinor, outflowsMinor, recordCount, truncated: false },
     };
   }
 
@@ -817,8 +1129,10 @@ export class SupabaseMoneyRepository implements MoneyMovementRepository {
 
   /**
    * Bounded projection (kind/direction/amount/daily flag/date only) in pages
-   * of 1000 up to 10000 rows. Reaching the cap reports `truncated`, which the
-   * application turns into an incomplete reading rather than a fake total.
+   * up to 10000 rows. Completeness is proven with the server's exact matching
+   * count and by advancing the offset by the rows actually returned, so a
+   * PostgREST `db-max-rows` cap below the requested page cannot silently skip
+   * rows or turn a partial result into a complete total.
    */
   async aggregate(
     actor: AuthenticatedActor,
@@ -835,27 +1149,42 @@ export class SupabaseMoneyRepository implements MoneyMovementRepository {
       purpose: MoneyPurpose | null;
       booking_date: string;
     }> = [];
-    let truncated = false;
+    let expected: number | null = null;
+    let offset = 0;
+    let complete = false;
 
-    for (let offset = 0; offset < MAX_ROWS; offset += PAGE_SIZE) {
+    while (offset < MAX_ROWS) {
       let request = this.supabase
         .from(LEDGER_TABLE)
-        .select("id, kind, direction, amount_minor, counts_in_daily, purpose, booking_date")
+        .select(
+          "id, kind, direction, amount_minor, counts_in_daily, purpose, booking_date",
+          { count: "exact" },
+        )
         .eq("owner_user_id", actor.userId)
         .is("deleted_at", null)
         .lte("booking_date", query.cutoff);
       if (query.startDate) request = request.gte("booking_date", query.startDate);
 
-      const { data, error } = await request
+      const { data, error, count } = await request
         .order("booking_date", { ascending: false })
         .order("id", { ascending: false })
         .range(offset, offset + PAGE_SIZE - 1);
       if (error) return { ok: false, error: moneyFailure(error) };
       const page = (data ?? []) as typeof rows;
+      if (expected === null && typeof count === "number") expected = count;
       rows.push(...page);
-      if (page.length < PAGE_SIZE) break;
-      if (rows.length >= MAX_ROWS) {
-        truncated = true;
+      // A matching count above the bound cannot be represented completely.
+      if (expected !== null && expected > MAX_ROWS) break;
+      offset += page.length;
+      if (expected !== null) {
+        if (rows.length >= expected) {
+          complete = rows.length === expected;
+          break;
+        }
+        if (page.length === 0) break;
+      } else {
+        // Without a reliable total a short page could be a server cap, so the
+        // result must stay incomplete instead of claiming a full history.
         break;
       }
     }
@@ -877,7 +1206,7 @@ export class SupabaseMoneyRepository implements MoneyMovementRepository {
             bookingDate: String(row.booking_date),
           };
         }),
-        truncated,
+        truncated: !complete,
       },
     };
   }

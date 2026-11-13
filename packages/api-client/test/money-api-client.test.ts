@@ -372,3 +372,42 @@ test("coffee window resolves limits on the server, not from the query string", a
     "https://api.ega.example/api/money/coffee-window?localDate=2026-11-11&timezone=Africa%2FCasablanca&periodStartDate=2026-11-09&periodEndDate=2026-11-30",
   );
 });
+
+test("closeDay posts the full close request and returns retained evidence", async () => {
+  const { client, calls } = makeHarness(201, {
+    ok: true,
+    close: { id: "close-1", closeDate: "2026-11-11" },
+    period: PERIOD,
+    replayed: false,
+    committedPurchases: [],
+  });
+  const result = await client.money.closeDay({
+    version: 2,
+    operationId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+    note: "Closed with chicken",
+    finalPurchases: [
+      {
+        amountMinor: 1_100,
+        category: "coffee",
+        needVsWant: "want",
+        idempotencyKey: "close-purchase-1",
+      },
+    ],
+  });
+  assert.equal(result.ok, true);
+  assert.equal(calls[0]!.url, "https://api.ega.example/api/money/day-close");
+  assert.equal(calls[0]!.method, "POST");
+  assert.deepEqual(calls[0]!.body, {
+    version: 2,
+    operationId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+    note: "Closed with chicken",
+    finalPurchases: [
+      {
+        amountMinor: 1_100,
+        category: "coffee",
+        needVsWant: "want",
+        idempotencyKey: "close-purchase-1",
+      },
+    ],
+  });
+});

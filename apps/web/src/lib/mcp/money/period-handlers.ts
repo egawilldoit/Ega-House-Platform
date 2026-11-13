@@ -11,9 +11,7 @@ import {
 } from "@ega/application";
 import {
   SupabaseMoneyPeriodRepository,
-  SupabaseMoneyRepository,
   SupabaseMoneyBudgetRepository,
-  SupabaseObligationRepository,
   SupabaseTimeContextRepository,
 } from "@ega/data-access";
 import type { MoneyOpeningInput } from "@ega/domain/money";
@@ -185,11 +183,8 @@ export function createMcpMoneyPeriodHandlers(
         const reserveResult = state.period
           ? await getCurrentMoneyReserves(actor, {
               period: state.period,
-              opening: state.opening.status === "known" ? state.opening : null,
               periods: new SupabaseMoneyPeriodRepository(client as never),
-              movements: new SupabaseMoneyRepository(client as never),
               budgets: new SupabaseMoneyBudgetRepository(client as never),
-              obligations: new SupabaseObligationRepository(client as never),
             })
           : null;
         const reserves = reserveResult?.ok

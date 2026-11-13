@@ -37,9 +37,11 @@ test("money page composes the shared period state and shows local today separate
 
 test("money page reads shared reserves with request-scoped repositories and renders every input", () => {
   assert.match(source, /getCurrentMoneyReserves\(actor/);
-  assert.match(source, /new SupabaseMoneyRepository\(client\)/);
+  assert.match(source, /new SupabaseMoneyPeriodRepository\(client\)/);
   assert.match(source, /new SupabaseMoneyBudgetRepository\(client\)/);
-  assert.match(source, /new SupabaseObligationRepository\(client\)/);
+  // Reserve cash/commitments/funding come from the canonical period repository
+  // read, not a second client-side obligation or movement aggregate.
+  assert.doesNotMatch(source, /new SupabaseObligationRepository\(client\)/);
   for (const field of ["recordedCashMinor", "unpaidCommitmentsMinor", "savingsTargetMinor", "fundedSavingsMinor", "unfundedSavingsMinor", "emergencyTargetMinor", "emergencyUsedMinor", "remainingEmergencyMinor", "safeFlexibleMinor"]) {
     assert.match(source, new RegExp(`reserves\\.${field}`));
   }
@@ -126,4 +128,20 @@ test("page query values succeed through the actual listExpenses parser and repos
     startBookingDate: null,
     endBookingDateExclusive: null,
   });
+});
+
+test("money page renders durable day close evidence and restated totals", () => {
+  assert.match(source, /MoneyDayClosePanel/);
+  assert.match(source, /dayClose=\{moneyState\.dayClose\}/);
+  assert.match(source, /lastClose=\{moneyState\.lastClose\}/);
+  assert.match(source, /recentCloses=\{moneyState\.recentCloses\}/);
+  assert.match(source, /dayClosesUnavailable=\{moneyState\.dayClosesUnavailable\}/);
+  assert.match(source, /closeMoneyDayAction/);
+});
+
+test("daily reference shows the active day's included spending even when it is zero", () => {
+  assert.match(source, /Daily included spending/);
+  assert.match(source, /dailyReference\.dailyIncludedExpenseMinor/);
+  assert.match(source, /Days left in period/);
+  assert.match(source, /dailyReference\.daysRemaining/);
 });

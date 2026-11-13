@@ -1455,6 +1455,10 @@ export const moneyPeriods = pgTable(
     uniqueIndex("money_periods_owner_tracking_unique")
       .on(table.ownerUserId)
       .where(sql`lifecycle = 'tracking'`),
+    uniqueIndex("money_periods_owner_id_unique").on(
+      table.ownerUserId,
+      table.id,
+    ),
     uniqueIndex("money_periods_owner_range_unique").on(
       table.ownerUserId,
       table.startDate,
@@ -1481,6 +1485,100 @@ export const moneyPeriods = pgTable(
       sql`${table.initialization} in ('uninitialized','initialized','reconciled')`,
     ),
     check("money_periods_version_check", sql`${table.version} > 0`),
+  ],
+);
+
+/**
+ * MONEY-09 durable day close. One immutable row per owner/period/date retains
+ * the CLOSED note, the calculated day totals, the chosen day-start baseline, the
+ * algorithm/policy version and the close identity. The active-date transition
+ * and this insert happen in one `money_close_day` transaction. Later
+ * corrections never rewrite the snapshot; reads compute restated totals.
+ */
+export const moneyDayCloses = pgTable(
+  "money_day_closes",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    ownerUserId: uuid("owner_user_id")
+      .default(sql`auth.uid()`)
+      .notNull(),
+    periodId: uuid("period_id").notNull(),
+    closeDate: date("close_date").notNull(),
+    status: text("status").default("closed").notNull(),
+    note: text("note"),
+    operationId: uuid("operation_id").notNull(),
+    closeFingerprint: text("close_fingerprint").notNull(),
+    expectedPeriodVersion: integer("expected_period_version").notNull(),
+    periodVersionAfter: integer("period_version_after").notNull(),
+    activeDateAfter: date("active_date_after").notNull(),
+    lifecycleAfter: text("lifecycle_after").notNull(),
+    isFinalDay: boolean("is_final_day").notNull(),
+    algorithmVersion: text("algorithm_version").notNull(),
+    policyVersionId: uuid("policy_version_id"),
+    policyVersion: integer("policy_version"),
+    baselineVersion: integer("baseline_version").notNull(),
+    includedMovementIds: uuid("included_movement_ids")
+      .array()
+      .default(sql`'{}'::uuid[]`)
+      .notNull(),
+    snapshot: jsonb("snapshot").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    uniqueIndex("money_day_closes_owner_operation_unique").on(
+      table.ownerUserId,
+      table.operationId,
+    ),
+    uniqueIndex("money_day_closes_owner_period_date_unique").on(
+      table.ownerUserId,
+      table.periodId,
+      table.closeDate,
+    ),
+    index("money_day_closes_owner_period_history_idx").on(
+      table.ownerUserId,
+      table.periodId,
+      table.closeDate.desc(),
+      table.createdAt.desc(),
+    ),
+    foreignKey({
+      columns: [table.ownerUserId, table.periodId],
+      foreignColumns: [moneyPeriods.ownerUserId, moneyPeriods.id],
+    }).onDelete("restrict"),
+    check("money_day_closes_status_check", sql`${table.status} = 'closed'`),
+    check(
+      "money_day_closes_fingerprint_check",
+      sql`${table.closeFingerprint} ~ '^[0-9a-f]{64}$'`,
+    ),
+    check(
+      "money_day_closes_version_check",
+      sql`${table.expectedPeriodVersion} > 0 and ${table.periodVersionAfter} = ${table.expectedPeriodVersion} + 1`,
+    ),
+    check(
+      "money_day_closes_lifecycle_check",
+      sql`${table.lifecycleAfter} in ('tracking','ended')`,
+    ),
+    check(
+      "money_day_closes_final_day_check",
+      sql`(${table.isFinalDay} and ${table.lifecycleAfter} = 'ended') or (not ${table.isFinalDay} and ${table.lifecycleAfter} = 'tracking')`,
+    ),
+    check(
+      "money_day_closes_advance_check",
+      sql`(${table.lifecycleAfter} <> 'ended' or ${table.closeDate} = ${table.activeDateAfter}) and (${table.lifecycleAfter} <> 'tracking' or ${table.activeDateAfter} = ${table.closeDate} + 1)`,
+    ),
+    check(
+      "money_day_closes_algorithm_version_check",
+      sql`btrim(${table.algorithmVersion}) <> ''`,
+    ),
+    check(
+      "money_day_closes_baseline_version_check",
+      sql`${table.baselineVersion} > 0`,
+    ),
+    check(
+      "money_day_closes_snapshot_check",
+      sql`jsonb_typeof(${table.snapshot}) = 'object'`,
+    ),
   ],
 );
 

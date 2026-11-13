@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 
 import {
   classifyMoneyExpense,
+  closeMoneyDay,
   createAuthenticatedActor,
   createExpense,
   createMoneyPeriod,
@@ -311,6 +312,7 @@ async function moneyActionContext() {
   const time = await getWebTimeContext();
   return {
     actor: createAuthenticatedActor(user.id),
+    client,
     repository: new SupabaseMoneyPeriodRepository(client),
     now: new Date(),
     timezone: time.persistedTimezone,
@@ -400,6 +402,105 @@ export async function updateMoneySettingsAction(
     return { ok: true, error: null };
   } catch {
     return { ok: false, error: "Unable to save Money settings right now." };
+  }
+}
+
+/**
+ * MONEY-09: close the active day. Final purchases from the same form are
+ * recorded first with stable identities; the shared close use case owns the
+ * atomic transition. A failed close never pretends the day is closed.
+ */
+export async function closeMoneyDayAction(
+  formData: FormData,
+): Promise<MoneyFormActionResult> {
+  try {
+    const context = await moneyActionContext();
+    if (!context) return { ok: false, error: "Sign in to close a Money day." };
+    const periodId = formText(formData, "periodId");
+    if (!periodId) return { ok: false, error: "A Money period is required." };
+    const rawVersion = formText(formData, "version");
+    if (!/^\d+$/.test(rawVersion) || Number(rawVersion) < 1) {
+      return { ok: false, error: "Reload the page and try again." };
+    }
+    const operationId = formText(formData, "operationId");
+    if (!operationId) {
+      return { ok: false, error: "Reload the page and try again." };
+    }
+    const date = formText(formData, "date");
+    const note = formText(formData, "note");
+    const rawCount = formText(formData, "finalPurchaseCount") || "0";
+    if (!/^\d+$/.test(rawCount) || Number(rawCount) > 20) {
+      return { ok: false, error: "Reduce the number of final purchases." };
+    }
+
+    const finalPurchases: Array<Record<string, unknown>> = [];
+    for (let index = 0; index < Number(rawCount); index += 1) {
+      const amountText = formText(formData, `final:${index}:amount`);
+      if (!amountText) continue;
+      const amount = parseMadAmountToMinor(amountText);
+      if (!amount.ok) {
+        return { ok: false, error: `Final purchase ${index + 1}: ${amount.error}` };
+      }
+      const category = formText(formData, `final:${index}:category`);
+      if (!EXPENSE_CATEGORY_VALUES.includes(category as ExpenseCategory)) {
+        return { ok: false, error: `Final purchase ${index + 1}: choose a category.` };
+      }
+      const needVsWant = formText(formData, `final:${index}:needVsWant`);
+      if (needVsWant !== "need" && needVsWant !== "want") {
+        return { ok: false, error: `Final purchase ${index + 1}: choose need or want.` };
+      }
+      const purpose = formText(formData, `final:${index}:purpose`);
+      const countsInDaily = formText(formData, `final:${index}:countsInDaily`);
+      const idempotencyKey = formText(formData, `final:${index}:idempotencyKey`);
+      if (!idempotencyKey) {
+        return { ok: false, error: "Reload the page and try again." };
+      }
+      finalPurchases.push({
+        amountMinor: amount.value,
+        category,
+        note: formText(formData, `final:${index}:note`) || null,
+        merchant: null,
+        needVsWant,
+        paymentMethod: null,
+        purpose: purpose || null,
+        ...(countsInDaily === "included"
+          ? { countsInDaily: true }
+          : countsInDaily === "excluded"
+            ? { countsInDaily: false }
+            : {}),
+        idempotencyKey,
+      });
+    }
+
+    const result = await closeMoneyDay(
+      context.actor,
+      {
+        periods: context.repository,
+        movements: new SupabaseMoneyRepository(context.client),
+      },
+      {
+        version: Number(rawVersion),
+        periodId,
+        ...(date ? { date } : {}),
+        note: note || null,
+        operationId,
+        finalPurchases,
+      },
+    );
+    if (!result.ok) {
+      const committed = result.committedPurchases?.length ?? 0;
+      return {
+        ok: false,
+        error:
+          committed > 0
+            ? `${result.errorMessage} ${committed} final purchase(s) remain recorded; retry with the same form to close without duplicating them.`
+            : result.errorMessage,
+      };
+    }
+    revalidatePath("/money");
+    return { ok: true, error: null };
+  } catch {
+    return { ok: false, error: "Unable to close the Money day right now." };
   }
 }
 
