@@ -381,7 +381,8 @@ export type MoneyDayCloseReserveSnapshot = Readonly<{
 /**
  * Evidence stored with one closed day. The amounts are the values observed in
  * the same transaction that advanced the active date; later corrections never
- * rewrite them. `recordedCashMinor` is end-of-day cash through the close date.
+ * rewrite them. `recordedCashMinor` and `reserves` use the inclusive close-date
+ * cutoff, while `dailyReference` is the separate retained day-start projection.
  */
 export type MoneyDayCloseSnapshot = Readonly<{
   currency: "MAD";

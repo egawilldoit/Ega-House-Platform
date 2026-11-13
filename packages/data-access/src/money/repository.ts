@@ -61,6 +61,12 @@ const PERIOD_TABLE = "money_periods";
 const LEDGER_TABLE = "personal_expenses";
 const IDEMPOTENCY_CONSTRAINT = "personal_expenses_owner_idempotency_key_unique";
 
+// PostgREST may cap a single response below the requested range (the common
+// `db-max-rows` default is 1000), so completeness is proven by paging until a
+// short page, never by assuming one `limit` returned every row.
+const LEDGER_PAGE_SIZE = 1_000;
+const LEDGER_PAGED_MAX_ROWS = 100_000;
+
 const PERIOD_COLUMNS =
   "id, owner_user_id, start_date, end_date, currency, timezone, active_date, lifecycle, initialization, opening_movement_id, provenance, settings, version, created_at, updated_at";
 
@@ -444,27 +450,35 @@ export class SupabaseMoneyPeriodRepository implements MoneyPeriodRepository {
   }
 
   async getDailyIncludedExpenseTotal(actor: AuthenticatedActor, periodId: string, date: string) {
-    const { data, error } = await this.supabase
-      .from(LEDGER_TABLE)
-      .select("amount_minor")
-      .eq("owner_user_id", actor.userId)
-      .eq("period_id", periodId)
-      .eq("booking_date", date)
-      .eq("kind", "expense")
-      .eq("direction", "out")
-      .eq("counts_in_daily", true)
-      .is("deleted_at", null)
-      .limit(10001);
-    if (error) return { ok: false as const, error: moneyFailure(error) };
-    const rows = data ?? [];
-    let total = 0;
+    let amountMinor = 0;
+    let complete = false;
     let safe = true;
-    for (const row of rows) {
-      const amount = Number(row.amount_minor);
-      if (!Number.isSafeInteger(amount) || !Number.isSafeInteger(total + amount)) safe = false;
-      total += amount;
+    for (let offset = 0; offset < LEDGER_PAGED_MAX_ROWS; offset += LEDGER_PAGE_SIZE) {
+      const { data, error } = await this.supabase
+        .from(LEDGER_TABLE)
+        .select("amount_minor")
+        .eq("owner_user_id", actor.userId)
+        .eq("period_id", periodId)
+        .eq("booking_date", date)
+        .eq("kind", "expense")
+        .eq("direction", "out")
+        .eq("counts_in_daily", true)
+        .is("deleted_at", null)
+        .order("id", { ascending: true })
+        .range(offset, offset + LEDGER_PAGE_SIZE - 1);
+      if (error) return { ok: false as const, error: moneyFailure(error) };
+      const rows = (data ?? []) as Array<{ amount_minor: number }>;
+      for (const row of rows) {
+        const amount = Number(row.amount_minor);
+        if (!Number.isSafeInteger(amount) || !Number.isSafeInteger(amountMinor + amount)) safe = false;
+        amountMinor += amount;
+      }
+      if (rows.length < LEDGER_PAGE_SIZE) {
+        complete = true;
+        break;
+      }
     }
-    return { ok: true as const, value: { amountMinor: total, complete: rows.length <= 10000 && safe } };
+    return { ok: true as const, value: { amountMinor, complete: complete && safe } };
   }
 
   async findTracking(
@@ -700,46 +714,55 @@ export class SupabaseMoneyPeriodRepository implements MoneyPeriodRepository {
     periodId: string,
     date: string,
   ): Promise<RepositoryResult<MoneyDayCloseCurrentTotals>> {
-    const { data, error } = await this.supabase
-      .from(LEDGER_TABLE)
-      .select("amount_minor, counts_in_daily, purpose, category")
-      .eq("owner_user_id", actor.userId)
-      .eq("period_id", periodId)
-      .eq("booking_date", date)
-      .eq("kind", "expense")
-      .eq("direction", "out")
-      .is("deleted_at", null)
-      .order("id", { ascending: true })
-      .limit(10001);
-    if (error) return { ok: false, error: moneyFailure(error) };
-    const rows = (data ?? []) as Array<{
-      amount_minor: number;
-      counts_in_daily: boolean;
-      purpose: string | null;
-      category: string | null;
-    }>;
     let expenseTotalMinor = 0;
     let dailyIncludedSpendMinor = 0;
     let flexibleExpenseTotalMinor = 0;
     let fixedExpenseTotalMinor = 0;
     let emergencyExpenseTotalMinor = 0;
     const categoryTotals: Partial<Record<ExpenseCategory, number>> = {};
-    for (const row of rows) {
-      const amount = Number(row.amount_minor);
-      expenseTotalMinor += amount;
-      if (row.counts_in_daily) dailyIncludedSpendMinor += amount;
-      if (row.purpose === "flexible") flexibleExpenseTotalMinor += amount;
-      if (row.purpose === "fixed") fixedExpenseTotalMinor += amount;
-      if (row.purpose === "emergency") emergencyExpenseTotalMinor += amount;
-      if (row.category) {
-        const category = row.category as ExpenseCategory;
-        categoryTotals[category] = (categoryTotals[category] ?? 0) + amount;
+    let complete = false;
+
+    for (let offset = 0; offset < LEDGER_PAGED_MAX_ROWS; offset += LEDGER_PAGE_SIZE) {
+      const { data, error } = await this.supabase
+        .from(LEDGER_TABLE)
+        .select("amount_minor, counts_in_daily, purpose, category")
+        .eq("owner_user_id", actor.userId)
+        .eq("period_id", periodId)
+        .eq("booking_date", date)
+        .eq("kind", "expense")
+        .eq("direction", "out")
+        .is("deleted_at", null)
+        .order("id", { ascending: true })
+        .range(offset, offset + LEDGER_PAGE_SIZE - 1);
+      if (error) return { ok: false, error: moneyFailure(error) };
+      const rows = (data ?? []) as Array<{
+        amount_minor: number;
+        counts_in_daily: boolean;
+        purpose: string | null;
+        category: string | null;
+      }>;
+      for (const row of rows) {
+        const amount = Number(row.amount_minor);
+        expenseTotalMinor += amount;
+        if (row.counts_in_daily) dailyIncludedSpendMinor += amount;
+        if (row.purpose === "flexible") flexibleExpenseTotalMinor += amount;
+        if (row.purpose === "fixed") fixedExpenseTotalMinor += amount;
+        if (row.purpose === "emergency") emergencyExpenseTotalMinor += amount;
+        if (row.category) {
+          const category = row.category as ExpenseCategory;
+          categoryTotals[category] = (categoryTotals[category] ?? 0) + amount;
+        }
+      }
+      if (rows.length < LEDGER_PAGE_SIZE) {
+        complete = true;
+        break;
       }
     }
+
     return {
       ok: true,
       value: {
-        complete: rows.length <= 10_000,
+        complete,
         expenseTotalMinor,
         dailyIncludedSpendMinor,
         flexibleExpenseTotalMinor,
