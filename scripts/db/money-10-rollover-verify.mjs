@@ -106,6 +106,13 @@ async function main() {
     );
     const sourceId = created[0].id;
 
+    // Simulate a web-created period whose mutable settings copy stayed empty:
+    // the effective policy version is the source of truth.
+    await sql.unsafe(
+      "UPDATE public.money_periods SET settings='{}'::jsonb, version=version+1, updated_at=now() WHERE id=$1 AND owner_user_id=$2",
+      [sourceId, A],
+    );
+
     const movements = await user(A, async (tx) => {
       const rows = await tx.unsafe(`INSERT INTO public.personal_expenses
         (owner_user_id,amount_minor,currency,note,idempotency_key,create_fingerprint,kind,direction,
@@ -272,7 +279,7 @@ async function main() {
       "Carried forward from the finished period.",
       hex("3"),
       provenance,
-      { savingsTargetMinor: 12000, emergencyTargetMinor: 3000 },
+      {},
       operationId,
       fingerprint,
       overrides.openingMode ?? "carry_forward",
@@ -318,6 +325,22 @@ async function main() {
       "successor is the single tracking period with the chosen dates",
     );
     console.log("[ROLLOVER] one successor period and source link committed atomically");
+
+    const copiedPolicy = await sql.unsafe(
+      "SELECT policy FROM public.money_policy_versions WHERE owner_user_id=$1 AND period_id=$2 ORDER BY version DESC LIMIT 1",
+      [A, successorId],
+    );
+    const successorSettings = await sql.unsafe(
+      "SELECT settings FROM public.money_periods WHERE owner_user_id=$1 AND id=$2",
+      [A, successorId],
+    );
+    assert(
+      copiedPolicy[0].policy.settings.savingsTargetMinor === 12000 &&
+        copiedPolicy[0].policy.settings.emergencyTargetMinor === 3000 &&
+        successorSettings[0].settings.savingsTargetMinor === 12000,
+      "the successor copies the source's effective policy, not its empty period copy",
+    );
+    console.log("[POLICY] successor policy is copied from the effective source policy version");
 
     const openingRows = await sql.unsafe(
       "SELECT amount_minor, kind, direction, period_id, booking_date, counts_in_daily FROM public.personal_expenses WHERE owner_user_id=$1 AND period_id=$2 AND kind='opening'",
@@ -451,12 +474,24 @@ async function main() {
     );
     console.log("[BRIDGE] pre-cutoff correction restates successor cash through one labeled adjustment");
 
-    const bridgeReplay = await user(A, (tx) =>
-      tx.unsafe(
-        "SELECT public.money_apply_rollover_bridge($1::uuid,$2::integer,$3::integer,$4::integer,$5::date,$6::timestamptz) AS result",
-        [expenseId, -1100, -2100, 2, "2026-11-29", "2026-12-02T09:00:00.000Z"],
-      ),
-    );
+    const bridgeReplay = await sql.begin(async (tx) => {
+      await tx.unsafe("SELECT set_config('request.jwt.claim.sub', $1, true)", [A]);
+      await tx.unsafe("SELECT set_config('request.jwt.claims', $1, true)", [
+        JSON.stringify({ sub: A, role: "authenticated" }),
+      ]);
+      return tx.unsafe(
+        "SELECT public.money_apply_rollover_bridge($1::uuid,$2::uuid,$3::integer,$4::integer,$5::integer,$6::date,$7::timestamptz) AS result",
+        [
+          sourceId,
+          expenseId,
+          -1100,
+          -2100,
+          2,
+          "2026-11-29",
+          "2026-12-02T09:00:00.000Z",
+        ],
+      );
+    });
     assert(bridgeReplay[0].result.replayed === 1 && bridgeReplay[0].result.postings === 0, "bridge retry is idempotent");
     const adjustmentCount = await sql.unsafe(
       "SELECT count(*)::int AS n FROM public.personal_expenses WHERE owner_user_id=$1 AND kind='reconciliation_adjustment'",
@@ -504,25 +539,26 @@ async function main() {
       [A, successorId],
     );
     const successorExpenseId = successorExpense[0].id;
-    const successorPolicy = await sql.unsafe(
-      "SELECT id FROM public.money_policy_versions WHERE owner_user_id=$1 AND period_id=$2 ORDER BY version DESC LIMIT 1",
+    // Use the real MONEY-08 setup path, not a seeded baseline. The successor
+    // policy was copied from the source's effective policy, so the explicit
+    // rebase must produce an available day-start baseline.
+    await user(A, (tx) =>
+      tx.unsafe(
+        "SELECT public.money_rebase_day_start_baseline($1::uuid)",
+        [successorId],
+      ),
+    );
+    const successorBaseline = await sql.unsafe(
+      "SELECT availability, savings_target_minor, emergency_target_minor FROM public.money_day_start_baselines WHERE owner_user_id=$1 AND period_id=$2 ORDER BY version DESC LIMIT 1",
       [A, successorId],
     );
-    await sql.unsafe(
-      `UPDATE public.money_day_start_baselines
-       SET policy_version_id=$1, availability='available', unavailable_reason=NULL,
-           cash_minor=70800, commitments_minor=7000, savings_target_minor=12000,
-           savings_funded_minor=0, emergency_target_minor=3000, emergency_used_minor=0,
-           inputs='{"setupComplete":true}'::jsonb
-       WHERE owner_user_id=$2 AND period_id=$3 AND date='2026-12-01'`,
-      [successorPolicy[0].id, A, successorId],
+    assert(
+      successorBaseline[0].availability === "available" &&
+        successorBaseline[0].savings_target_minor === 12000 &&
+        successorBaseline[0].emergency_target_minor === 3000,
+      "explicit successor setup produces an available baseline from the copied policy",
     );
-    await sql.unsafe(
-      `UPDATE public.money_periods
-       SET day_start_setup_completed=true, version=version+1, updated_at=now()
-       WHERE id=$1 AND owner_user_id=$2`,
-      [successorId, A],
-    );
+    console.log("[POLICY] successor explicit setup yields an available day-start baseline");
     const successorDays = [];
     for (
       let cursor = new Date("2026-12-01T00:00:00Z");
@@ -698,6 +734,40 @@ async function main() {
     );
     console.log("[VERIFIED] variance is disclosed, never written into the verified snapshot");
 
+    const verifiedReplay = await sql.begin(async (tx) => {
+      await tx.unsafe("SELECT set_config('request.jwt.claim.sub', $1, true)", [A]);
+      await tx.unsafe("SELECT set_config('request.jwt.claims', $1, true)", [
+        JSON.stringify({ sub: A, role: "authenticated" }),
+      ]);
+      return tx.unsafe(
+        "SELECT public.money_apply_rollover_bridge($1::uuid,$2::uuid,$3::integer,$4::integer,$5::integer,$6::date,$7::timestamptz) AS result",
+        [
+          sourceId,
+          expenseId,
+          -2600,
+          -3100,
+          4,
+          "2026-11-29",
+          "2027-01-02T09:00:00.000Z",
+        ],
+      );
+    });
+    assert(
+      verifiedReplay[0].result.replayed === 2 &&
+        verifiedReplay[0].result.postings === 0 &&
+        verifiedReplay[0].result.variances === 0,
+      "a replay of a correction already disclosed at a verified opening stops there",
+    );
+    const verifiedAdjustments = await sql.unsafe(
+      "SELECT count(*)::int AS n FROM public.personal_expenses WHERE owner_user_id=$1 AND period_id=$2 AND kind='reconciliation_adjustment'",
+      [A, verifiedPeriodId],
+    );
+    assert(
+      verifiedAdjustments[0].n === 0,
+      "a verified opening never receives a bridge adjustment",
+    );
+    console.log("[VERIFIED] a correction replay stops at the verified opening instead of passing it");
+
     // --- Bridge identity is movement-scoped ---------------------------------
     // A second source movement corrected to the same version number must get a
     // distinct bridge identity; otherwise one correction would mask the other.
@@ -730,6 +800,227 @@ async function main() {
       "two movements corrected at version 2 keep distinct bridge identities",
     );
     console.log("[BRIDGE] identity is movement-scoped, so concurrent corrections never collide");
+
+    // --- Legacy/backdated inserts and cross-window moves --------------------
+    // A direct-user insert with no period id but a booking date inside the
+    // rolled-over source must bridge, and moving it into the former successor
+    // window must bridge both source chains.
+    const legacyMovement = await user(A, (tx) =>
+      tx.unsafe(
+        `INSERT INTO public.personal_expenses
+          (owner_user_id,amount_minor,currency,note,idempotency_key,create_fingerprint,kind,direction,
+           booking_date,counts_in_daily,period_id,category,need_vs_want,purpose)
+         VALUES ($1,700,'MAD','legacy backdated','m10-legacy-backdated',repeat('7',64),'expense','out',
+           '2026-11-30',true,NULL,'groceries','need','flexible')
+         RETURNING id`,
+        [A],
+      ),
+    );
+    const legacyId = legacyMovement[0].id;
+    const legacyBridges = await sql.unsafe(
+      "SELECT source_period_id, correction_version, amount_minor, applied FROM public.money_period_rollover_bridges WHERE owner_user_id=$1 AND movement_id=$2",
+      [A, legacyId],
+    );
+    assert(
+      legacyBridges.some(
+        (row) =>
+          row.source_period_id === sourceId &&
+          row.amount_minor === 700 &&
+          row.applied === true,
+      ),
+      "a legacy null-period insert backdated into a rolled-over source is bridged",
+    );
+
+    await user(A, (tx) =>
+      tx.unsafe(
+        `UPDATE public.personal_expenses
+         SET booking_date='2026-12-05', version=version+1, updated_at=now()
+         WHERE id=$1 AND owner_user_id=$2`,
+        [legacyId, A],
+      ),
+    );
+    const movedBridges = await sql.unsafe(
+      "SELECT DISTINCT source_period_id FROM public.money_period_rollover_bridges WHERE owner_user_id=$1 AND movement_id=$2 AND correction_version=2",
+      [A, legacyId],
+    );
+    assert(
+      movedBridges.some((row) => row.source_period_id === sourceId) &&
+        movedBridges.some((row) => row.source_period_id === successorId),
+      "moving a movement between rolled-over windows bridges both sources",
+    );
+    console.log("[BRIDGE] backdated inserts and cross-window moves resolve sources by booking date");
+
+    // --- MCP read grant cannot write through the SECURITY DEFINER RPCs -----
+    await sql.unsafe(
+      `INSERT INTO public.mcp_authorization_grants
+        (owner_user_id, oauth_client_id, resource_uri, client_name, status,
+         permission_profile, permissions, permissions_version, approved_at)
+       VALUES ($1, 'm10-reader', $2, 'Proof reader', 'active',
+         'personal_operations', '["today.read","timer.read","personal_ops.read"]'::jsonb, 1, now())`,
+      [A, RESOURCE],
+    );
+    let readerRolloverDenied = false;
+    try {
+      await user(
+        A,
+        (tx) => callRollover(tx, rolloverArgs("m10-op-reader-denied", hex("a"))),
+        "m10-reader",
+      );
+    } catch (error) {
+      readerRolloverDenied = error.code === "42501";
+    }
+    assert(
+      readerRolloverDenied,
+      "a read-only MCP grant cannot call the rollover write RPC",
+    );
+    let readerBridgeDenied = false;
+    try {
+      await user(
+        A,
+        (tx) =>
+          tx.unsafe(
+            "SELECT public.money_apply_rollover_bridge($1::uuid,$2::uuid,0,-1,1,'2026-11-29'::date,now())",
+            [sourceId, expenseId],
+          ),
+        "m10-reader",
+      );
+    } catch (error) {
+      readerBridgeDenied = error.code === "42501";
+    }
+    assert(
+      readerBridgeDenied,
+      "the correction bridge is not an authenticated direct-write surface",
+    );
+    console.log("[SECURITY] read grants never imply write; bridge RPC is not client-callable");
+
+    // --- A final day without every earlier close cannot roll over ----------
+    const incompleteCreated = await user(B, (tx) =>
+      tx.unsafe(`SELECT (p).id AS id, (p).version AS version
+        FROM (SELECT public.money_create_period(
+          '2027-02-01'::date,'2027-02-02'::date,'Africa/Casablanca'::text,
+          '2027-02-02'::date,'initialized'::text,5000::integer,'2027-02-01'::date,
+          repeat('d',64)::text,'{"opening":{"source":"user_entered","recordedAt":"2027-02-01T00:00:00.000Z","cutoffDate":"2027-02-01","evidence":null,"note":null,"corrections":[]}}'::jsonb,
+          '{"savingsTargetMinor":1000,"emergencyTargetMinor":100}'::jsonb,
+          now()::timestamptz) AS p) created`),
+    );
+    const incompleteId = incompleteCreated[0].id;
+    const incompletePolicy = await sql.unsafe(
+      "SELECT id FROM public.money_policy_versions WHERE owner_user_id=$1 AND period_id=$2 ORDER BY version DESC LIMIT 1",
+      [B, incompleteId],
+    );
+    await sql.unsafe(
+      `UPDATE public.money_day_start_baselines
+       SET policy_version_id=$1, availability='available', unavailable_reason=NULL,
+           cash_minor=5000, commitments_minor=0, savings_target_minor=1000,
+           savings_funded_minor=0, emergency_target_minor=100, emergency_used_minor=0,
+           inputs='{"setupComplete":true}'::jsonb
+       WHERE owner_user_id=$2 AND period_id=$3 AND date='2027-02-02'`,
+      [incompletePolicy[0].id, B, incompleteId],
+    );
+    await sql.unsafe(
+      `UPDATE public.money_periods
+       SET day_start_setup_completed=true, version=version+1, updated_at=now()
+       WHERE id=$1 AND owner_user_id=$2`,
+      [incompleteId, B],
+    );
+    const incompleteVersion = await sql.unsafe(
+      "SELECT version FROM public.money_periods WHERE id=$1",
+      [incompleteId],
+    );
+    await user(B, (tx) =>
+      tx.unsafe(
+        `SELECT public.money_close_day($1::uuid,$2::integer,$3::date,$4::text,$5::uuid,$6::text,$7::uuid[],$8::timestamptz)`,
+        [
+          incompleteId,
+          incompleteVersion[0].version,
+          "2027-02-02",
+          "CLOSED",
+          "750e8400-e29b-41d4-a716-4466554402aa",
+          hex("c"),
+          [],
+          "2027-02-02T20:00:00.000Z",
+        ],
+      ),
+    );
+    let incompleteDenied = false;
+    let incompleteMessage = "";
+    try {
+      await user(B, (tx) =>
+        callRollover(tx, [
+          incompleteId,
+          incompleteVersion[0].version + 1,
+          "2027-02-03",
+          "2027-02-10",
+          "2027-02-03",
+          "Africa/Casablanca",
+          "initialized",
+          false,
+          5000,
+          "2027-02-02",
+          null,
+          "Carried forward",
+          hex("d"),
+          {
+            opening: {
+              source: "carry_forward",
+              recordedAt: "2027-02-03T09:00:00.000Z",
+              cutoffDate: "2027-02-02",
+              evidence: null,
+              note: "Carried forward",
+              corrections: [],
+            },
+            createdFrom: "web",
+          },
+          {},
+          "m10-op-incomplete",
+          hex("e"),
+          "carry_forward",
+          null,
+          null,
+          null,
+          {},
+          [],
+          [],
+          "2027-02-03T09:00:00.000Z",
+        ]),
+      );
+    } catch (error) {
+      incompleteDenied = error.code === "23514";
+      incompleteMessage = error.message ?? "";
+    }
+    assert(
+      incompleteDenied && /Every source day/.test(incompleteMessage),
+      "a source with an unclosed earlier day cannot roll over",
+    );
+    console.log("[CLOSE] every tracked source day must have retained close evidence");
+
+    // --- Past-dated setup is allowed by the current MONEY-08 rebase ---------
+    // A late rollover leaves the successor active date in the past. The current
+    // rebase definition (0102) has no CURRENT_DATE restriction, so explicit
+    // setup must still become available instead of forcing a date move.
+    const lateCreated = await user(C, (tx) =>
+      tx.unsafe(`SELECT (p).id AS id
+        FROM (SELECT public.money_create_period(
+          '2026-10-01'::date,'2026-10-02'::date,'Africa/Casablanca'::text,
+          '2026-10-02'::date,'initialized'::text,1000::integer,'2026-10-01'::date,
+          repeat('6',64)::text,'{"opening":{"source":"user_entered","recordedAt":"2026-10-01T00:00:00.000Z","cutoffDate":"2026-10-01","evidence":null,"note":null,"corrections":[]}}'::jsonb,
+          '{"savingsTargetMinor":500,"emergencyTargetMinor":50}'::jsonb,
+          now()::timestamptz) AS p) created`),
+    );
+    await user(C, (tx) =>
+      tx.unsafe("SELECT public.money_rebase_day_start_baseline($1::uuid)", [
+        lateCreated[0].id,
+      ]),
+    );
+    const lateBaseline = await sql.unsafe(
+      "SELECT availability FROM public.money_day_start_baselines WHERE owner_user_id=$1 AND period_id=$2 ORDER BY version DESC LIMIT 1",
+      [C, lateCreated[0].id],
+    );
+    assert(
+      lateBaseline[0].availability === "available",
+      "a past active date can complete explicit setup",
+    );
+    console.log("[SETUP] past-dated successor setup is not restricted to today");
 
     // --- Owner isolation and no direct write surface ------------------------
     const bVisible = await user(B, (tx) =>

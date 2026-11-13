@@ -3,7 +3,11 @@ import type {
   MoneyPeriod,
   MoneyPeriodSettings,
 } from "./money";
-import { MONEY_CURRENCY, MONEY_PERIOD_MAX_DAYS } from "./money";
+import {
+  MONEY_CURRENCY,
+  MONEY_PERIOD_MAX_DAYS,
+  parseMoneySettings,
+} from "./money";
 import {
   addDaysToIsoDate,
   getWeekWindow,
@@ -28,12 +32,12 @@ import {
  *   * unused daily allowance carryover is off: period opening cash and daily
  *     allowance are different concepts.
  *
- * Historical corrections after rollover are handled by
- * `planMoneyRolloverBridge`: a pre-cutoff source correction posts a
- * provenance-linked `reconciliation_adjustment` into derived successors and
- * stops at an independently verified opening, where it only discloses the
- * variance. Post-cutoff corrections never bridge a balance that never
- * included them.
+ * Historical corrections after rollover are handled by the canonical database
+ * trigger in `0107_money_10_period_rollover.sql`: a pre-cutoff source correction
+ * posts a provenance-linked `reconciliation_adjustment` into derived successors
+ * and stops at an independently verified opening, where it only discloses the
+ * variance. Post-cutoff corrections never bridge a balance that never included
+ * them.
  */
 
 export const MONEY_ROLLOVER_UNPAID_TREATMENTS = [
@@ -408,10 +412,11 @@ export function parseMoneyRolloverInput(input: unknown): MoneyRolloverValidation
 
   let settingsOverrides: MoneyPeriodSettings | null = null;
   if (input.settingsOverrides !== undefined && input.settingsOverrides !== null) {
-    if (!isRecord(input.settingsOverrides)) {
-      return failure("settingsOverrides", "Settings overrides must be an object.");
+    const parsedSettings = parseMoneySettings(input.settingsOverrides);
+    if (!parsedSettings.ok) {
+      return failure("settingsOverrides", parsedSettings.message);
     }
-    settingsOverrides = input.settingsOverrides as MoneyPeriodSettings;
+    settingsOverrides = parsedSettings.value;
   }
 
   let acceptClosingDifferenceNote: string | null = null;
@@ -496,6 +501,7 @@ export type MoneyRolloverDifference = Readonly<{
     | "unknown_closing_cash"
     | "unpaid_occurrences"
     | "close_snapshot_restatement"
+    | "incomplete_close_evidence"
     | "paid_obligation_payment_mismatch"
     | "counted_coffee_visit_mismatch"
     | "savings_target_vs_transfers";
@@ -535,6 +541,9 @@ export type MoneyRolloverCloseSnapshotAssessment =
   | Readonly<{
       available: true;
       closeCount: number;
+      /** Inclusive days in the source period that each need retained close evidence. */
+      requiredCloseCount: number;
+      completeCloseEvidence: boolean;
       lastClosedDate: string | null;
       comparableToRestatedTotals: true;
       restatedDifferenceCount: number;
@@ -636,17 +645,22 @@ export function assessMoneyRollover(input: Readonly<{
     }
   }
 
-  if (!input.closeSnapshots.available) {
+  const closeSnapshot = input.closeSnapshots;
+  const completeCloseEvidence = closeSnapshot.available
+    ? closeSnapshot.completeCloseEvidence
+    : false;
+
+  if (!closeSnapshot.available) {
     differences.push({
       code: "close_snapshot_restatement",
       amountMinor: null,
       status: "unavailable",
-      message: `Stored day-close snapshots are unavailable (${input.closeSnapshots.reason}), so the required close-to-restated comparison cannot run.`,
+      message: `Stored day-close snapshots are unavailable (${closeSnapshot.reason}), so the required close-to-restated comparison cannot run.`,
     });
     blockers.push(
       "The source period needs retained day-close evidence with a comparable restatement before it can be rolled over.",
     );
-  } else if (!input.closeSnapshots.comparableToRestatedTotals) {
+  } else if (!closeSnapshot.comparableToRestatedTotals) {
     differences.push({
       code: "close_snapshot_restatement",
       amountMinor: null,
@@ -657,35 +671,51 @@ export function assessMoneyRollover(input: Readonly<{
     blockers.push(
       "The close-to-restated comparison is incomplete. Repair the source ledger or close evidence before rolling over.",
     );
-  } else if (input.closeSnapshots.restatedDifferenceCount > 0) {
-    const changed = input.closeSnapshots.restatedDifferenceCount;
-    const accepted = input.differenceAccepted;
-    differences.push({
-      code: "close_snapshot_restatement",
-      amountMinor: null,
-      status: accepted ? "accepted" : "choice_required",
-      message: `${changed} stored day close${changed === 1 ? "" : "s"} no longer match${changed === 1 ? "es" : ""} the live restated totals. The original close evidence stays retained; accept the restatement explicitly or correct the ledger before rolling over.`,
-    });
-    if (!accepted) {
-      choices.push(
-        "Review the restated close snapshots and accept them with a retained note, or correct the affected source movements first.",
-      );
-    }
   } else {
-    differences.push({
-      code: "close_snapshot_restatement",
-      amountMinor: null,
-      status: "ok",
-      message: `${input.closeSnapshots.closeCount} stored day close${input.closeSnapshots.closeCount === 1 ? "" : "s"} match the live restated totals.`,
-    });
+    if (!completeCloseEvidence) {
+      const required = closeSnapshot.requiredCloseCount;
+      differences.push({
+        code: "incomplete_close_evidence",
+        amountMinor: null,
+        status: "unavailable",
+        message: `Only ${closeSnapshot.closeCount} of ${required ?? "the required"} source days have retained close evidence. Every tracked day must be closed before rollover.`,
+      });
+      blockers.push(
+        "Every tracked source day needs retained close evidence before rollover. Close the missing days first.",
+      );
+    } else if (closeSnapshot.restatedDifferenceCount > 0) {
+      const changed = closeSnapshot.restatedDifferenceCount;
+      const accepted = input.differenceAccepted;
+      differences.push({
+        code: "close_snapshot_restatement",
+        amountMinor: null,
+        status: accepted ? "accepted" : "choice_required",
+        message: `${changed} stored day close${changed === 1 ? "" : "s"} no longer match${changed === 1 ? "es" : ""} the live restated totals. The original close evidence stays retained; accept the restatement explicitly or correct the ledger before rolling over.`,
+      });
+      if (!accepted) {
+        choices.push(
+          "Review the restated close snapshots and accept them with a retained note, or correct the affected source movements first.",
+        );
+      }
+    } else {
+      differences.push({
+        code: "close_snapshot_restatement",
+        amountMinor: null,
+        status: "ok",
+        message: `${closeSnapshot.closeCount} stored day close${closeSnapshot.closeCount === 1 ? "" : "s"} match the live restated totals.`,
+      });
+    }
 
-    if (input.closeSnapshots.paidObligationMismatchCount > 0) {
-      const mismatched = input.closeSnapshots.paidObligationMismatchCount;
+    // Paid obligations, counted visits and the savings target are independent
+    // reconciliation inputs. A restated close or its acceptance note must never
+    // hide a payment or visit mismatch.
+    if (closeSnapshot.paidObligationMismatchCount > 0) {
+      const mismatched = closeSnapshot.paidObligationMismatchCount;
       differences.push({
         code: "paid_obligation_payment_mismatch",
         amountMinor: null,
         status: input.differenceAccepted ? "accepted" : "choice_required",
-        message: `${mismatched} paid obligation${mismatched === 1 ? "" : "s"} do not match exactly one live canonical payment. Review the MONEY-07 payment links before rolling over.`,
+        message: `${mismatched} paid obligation${mismatched === 1 ? " does" : "s do"} not match exactly one live canonical payment. Review the MONEY-07 payment links before rolling over.`,
       });
       if (!input.differenceAccepted) {
         choices.push(
@@ -694,8 +724,8 @@ export function assessMoneyRollover(input: Readonly<{
       }
     }
 
-    if (input.closeSnapshots.countedVisitMismatchCount > 0) {
-      const mismatched = input.closeSnapshots.countedVisitMismatchCount;
+    if (closeSnapshot.countedVisitMismatchCount > 0) {
+      const mismatched = closeSnapshot.countedVisitMismatchCount;
       differences.push({
         code: "counted_coffee_visit_mismatch",
         amountMinor: null,
@@ -709,9 +739,9 @@ export function assessMoneyRollover(input: Readonly<{
       }
     }
 
-    if (input.closeSnapshots.savingsTargetMinor !== null) {
-      const target = input.closeSnapshots.savingsTargetMinor;
-      const transferred = input.closeSnapshots.savingsTransferredMinor;
+    if (closeSnapshot.savingsTargetMinor !== null) {
+      const target = closeSnapshot.savingsTargetMinor;
+      const transferred = closeSnapshot.savingsTransferredMinor;
       differences.push({
         code: "savings_target_vs_transfers",
         amountMinor: transferred - target,
@@ -724,139 +754,26 @@ export function assessMoneyRollover(input: Readonly<{
     }
   }
 
+  const acceptableDifference =
+    (differenceMinor !== null && differenceMinor !== 0) ||
+    (closeSnapshot.available &&
+      (closeSnapshot.restatedDifferenceCount > 0 ||
+        closeSnapshot.paidObligationMismatchCount > 0 ||
+        closeSnapshot.countedVisitMismatchCount > 0));
+
   return {
     currency: MONEY_CURRENCY,
     cutoffDate: input.cutoffDate,
     modeledClosingCashMinor: input.modeledClosingCashMinor,
     verifiedClosingCashMinor: input.verifiedClosingCashMinor,
     differenceMinor,
-    differenceAccepted: Boolean(
-      input.differenceAccepted && differenceMinor !== null && differenceMinor !== 0,
-    ),
+    differenceAccepted: Boolean(input.differenceAccepted && acceptableDifference),
     pendingOccurrenceCount: input.pendingOccurrences.length,
     pendingOccurrenceMinor,
     choices,
     blockers,
     differences,
   };
-}
-
-/* -------------------------------------------------------------------------- */
-/* Derived-period correction bridges                                          */
-/* -------------------------------------------------------------------------- */
-
-export type MoneyRolloverBridgeSuccessor = Readonly<{
-  periodId: string;
-  startDate: string;
-  openingVerified: boolean;
-  openingCutoffDate: string | null;
-}>;
-
-export type MoneyRolloverBridgePosting = Readonly<{
-  destinationPeriodId: string;
-  amountMinor: number;
-  direction: "in" | "out";
-  /** Stable identity: source correction/version plus destination period. */
-  identity: string;
-  bookingDate: string;
-}>;
-
-export type MoneyRolloverBridgeVariance = Readonly<{
-  destinationPeriodId: string;
-  amountMinor: number;
-  reason: "verified_opening_excludes_correction" | "verified_opening_covered_cutoff";
-}>;
-
-export type MoneyRolloverBridgePlan = Readonly<{
-  sourcePeriodId: string;
-  correctionVersion: number;
-  deltaMinor: number;
-  postings: readonly MoneyRolloverBridgePosting[];
-  variances: readonly MoneyRolloverBridgeVariance[];
-  /** True when the plan posts nothing because the correction is post-cutoff. */
-  noBridge: boolean;
-}>;
-
-export function moneyRolloverBridgeIdentity(
-  sourcePeriodId: string,
-  movementId: string,
-  correctionVersion: number,
-  destinationPeriodId: string,
-): string {
-  // The movement id is part of the identity: two different movements can both
-  // be corrected to the same version number, and their bridges must never
-  // collide in one source period.
-  return `bridge:${sourcePeriodId}:${movementId}:${correctionVersion}:${destinationPeriodId}`;
-}
-
-/**
- * Plan the compound downstream correction.
- *
- * `previousCashDeltaMinor`/`newCashDelta` are signed cash effects of one
- * movement before and after the correction. Only the incremental delta is
- * posted, so repeated edits never double-apply. Each derived successor receives
- * one adjustment until a verified opening covers (or excludes) the correction.
- */
-export function planMoneyRolloverBridge(input: Readonly<{
-  sourcePeriodId: string;
-  movementId: string;
-  /** Inclusive source end; a correction after it never touched the close. */
-  sourceEndDate: string;
-  correctionVersion: number;
-  movementBookingDate: string;
-  previousCashDeltaMinor: number;
-  newCashDeltaMinor: number;
-  successors: readonly MoneyRolloverBridgeSuccessor[];
-}>): MoneyRolloverBridgePlan {
-  const deltaMinor = input.newCashDeltaMinor - input.previousCashDeltaMinor;
-  const base = {
-    sourcePeriodId: input.sourcePeriodId,
-    correctionVersion: input.correctionVersion,
-    deltaMinor,
-  };
-  if (deltaMinor === 0 || input.movementBookingDate > input.sourceEndDate) {
-    return { ...base, postings: [], variances: [], noBridge: true };
-  }
-
-  const postings: MoneyRolloverBridgePosting[] = [];
-  const variances: MoneyRolloverBridgeVariance[] = [];
-  for (const successor of input.successors) {
-    if (successor.openingVerified) {
-      if (
-        successor.openingCutoffDate !== null &&
-        input.movementBookingDate <= successor.openingCutoffDate
-      ) {
-        // The verified snapshot included the corrected day: disclose, never
-        // rewrite the independently verified opening.
-        variances.push({
-          destinationPeriodId: successor.periodId,
-          amountMinor: deltaMinor,
-          reason: "verified_opening_covered_cutoff",
-        });
-      } else {
-        variances.push({
-          destinationPeriodId: successor.periodId,
-          amountMinor: deltaMinor,
-          reason: "verified_opening_excludes_correction",
-        });
-      }
-      break;
-    }
-    postings.push({
-      destinationPeriodId: successor.periodId,
-      amountMinor: Math.abs(deltaMinor),
-      direction: deltaMinor > 0 ? "in" : "out",
-      identity: moneyRolloverBridgeIdentity(
-        input.sourcePeriodId,
-        input.movementId,
-        input.correctionVersion,
-        successor.periodId,
-      ),
-      bookingDate: successor.startDate,
-    });
-  }
-
-  return { ...base, postings, variances, noBridge: postings.length === 0 };
 }
 
 /* -------------------------------------------------------------------------- */

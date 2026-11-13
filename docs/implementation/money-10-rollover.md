@@ -6,9 +6,10 @@ Status: implementation candidate on `t3/money-10-mcp-delivery`, rebased onto
 ## What this branch delivers
 
 - `packages/domain/src/money-rollover.ts`: pure rollover rules — finished-source
-  precondition, successor date defaults and gap policy, explicit unpaid-item
-  treatment, opening provenance, closing reconciliation assessment, derived-week
-  windows, and the correction-bridge plan/identity.
+  precondition, close-evidence completeness, successor date defaults and gap
+  policy, explicit unpaid-item treatment, opening provenance, closing
+  reconciliation assessment, and derived week windows. The canonical correction
+  bridge and its identity live in the database trigger.
 - `packages/application/src/money/rollover.ts` + `rollover-ports.ts`: preview and
   write use cases. The successor occurrence plan is composed from the existing
   MONEY-06 recurrence rules, never re-implemented.
@@ -30,9 +31,11 @@ Status: implementation candidate on `t3/money-10-mcp-delivery`, rebased onto
 ## MONEY-09 integration (implemented here)
 
 1. **Finished source state.** Rollover requires
-   `money_periods.lifecycle = 'ended'` and `active_date = end_date`. The durable
-   day close is the only normal producer of that state; the preview tells the
-   owner to close the final day when it is missing.
+   `money_periods.lifecycle = 'ended'` and `active_date = end_date`, and the
+   retained close count must equal the inclusive source days. The durable day
+   close is the only normal producer of that state; a tracking source fails the
+   preview before the panel is rendered, and a missing earlier close is a
+   blocker rather than a passed comparison.
 2. **Close snapshots.** `MoneyRolloverSourceContext.closeSnapshots` is read from
    `money_day_closes` by `money_rollover_close_snapshot_summary`. Every retained
    close is compared with the same canonical aggregates used by the MONEY-09
@@ -40,17 +43,28 @@ Status: implementation candidate on `t3/money-10-mcp-delivery`, rebased onto
    missing or incomparable evidence blocks rollover instead of passing silently.
    The atomic rollover repeats this check, so a stale preview cannot bypass it.
 3. **Correction path.** `personal_expenses_rollover_bridge` is an
-   `AFTER UPDATE OR DELETE` trigger on the canonical ledger. Every correction
-   path — web, HTTP, MCP or a direct versioned PostgREST update — calls
+   `AFTER INSERT OR UPDATE` trigger on the canonical ledger. Every correction
+   path — web, HTTP, MCP, a direct versioned PostgREST update or a backdated
+   insert, including legacy rows with no `period_id` — resolves the affected
+   rolled-over source by booking date and calls
    `money_apply_rollover_bridge(...)` inside the same transaction. It measures
-   the old and new signed cash effect against the source window, is idempotent on
-   `bridge:<source>:<movement>:<correctionVersion>:<destination>`, posts only the
-   incremental delta, and stops at a verified opening with a variance row. A
-   failed bridge aborts the correction, so successor cash cannot commit
-   inconsistent. Post-cutoff corrections are not bridged.
+   the old and new signed cash effect against each source window, is idempotent on
+   `bridge:<source>:<movement>:<correctionVersion>:<direction>:<destination>`,
+   posts only the incremental delta, and stops at a verified opening with a
+   variance row. A movement moved between rolled-over windows bridges both
+   sources; nested bridge postings are not re-bridged. A failed bridge aborts the
+   correction, so successor cash cannot commit inconsistent. Post-cutoff
+   corrections are not bridged. The bridge RPC is not granted to clients; only
+   the definer trigger invokes it.
 4. **Preview surface.** `money-day-close-panel.tsx` and
    `money-rollover-panel.tsx` remain separate components; the Money page renders
    close evidence for the selected period and rollover only for an ended source.
+   The successor copies the source's latest effective `money_policy_versions`
+   settings (never the mutable `money_periods.settings` copy) and layers explicit
+   overrides. Unpaid occurrences are read through bounded pages with an explicit
+   truncation blocker. A `money-rollover-variance-panel` on the destination
+   period and `priorCorrectionBridges` in the preview/MCP response disclose
+   corrections that stopped at a verified opening.
 
 ## Deliberate limits
 
@@ -70,7 +84,9 @@ Status: implementation candidate on `t3/money-10-mcp-delivery`, rebased onto
 - The successor day-start baseline starts as MONEY-08 `initial_setup_incomplete`
   because a historical rollover cannot prove its initial obligation/funding
   history from current state. The Money period panel offers the existing explicit
-  rebase/complete-setup action before the first successor day is closed.
+  rebase/complete-setup action before the first successor day is closed; the
+  current MONEY-08 rebase accepts a past active date in a tracking period, so a
+  late rollover can still complete setup without moving the date to today.
 
 ## Verification run on this branch
 
@@ -79,13 +95,19 @@ Status: implementation candidate on `t3/money-10-mcp-delivery`, rebased onto
 - `scripts/db/money-10-rollover-verify.mjs` passed against that cluster. It
   finishes the source and middle periods through real `money_close_day` calls,
   asserts two retained close snapshots compare cleanly with restated totals, then
-  proves one atomic successor + opening, replay without duplicates, unpaid
-  one-off carry with reason history, the ledger trigger's incremental bridge,
-  bridge replay idempotency, a verified-opening stop with variance disclosure,
-  and owner-scoped receipts.
+  proves one atomic successor + opening, effective-policy copy from an empty
+  period-settings copy followed by an available explicit setup baseline, replay
+  without duplicates, unpaid one-off carry with reason history, the ledger
+  trigger's incremental bridge, bridge replay idempotency, a verified-opening stop
+  with variance disclosure, read-grant denial, every-day close evidence,
+  backdated/legacy and cross-window bridging, and owner-scoped receipts.
 - `npm run domain:test`, `npm run application:test`, `npm run data-access:test`
   and `npm run contracts:test` passed.
-- `npm run web:typecheck` and `npm run server:typecheck` passed.
-- Focused MCP Money, Money page/actions and Money HTTP route tests passed.
+- `npm run domain:typecheck`, `npm run application:typecheck`,
+  `npm run data-access:typecheck`, `npm run contracts:typecheck`,
+  `npm run api-client:typecheck`, `npm run web:typecheck` and
+  `npm run server:typecheck` passed after the review fixes.
+- Focused rollover panel/variance tests, MCP read-handler tests, the Money page
+  test, the server Money route test and the disposable rollover proof passed.
 - The disposable proof is wired into the `db-invariants` job beside MONEY-09.
 

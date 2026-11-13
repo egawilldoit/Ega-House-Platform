@@ -27,12 +27,13 @@
 --      different opening.
 --   5. `money_apply_rollover_bridge(...)`: the compound correction operation. It
 --      applies only the incremental delta, is idempotent on
---      `bridge:<source>:<movement>:<correctionVersion>:<destination>` and never mutates a
+--      `bridge:<source>:<movement>:<correctionVersion>:<direction>:<destination>` and never mutates a
 --      verified opening snapshot.
---   6. `money_bridge_rolled_over_correction`: an AFTER UPDATE/DELETE trigger on
---      the canonical ledger. Every correction path (web, HTTP, MCP or direct
---      PostgREST update) runs the bridge inside the same transaction, so a
---      generic edit cannot leave derived successor cash inconsistent.
+--   6. `money_bridge_rolled_over_correction`: an AFTER INSERT/UPDATE trigger on
+--      the canonical ledger. It resolves rolled-over sources from booking dates,
+--      so every correction path (web, HTTP, MCP, direct PostgREST update and
+--      backdated insert, including legacy rows with no `period_id`) runs the
+--      bridge inside the same transaction.
 
 ALTER TABLE public.money_periods
   ADD COLUMN IF NOT EXISTS successor_period_id uuid;
@@ -282,6 +283,9 @@ DECLARE
   v_visit_mismatch integer := 0;
   v_savings_target integer;
   v_savings_transferred integer := 0;
+  v_policy public.money_policy_versions;
+  v_settings jsonb;
+  v_required_closes integer;
 BEGIN
   IF v_owner IS NULL THEN
     RAISE EXCEPTION 'Authentication is required.' USING ERRCODE = '42501';
@@ -297,6 +301,8 @@ BEGIN
   IF NOT FOUND THEN
     RETURN jsonb_build_object('available', false, 'reason', 'source_period_not_found');
   END IF;
+
+  v_required_closes := v_period.end_date - v_period.start_date + 1;
 
   SELECT count(*)::integer, max(close_date)
     INTO v_count, v_last
@@ -415,9 +421,16 @@ BEGIN
       AND visit.local_date >= v_period.start_date
       AND visit.local_date <= v_period.end_date;
 
+  SELECT * INTO v_policy
+  FROM public.money_policy_versions
+  WHERE owner_user_id = v_owner AND period_id = p_period_id
+  ORDER BY effective_date DESC, version DESC
+  LIMIT 1;
+  v_settings := COALESCE(v_policy.policy -> 'settings', v_period.settings, '{}'::jsonb);
+
   v_savings_target := CASE
-    WHEN jsonb_typeof(v_period.settings -> 'savingsTargetMinor') = 'number'
-      THEN (v_period.settings ->> 'savingsTargetMinor')::integer
+    WHEN jsonb_typeof(v_settings -> 'savingsTargetMinor') = 'number'
+      THEN (v_settings ->> 'savingsTargetMinor')::integer
     ELSE NULL
   END;
   SELECT COALESCE(sum(amount_minor), 0)::integer INTO v_savings_transferred
@@ -431,6 +444,8 @@ BEGIN
   RETURN jsonb_build_object(
     'available', true,
     'closeCount', v_count,
+    'requiredCloseCount', v_required_closes,
+    'completeCloseEvidence', v_count = v_required_closes,
     'lastClosedDate', v_last,
     'comparableToRestatedTotals', true,
     'restatedDifferenceCount', v_restated_count,
@@ -453,8 +468,10 @@ GRANT EXECUTE ON FUNCTION public.money_rollover_close_snapshot_summary(uuid) TO 
 -- Atomic rollover. SECURITY DEFINER is used only to compose the existing
 -- owner-scoped writes (period, opening movement, policy/baseline, occurrences)
 -- in one transaction; every statement filters `owner_user_id = auth.uid()` and
--- no parameter can select an owner. RLS remains authoritative for direct table
--- access, and the tables above grant no INSERT/UPDATE to clients.
+-- no parameter can select an owner. MCP callers with a `client_id` must also
+-- hold the explicit finance write grant. The successor policy is composed from
+-- the source's latest effective `money_policy_versions` settings, not the
+-- mutable `money_periods.settings` copy, then layered with explicit overrides.
 CREATE OR REPLACE FUNCTION public.money_rollover_period(
   p_source_period_id uuid,
   p_expected_version integer,
@@ -506,9 +523,18 @@ DECLARE
   v_modeled_closing integer;
   v_close_summary jsonb;
   v_restated_closes integer;
+  v_paid_mismatches integer;
+  v_visit_mismatches integer;
+  v_source_policy public.money_policy_versions;
+  v_successor_settings jsonb;
+  v_required_closes integer;
 BEGIN
   IF v_owner IS NULL THEN
     RAISE EXCEPTION 'Authentication is required.' USING ERRCODE = '42501';
+  END IF;
+  IF (SELECT auth.jwt()) ->> 'client_id' IS NOT NULL
+     AND NOT public.mcp_finance_grant_allows('personal_ops.write') THEN
+    RAISE EXCEPTION 'Finance write grant required' USING ERRCODE = '42501';
   END IF;
   IF p_operation_id IS NULL OR btrim(p_operation_id) = '' THEN
     RAISE EXCEPTION 'A stable operation id is required.' USING ERRCODE = '23514';
@@ -587,6 +613,33 @@ BEGIN
     RAISE EXCEPTION 'The opening cutoff must be recorded on or before the successor start.'
       USING ERRCODE = '23514';
   END IF;
+  IF p_opening_mode = 'verified_source'
+     AND NULLIF(btrim(COALESCE(p_opening_evidence, '')), '') IS NULL THEN
+    RAISE EXCEPTION 'A verified opening must retain its evidence.'
+      USING ERRCODE = '23514';
+  END IF;
+  IF p_settings IS NOT NULL AND jsonb_typeof(p_settings) <> 'object' THEN
+    RAISE EXCEPTION 'Successor settings overrides must be a JSON object.'
+      USING ERRCODE = '23514';
+  END IF;
+  IF p_settings ? 'savingsTargetMinor' AND (
+    jsonb_typeof(p_settings -> 'savingsTargetMinor') <> 'number'
+    OR (p_settings ->> 'savingsTargetMinor')::numeric < 0
+    OR (p_settings ->> 'savingsTargetMinor')::numeric > 2147483647
+    OR (p_settings ->> 'savingsTargetMinor')::numeric <> trunc((p_settings ->> 'savingsTargetMinor')::numeric)
+  ) THEN
+    RAISE EXCEPTION 'savingsTargetMinor must be a non-negative integer.'
+      USING ERRCODE = '23514';
+  END IF;
+  IF p_settings ? 'emergencyTargetMinor' AND (
+    jsonb_typeof(p_settings -> 'emergencyTargetMinor') <> 'number'
+    OR (p_settings ->> 'emergencyTargetMinor')::numeric < 0
+    OR (p_settings ->> 'emergencyTargetMinor')::numeric > 2147483647
+    OR (p_settings ->> 'emergencyTargetMinor')::numeric <> trunc((p_settings ->> 'emergencyTargetMinor')::numeric)
+  ) THEN
+    RAISE EXCEPTION 'emergencyTargetMinor must be a non-negative integer.'
+      USING ERRCODE = '23514';
+  END IF;
   IF p_unpaid_treatment IS NOT NULL
      AND p_unpaid_treatment NOT IN ('keep_pending', 'carry_forward', 'cancel') THEN
     RAISE EXCEPTION 'The unpaid-item treatment is invalid.' USING ERRCODE = '23514';
@@ -606,15 +659,23 @@ BEGIN
     RAISE EXCEPTION 'The source period has no comparable day-close evidence.'
       USING ERRCODE = '23514';
   END IF;
+  v_required_closes := COALESCE((v_close_summary ->> 'requiredCloseCount')::integer, 0);
+  IF COALESCE((v_close_summary ->> 'completeCloseEvidence')::boolean, false) IS NOT TRUE
+     OR COALESCE((v_close_summary ->> 'closeCount')::integer, 0) <> v_required_closes THEN
+    RAISE EXCEPTION 'Every source day needs retained close evidence before rollover.'
+      USING ERRCODE = '23514';
+  END IF;
   IF COALESCE((v_close_summary ->> 'comparableToRestatedTotals')::boolean, false) IS NOT TRUE
      OR (v_close_summary ->> 'lastClosedDate')::date IS DISTINCT FROM v_source.end_date THEN
     RAISE EXCEPTION 'The final source day must be closed and comparable to its restated totals.'
       USING ERRCODE = '23514';
   END IF;
   v_restated_closes := COALESCE((v_close_summary ->> 'restatedDifferenceCount')::integer, 0);
-  IF v_restated_closes > 0
+  v_paid_mismatches := COALESCE((v_close_summary ->> 'paidObligationMismatchCount')::integer, 0);
+  v_visit_mismatches := COALESCE((v_close_summary ->> 'countedVisitMismatchCount')::integer, 0);
+  IF (v_restated_closes > 0 OR v_paid_mismatches > 0 OR v_visit_mismatches > 0)
      AND NULLIF(btrim(COALESCE(p_reconciliation_accepted_note, '')), '') IS NULL THEN
-    RAISE EXCEPTION 'Restated day-close evidence needs an explicit acceptance note before rollover.'
+    RAISE EXCEPTION 'Restated closes, payment mismatches or counted-visit mismatches need an explicit acceptance note before rollover.'
       USING ERRCODE = '23514';
   END IF;
 
@@ -680,13 +741,21 @@ BEGIN
     END IF;
   END IF;
 
+  SELECT * INTO v_source_policy
+  FROM public.money_policy_versions
+  WHERE owner_user_id = v_owner AND period_id = v_source.id
+  ORDER BY effective_date DESC, version DESC
+  LIMIT 1;
+  v_successor_settings := COALESCE(v_source_policy.policy -> 'settings', v_source.settings, '{}'::jsonb)
+    || COALESCE(p_settings, '{}'::jsonb);
+
   INSERT INTO public.money_periods (
     id, owner_user_id, start_date, end_date, currency, timezone, active_date,
     lifecycle, initialization, opening_movement_id, provenance, settings,
     version, created_at, updated_at
   ) VALUES (
     v_successor_id, v_owner, p_start_date, p_end_date, 'MAD', btrim(p_timezone),
-    p_active_date, 'tracking', 'uninitialized', NULL, p_provenance, p_settings,
+    p_active_date, 'tracking', 'uninitialized', NULL, p_provenance, v_successor_settings,
     1, p_created_at, p_created_at
   );
 
@@ -714,7 +783,7 @@ BEGIN
   ) VALUES (
     v_owner, v_successor_id, 1, p_active_date,
     jsonb_build_object(
-      'settings', p_settings,
+      'settings', v_successor_settings,
       'algorithmVersion', 'safe-flexible-start-of-day-v1',
       'rolledOverFrom', v_source.id
     ),
@@ -903,9 +972,14 @@ GRANT EXECUTE ON FUNCTION public.money_rollover_period(
 
 -- Compound downstream correction operation. It is called by the canonical
 -- ledger trigger below, inside the same transaction as the source movement
--- edit/delete. It applies only the incremental delta and never touches a
+-- edit/insert. It applies only the incremental delta and never touches a
 -- verified opening snapshot.
+DROP FUNCTION IF EXISTS public.money_apply_rollover_bridge(
+  uuid, integer, integer, integer, date, timestamp with time zone
+);
+--> statement-breakpoint
 CREATE OR REPLACE FUNCTION public.money_apply_rollover_bridge(
+  p_source_period_id uuid,
   p_movement_id uuid,
   p_previous_cash_delta_minor integer,
   p_new_cash_delta_minor integer,
@@ -938,6 +1012,10 @@ BEGIN
   IF v_owner IS NULL THEN
     RAISE EXCEPTION 'Authentication is required.' USING ERRCODE = '42501';
   END IF;
+  IF (SELECT auth.jwt()) ->> 'client_id' IS NOT NULL
+     AND NOT public.mcp_finance_grant_allows('personal_ops.write') THEN
+    RAISE EXCEPTION 'Finance write grant required' USING ERRCODE = '42501';
+  END IF;
   IF p_correction_version IS NULL OR p_correction_version < 1 THEN
     RAISE EXCEPTION 'A positive correction version is required.' USING ERRCODE = '23514';
   END IF;
@@ -954,7 +1032,7 @@ BEGIN
   END IF;
 
   v_delta := p_new_cash_delta_minor - p_previous_cash_delta_minor;
-  IF v_delta = 0 OR v_movement.period_id IS NULL THEN
+  IF v_delta = 0 THEN
     RETURN jsonb_build_object(
       'postings', 0, 'variances', 0, 'replayed', 0,
       'destination_period_ids', to_jsonb(v_destinations)
@@ -963,9 +1041,9 @@ BEGIN
 
   SELECT * INTO v_current
   FROM public.money_periods
-  WHERE id = v_movement.period_id AND owner_user_id = v_owner
+  WHERE id = p_source_period_id AND owner_user_id = v_owner
   FOR UPDATE;
-  IF NOT FOUND THEN
+  IF NOT FOUND OR v_current.lifecycle <> 'rolled_over' THEN
     RETURN jsonb_build_object(
       'postings', 0, 'variances', 0, 'replayed', 0,
       'destination_period_ids', to_jsonb(v_destinations)
@@ -991,33 +1069,34 @@ BEGIN
     FOR UPDATE;
     EXIT WHEN NOT FOUND;
 
-    -- The movement id is part of the identity so two different movements
-    -- corrected to the same version number never collide.
-    v_identity := 'bridge:' || v_current.id || ':' || v_movement.id || ':'
-      || p_correction_version || ':' || v_next.id;
     v_direction := CASE WHEN v_delta > 0 THEN 'in' ELSE 'out' END;
+    -- The movement and delta direction are part of the identity. Two movements
+    -- corrected at the same version never collide, and one cross-window move can
+    -- legitimately produce offsetting +delta/-delta disclosures at one
+    -- destination without losing the second one.
+    v_identity := 'bridge:' || v_current.id || ':' || v_movement.id || ':'
+      || p_correction_version || ':' || v_direction || ':' || v_next.id;
     v_bridge_id := NULL;
 
-    -- A replay of the same correction version must be the same delta. A
-    -- different delta under one identity is a conflict, never a silent no-op
-    -- that would leave successor cash wrong.
-    SELECT * INTO v_existing_bridge
-    FROM public.money_period_rollover_bridges
-    WHERE owner_user_id = v_owner AND identity = v_identity;
-    IF FOUND THEN
-      IF v_existing_bridge.amount_minor <> abs(v_delta)
-         OR v_existing_bridge.direction <> v_direction THEN
-        RAISE EXCEPTION 'The bridge identity was already used with a different correction delta.'
-          USING ERRCODE = '23505';
-      END IF;
-      v_replayed := v_replayed + 1;
-      v_destinations := array_append(v_destinations, v_next.id);
-      v_current := v_next;
-      CONTINUE;
-    END IF;
-
+    -- A verified opening is a hard stop. Check it before any replay branch so a
+    -- direct replay of a variance identity can never continue into a later
+    -- derived period.
     IF v_next.initialization = 'reconciled'
        AND COALESCE(v_next.provenance #>> '{opening,source}', '') = 'verified_source' THEN
+      SELECT * INTO v_existing_bridge
+      FROM public.money_period_rollover_bridges
+      WHERE owner_user_id = v_owner AND identity = v_identity;
+      IF FOUND THEN
+        IF v_existing_bridge.amount_minor <> abs(v_delta)
+           OR v_existing_bridge.direction <> v_direction
+           OR v_existing_bridge.applied THEN
+          RAISE EXCEPTION 'The bridge identity conflicts with the verified opening disclosure.'
+            USING ERRCODE = '23505';
+        END IF;
+        v_replayed := v_replayed + 1;
+        v_destinations := array_append(v_destinations, v_next.id);
+        EXIT;
+      END IF;
       v_reason := CASE
         WHEN p_correction_date <= COALESCE(
           NULLIF(v_next.provenance #>> '{opening,cutoffDate}', '')::date,
@@ -1041,6 +1120,24 @@ BEGIN
       END IF;
       v_destinations := array_append(v_destinations, v_next.id);
       EXIT;
+    END IF;
+
+    -- A replay of the same correction version must be the same delta. A
+    -- different delta under one identity is a conflict, never a silent no-op
+    -- that would leave successor cash wrong.
+    SELECT * INTO v_existing_bridge
+    FROM public.money_period_rollover_bridges
+    WHERE owner_user_id = v_owner AND identity = v_identity;
+    IF FOUND THEN
+      IF v_existing_bridge.amount_minor <> abs(v_delta)
+         OR v_existing_bridge.direction <> v_direction THEN
+        RAISE EXCEPTION 'The bridge identity was already used with a different correction delta.'
+          USING ERRCODE = '23505';
+      END IF;
+      v_replayed := v_replayed + 1;
+      v_destinations := array_append(v_destinations, v_next.id);
+      v_current := v_next;
+      CONTINUE;
     END IF;
 
     -- Insert the canonical adjustment first: the ledger's own
@@ -1105,93 +1202,135 @@ END
 $bridge$;
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION public.money_apply_rollover_bridge(
-  uuid, integer, integer, integer, date, timestamp with time zone
-) FROM PUBLIC, anon;
---> statement-breakpoint
-GRANT EXECUTE ON FUNCTION public.money_apply_rollover_bridge(
-  uuid, integer, integer, integer, date, timestamp with time zone
-) TO authenticated;
+  uuid, uuid, integer, integer, integer, date, timestamp with time zone
+) FROM PUBLIC, anon, authenticated;
 --> statement-breakpoint
 
--- Canonical correction bridge. Every update/delete of a ledger row whose
--- original source period was rolled over runs the bridge in this transaction.
--- The cash effect is measured against the SOURCE period window: moving a
--- movement out of the source window must restore that closing balance, while a
--- later edit inside the successor needs no bridge because the successor ledger
--- already carries it. A failed bridge aborts the correction, so a corrected
--- movement can never commit with inconsistent downstream cash.
+-- Canonical correction bridge. Every insert/update of a ledger row whose
+-- booking date falls inside a rolled-over source window runs the bridge in this
+-- transaction. The source is resolved from the booking date, so legacy rows
+-- with `period_id IS NULL` and backdated inserts are covered too. A movement
+-- moved between two rolled-over windows bridges both sides. The cash effect is
+-- measured against each source window; a later edit entirely inside the
+-- successor needs no bridge because the successor ledger already carries it. A
+-- failed bridge aborts the correction, so a corrected movement can never commit
+-- with inconsistent downstream cash. Hard deletes are not a supported client
+-- path (`authenticated` has no DELETE grant); corrections are versioned
+-- soft-deletes.
 CREATE OR REPLACE FUNCTION public.money_bridge_rolled_over_correction()
 RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = ''
 AS $bridge_trigger$
 DECLARE
   v_owner uuid := auth.uid();
-  v_source public.money_periods;
+  v_old_source public.money_periods;
+  v_new_source public.money_periods;
   v_old_effect integer := 0;
   v_new_effect integer := 0;
   v_old_date date;
   v_new_date date;
   v_new_deleted boolean;
   v_correction_version integer;
+  v_movement_id uuid;
 BEGIN
   IF v_owner IS NULL THEN
     RETURN NULL;
   END IF;
 
-  IF TG_OP = 'DELETE' THEN
-    v_old_date := OLD.booking_date;
-    v_new_date := OLD.booking_date;
-    v_new_deleted := true;
-    v_correction_version := OLD.version;
-  ELSE
-    v_old_date := OLD.booking_date;
-    v_new_date := NEW.booking_date;
-    v_new_deleted := NEW.deleted_at IS NOT NULL;
-    v_correction_version := NEW.version;
+  -- The bridge function inserts its canonical adjustment into a derived period.
+  -- If that period was itself rolled over, the insert is already the output of
+  -- the outer bridge; re-bridging it would double-post the same correction.
+  IF pg_trigger_depth() > 1
+     AND NEW.kind = 'reconciliation_adjustment'
+     AND NEW.idempotency_key LIKE 'bridge:%' THEN
+    RETURN NULL;
   END IF;
+
+  IF TG_OP = 'UPDATE' THEN
+    v_old_date := OLD.booking_date;
+    v_movement_id := OLD.id;
+  ELSE
+    v_old_date := NEW.booking_date;
+    v_movement_id := NEW.id;
+  END IF;
+  v_new_date := NEW.booking_date;
+  v_new_deleted := NEW.deleted_at IS NOT NULL;
+  v_correction_version := NEW.version;
 
   -- An already-deleted row cannot be corrected (the update guard enforces
   -- this); nothing to bridge.
-  IF OLD.deleted_at IS NOT NULL THEN
+  IF TG_OP = 'UPDATE' AND OLD.deleted_at IS NOT NULL THEN
     RETURN NULL;
   END IF;
 
-  SELECT * INTO v_source
-  FROM public.money_periods
-  WHERE id = OLD.period_id AND owner_user_id = v_owner;
-  IF NOT FOUND
-     OR v_source.lifecycle <> 'rolled_over'
-     OR v_source.successor_period_id IS NULL THEN
-    RETURN NULL;
+  -- Resolve the source by the old and new booking dates. This includes legacy
+  -- unassigned rows whose `period_id` is NULL and direct backdated inserts.
+  IF TG_OP = 'UPDATE' THEN
+    SELECT * INTO v_old_source
+    FROM public.money_periods
+    WHERE owner_user_id = v_owner
+      AND lifecycle = 'rolled_over'
+      AND successor_period_id IS NOT NULL
+      AND v_old_date BETWEEN start_date AND end_date
+    ORDER BY start_date DESC
+    LIMIT 1;
+  END IF;
+  IF NOT v_new_deleted THEN
+    SELECT * INTO v_new_source
+    FROM public.money_periods
+    WHERE owner_user_id = v_owner
+      AND lifecycle = 'rolled_over'
+      AND successor_period_id IS NOT NULL
+      AND v_new_date BETWEEN start_date AND end_date
+    ORDER BY start_date DESC
+    LIMIT 1;
   END IF;
 
-  IF OLD.booking_date BETWEEN v_source.start_date AND v_source.end_date THEN
+  -- Old window: remove the cash effect that the source close included.
+  IF v_old_source.id IS NOT NULL THEN
     v_old_effect := CASE
       WHEN OLD.direction = 'in' THEN OLD.amount_minor
       ELSE -OLD.amount_minor
     END;
   END IF;
-  IF TG_OP <> 'DELETE'
-     AND NOT v_new_deleted
-     AND v_new_date BETWEEN v_source.start_date AND v_source.end_date THEN
+  IF v_new_source.id IS NOT NULL THEN
     v_new_effect := CASE
       WHEN NEW.direction = 'in' THEN NEW.amount_minor
       ELSE -NEW.amount_minor
     END;
   END IF;
 
-  IF v_old_effect = v_new_effect THEN
+  IF v_old_source.id IS NULL AND v_new_source.id IS NULL THEN
     RETURN NULL;
   END IF;
 
-  PERFORM public.money_apply_rollover_bridge(
-    OLD.id,
-    v_old_effect,
-    v_new_effect,
-    GREATEST(v_correction_version, 1),
-    v_old_date,
-    now()
-  );
+  IF v_old_source.id IS NOT NULL
+     AND v_old_source.id IS NOT DISTINCT FROM v_new_source.id THEN
+    IF v_old_effect = v_new_effect THEN
+      RETURN NULL;
+    END IF;
+    PERFORM public.money_apply_rollover_bridge(
+      v_old_source.id, v_movement_id, v_old_effect, v_new_effect,
+      GREATEST(v_correction_version, 1), v_old_date, now()
+    );
+    RETURN NULL;
+  END IF;
+
+  -- The movement left one rolled-over window and/or entered another. Apply the
+  -- removal and the addition separately so each source chain gets its own
+  -- movement-scoped bridge identity.
+  IF v_old_source.id IS NOT NULL THEN
+    PERFORM public.money_apply_rollover_bridge(
+      v_old_source.id, v_movement_id, v_old_effect, 0,
+      GREATEST(v_correction_version, 1), v_old_date, now()
+    );
+  END IF;
+  IF v_new_source.id IS NOT NULL THEN
+    PERFORM public.money_apply_rollover_bridge(
+      v_new_source.id, v_movement_id, 0, v_new_effect,
+      GREATEST(v_correction_version, 1), v_new_date, now()
+    );
+  END IF;
   RETURN NULL;
 END
 $bridge_trigger$;
@@ -1201,6 +1340,6 @@ REVOKE ALL ON FUNCTION public.money_bridge_rolled_over_correction() FROM PUBLIC;
 DROP TRIGGER IF EXISTS "personal_expenses_rollover_bridge" ON "public"."personal_expenses";
 --> statement-breakpoint
 CREATE TRIGGER "personal_expenses_rollover_bridge"
-  AFTER UPDATE OR DELETE ON "public"."personal_expenses"
+  AFTER INSERT OR UPDATE ON "public"."personal_expenses"
   FOR EACH ROW
   EXECUTE FUNCTION public.money_bridge_rolled_over_correction();

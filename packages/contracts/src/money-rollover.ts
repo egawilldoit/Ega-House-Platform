@@ -60,6 +60,7 @@ export type MoneyRolloverDifferenceDto = Readonly<{
     | "unknown_closing_cash"
     | "unpaid_occurrences"
     | "close_snapshot_restatement"
+    | "incomplete_close_evidence"
     | "paid_obligation_payment_mismatch"
     | "counted_coffee_visit_mismatch"
     | "savings_target_vs_transfers";
@@ -92,6 +93,8 @@ export type MoneyRolloverCloseSnapshotDto =
   | Readonly<{
       available: true;
       closeCount: number;
+      requiredCloseCount: number;
+      completeCloseEvidence: boolean;
       lastClosedDate: string | null;
       comparableToRestatedTotals: true;
       restatedDifferenceCount: number;
@@ -126,6 +129,23 @@ export type MoneyRolloverWeekWindowDto = Readonly<{
   clippedToPeriod: boolean;
 }>;
 
+export type MoneyRolloverBridgeDto = Readonly<{
+  id: string;
+  sourcePeriodId: string;
+  destinationPeriodId: string;
+  movementId: string;
+  correctionVersion: number;
+  amountMinor: number;
+  direction: "in" | "out";
+  bookingDate: string;
+  applied: boolean;
+  varianceReason:
+    | "verified_opening_covered_cutoff"
+    | "verified_opening_excludes_correction"
+    | null;
+  createdAt: string;
+}>;
+
 export type MoneyRolloverPreviewResponse = Readonly<{
   ok: true;
   source: Readonly<{
@@ -152,6 +172,8 @@ export type MoneyRolloverPreviewResponse = Readonly<{
   reconciliation: MoneyRolloverReconciliationDto;
   closeSnapshots: MoneyRolloverCloseSnapshotDto;
   pendingOccurrences: readonly MoneyRolloverPendingOccurrenceDto[];
+  pendingOccurrencesTruncated: boolean;
+  priorCorrectionBridges: readonly MoneyRolloverBridgeDto[];
   generatedObligations: readonly Readonly<{
     templateId: string;
     description: string;

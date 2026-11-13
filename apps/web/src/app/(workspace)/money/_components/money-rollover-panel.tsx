@@ -60,19 +60,6 @@ export function MoneyRolloverPanel({
 
   const pending = preview.pendingOccurrences;
   const difference = preview.reconciliation.differenceMinor;
-  const restatedCloses =
-    preview.closeSnapshots.available &&
-    preview.closeSnapshots.comparableToRestatedTotals
-      ? preview.closeSnapshots.restatedDifferenceCount
-      : null;
-  const needsDifferenceNote =
-    (difference !== null && difference !== 0) ||
-    (restatedCloses !== null && restatedCloses > 0) ||
-    preview.reconciliation.differences.some(
-      (entry) =>
-        entry.status === "choice_required" &&
-        entry.code !== "unpaid_occurrences",
-    );
 
   async function submit(formData: FormData) {
     setError(null);
@@ -137,7 +124,7 @@ export function MoneyRolloverPanel({
           <dd className="font-medium">
             {preview.closeSnapshots.available
               ? preview.closeSnapshots.comparableToRestatedTotals
-                ? `${preview.closeSnapshots.closeCount} · ${preview.closeSnapshots.restatedDifferenceCount} restated`
+                ? `${preview.closeSnapshots.closeCount}/${preview.closeSnapshots.requiredCloseCount} · ${preview.closeSnapshots.restatedDifferenceCount} restated`
                 : `${preview.closeSnapshots.closeCount} · comparison unavailable`
               : "Unavailable"}
           </dd>
@@ -153,6 +140,23 @@ export function MoneyRolloverPanel({
             </li>
           ))}
         </ul>
+      ) : null}
+
+      {preview.priorCorrectionBridges.some((bridge) => !bridge.applied) ? (
+        <div className="mt-3 rounded border border-ega-border p-3">
+          <h3 className="font-medium">Historical correction variances</h3>
+          <ul className="mt-1 flex flex-col gap-1 text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
+            {preview.priorCorrectionBridges
+              .filter((bridge) => !bridge.applied)
+              .map((bridge) => (
+                <li key={bridge.id}>
+                  {bridge.amountMinor} centimes {bridge.direction === "in" ? "in" : "out"} on{" "}
+                  {bridge.bookingDate} — {bridge.varianceReason?.replaceAll("_", " ")}. The
+                  independently verified opening was not altered.
+                </li>
+              ))}
+          </ul>
+        </div>
       ) : null}
 
       {preview.blockers.length > 0 ? (
@@ -247,14 +251,16 @@ export function MoneyRolloverPanel({
           </div>
         ) : null}
 
-        {needsDifferenceNote ? (
-          <div className="flex flex-col gap-1.5">
-            <label htmlFor="rollover-difference-note" className="form-label">
-              Accept the closing/restatement differences (required, retained as provenance)
-            </label>
-            <Input id="rollover-difference-note" name="acceptClosingDifferenceNote" placeholder="Why the difference is accepted" />
-          </div>
-        ) : null}
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor="rollover-difference-note" className="form-label">
+            Accept any closing/restatement difference (retained as provenance)
+          </label>
+          <Input id="rollover-difference-note" name="acceptClosingDifferenceNote" placeholder="Required when the verified balance differs, a close was restated, or a payment/visit mismatch is accepted" />
+          <p className="text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
+            Required before confirming a modeled-versus-verified cash difference, a
+            restated day close, or an accepted paid-obligation/counted-visit mismatch.
+          </p>
+        </div>
 
         {error ? (
           <p role="alert" className="feedback-block feedback-block-error">
@@ -267,7 +273,8 @@ export function MoneyRolloverPanel({
           never copied as new expenses. A later pre-cutoff correction posts a
           labeled reconciliation adjustment in derived periods; it never rewrites a
           verified opening.
-        </p>        <div>
+        </p>
+        <div>
           <PendingSubmitButton pendingLabel="Rolling over…">
             Roll over to {preview.targets.startDate}
           </PendingSubmitButton>

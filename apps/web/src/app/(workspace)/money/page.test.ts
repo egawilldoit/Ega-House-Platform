@@ -150,6 +150,9 @@ test("money page previews rollover only for an ended source through shared use c
   assert.match(source, /new SupabaseMoneyRolloverRepository\(client\)/);
   assert.match(source, /new SupabaseObligationRepository\(client\)/);
   assert.match(source, /rolloverMoneyPeriodAction/);
+  assert.match(source, /MoneyRolloverVariancePanel/);
+  assert.match(source, /listMoneyRolloverBridges\(/);
+  assert.match(source, /bridges=\{rolloverBridges\}/);
   assert.doesNotMatch(source, /owner_user_id\s*:/);
 });
 

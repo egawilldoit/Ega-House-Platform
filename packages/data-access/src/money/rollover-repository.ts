@@ -1,5 +1,7 @@
 import type {
   AuthenticatedActor,
+  MoneyRolloverBridgeRecord,
+  MoneyRolloverPendingOccurrence,
   MoneyRolloverRecord,
   MoneyRolloverRepository,
   MoneyRolloverSourceContext,
@@ -7,7 +9,10 @@ import type {
   MoneyRolloverWriteResult,
   RepositoryResult,
 } from "@ega/application";
-import type { MoneyPeriod } from "@ega/domain/money";
+import {
+  parseMoneySettings,
+  type MoneyPeriod,
+} from "@ega/domain/money";
 import type {
   MoneyRolloverCloseSnapshotAssessment,
   MoneyRolloverCloseSnapshotDifference,
@@ -29,11 +34,51 @@ import { SupabaseMoneyPeriodRepository } from "./repository";
  */
 
 const ROLLOVER_TABLE = "money_period_rollovers";
+const BRIDGE_TABLE = "money_period_rollover_bridges";
+const POLICY_TABLE = "money_policy_versions";
 const OBLIGATION_TABLE = "money_obligations";
 const PERIOD_TABLE = "money_periods";
 
 const ROLLOVER_COLUMNS =
   "id, source_period_id, successor_period_id, operation_id, request_fingerprint, opening_mode, opening_amount_minor, closing_cash_minor, closing_cutoff_date, unpaid_treatment, reconciliation_accepted_note, generated_occurrence_count, carried_occurrence_count, cancelled_occurrence_count, created_at";
+
+const BRIDGE_COLUMNS =
+  "id, source_period_id, destination_period_id, movement_id, correction_version, amount_minor, direction, booking_date, applied, variance_reason, created_at";
+
+const PENDING_PAGE_SIZE = 1000;
+const PENDING_MAX_ROWS = 10000;
+
+type PolicyRow = { policy: unknown };
+
+type PendingRow = {
+  id: string;
+  kind: string;
+  description: string;
+  amount_minor: number;
+  due_date: string;
+  template_id: string | null;
+  need_vs_want: string | null;
+  purpose: string | null;
+  counts_in_daily: boolean | null;
+  category: string | null;
+};
+
+type BridgeRow = {
+  id: string;
+  source_period_id: string;
+  destination_period_id: string;
+  movement_id: string;
+  correction_version: number;
+  amount_minor: number;
+  direction: "in" | "out";
+  booking_date: string;
+  applied: boolean;
+  variance_reason:
+    | "verified_opening_covered_cutoff"
+    | "verified_opening_excludes_correction"
+    | null;
+  created_at: string;
+};
 
 type RolloverRow = {
   id: string;
@@ -73,6 +118,11 @@ function toCloseSnapshotAssessment(
     typeof row.closeCount !== "number" ||
     !Number.isInteger(row.closeCount) ||
     row.closeCount < 0 ||
+    typeof row.requiredCloseCount !== "number" ||
+    !Number.isInteger(row.requiredCloseCount) ||
+    row.requiredCloseCount < 1 ||
+    typeof row.completeCloseEvidence !== "boolean" ||
+    row.completeCloseEvidence !== (row.closeCount >= row.requiredCloseCount) ||
     row.comparableToRestatedTotals !== true ||
     typeof row.restatedDifferenceCount !== "number" ||
     !Number.isInteger(row.restatedDifferenceCount) ||
@@ -114,6 +164,8 @@ function toCloseSnapshotAssessment(
   return {
     available: true,
     closeCount: row.closeCount,
+    requiredCloseCount: row.requiredCloseCount,
+    completeCloseEvidence: row.completeCloseEvidence,
     lastClosedDate:
       typeof row.lastClosedDate === "string" ? row.lastClosedDate : null,
     comparableToRestatedTotals: true,
@@ -174,11 +226,120 @@ function toRecord(row: RolloverRow, successor: MoneyPeriod | null): MoneyRollove
   };
 }
 
+function toBridgeRecord(row: BridgeRow): MoneyRolloverBridgeRecord {
+  return {
+    id: String(row.id),
+    sourcePeriodId: String(row.source_period_id),
+    destinationPeriodId: String(row.destination_period_id),
+    movementId: String(row.movement_id),
+    correctionVersion: Number(row.correction_version),
+    amountMinor: Number(row.amount_minor),
+    direction: row.direction === "in" ? "in" : "out",
+    bookingDate: String(row.booking_date),
+    applied: row.applied === true,
+    varianceReason: row.variance_reason,
+    createdAt: String(row.created_at),
+  };
+}
+
+function toPendingOccurrence(row: PendingRow): MoneyRolloverPendingOccurrence {
+  return {
+    id: String(row.id),
+    kind: row.kind === "subscription" ? "subscription" : "bill",
+    description: String(row.description),
+    amountMinor: Number(row.amount_minor),
+    dueDate: String(row.due_date),
+    templateId: row.template_id == null ? null : String(row.template_id),
+    needVsWant:
+      row.need_vs_want === "need" || row.need_vs_want === "want"
+        ? row.need_vs_want
+        : null,
+    purpose:
+      row.purpose === "flexible" || row.purpose === "emergency"
+        ? row.purpose
+        : "fixed",
+    countsInDaily: row.counts_in_daily === true,
+    category: (row.category ?? null) as ExpenseCategory | null,
+  };
+}
+
 export class SupabaseMoneyRolloverRepository implements MoneyRolloverRepository {
   private readonly periods: SupabaseMoneyPeriodRepository;
 
   constructor(private readonly supabase: SupabaseClient) {
     this.periods = new SupabaseMoneyPeriodRepository(supabase);
+  }
+
+  private async pendingOccurrences(
+    actor: AuthenticatedActor,
+    period: MoneyPeriod,
+  ): Promise<
+    RepositoryResult<{
+      rows: readonly MoneyRolloverPendingOccurrence[];
+      truncated: boolean;
+    }>
+  > {
+    const rows: PendingRow[] = [];
+    let expected: number | null = null;
+    let offset = 0;
+    let complete = false;
+    while (offset < PENDING_MAX_ROWS) {
+      const { data, error, count } = await this.supabase
+        .from(OBLIGATION_TABLE)
+        .select(
+          "id, kind, description, amount_minor, due_date, template_id, need_vs_want, purpose, counts_in_daily, category",
+          { count: "exact" },
+        )
+        .eq("owner_user_id", actor.userId)
+        .eq("state", "pending")
+        .lte("period_start", period.endDate)
+        .gte("period_end", period.startDate)
+        .order("due_date", { ascending: true })
+        .order("id", { ascending: true })
+        .range(offset, offset + PENDING_PAGE_SIZE - 1);
+      if (error) return { ok: false, error: failure(error) };
+      const page = (data ?? []) as PendingRow[];
+      if (expected === null && typeof count === "number") expected = count;
+      rows.push(...page);
+      // A matching count above the hard bound cannot be represented completely;
+      // the caller must block rather than undercount reconciliation inputs.
+      if (expected !== null && expected > PENDING_MAX_ROWS) break;
+      offset += page.length;
+      if (expected !== null) {
+        if (rows.length >= expected) {
+          complete = rows.length === expected;
+          break;
+        }
+        if (page.length === 0) break;
+      } else {
+        break;
+      }
+    }
+    return {
+      ok: true,
+      value: {
+        rows: rows.map(toPendingOccurrence),
+        truncated: !complete,
+      },
+    };
+  }
+
+  async listCorrectionBridges(
+    actor: AuthenticatedActor,
+    destinationPeriodId: string,
+  ): Promise<RepositoryResult<readonly MoneyRolloverBridgeRecord[]>> {
+    const { data, error } = await this.supabase
+      .from(BRIDGE_TABLE)
+      .select(BRIDGE_COLUMNS)
+      .eq("owner_user_id", actor.userId)
+      .eq("destination_period_id", destinationPeriodId)
+      .order("created_at", { ascending: false })
+      .limit(500);
+    if (error) return { ok: false, error: failure(error) };
+    return {
+      ok: true,
+      value: ((data ?? []) as BridgeRow[]).map(toBridgeRecord),
+    };
   }
 
   async getSourceContext(
@@ -197,6 +358,8 @@ export class SupabaseMoneyRolloverRepository implements MoneyRolloverRepository 
       successorResult,
       rolloverResult,
       closeSnapshotResult,
+      policyResult,
+      bridgesResult,
     ] = await Promise.all([
         period.openingMovementId
           ? this.periods.getOpening(actor, period.openingMovementId)
@@ -205,17 +368,7 @@ export class SupabaseMoneyRolloverRepository implements MoneyRolloverRepository 
           startDate: period.startDate,
           endDateInclusive: period.endDate,
         }),
-        this.supabase
-          .from(OBLIGATION_TABLE)
-          .select(
-            "id, kind, description, amount_minor, due_date, template_id, need_vs_want, purpose, counts_in_daily, category",
-          )
-          .eq("owner_user_id", actor.userId)
-          .eq("state", "pending")
-          .lte("period_start", period.endDate)
-          .gte("period_end", period.startDate)
-          .order("due_date", { ascending: true })
-          .limit(500),
+        this.pendingOccurrences(actor, period),
         this.supabase
           .from(PERIOD_TABLE)
           .select("successor_period_id")
@@ -231,13 +384,21 @@ export class SupabaseMoneyRolloverRepository implements MoneyRolloverRepository 
         this.supabase.rpc("money_rollover_close_snapshot_summary", {
           p_period_id: period.id,
         }),
+        this.supabase
+          .from(POLICY_TABLE)
+          .select("policy")
+          .eq("owner_user_id", actor.userId)
+          .eq("period_id", period.id)
+          .order("effective_date", { ascending: false })
+          .order("version", { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+        this.listCorrectionBridges(actor, period.id),
       ]);
 
     if (!openingResult.ok) return openingResult;
     if (!totalsResult.ok) return totalsResult;
-    if (pendingResult.error) {
-      return { ok: false, error: failure(pendingResult.error) };
-    }
+    if (!pendingResult.ok) return pendingResult;
     if (successorResult.error) {
       return { ok: false, error: failure(successorResult.error) };
     }
@@ -247,6 +408,23 @@ export class SupabaseMoneyRolloverRepository implements MoneyRolloverRepository 
     if (closeSnapshotResult.error) {
       return { ok: false, error: failure(closeSnapshotResult.error) };
     }
+    if (policyResult.error) {
+      return { ok: false, error: failure(policyResult.error) };
+    }
+    if (!bridgesResult.ok) return bridgesResult;
+
+    const policyRow = policyResult.data as PolicyRow | null;
+    const policySettings =
+      policyRow?.policy && typeof policyRow.policy === "object"
+        ? (policyRow.policy as Record<string, unknown>).settings
+        : undefined;
+    const parsedPolicy = parseMoneySettings(
+      policySettings === undefined ? period.settings : policySettings,
+    );
+    if (!parsedPolicy.ok) {
+      return { ok: false, error: { code: "unknown" } };
+    }
+    const effectiveSettings = parsedPolicy.value;
 
     const opening = openingResult.value;
     const totals = totalsResult.value;
@@ -270,27 +448,13 @@ export class SupabaseMoneyRolloverRepository implements MoneyRolloverRepository 
       ok: true,
       value: {
         period,
+        effectiveSettings,
         modeledClosingCashMinor,
         cashComplete: !totals.truncated,
-        pendingOccurrences: (pendingResult.data ?? []).map((row) => ({
-          id: String(row.id),
-          kind: row.kind === "subscription" ? "subscription" : "bill",
-          description: String(row.description),
-          amountMinor: Number(row.amount_minor),
-          dueDate: String(row.due_date),
-          templateId: row.template_id == null ? null : String(row.template_id),
-          needVsWant:
-            row.need_vs_want === "need" || row.need_vs_want === "want"
-              ? row.need_vs_want
-              : null,
-          purpose:
-            row.purpose === "flexible" || row.purpose === "emergency"
-              ? row.purpose
-              : "fixed",
-          countsInDaily: row.counts_in_daily === true,
-          category: (row.category ?? null) as ExpenseCategory | null,
-        })),
+        pendingOccurrences: pendingResult.value.rows,
+        pendingOccurrencesTruncated: pendingResult.value.truncated,
         closeSnapshots: toCloseSnapshotAssessment(closeSnapshotResult.data),
+        priorCorrectionBridges: bridgesResult.value,
         existingSuccessorPeriodId:
           successorResult.data?.successor_period_id == null
             ? null
@@ -338,7 +502,7 @@ export class SupabaseMoneyRolloverRepository implements MoneyRolloverRepository 
       p_opening_note: input.opening.note,
       p_opening_create_fingerprint: input.openingCreateFingerprint,
       p_provenance: input.provenance,
-      p_settings: input.settings,
+      p_settings: input.settingsOverrides,
       p_operation_id: input.operationId,
       p_request_fingerprint: input.requestFingerprint,
       p_opening_mode: input.values.opening.mode,
