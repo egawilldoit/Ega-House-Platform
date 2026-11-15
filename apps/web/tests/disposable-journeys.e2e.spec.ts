@@ -197,8 +197,8 @@ test("Money rollover resets selected period choices and retains savings acceptan
         return tx`SELECT (p).id AS id FROM (SELECT public.money_create_period(
           ${date}::date, ${date}::date, 'Africa/Casablanca', ${date}::date,
           'initialized', 68900, ${date}::date, ${"a".repeat(64)},
-          ${JSON.stringify({ opening: { source: "user_entered", recordedAt: "2026-11-01T00:00:00.000Z", cutoffDate: date, evidence: null, note: null, corrections: [] } })}::jsonb,
-          ${JSON.stringify({ savingsTargetMinor: 12000, emergencyTargetMinor: 3000 })}::jsonb, now()) AS p) created`;
+          ${sql.json({ opening: { source: "user_entered", recordedAt: "2026-11-01T00:00:00.000Z", cutoffDate: date, evidence: null, note: null, corrections: [] } })},
+          ${sql.json({ savingsTargetMinor: 12000, emergencyTargetMinor: 3000 })}, now()) AS p) created`;
       });
       const id: string = period[0].id;
       periods.push(id);
