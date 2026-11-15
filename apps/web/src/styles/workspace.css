@@ -2543,3 +2543,183 @@ html[data-reduce-motion="true"] .workspace-drawer-panel-enter {
       border-color var(--duration-fast) var(--ease-default);
   }
 }
+
+/* ══════════════════════════════════════════════════════════════
+   Floating focus timer
+   ══════════════════════════════════════════════════════════════ */
+
+.ega-timer-chip {
+  position: fixed;
+  right: max(16px, env(safe-area-inset-right, 0px));
+  bottom: max(16px, env(safe-area-inset-bottom, 0px));
+  z-index: 70;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(360px, calc(100vw - 24px));
+  padding: 12px;
+  border: 1px solid var(--ega-border-strong);
+  border-radius: var(--radius-md, 10px);
+  background: var(--ega-surface-elevated);
+  box-shadow: 0 12px 32px rgba(23, 23, 23, 0.14);
+  color: var(--ega-text);
+}
+
+.ega-timer-chip[data-stale="true"] {
+  border-color: var(--status-risk-border);
+}
+
+.ega-timer-chip__status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-meta);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--ega-text-secondary);
+}
+
+.ega-timer-chip__dot {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: var(--signal-live);
+}
+
+.ega-timer-chip[data-stale="true"] .ega-timer-chip__dot {
+  background: var(--status-risk);
+}
+
+.ega-timer-chip__body {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.ega-timer-chip__copy {
+  min-width: 0;
+}
+
+.ega-timer-chip__title {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-body);
+  font-weight: 650;
+  color: var(--ega-text);
+}
+
+.ega-timer-chip__project {
+  margin: 2px 0 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-meta);
+  color: var(--ega-text-secondary);
+}
+
+.ega-timer-chip__clock {
+  flex: 0 0 auto;
+  font-family: var(--font-mono);
+  font-size: 20px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+  color: var(--ega-text);
+}
+
+.ega-timer-chip__note {
+  margin: 0;
+  font-size: var(--text-meta);
+  line-height: 1.45;
+  color: var(--ega-text-secondary);
+}
+
+.ega-timer-chip__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--ega-divider);
+}
+
+.ega-timer-chip__button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 30px;
+  padding: 0 9px;
+  border: 1px solid var(--ega-border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--ega-surface);
+  color: var(--ega-text);
+  font-size: var(--text-meta-lg);
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    background-color var(--duration-fast) var(--ease-default),
+    border-color var(--duration-fast) var(--ease-default);
+}
+
+.ega-timer-chip__button:hover {
+  background: var(--ega-surface-hover);
+}
+
+.ega-timer-chip__button:focus-visible {
+  outline: var(--ega-focus-outline);
+  outline-offset: 2px;
+}
+
+.ega-timer-chip__button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.ega-timer-chip__button svg {
+  width: 14px;
+  height: 14px;
+}
+
+.ega-timer-chip__button--danger {
+  border-color: var(--status-overdue-border);
+  background: var(--status-overdue-bg);
+  color: var(--status-overdue);
+}
+
+.ega-timer-chip__error {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  margin: 0;
+  font-size: var(--text-meta);
+  line-height: 1.45;
+  color: var(--status-overdue);
+}
+
+.ega-timer-chip__dismiss {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+@media (max-width: 640px) {
+  .ega-timer-chip {
+    right: 12px;
+    left: 12px;
+    bottom: max(12px, env(safe-area-inset-bottom, 0px));
+    width: auto;
+  }
+}
+}
