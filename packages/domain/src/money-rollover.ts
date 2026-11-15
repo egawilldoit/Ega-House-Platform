@@ -761,12 +761,15 @@ export function assessMoneyRollover(input: Readonly<{
       differences.push({
         code: "savings_target_vs_transfers",
         amountMinor: transferred - target,
-        status: "ok",
+        status: transferred === target ? "ok" : input.differenceAccepted ? "accepted" : "choice_required",
         message:
           transferred === target
             ? `Savings transfers (${transferred} centimes) match the period target (${target} centimes).`
             : `Savings target is ${target} centimes and ${transferred} centimes were actually transferred. This is a target outcome, not a cash discrepancy.`,
       });
+      if (transferred !== target && !input.differenceAccepted) {
+        choices.push("Resolve or explicitly accept the savings target difference before rollover.");
+      }
     }
   }
 
@@ -775,7 +778,9 @@ export function assessMoneyRollover(input: Readonly<{
     (closeSnapshot.available &&
       (closeSnapshot.restatedDifferenceCount > 0 ||
         closeSnapshot.paidObligationMismatchCount > 0 ||
-        closeSnapshot.countedVisitMismatchCount > 0));
+        closeSnapshot.countedVisitMismatchCount > 0 ||
+        (closeSnapshot.savingsTargetMinor !== null &&
+          closeSnapshot.savingsTargetMinor !== closeSnapshot.savingsTransferredMinor)));
 
   return {
     currency: MONEY_CURRENCY,

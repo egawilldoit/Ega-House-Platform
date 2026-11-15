@@ -368,6 +368,21 @@ test("restated close snapshots need an acceptance note before the write", async 
   assert.equal(fake.writes.length, 1);
 });
 
+test("a savings shortfall requires an acceptance note and retains it", async () => {
+  const baseline = context();
+  if (!baseline.closeSnapshots.available) throw new Error("expected close evidence");
+  const closeSnapshots = { ...baseline.closeSnapshots, savingsTargetMinor: 12_000, savingsTransferredMinor: 2_000 };
+  const fake = fakeRepository(context({ closeSnapshots }));
+  const dependencies = { repository: fake.repository, obligations: noTemplates };
+  const rejected = await rolloverMoneyPeriod(actor, dependencies, baseInput(), "savings-rejected");
+  assert.equal(rejected.ok, false);
+  assert.equal(fake.writes.length, 0);
+  const accepted = await rolloverMoneyPeriod(actor, dependencies,
+    baseInput({ acceptClosingDifferenceNote: "Reviewed savings shortfall" }), "savings-accepted");
+  assert.equal(accepted.ok, true);
+  assert.equal(fake.writes[0].reconciliationAcceptedNote, "Reviewed savings shortfall");
+});
+
 test("a verified opening cutoff after the successor start is rejected", async () => {
   const fake = fakeRepository(context());
   const result = await rolloverMoneyPeriod(
@@ -527,8 +542,8 @@ test("a restated close never hides paid-obligation and visit mismatches", async 
   const differences = preview.ok ? preview.data.reconciliation.differences : [];
   assert.equal(
     differences.filter((entry) => entry.status === "choice_required").length,
-    3,
-    "restatement, paid payment and counted visit are all unresolved",
+    4,
+    "restatement, paid payment, counted visit and savings are all unresolved",
   );
   assert.equal(preview.ok && preview.data.ready, false);
 });

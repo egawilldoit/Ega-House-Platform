@@ -17,19 +17,22 @@ type MoneyRolloverPanelProps = {
   action: (formData: FormData) => Promise<MoneyFormActionResult>;
 };
 
-/**
- * Explicit period rollover. The successor dates are the documented defaults
- * (the day after the source ends, same inclusive length); custom dates are
- * available through MCP. The form never closes a day and never edits the
- * source period, and it requires the owner to resolve unpaid occurrences and a
- * modeled-versus-verified cash difference before the write.
- */
-export function MoneyRolloverPanel({
+export function MoneyRolloverPanel(props: MoneyRolloverPanelProps) {
+  const preview = props.preview;
+  const key = preview
+    ? `${preview.source.periodId}:${preview.source.version}:${preview.targets.startDate}:${preview.targets.endDate}`
+    : "unavailable";
+  return <MoneyRolloverForm key={key} {...props} />;
+}
+
+function MoneyRolloverForm({
   preview,
   previewUnavailableReason,
   action,
 }: MoneyRolloverPanelProps) {
   const [error, setError] = useState<string | null>(null);
+  const [startDate, setStartDate] = useState(preview?.targets.startDate ?? "");
+  const [endDate, setEndDate] = useState(preview?.targets.endDate ?? "");
   const [openingMode, setOpeningMode] = useState<"carry_forward" | "verified_source">(
     preview?.openingMode ?? "carry_forward",
   );
@@ -60,6 +63,7 @@ export function MoneyRolloverPanel({
 
   const pending = preview.pendingOccurrences;
   const difference = preview.reconciliation.differenceMinor;
+  const datesChanged = startDate !== preview.targets.startDate || endDate !== preview.targets.endDate;
 
   async function submit(formData: FormData) {
     setError(null);
@@ -77,8 +81,7 @@ export function MoneyRolloverPanel({
       </h2>
       <p className="mt-2 text-[color:var(--ega-text-secondary)]">
         {preview.source.startDate}–{preview.source.endDate} is finished. Rollover
-        creates one successor for {preview.targets.startDate}–{preview.targets.endDate} (
-        {preview.targets.inclusiveDays} days) and keeps the old period selectable.
+        creates a successor and keeps the old period selectable.
         Unused daily allowance is not carried forward.
       </p>
 
@@ -105,7 +108,7 @@ export function MoneyRolloverPanel({
           <dt className="text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
             Regenerated occurrences
           </dt>
-          <dd className="font-medium">{preview.generatedObligations.length}</dd>
+          <dd className="font-medium">{datesChanged ? "Recalculated on rollover" : preview.generatedObligations.length}</dd>
         </div>
         <div>
           <dt className="text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
@@ -182,11 +185,33 @@ export function MoneyRolloverPanel({
         </ul>
       ) : null}
 
-      <form action={submit} className="mt-4 flex flex-col gap-3">
+      <form action={submit} aria-labelledby="money-rollover-heading" className="mt-4 flex flex-col gap-3">
         <input type="hidden" name="periodId" value={preview.source.periodId} />
         <input type="hidden" name="version" value={preview.source.version} />
-        <input type="hidden" name="startDate" value={preview.targets.startDate} />
-        <input type="hidden" name="endDate" value={preview.targets.endDate} />
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="rollover-start-date" className="form-label">Successor start date (required)</label>
+            <Input id="rollover-start-date" name="startDate" type="date" required value={startDate} onChange={(event) => setStartDate(event.target.value)} />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="rollover-end-date" className="form-label">Successor end date (required)</label>
+            <Input id="rollover-end-date" name="endDate" type="date" required value={endDate} onChange={(event) => setEndDate(event.target.value)} />
+          </div>
+        </div>
+        {datesChanged ? <p role="status" className="text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">The successor dates changed. Recurring bills will be recalculated for the chosen dates when you roll over.</p> : null}
+        <label className="flex items-center gap-2">
+          <input type="checkbox" name="allowUncoveredDays" value="true" />
+          Allow untracked days between the finished period and the successor
+        </label>
+        <fieldset className="flex flex-col gap-3">
+          <legend className="form-label">Successor policy</legend>
+          <p className="text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">The current policy will be copied. Leave a target blank to keep its current value, or enter a new amount in MAD.</p>
+          <p className="text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">Current savings target: {typeof preview.settings.savingsTargetMinor === "number" ? formatMinorToMad(preview.settings.savingsTargetMinor) : "Not set"}. Current emergency target: {typeof preview.settings.emergencyTargetMinor === "number" ? formatMinorToMad(preview.settings.emergencyTargetMinor) : "Not set"}.</p>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="flex flex-col gap-1.5"><label htmlFor="rollover-savings-target" className="form-label">New savings target (MAD)</label><Input id="rollover-savings-target" name="savingsTarget" inputMode="decimal" /></div>
+            <div className="flex flex-col gap-1.5"><label htmlFor="rollover-emergency-target" className="form-label">New emergency target (MAD)</label><Input id="rollover-emergency-target" name="emergencyTarget" inputMode="decimal" /></div>
+          </div>
+        </fieldset>
         <input type="hidden" name="operationId" value={operationId} />
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -260,12 +285,13 @@ export function MoneyRolloverPanel({
 
         <div className="flex flex-col gap-1.5">
           <label htmlFor="rollover-difference-note" className="form-label">
-            Accept any closing/restatement difference (retained as provenance)
+            Accept closing, restatement or savings differences (retained as provenance)
           </label>
-          <Input id="rollover-difference-note" name="acceptClosingDifferenceNote" placeholder="Required when the verified balance differs, a close was restated, or a payment/visit mismatch is accepted" />
+          <Input id="rollover-difference-note" name="acceptClosingDifferenceNote" placeholder="Required when the verified balance differs, a close was restated, savings differ, or a payment/visit mismatch is accepted" />
           <p className="text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
             Required before confirming a modeled-versus-verified cash difference, a
-            restated day close, or an accepted paid-obligation/counted-visit mismatch.
+            restated day close, a savings target versus transfers difference, or an accepted
+            paid-obligation/counted-visit mismatch.
           </p>
         </div>
 
@@ -283,7 +309,7 @@ export function MoneyRolloverPanel({
         </p>
         <div>
           <PendingSubmitButton pendingLabel="Rolling over…">
-            Roll over to {preview.targets.startDate}
+            Roll over to {startDate}
           </PendingSubmitButton>
         </div>
       </form>

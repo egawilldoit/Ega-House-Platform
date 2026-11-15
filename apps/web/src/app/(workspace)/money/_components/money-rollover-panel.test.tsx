@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+// @vitest-environment jsdom
+import { act } from "react";
+import { createRoot } from "react-dom/client";
+import { test } from "vitest";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
@@ -85,6 +88,7 @@ test("rollover panel always offers the acceptance note for a verified balance", 
   );
   assert.match(html, /name="acceptClosingDifferenceNote"/);
   assert.match(html, /verified balance differs/);
+  assert.match(html, /savings target versus transfers difference/);
 });
 
 test("rollover panel discloses a prior verified-opening variance", () => {
@@ -125,4 +129,46 @@ test("rollover panel discloses a truncated variance history", () => {
   );
   assert.match(html, /Historical correction variances/);
   assert.match(html, /only part of this period/i);
+});
+
+
+test("rollover offers editable dates and explicit policy targets", () => {
+  const html = renderToStaticMarkup(
+    <MoneyRolloverPanel preview={preview()} previewUnavailableReason={null} action={async () => ({ ok: true, error: null })} />,
+  );
+  assert.match(html, /type="date"[^>]*name="startDate"/);
+  assert.match(html, /type="date"[^>]*name="endDate"/);
+  assert.match(html, /name="allowUncoveredDays"/);
+  assert.match(html, /name="savingsTarget"/);
+  assert.match(html, /name="emergencyTarget"/);
+  assert.match(html, /current policy will be copied/i);
+});
+
+
+test("refreshing the preview resets dates and identity for the new period", async () => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  const action = async () => ({ ok: true as const, error: null });
+  const render = async (value: MoneyRolloverPreview | null) => {
+    await act(async () => root.render(<MoneyRolloverPanel preview={value} previewUnavailableReason={null} action={action} />));
+  };
+  try {
+    await render(null);
+    await render(preview());
+    assert.equal(container.querySelector<HTMLInputElement>('[name="startDate"]')?.value, "2026-12-01");
+    const firstOperation = container.querySelector<HTMLInputElement>('[name="operationId"]')?.value;
+    const current = preview();
+    await render(preview({
+      source: { ...current.source, periodId: "22222222-2222-4222-8222-222222222222" },
+      targets: { ...current.targets, startDate: "2027-01-01", endDate: "2027-01-31" },
+    }));
+    assert.equal(container.querySelector<HTMLInputElement>('[name="startDate"]')?.value, "2027-01-01");
+    assert.equal(container.querySelector<HTMLInputElement>('[name="endDate"]')?.value, "2027-01-31");
+    assert.notEqual(container.querySelector<HTMLInputElement>('[name="operationId"]')?.value, firstOperation);
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+  }
 });
