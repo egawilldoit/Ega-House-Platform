@@ -120,7 +120,7 @@ function drawerTrigger() {
 }
 
 function drawerPanel() {
-  return container.querySelector('[role="dialog"][aria-label="Workspace navigation"]');
+  return document.querySelector('[role="dialog"][aria-label="Workspace navigation"]');
 }
 
 describe("single global quick-action ownership (Unified Create Flow)", () => {
@@ -162,7 +162,7 @@ describe("single global quick-action ownership (Unified Create Flow)", () => {
       container.querySelectorAll('[role="dialog"][aria-label="Unified create modal: task"]').length,
     ).toBe(1);
     // No second modal layer remains.
-    expect(container.querySelectorAll('[role="dialog"][aria-label="Workspace navigation"]').length).toBe(0);
+    expect(document.querySelectorAll('[role="dialog"][aria-label="Workspace navigation"]').length).toBe(0);
     expect(document.body.style.overflow).toBe("");
   });
 
