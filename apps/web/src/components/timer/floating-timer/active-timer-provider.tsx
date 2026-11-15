@@ -33,6 +33,7 @@ import {
   attachTimerPopoutLifecycle,
   prepareTimerPopoutDocument,
   requestTimerPopoutWindow,
+  shouldDeferHiddenTimerRefresh,
   supportsDocumentPictureInPicture,
 } from "@/lib/timer/popout-window";
 
@@ -110,6 +111,51 @@ function toInitialState(result: ActiveTimerReadResult): ProviderState {
   };
 }
 
+function resultSignature(result: ActiveTimerReadResult) {
+  return result.ok
+    ? `ok:${result.session?.sessionId ?? "none"}:${result.session?.startedAt ?? ""}:${result.syncedAt}`
+    : `error:${result.reason}:${result.message}`;
+}
+
+/**
+ * Apply a newer server-rendered snapshot without discarding local operation
+ * state (an in-flight stop, popout ownership or a popout error).
+ */
+function applyServerSnapshot(
+  previous: ProviderState,
+  result: ActiveTimerReadResult,
+): ProviderState {
+  if (result.ok) {
+    return {
+      ...previous,
+      session: result.session,
+      phase: "synced",
+      message: null,
+      syncedAt: result.syncedAt,
+      stopError:
+        previous.session?.sessionId === result.session?.sessionId
+          ? previous.stopError
+          : null,
+    };
+  }
+
+  if (result.reason === "unauthenticated") {
+    return {
+      ...previous,
+      session: null,
+      phase: "unauthenticated",
+      message: result.message,
+      stopPendingSessionId: null,
+    };
+  }
+
+  return {
+    ...previous,
+    phase: previous.phase === "unauthenticated" ? previous.phase : "stale",
+    message: result.message,
+  };
+}
+
 type ActiveTimerProviderProps = {
   ownerUserId: string | null;
   initialResult: ActiveTimerReadResult;
@@ -133,6 +179,16 @@ export function ActiveTimerProvider({
   const [state, setState] = useState<ProviderState>(() =>
     toInitialState(initialResult),
   );
+  const [serverSignature, setServerSignature] = useState(() =>
+    resultSignature(initialResult),
+  );
+  const incomingSignature = resultSignature(initialResult);
+  if (incomingSignature !== serverSignature) {
+    // A router.refresh() on the same route delivers a newer authoritative
+    // server snapshot. Merge it instead of ignoring it until the next event.
+    setServerSignature(incomingSignature);
+    setState((previous) => applyServerSnapshot(previous, initialResult));
+  }
   const [popoutOpen, setPopoutOpen] = useState(false);
   const [popoutPinnedSession, setPopoutPinnedSession] =
     useState<ActiveTimerSessionSnapshot | null>(null);
@@ -144,6 +200,8 @@ export function ActiveTimerProvider({
   const requestSequenceRef = useRef(0);
   const lastAttemptAtRef = useRef<number | null>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const trailingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const refreshRef = useRef<(options?: { force?: boolean }) => void>(() => {});
   const hiddenPendingRef = useRef(false);
   const popoutRef = useRef<TimerPopoutHandle | null>(null);
   const lastPathnameRef = useRef(pathname);
@@ -154,6 +212,28 @@ export function ActiveTimerProvider({
       timeoutRef.current = null;
     }
   }, []);
+
+  const clearTrailingRefresh = useCallback(() => {
+    if (trailingTimeoutRef.current !== null) {
+      clearTimeout(trailingTimeoutRef.current);
+      trailingTimeoutRef.current = null;
+    }
+  }, []);
+
+  const scheduleTrailingRefresh = useCallback(
+    (delayMs: number) => {
+      if (trailingTimeoutRef.current !== null) {
+        return;
+      }
+      trailingTimeoutRef.current = setTimeout(() => {
+        trailingTimeoutRef.current = null;
+        if (mountedRef.current) {
+          refreshRef.current({ force: true });
+        }
+      }, Math.max(50, delayMs));
+    },
+    [],
+  );
 
   const refresh = useCallback(
     async (options?: { force?: boolean }) => {
@@ -175,6 +255,9 @@ export function ActiveTimerProvider({
       }
 
       if (inFlightRef.current) {
+        // Keep the signal: a read that started before this event cannot prove
+        // the newer state. Retry once it has had room to finish.
+        scheduleTrailingRefresh(250);
         return;
       }
 
@@ -184,9 +267,14 @@ export function ActiveTimerProvider({
         lastAttemptAtRef.current !== null &&
         now - lastAttemptAtRef.current < MIN_AUTOMATIC_REFRESH_INTERVAL_MS
       ) {
+        scheduleTrailingRefresh(
+          MIN_AUTOMATIC_REFRESH_INTERVAL_MS -
+            (now - lastAttemptAtRef.current),
+        );
         return;
       }
 
+      clearTrailingRefresh();
       inFlightRef.current = true;
       lastAttemptAtRef.current = now;
 
@@ -267,8 +355,14 @@ export function ActiveTimerProvider({
         }));
       }
     },
-    [clearPendingTimeout, ownerUserId],
+    [clearPendingTimeout, clearTrailingRefresh, ownerUserId, scheduleTrailingRefresh],
   );
+
+  useEffect(() => {
+    refreshRef.current = (options) => {
+      void refresh(options);
+    };
+  }, [refresh]);
 
   // App Router layouts persist across client navigation. A route change is
   // therefore an explicit refresh signal: server actions that redirect after
@@ -448,8 +542,9 @@ export function ActiveTimerProvider({
       inFlightRef.current = false;
       stopInFlightRef.current = null;
       clearPendingTimeout();
+      clearTrailingRefresh();
     };
-  }, [clearPendingTimeout]);
+  }, [clearPendingTimeout, clearTrailingRefresh]);
 
   // Owner-scoped realtime on task_sessions only. Bursts are debounced and the
   // canonical read is single-flight, so page-level refreshes cannot stack.
@@ -468,7 +563,13 @@ export function ActiveTimerProvider({
         if (!active || !mountedRef.current) {
           return;
         }
-        if (typeof document !== "undefined" && document.hidden) {
+        if (
+          typeof document !== "undefined" &&
+          shouldDeferHiddenTimerRefresh(
+            document.hidden,
+            popoutRef.current !== null,
+          )
+        ) {
           hiddenPendingRef.current = true;
           return;
         }

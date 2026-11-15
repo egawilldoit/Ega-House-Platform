@@ -81,6 +81,14 @@ async function settle() {
   });
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+}
+
 function mount() {
   act(() => {
     root.render(
@@ -192,6 +200,87 @@ describe("floating timer provider and chip", () => {
 
     expect(mocks.readActiveTimerSnapshotAction).toHaveBeenCalledTimes(1);
     expect(document.querySelector('[data-testid="floating-timer-chip"]')).toBeNull();
+  });
+
+  it("applies a newer server snapshot on the same route without remounting", async () => {
+    mount();
+    await settle();
+    expect(document.body.textContent).toContain("Ship the floating timer");
+
+    await act(async () => {
+      root.render(
+        <ActiveTimerProvider
+          ownerUserId="owner-a"
+          initialResult={activeResult(null)}
+        >
+          <FloatingTimerChip />
+        </ActiveTimerProvider>,
+      );
+    });
+    await settle();
+
+    expect(document.querySelector('[data-testid="floating-timer-chip"]')).toBeNull();
+
+    await act(async () => {
+      root.render(
+        <ActiveTimerProvider
+          ownerUserId="owner-a"
+          initialResult={activeResult({
+            ...session,
+            sessionId: "session-2",
+            taskTitle: "New focus task",
+          })}
+        >
+          <FloatingTimerChip />
+        </ActiveTimerProvider>,
+      );
+    });
+    await settle();
+
+    expect(document.body.textContent).toContain("New focus task");
+    expect(mocks.readActiveTimerSnapshotAction).not.toHaveBeenCalled();
+  });
+
+  it("queues a realtime signal that arrives during an in-flight read", async () => {
+    vi.useFakeTimers();
+    const first = deferred<Awaited<ReturnType<typeof mocks.readActiveTimerSnapshotAction>>>();
+    mocks.readActiveTimerSnapshotAction.mockReturnValueOnce(first.promise);
+
+    mount();
+    await settle();
+
+    const onPayload = mocks.subscribe.mock.calls[0]?.[0] as (() => void) | undefined;
+
+    await act(async () => {
+      onPayload?.();
+      vi.advanceTimersByTime(800);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(mocks.readActiveTimerSnapshotAction).toHaveBeenCalledTimes(1);
+
+    // The second signal debounces while the first read is still in flight.
+    await act(async () => {
+      onPayload?.();
+      vi.advanceTimersByTime(800);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(mocks.readActiveTimerSnapshotAction).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      first.resolve(activeResult(null));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      vi.advanceTimersByTime(300);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(mocks.readActiveTimerSnapshotAction).toHaveBeenCalledTimes(2);
   });
 
   it("marks the last known state stale when a canonical read fails", async () => {

@@ -71,6 +71,20 @@ export async function requestTimerPopoutWindow(
   return api.requestWindow(TIMER_POPOUT_SIZE);
 }
 
+/**
+ * Hidden-opener policy for realtime reconciliation.
+ *
+ * A visible Document PiP window can outlive attention on the opener tab, so a
+ * hidden opener must still reconcile when it owns a popout. Without one, defer
+ * until visibility returns to avoid background refresh work.
+ */
+export function shouldDeferHiddenTimerRefresh(
+  openerHidden: boolean,
+  ownsPopoutWindow: boolean,
+): boolean {
+  return openerHidden && !ownsPopoutWindow;
+}
+
 export const TIMER_POPOUT_ROOT_ID = "ega-timer-popout-root";
 export const TIMER_POPOUT_STYLE_ID = "ega-timer-popout-base-styles";
 
