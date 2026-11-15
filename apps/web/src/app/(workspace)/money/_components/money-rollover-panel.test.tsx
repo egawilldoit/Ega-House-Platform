@@ -182,3 +182,33 @@ test("refreshing the preview resets dates and identity for the new period", asyn
     container.remove();
   }
 });
+
+test("a rejected rollover preserves the uncovered-days choice for retry", async () => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  const submissions: FormData[] = [];
+  try {
+    await act(async () => root.render(
+      <MoneyRolloverPanel preview={preview()} previewUnavailableReason={null} action={async (data) => {
+        submissions.push(data);
+        return { ok: false, error: "Accept the savings difference" };
+      }} />,
+    ));
+    const checkbox = container.querySelector<HTMLInputElement>('[name="allowUncoveredDays"]');
+    const form = container.querySelector<HTMLFormElement>("form");
+    assert.ok(checkbox);
+    assert.ok(form);
+    await act(async () => checkbox.click());
+    await act(async () => form.requestSubmit());
+    assert.match(container.textContent ?? "", /Accept the savings difference/);
+    assert.equal(checkbox.checked, true);
+    await act(async () => form.requestSubmit());
+    assert.equal(submissions.length, 2);
+    assert.equal(submissions[1].get("allowUncoveredDays"), "true");
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+  }
+});

@@ -209,7 +209,11 @@ function MoneyRolloverForm({
         </div>
         {datesChanged ? <p role="status" className="text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">The successor dates changed. Recurring bills will be recalculated for the chosen dates when you roll over.</p> : null}
         <label className="flex items-center gap-2">
-          <input type="checkbox" name="allowUncoveredDays" value="true" checked={allowUncoveredDays} onChange={(event) => setAllowUncoveredDays(event.target.checked)} />
+          <input type="checkbox" name="allowUncoveredDays" value="true" checked={allowUncoveredDays} onChange={(event) => {
+            // React resets the form after resolved actions, including returned errors.
+            event.currentTarget.defaultChecked = event.currentTarget.checked;
+            setAllowUncoveredDays(event.currentTarget.checked);
+          }} />
           Allow untracked days between the finished period and the successor
         </label>
         <fieldset className="flex flex-col gap-3">
