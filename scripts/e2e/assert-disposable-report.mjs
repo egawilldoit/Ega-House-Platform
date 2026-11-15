@@ -9,6 +9,7 @@ export const journeys = {
   "disposable-journeys.e2e.spec.ts": [
     "created task persists and owner B cannot read, update or delete it",
     "Money survives reload, exports only the owner, then edits and deletes",
+    "Money rollover resets selected period choices and retains savings acceptance",
     "shutdown check-in and routine evidence persist through a reload",
     "notification read state and channel preference survive reload",
   ],
@@ -62,6 +63,6 @@ export function verifyReport(report) {
 if (process.argv[1]?.endsWith("assert-disposable-report.mjs")) {
   let verified = false;
   try { verified = verifyReport(JSON.parse(readFileSync(process.argv[2] ?? "apps/web/test-results/disposable-results.json", "utf8"))); } catch { /* Missing reports fail closed. */ }
-  console.log(verified ? "AUTHENTICATED_JOURNEYS_VERIFIED: 16 passed once" : "AUTHENTICATED_JOURNEYS_UNVERIFIED: incomplete or failing report");
+  console.log(verified ? "AUTHENTICATED_JOURNEYS_VERIFIED: 17 passed once" : "AUTHENTICATED_JOURNEYS_UNVERIFIED: incomplete or failing report");
   if (!verified) process.exitCode = 1;
 }
