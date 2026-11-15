@@ -2,13 +2,22 @@ import { cache } from "react";
 import type { ReactNode } from "react";
 import { createClient } from "@/lib/supabase/server";
 import { getShellIdentity, getWorkspaceShellMetrics } from "@/lib/workspace-shell";
+import { getActiveTimerSession } from "@/lib/services/timer-service";
 import { listFavorites } from "@/lib/services/favorite-service";
 
 import type { SidebarGoal, SidebarProject } from "@/components/layout/sidebar";
+import { ActiveTimerProvider } from "@/components/timer/floating-timer/active-timer-provider";
+import { FloatingTimerChip } from "@/components/timer/floating-timer/floating-timer-chip";
 import { WorkspaceShell } from "@/components/layout/workspace-shell";
 import { WorkspaceKeyboardShortcuts } from "@/components/layout/workspace-keyboard-shortcuts";
 import { GlobalQuickActionControllers } from "@/components/layout/global-quick-action-controllers";
 import { ToastProvider } from "@/components/ui/toast-provider";
+import {
+  ACTIVE_TIMER_UNAUTHENTICATED_MESSAGE,
+  ACTIVE_TIMER_UNAVAILABLE_MESSAGE,
+  toActiveTimerSnapshot,
+  type ActiveTimerReadResult,
+} from "@/lib/timer/active-timer-contract";
 
 // Request-level only — see SHELL-PERSISTENCE-EVALUATION.md
 const getSidebarProjects = cache(async (): Promise<SidebarProject[]> => {
@@ -89,6 +98,41 @@ const getSidebarGoals = cache(async (): Promise<SidebarGoal[]> => {
   }
 });
 
+async function readInitialActiveTimer(
+  ownerUserId: string | null,
+): Promise<ActiveTimerReadResult> {
+  if (!ownerUserId) {
+    return {
+      ok: false,
+      reason: "unauthenticated",
+      message: ACTIVE_TIMER_UNAUTHENTICATED_MESSAGE,
+    };
+  }
+
+  try {
+    const result = await getActiveTimerSession();
+    if (result.errorMessage) {
+      return {
+        ok: false,
+        reason: "unavailable",
+        message: ACTIVE_TIMER_UNAVAILABLE_MESSAGE,
+      };
+    }
+
+    return {
+      ok: true,
+      syncedAt: new Date().toISOString(),
+      session: toActiveTimerSnapshot(result.data),
+    };
+  } catch {
+    return {
+      ok: false,
+      reason: "unavailable",
+      message: ACTIVE_TIMER_UNAVAILABLE_MESSAGE,
+    };
+  }
+}
+
 export default async function WorkspaceLayout({ children }: { children: ReactNode }) {
   const [projects, goals, metrics, identity, favoritesResult] = await Promise.all([
     getSidebarProjects(),
@@ -103,20 +147,31 @@ export default async function WorkspaceLayout({ children }: { children: ReactNod
     href: item.href,
     kind: item.kind,
   }));
+  // One light active-session read per authenticated request. This is not the
+  // heavy timer workspace projection used by /timer.
+  const initialActiveTimer = await readInitialActiveTimer(identity.id);
 
   return (
     <ToastProvider>
-      <WorkspaceKeyboardShortcuts ownerId={identity.id} />
-      <GlobalQuickActionControllers projects={projects} goals={goals} />
-
-      <WorkspaceShell
-        favorites={favorites}
-        projects={projects}
-        metrics={metrics}
-        identity={identity}
+      <ActiveTimerProvider
+        key={identity.id ?? "unauthenticated"}
+        ownerUserId={identity.id}
+        initialResult={initialActiveTimer}
       >
-        {children}
-      </WorkspaceShell>
+        <WorkspaceKeyboardShortcuts ownerId={identity.id} />
+        <GlobalQuickActionControllers projects={projects} goals={goals} />
+
+        <WorkspaceShell
+          favorites={favorites}
+          projects={projects}
+          metrics={metrics}
+          identity={identity}
+        >
+          {children}
+        </WorkspaceShell>
+
+        <FloatingTimerChip />
+      </ActiveTimerProvider>
     </ToastProvider>
   );
 }

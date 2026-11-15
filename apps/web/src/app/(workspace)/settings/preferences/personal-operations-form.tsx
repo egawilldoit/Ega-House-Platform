@@ -553,6 +553,7 @@ export function PersonalOperationsForm({
           className={styles.saveBar}
           role="region"
           aria-label="Schedule save status"
+          data-ega-save-bar="true"
         >
           <span
             ref={errorRef}
