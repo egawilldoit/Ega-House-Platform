@@ -308,7 +308,7 @@ function MoneyRolloverForm({
           verified opening.
         </p>
         <div>
-          <PendingSubmitButton pendingLabel="Rolling over…">
+          <PendingSubmitButton type="submit" pendingLabel="Rolling over…">
             Roll over to {startDate}
           </PendingSubmitButton>
         </div>
