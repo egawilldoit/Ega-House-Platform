@@ -36,6 +36,15 @@ function MoneyRolloverForm({
   const [openingMode, setOpeningMode] = useState<"carry_forward" | "verified_source">(
     preview?.openingMode ?? "carry_forward",
   );
+  const [allowUncoveredDays, setAllowUncoveredDays] = useState(false);
+  const [savingsTarget, setSavingsTarget] = useState("");
+  const [emergencyTarget, setEmergencyTarget] = useState("");
+  const [unpaidTreatment, setUnpaidTreatment] = useState("keep_pending");
+  const [unpaidReason, setUnpaidReason] = useState("");
+  const [verifiedAmount, setVerifiedAmount] = useState("");
+  const [verifiedCutoff, setVerifiedCutoff] = useState("");
+  const [verifiedEvidence, setVerifiedEvidence] = useState("");
+  const [differenceNote, setDifferenceNote] = useState("");
   // One stable operation id per rendered form; a retry of the same confirmed
   // request replays instead of creating a second successor.
   const [operationId] = useState(() =>
@@ -200,7 +209,7 @@ function MoneyRolloverForm({
         </div>
         {datesChanged ? <p role="status" className="text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">The successor dates changed. Recurring bills will be recalculated for the chosen dates when you roll over.</p> : null}
         <label className="flex items-center gap-2">
-          <input type="checkbox" name="allowUncoveredDays" value="true" />
+          <input type="checkbox" name="allowUncoveredDays" value="true" checked={allowUncoveredDays} onChange={(event) => setAllowUncoveredDays(event.target.checked)} />
           Allow untracked days between the finished period and the successor
         </label>
         <fieldset className="flex flex-col gap-3">
@@ -208,8 +217,8 @@ function MoneyRolloverForm({
           <p className="text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">The current policy will be copied. Leave a target blank to keep its current value, or enter a new amount in MAD.</p>
           <p className="text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">Current savings target: {typeof preview.settings.savingsTargetMinor === "number" ? formatMinorToMad(preview.settings.savingsTargetMinor) : "Not set"}. Current emergency target: {typeof preview.settings.emergencyTargetMinor === "number" ? formatMinorToMad(preview.settings.emergencyTargetMinor) : "Not set"}.</p>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div className="flex flex-col gap-1.5"><label htmlFor="rollover-savings-target" className="form-label">New savings target (MAD)</label><Input id="rollover-savings-target" name="savingsTarget" inputMode="decimal" /></div>
-            <div className="flex flex-col gap-1.5"><label htmlFor="rollover-emergency-target" className="form-label">New emergency target (MAD)</label><Input id="rollover-emergency-target" name="emergencyTarget" inputMode="decimal" /></div>
+            <div className="flex flex-col gap-1.5"><label htmlFor="rollover-savings-target" className="form-label">New savings target (MAD)</label><Input id="rollover-savings-target" name="savingsTarget" inputMode="decimal" value={savingsTarget} onChange={(event) => setSavingsTarget(event.target.value)} /></div>
+            <div className="flex flex-col gap-1.5"><label htmlFor="rollover-emergency-target" className="form-label">New emergency target (MAD)</label><Input id="rollover-emergency-target" name="emergencyTarget" inputMode="decimal" value={emergencyTarget} onChange={(event) => setEmergencyTarget(event.target.value)} /></div>
           </div>
         </fieldset>
         <input type="hidden" name="operationId" value={operationId} />
@@ -241,7 +250,8 @@ function MoneyRolloverForm({
                 id="rollover-unpaid"
                 name="unpaidTreatment"
                 className="input-instrument"
-                defaultValue="keep_pending"
+                value={unpaidTreatment}
+                onChange={(event) => setUnpaidTreatment(event.target.value)}
               >
                 <option value="keep_pending">Keep them in the finished period</option>
                 <option value="carry_forward">Carry one-off bills into the successor</option>
@@ -256,7 +266,7 @@ function MoneyRolloverForm({
             <label htmlFor="rollover-unpaid-reason" className="form-label">
               Unpaid-item reason (required to carry or cancel)
             </label>
-            <Input id="rollover-unpaid-reason" name="unpaidReason" placeholder="Why this treatment is correct" />
+            <Input id="rollover-unpaid-reason" name="unpaidReason" value={unpaidReason} onChange={(event) => setUnpaidReason(event.target.value)} placeholder="Why this treatment is correct" />
           </div>
         ) : null}
 
@@ -266,19 +276,19 @@ function MoneyRolloverForm({
               <label htmlFor="rollover-verified-amount" className="form-label">
                 Verified balance (MAD)
               </label>
-              <Input id="rollover-verified-amount" name="verifiedAmount" inputMode="decimal" placeholder="0.00" />
+              <Input id="rollover-verified-amount" name="verifiedAmount" inputMode="decimal" value={verifiedAmount} onChange={(event) => setVerifiedAmount(event.target.value)} placeholder="0.00" />
             </div>
             <div className="flex flex-col gap-1.5">
               <label htmlFor="rollover-verified-cutoff" className="form-label">
                 Balance date
               </label>
-              <Input id="rollover-verified-cutoff" name="verifiedCutoffDate" type="date" />
+              <Input id="rollover-verified-cutoff" name="verifiedCutoffDate" type="date" value={verifiedCutoff} onChange={(event) => setVerifiedCutoff(event.target.value)} />
             </div>
             <div className="flex flex-col gap-1.5 sm:col-span-2">
               <label htmlFor="rollover-verified-evidence" className="form-label">
                 Evidence
               </label>
-              <Input id="rollover-verified-evidence" name="verifiedEvidence" placeholder="Statement or counted-cash reference" />
+              <Input id="rollover-verified-evidence" name="verifiedEvidence" value={verifiedEvidence} onChange={(event) => setVerifiedEvidence(event.target.value)} placeholder="Statement or counted-cash reference" />
             </div>
           </div>
         ) : null}
@@ -287,7 +297,7 @@ function MoneyRolloverForm({
           <label htmlFor="rollover-difference-note" className="form-label">
             Accept closing, restatement or savings differences (retained as provenance)
           </label>
-          <Input id="rollover-difference-note" name="acceptClosingDifferenceNote" placeholder="Required when the verified balance differs, a close was restated, savings differ, or a payment/visit mismatch is accepted" />
+          <Input id="rollover-difference-note" name="acceptClosingDifferenceNote" value={differenceNote} onChange={(event) => setDifferenceNote(event.target.value)} placeholder="Required when the verified balance differs, a close was restated, savings differ, or a payment/visit mismatch is accepted" />
           <p className="text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
             Required before confirming a modeled-versus-verified cash difference, a
             restated day close, a savings target versus transfers difference, or an accepted

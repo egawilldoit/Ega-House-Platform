@@ -235,13 +235,20 @@ test("Money rollover resets selected period choices and retains savings acceptan
   const afterGap = await owner.from("money_period_rollovers").select("id").eq("source_period_id", periods[1]);
   expect(afterGap.error).toBeNull();
   expect(afterGap.data).toEqual([]);
-  await page.getByLabel("Allow untracked days between the finished period and the successor").check();
+  await expect(note).toHaveValue("Savings shortfall reviewed");
+  await expect(page.getByLabel("New savings target (MAD)")).toHaveValue("25");
+  await expect(page.getByLabel("New emergency target (MAD)")).toHaveValue("12.50");
+  const allowGap = page.getByLabel("Allow untracked days between the finished period and the successor");
+  await allowGap.check();
   await note.clear();
   await submit.click();
   await expect(page.getByRole("form", { name: "Period rollover" }).getByRole("alert")).toContainText("Resolve or explicitly accept the savings target difference before rollover.");
   const afterSavings = await owner.from("money_period_rollovers").select("id").eq("source_period_id", periods[1]);
   expect(afterSavings.error).toBeNull();
   expect(afterSavings.data).toEqual([]);
+  await expect(allowGap).toBeChecked();
+  await expect(page.getByLabel("New savings target (MAD)")).toHaveValue("25");
+  await expect(page.getByLabel("New emergency target (MAD)")).toHaveValue("12.50");
   await note.fill("Savings shortfall reviewed");
   await page.getByRole("button", { name: "Roll over to 2026-11-12" }).click();
   await expect.poll(async () => {
