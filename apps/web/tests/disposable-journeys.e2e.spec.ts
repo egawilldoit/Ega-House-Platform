@@ -231,14 +231,14 @@ test("Money rollover resets selected period choices and retains savings acceptan
   const owner = await ownerClient(owners.ownerA);
   await note.fill("Savings shortfall reviewed");
   await submit.click();
-  await expect(page.getByRole("alert").filter({ hasText: "1 day between 2026-11-10 and 2026-11-12 would belong to no period. Start on 2026-11-11 or explicitly allow the uncovered days." })).toBeVisible();
+  await expect(page.getByRole("form", { name: "Period rollover" }).getByRole("alert")).toHaveText("1 day between 2026-11-10 and 2026-11-12 would belong to no period. Start on 2026-11-11 or explicitly allow the uncovered days.");
   const afterGap = await owner.from("money_period_rollovers").select("id").eq("source_period_id", periods[1]);
   expect(afterGap.error).toBeNull();
   expect(afterGap.data).toEqual([]);
   await page.getByLabel("Allow untracked days between the finished period and the successor").check();
   await note.clear();
   await submit.click();
-  await expect(page.getByRole("alert").filter({ hasText: "Resolve or explicitly accept the savings target difference before rollover." })).toBeVisible();
+  await expect(page.getByRole("form", { name: "Period rollover" }).getByRole("alert")).toContainText("Resolve or explicitly accept the savings target difference before rollover.");
   const afterSavings = await owner.from("money_period_rollovers").select("id").eq("source_period_id", periods[1]);
   expect(afterSavings.error).toBeNull();
   expect(afterSavings.data).toEqual([]);
