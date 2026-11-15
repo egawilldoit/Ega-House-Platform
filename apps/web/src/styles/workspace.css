@@ -2552,7 +2552,9 @@ html[data-reduce-motion="true"] .workspace-drawer-panel-enter {
   position: fixed;
   right: max(16px, env(safe-area-inset-right, 0px));
   bottom: max(16px, env(safe-area-inset-bottom, 0px));
-  z-index: 70;
+  /* Above persistent shell chrome (sidebar 30) but below modal overlays:
+     desktop task drawer 40/50, mobile drawer 60/61, dialogs 90, toasts 100. */
+  z-index: 35;
   display: flex;
   flex-direction: column;
   gap: 8px;

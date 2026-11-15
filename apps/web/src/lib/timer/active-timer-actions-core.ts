@@ -149,7 +149,12 @@ export async function stopActiveTimerWithDependencies(
       };
     }
 
-    dependencies.revalidateTimerSurfaces();
+    try {
+      dependencies.revalidateTimerSurfaces();
+    } catch {
+      // The stop is already committed. A revalidation failure must not report
+      // the write as failed; the client explicitly refreshes as well.
+    }
 
     return {
       ok: true,

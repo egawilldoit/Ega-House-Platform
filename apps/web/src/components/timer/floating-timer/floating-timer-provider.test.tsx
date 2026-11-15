@@ -98,10 +98,13 @@ function installPopoutApi() {
   return target;
 }
 
-function activeResult(active: ActiveTimerSessionSnapshot | null = session) {
+function activeResult(
+  active: ActiveTimerSessionSnapshot | null = session,
+  syncedAt = "2026-11-14T10:05:00.000Z",
+) {
   return {
     ok: true as const,
-    syncedAt: "2026-11-14T10:05:00.000Z",
+    syncedAt,
     session: active,
   };
 }
@@ -275,6 +278,46 @@ describe("floating timer provider and chip", () => {
 
     expect(document.body.textContent).toContain("New focus task");
     expect(mocks.readActiveTimerSnapshotAction).not.toHaveBeenCalled();
+  });
+
+  it("ignores an older same-route server snapshot after a newer confirmation", async () => {
+    mount();
+    await settle();
+
+    await act(async () => {
+      root.render(
+        <ActiveTimerProvider
+          ownerUserId="owner-a"
+          initialResult={activeResult(
+            {
+              ...session,
+              sessionId: "session-2",
+              taskTitle: "Newer focus task",
+            },
+            "2026-11-14T10:10:00.000Z",
+          )}
+        >
+          <FloatingTimerChip />
+        </ActiveTimerProvider>,
+      );
+    });
+    await settle();
+    expect(document.body.textContent).toContain("Newer focus task");
+
+    await act(async () => {
+      root.render(
+        <ActiveTimerProvider
+          ownerUserId="owner-a"
+          initialResult={activeResult(session, "2026-11-14T10:05:00.000Z")}
+        >
+          <FloatingTimerChip />
+        </ActiveTimerProvider>,
+      );
+    });
+    await settle();
+
+    expect(document.body.textContent).toContain("Newer focus task");
+    expect(document.body.textContent).not.toContain("Ship the floating timer");
   });
 
   it("queues a realtime signal that arrives during an in-flight read", async () => {

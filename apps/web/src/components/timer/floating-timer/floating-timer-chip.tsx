@@ -14,6 +14,12 @@ function ChipElapsed({ startedAt }: { startedAt: string }) {
   const [elapsedSeconds, setElapsedSeconds] = useState(() =>
     getElapsedDurationSeconds(startedAt),
   );
+  const [renderedStartedAt, setRenderedStartedAt] = useState(startedAt);
+
+  if (renderedStartedAt !== startedAt) {
+    setRenderedStartedAt(startedAt);
+    setElapsedSeconds(getElapsedDurationSeconds(startedAt));
+  }
 
   useEffect(() => {
     let wasHidden =
@@ -54,9 +60,9 @@ function ChipElapsed({ startedAt }: { startedAt: string }) {
   return (
     <span
       className="ega-timer-chip__clock"
-      aria-label="Elapsed time"
       suppressHydrationWarning
     >
+      <span className="sr-only">Elapsed time </span>
       {formatDurationClock(elapsedSeconds)}
     </span>
   );
@@ -80,6 +86,7 @@ export function FloatingTimerChip() {
     openPopout,
     stopSession,
     dismissStopError,
+    dismissPopoutError,
   } = useActiveTimer();
 
   if (!session) {
@@ -174,9 +181,16 @@ export function FloatingTimerChip() {
       ) : null}
 
       {popoutError ? (
-        <p className="ega-timer-chip__error" role="alert">
-          {popoutError}
-        </p>
+        <div className="ega-timer-chip__error" role="alert">
+          <span>{popoutError}</span>
+          <button
+            type="button"
+            className="ega-timer-chip__dismiss"
+            onClick={dismissPopoutError}
+          >
+            Dismiss
+          </button>
+        </div>
       ) : null}
     </aside>
   );
