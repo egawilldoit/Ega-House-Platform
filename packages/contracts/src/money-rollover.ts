@@ -21,6 +21,7 @@ export type MoneyRolloverOpeningRequest =
       note?: string | null;
     }>;
 
+/** Rollover requires an acceptance note for closing or savings target versus transfers differences. */
 export type MoneyRolloverRequest = Readonly<{
   /** Source period read by the caller; a stale version is a conflict. */
   sourcePeriodId: string;
@@ -41,7 +42,7 @@ export type MoneyRolloverRequest = Readonly<{
   settingsOverrides?: Readonly<Record<string, unknown>> | null;
   /** State explicitly whether days between the source and successor may be unowned. */
   allowUncoveredDays?: boolean;
-  /** Required to accept a modeled-versus-verified closing difference. */
+  /** Required to accept a modeled-versus-verified closing difference or a savings target versus transfers difference. */
   acceptClosingDifferenceNote?: string | null;
 }>;
 

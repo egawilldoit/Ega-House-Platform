@@ -411,3 +411,33 @@ test("closeDay posts the full close request and returns retained evidence", asyn
     ],
   });
 });
+
+test("rollover preserves the savings mismatch error and sends the accepted retry", async () => {
+  const message = "Rollover needs explicit decisions: Resolve or explicitly accept the savings target difference before rollover.";
+  const rejected = makeHarness(400, { error: { code: "VALIDATION", message } });
+  const request = {
+    sourcePeriodId: PERIOD.id,
+    expectedVersion: 2,
+    startDate: "2026-12-01",
+    endDate: "2026-12-31",
+    opening: { mode: "carry_forward" as const },
+    operationId: "rollover-savings-1",
+  };
+  const failure = await rejected.client.money.rollover(PERIOD.id, request);
+  assert.equal(failure.ok, false);
+  if (!failure.ok) {
+    assert.equal(failure.error.code, "VALIDATION");
+    assert.equal(failure.error.status, 400);
+    assert.equal(failure.error.message, message);
+  }
+  assert.equal(rejected.calls[0].url, `https://api.ega.example/api/money/periods/${PERIOD.id}/rollover`);
+  assert.equal(rejected.calls[0].method, "POST");
+  assert.deepEqual(rejected.calls[0].body, request);
+
+  const response = { ok: true, replayed: true, record: { id: "rollover-1" }, reconciliation: {}, weekWindows: [] };
+  const accepted = makeHarness(200, response);
+  const retry = { ...request, acceptClosingDifferenceNote: "Reviewed savings shortfall" };
+  assert.deepEqual(await accepted.client.money.rollover(PERIOD.id, retry), { ok: true, data: response });
+  assert.deepEqual(accepted.calls[0].body, retry);
+  assert.equal(accepted.calls[0].headers.Authorization, "Bearer token-money");
+});
