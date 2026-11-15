@@ -173,6 +173,7 @@ describe("Money MCP tools", () => {
   });
 
   it("passes a savings discrepancy rejection and acceptance retry through the MCP boundary", async () => {
+    mocks.timezoneGet.mockResolvedValue({ ok: true, value: "Africa/Casablanca" });
     mocks.rolloverMoneyPeriod
       .mockResolvedValueOnce({ ok: false, code: "validation", errorMessage: "Accept the savings target difference" })
       .mockResolvedValueOnce({ ok: true, data: { record: { id: "rollover-1" }, replayed: false, reconciliation: {}, weekWindows: [] } });
