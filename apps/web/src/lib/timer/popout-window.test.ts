@@ -9,6 +9,7 @@ import {
   getDocumentPictureInPicture,
   prepareTimerPopoutDocument,
   requestTimerPopoutWindow,
+  shouldDeferHiddenTimerRefresh,
   supportsDocumentPictureInPicture,
 } from "./popout-window";
 
@@ -57,6 +58,13 @@ describe("Document Picture-in-Picture feature detection", () => {
     await expect(requestTimerPopoutWindow({})).rejects.toThrow(
       "Document Picture-in-Picture is not available.",
     );
+  });
+
+  it("defer hidden-opener refreshes only when no popout is owned", () => {
+    expect(shouldDeferHiddenTimerRefresh(true, false)).toBe(true);
+    expect(shouldDeferHiddenTimerRefresh(true, true)).toBe(false);
+    expect(shouldDeferHiddenTimerRefresh(false, false)).toBe(false);
+    expect(shouldDeferHiddenTimerRefresh(false, true)).toBe(false);
   });
 });
 
