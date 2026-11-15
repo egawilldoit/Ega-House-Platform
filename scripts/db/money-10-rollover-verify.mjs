@@ -309,7 +309,7 @@ async function main() {
       overrides.openingMode ?? "carry_forward",
       overrides.unpaidTreatment ?? "carry_forward",
       overrides.unpaidReason ?? "still owed",
-      null,
+      overrides.acceptedNote === undefined ? "Savings shortfall reviewed" : overrides.acceptedNote,
       { modeledClosingCashMinor: 70800, pendingOccurrenceCount: 1 },
       overrides.occurrences ?? occurrences,
       overrides.carried ?? carried,
@@ -326,7 +326,19 @@ async function main() {
         args,
       );
 
+    let savingsDenied = false;
+    try {
+      await user(A, (tx) => callRollover(tx, rolloverArgs("m10-savings-denied", hex("a"), { acceptedNote: null })));
+    } catch (error) {
+      savingsDenied = error.code === "23514" && /savings/.test(error.message);
+    }
+    assert(savingsDenied, "the RPC rejects an unaccepted savings difference");
+    const beforeAcceptance = await sql.unsafe("SELECT lifecycle, successor_period_id FROM public.money_periods WHERE id=$1", [sourceId]);
+    assert(beforeAcceptance[0].lifecycle === "ended" && beforeAcceptance[0].successor_period_id === null, "rejection leaves the source untouched");
+
     const first = await user(A, (tx) => callRollover(tx, rolloverArgs("m10-op-1", hex("9"))));
+    assert(first[0].result.rollover.reconciliation_accepted_note === "Savings shortfall reviewed", "acceptance note is retained");
+    assert(first[0].result.rollover.reconciliation.closeSummary.savingsTargetMinor === 12000 && first[0].result.rollover.reconciliation.closeSummary.savingsTransferredMinor === 2000, "server reconciliation evidence is retained");
     assert(first[0].result.replayed === false, "first rollover is not a replay");
     const successorId = first[0].result.rollover.successor_period_id;
     assert(successorId && successorId !== sourceId, "one successor was created");
@@ -1108,7 +1120,7 @@ async function main() {
         "carry_forward",
         null,
         null,
-        null,
+        "Savings shortfall reviewed",
         { modeledClosingCashMinor: 5000, pendingOccurrenceCount: 0 },
         [],
         [],

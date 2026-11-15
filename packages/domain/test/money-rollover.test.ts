@@ -359,11 +359,11 @@ test("payment and counted-visit mismatches are reconciliation choices", () => {
       ?.status,
     "choice_required",
   );
-  assert.equal(result.choices.length, 2);
+  assert.equal(result.choices.length, 3);
   const savings = result.differences.find(
     (entry) => entry.code === "savings_target_vs_transfers",
   );
-  assert.equal(savings?.status, "ok");
+  assert.equal(savings?.status, "choice_required");
   assert.equal(savings?.amountMinor, -10_000);
 });
 
@@ -439,10 +439,10 @@ test("a restated close does not suppress paid-payment or counted-visit choices",
     openingMode: "carry_forward",
     closeSnapshots: snapshots,
   });
-  assert.equal(pending.choices.length, 3);
+  assert.equal(pending.choices.length, 4);
   assert.equal(
     pending.differences.filter((entry) => entry.status === "choice_required").length,
-    3,
+    4,
   );
 
   const accepted = assessMoneyRollover({
@@ -463,7 +463,7 @@ test("a restated close does not suppress paid-payment or counted-visit choices",
       .map((entry) => entry.code)
       .sort()
       .join(","),
-    "close_snapshot_restatement,counted_coffee_visit_mismatch,paid_obligation_payment_mismatch",
+    "close_snapshot_restatement,counted_coffee_visit_mismatch,paid_obligation_payment_mismatch,savings_target_vs_transfers",
   );
 });
 
