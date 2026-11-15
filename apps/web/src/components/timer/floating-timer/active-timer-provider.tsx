@@ -445,6 +445,12 @@ export function ActiveTimerProvider({
           };
         });
 
+        // Invalidate any read that started before this committed stop so it
+        // cannot re-show the stopped session when it resolves later.
+        requestSequenceRef.current += 1;
+        inFlightRef.current = false;
+        clearPendingTimeout();
+
         startTransition(() => {
           router.refresh();
         });
@@ -466,7 +472,7 @@ export function ActiveTimerProvider({
         }
       }
     },
-    [refresh, router],
+    [clearPendingTimeout, refresh, router],
   );
 
   const openPopout = useCallback(() => {

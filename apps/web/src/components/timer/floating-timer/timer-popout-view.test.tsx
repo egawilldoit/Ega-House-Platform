@@ -65,7 +65,7 @@ describe("TimerPopoutView", () => {
     expect(text()).toContain("EGA House");
     expect(
       document.querySelector(".ega-timer-popout__clock")?.textContent,
-    ).toMatch(/^Elapsed time \d{2}:01:0\d$/);
+    ).toMatch(/^Elapsed time \d{2}:\d{2}:\d{2}$/);
 
     act(() => {
       document

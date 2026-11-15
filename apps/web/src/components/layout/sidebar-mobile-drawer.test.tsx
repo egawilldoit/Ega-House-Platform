@@ -51,7 +51,7 @@ async function renderDrawer() {
 }
 
 function getButton(label: string) {
-  const button = container.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`);
+  const button = document.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`);
   expect(button).not.toBeNull();
   return button as HTMLButtonElement;
 }
@@ -75,11 +75,14 @@ describe("WorkspaceNavigationDrawer", () => {
 
     expect(trigger.getAttribute("aria-expanded")).toBe("true");
     expect(
-      container.querySelector('[role="dialog"][aria-label="Workspace navigation"]'),
+      document.querySelector('[role="dialog"][aria-label="Workspace navigation"]'),
     ).not.toBeNull();
+    expect(
+      document.querySelector(".workspace-drawer-layer")?.parentElement,
+    ).toBe(document.body);
     expect(document.body.style.overflow).toBe("hidden");
 
-    const link = container.querySelector<HTMLAnchorElement>('a[href="/dashboard"]');
+    const link = document.querySelector<HTMLAnchorElement>('a[href="/dashboard"]');
     expect(link).not.toBeNull();
     expect(document.activeElement).toBe(link);
 
@@ -88,7 +91,7 @@ describe("WorkspaceNavigationDrawer", () => {
     });
 
     expect(
-      container.querySelector('[role="dialog"][aria-label="Workspace navigation"]'),
+      document.querySelector('[role="dialog"][aria-label="Workspace navigation"]'),
     ).toBeNull();
     expect(trigger.getAttribute("aria-expanded")).toBe("false");
     expect(document.activeElement).toBe(trigger);
@@ -102,15 +105,15 @@ describe("WorkspaceNavigationDrawer", () => {
     await click(trigger);
     await click(getButton("Close workspace navigation"));
     expect(
-      container.querySelector('[role="dialog"][aria-label="Workspace navigation"]'),
+      document.querySelector('[role="dialog"][aria-label="Workspace navigation"]'),
     ).toBeNull();
 
     await click(trigger);
-    const link = container.querySelector<HTMLAnchorElement>('a[href="/dashboard"]');
+    const link = document.querySelector<HTMLAnchorElement>('a[href="/dashboard"]');
     expect(link).not.toBeNull();
     await click(link as HTMLAnchorElement);
     expect(
-      container.querySelector('[role="dialog"][aria-label="Workspace navigation"]'),
+      document.querySelector('[role="dialog"][aria-label="Workspace navigation"]'),
     ).toBeNull();
   });
 
@@ -120,8 +123,8 @@ describe("WorkspaceNavigationDrawer", () => {
     const trigger = getButton("Open workspace navigation");
     await click(trigger);
 
-    const link = container.querySelector<HTMLAnchorElement>('a[href="/dashboard"]');
-    const close = container.querySelector<HTMLButtonElement>(".workspace-drawer-close");
+    const link = document.querySelector<HTMLAnchorElement>('a[href="/dashboard"]');
+    const close = document.querySelector<HTMLButtonElement>(".workspace-drawer-close");
     expect(link).not.toBeNull();
     expect(close).not.toBeNull();
     expect(document.activeElement).toBe(link);
@@ -151,8 +154,8 @@ describe("WorkspaceNavigationDrawer", () => {
     const trigger = getButton("Open workspace navigation");
     await click(trigger);
 
-    const link = container.querySelector<HTMLAnchorElement>('a[href="/dashboard"]');
-    const hiddenControl = Array.from(container.querySelectorAll("button")).find(
+    const link = document.querySelector<HTMLAnchorElement>('a[href="/dashboard"]');
+    const hiddenControl = Array.from(document.querySelectorAll("button")).find(
       (button) => button.textContent === "Opacity hidden control",
     );
     expect(link).not.toBeNull();

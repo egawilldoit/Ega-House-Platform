@@ -6,6 +6,20 @@ const workspaceCss = readFileSync(
   resolve(process.cwd(), "src/styles/workspace.css"),
   "utf8",
 );
+const preferencesCss = readFileSync(
+  resolve(
+    process.cwd(),
+    "src/app/(workspace)/settings/preferences/preferences.module.css",
+  ),
+  "utf8",
+);
+const preferencesForm = readFileSync(
+  resolve(
+    process.cwd(),
+    "src/app/(workspace)/settings/preferences/personal-operations-form.tsx",
+  ),
+  "utf8",
+);
 
 function zIndexFor(selector: string) {
   const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -21,12 +35,20 @@ describe("floating timer layering", () => {
     const chip = zIndexFor(".ega-timer-chip");
     const sidebar = zIndexFor(".app-sidebar");
     const desktopDrawerOverlay = 40;
-    const mobileDrawerOverlay = zIndexFor(".workspace-drawer-overlay");
+    const mobileDrawerLayer = zIndexFor(".workspace-drawer-layer");
     const mobileDrawerPanel = zIndexFor(".workspace-drawer-panel");
 
     expect(chip).toBeGreaterThan(sidebar);
     expect(chip).toBeLessThan(desktopDrawerOverlay);
-    expect(chip).toBeLessThan(mobileDrawerOverlay);
+    expect(chip).toBeLessThan(mobileDrawerLayer);
     expect(chip).toBeLessThan(mobileDrawerPanel);
+  });
+
+  it("lifts the chip clear of the z-45 preferences save bar instead of covering it", () => {
+    expect(preferencesCss).toMatch(/\.saveBar\s*\{[\s\S]*?z-index:\s*45/);
+    expect(preferencesForm).toContain('data-ega-save-bar');
+    expect(workspaceCss).toMatch(
+      /body:has\(\[data-ega-save-bar\]\) \.ega-timer-chip\s*\{[\s\S]*?bottom:\s*calc\(116px/,
+    );
   });
 });
