@@ -126,3 +126,15 @@ This log persists material **current-behavior vs normative-authority conflicts**
 - **Resolution / required decision:** the owner must decide session/status-history retention, attachment object cleanup, restore limits, and task/goal reference handling (saved views, notifications, external refs, calendar jobs) before any archive-centre hard delete is enabled. Typed-name confirmation is UI friction, not authorization.
 - **Status:** `OPEN` — explicit blocker; EGA-797 must not be marked complete while this is unresolved.
 - **Follow-up / evidence:** archive centre ships restore only and states the blocker in-product; no new destructive action, RPC or cascade rule is introduced by this change.
+
+### DEC-2026-11-15-01 — Global floating timer has a shell view-state owner
+
+- **Date:** 2026-11-15
+- **Scope:** authenticated workspace chrome; active timer chip and Document Picture-in-Picture window.
+- **Conflict:** the repository already has page-local timer sync state (`TimerSyncStatus` + `reconcileTimerSurface`). Adding a global chip with task/project/start data creates a second client sync owner. Root guidance discourages duplicate state owners and contracts.
+- **Current-behavior evidence:** `apps/web/src/components/timer/timer-sync-status.tsx`, `apps/web/src/lib/timer/reconcile-action.ts`/`reconcile-contract.ts`, and the new `apps/web/src/components/timer/floating-timer/active-timer-provider.tsx` at PR #404 head. `TimerSyncStatus` is mounted only on `/timer` and `/today`; its reconcile result carries only a session id and revalidates those two paths.
+- **Normative authority:** root `AGENTS.md` (one state/contract owner unless a concrete unmet requirement proves otherwise; no second write authority) plus the floating-timer requirement to show task, project and elapsed time on every authenticated workspace route.
+- **Classification:** `IMPLEMENTATION_DECISION`.
+- **Resolution / required decision:** keep a shell-scoped provider for the global chip, but not a second product-data or write owner. Reads still go through `getActiveTimerSession`, writes still go through `stopTimerSession({ sessionId })`, and RLS/owner checks are unchanged. The provider owns only browser view state needed by chrome that must render outside `/timer` and `/today`; page-local `TimerSyncStatus` remains the timer-page status surface. Extending the page reconcile result to carry task/project/start would force global chrome to invoke page revalidation and would still need a shell state owner. Revisit if the two realtime subscriptions on `/timer`/`/today` produce measurable duplicate cost; the fallback is to lift `TimerSyncStatus` into the provider.
+- **Status:** `OPEN` — proposed on `feat/floating-focus-timer-pip`; becomes resolved when observed on `main`.
+- **Follow-up / evidence:** provider/action/popout tests, focused TypeScript, lint, architecture boundary check, and required CI. Runtime PiP and authenticated stop remain environment-dependent.
