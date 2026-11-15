@@ -132,6 +132,16 @@ test("rollover panel discloses a truncated variance history", () => {
 });
 
 
+test("rollover confirmation submits its form", () => {
+  const html = renderToStaticMarkup(
+    <MoneyRolloverPanel preview={preview()} previewUnavailableReason={null} action={async () => ({ ok: true, error: null })} />,
+  );
+  const document = new DOMParser().parseFromString(html, "text/html");
+  const button = document.querySelector("form button");
+  assert.equal(button?.textContent, "Roll over to 2026-12-01");
+  assert.equal(button?.type, "submit");
+});
+
 test("rollover offers editable dates and explicit policy targets", () => {
   const html = renderToStaticMarkup(
     <MoneyRolloverPanel preview={preview()} previewUnavailableReason={null} action={async () => ({ ok: true, error: null })} />,
