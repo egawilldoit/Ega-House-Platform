@@ -320,6 +320,38 @@ describe("floating timer provider and chip", () => {
     expect(document.body.textContent).not.toContain("Ship the floating timer");
   });
 
+  it("discards an in-flight read that resolves after a committed stop", async () => {
+    vi.useFakeTimers();
+    const first = deferred<Awaited<ReturnType<typeof mocks.readActiveTimerSnapshotAction>>>();
+    mocks.readActiveTimerSnapshotAction.mockReturnValueOnce(first.promise);
+
+    mount();
+    await settle();
+    const onPayload = mocks.subscribe.mock.calls[0]?.[0] as (() => void) | undefined;
+
+    await act(async () => {
+      onPayload?.();
+      vi.advanceTimersByTime(800);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(mocks.readActiveTimerSnapshotAction).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      buttonByLabel("Stop timer for Ship the floating timer")?.click();
+    });
+    await settle();
+    expect(document.querySelector('[data-testid="floating-timer-chip"]')).toBeNull();
+
+    await act(async () => {
+      first.resolve(activeResult(session));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(document.querySelector('[data-testid="floating-timer-chip"]')).toBeNull();
+  });
+
   it("queues a realtime signal that arrives during an in-flight read", async () => {
     vi.useFakeTimers();
     const first = deferred<Awaited<ReturnType<typeof mocks.readActiveTimerSnapshotAction>>>();

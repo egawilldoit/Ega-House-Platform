@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import { createPortal } from "react-dom";
 import {
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
@@ -161,43 +162,46 @@ export function WorkspaceNavigationDrawer({
           <span>Menu</span>
         </button>
 
-        {open ? (
-          <div className="workspace-drawer-layer" role="presentation" style={{ maxWidth: "100vw", overflow: "hidden" }}>
-            <button
-              type="button"
-              className="workspace-drawer-backdrop"
-              aria-label="Close workspace navigation"
-              onClick={() => closeDrawer()}
-              onPointerDown={(event) => {
-                event.preventDefault();
-              }}
-              tabIndex={-1}
-            />
-            <div
-              ref={panelRef}
-              id={panelId}
-              role="dialog"
-              aria-modal="true"
-              aria-label={label}
-              tabIndex={-1}
-              className="workspace-drawer-panel workspace-drawer-panel-enter"
-              onClickCapture={onPanelClick}
-              style={{ overscrollBehavior: "contain", maxWidth: "86vw", boxSizing: "border-box" }}
-            >
-              {children}
-              <button
-                type="button"
-                className="workspace-drawer-close"
-                aria-label="Close workspace navigation panel"
-                title="Close workspace navigation panel"
-                onClick={() => closeDrawer()}
-              >
-                <X aria-hidden="true" />
-                Close
-              </button>
-            </div>
-          </div>
-        ) : null}
+        {open
+          ? createPortal(
+              <div className="workspace-drawer-layer" role="presentation" style={{ maxWidth: "100vw", overflow: "hidden" }}>
+                <button
+                  type="button"
+                  className="workspace-drawer-backdrop"
+                  aria-label="Close workspace navigation"
+                  onClick={() => closeDrawer()}
+                  onPointerDown={(event) => {
+                    event.preventDefault();
+                  }}
+                  tabIndex={-1}
+                />
+                <div
+                  ref={panelRef}
+                  id={panelId}
+                  role="dialog"
+                  aria-modal="true"
+                  aria-label={label}
+                  tabIndex={-1}
+                  className="workspace-drawer-panel workspace-drawer-panel-enter"
+                  onClickCapture={onPanelClick}
+                  style={{ overscrollBehavior: "contain", maxWidth: "86vw", boxSizing: "border-box" }}
+                >
+                  {children}
+                  <button
+                    type="button"
+                    className="workspace-drawer-close"
+                    aria-label="Close workspace navigation panel"
+                    title="Close workspace navigation panel"
+                    onClick={() => closeDrawer()}
+                  >
+                    <X aria-hidden="true" />
+                    Close
+                  </button>
+                </div>
+              </div>,
+              document.body,
+            )
+          : null}
       </div>
     </WorkspaceDrawerContext.Provider>
   );
