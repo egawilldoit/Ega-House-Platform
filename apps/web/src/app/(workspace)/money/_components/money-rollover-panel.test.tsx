@@ -137,7 +137,7 @@ test("rollover confirmation submits its form", () => {
     <MoneyRolloverPanel preview={preview()} previewUnavailableReason={null} action={async () => ({ ok: true, error: null })} />,
   );
   const document = new DOMParser().parseFromString(html, "text/html");
-  const button = document.querySelector("form button");
+  const button = document.querySelector<HTMLButtonElement>("form button");
   assert.equal(button?.textContent, "Roll over to 2026-12-01");
   assert.equal(button?.type, "submit");
 });
