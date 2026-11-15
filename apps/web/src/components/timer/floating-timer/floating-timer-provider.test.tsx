@@ -64,6 +64,39 @@ const session: ActiveTimerSessionSnapshot = {
 
 let container: HTMLDivElement;
 let root: Root;
+let hidden = false;
+
+function setHidden(value: boolean) {
+  hidden = value;
+  Object.defineProperty(document, "hidden", {
+    configurable: true,
+    get: () => hidden,
+  });
+}
+
+function installPopoutApi() {
+  const popoutDocument = document.implementation.createHTMLDocument("popout");
+  const target = new EventTarget() as Window & {
+    document: Document;
+    closed: boolean;
+    focus: () => void;
+    close: () => void;
+  };
+  target.document = popoutDocument;
+  target.closed = false;
+  target.focus = vi.fn();
+  target.close = () => {
+    target.closed = true;
+    target.dispatchEvent(new Event("pagehide"));
+  };
+
+  Object.defineProperty(window, "documentPictureInPicture", {
+    configurable: true,
+    value: { requestWindow: vi.fn(async () => target) },
+  });
+
+  return target;
+}
 
 function activeResult(active: ActiveTimerSessionSnapshot | null = session) {
   return {
@@ -125,11 +158,14 @@ beforeEach(() => {
     stoppedTaskId: "task-1",
     syncedAt: "2026-11-14T10:06:00.000Z",
   });
+  setHidden(false);
 });
 
 afterEach(() => {
   act(() => root.unmount());
   container.remove();
+  delete (window as { documentPictureInPicture?: unknown })
+    .documentPictureInPicture;
   vi.useRealTimers();
   vi.restoreAllMocks();
 });
@@ -281,6 +317,130 @@ describe("floating timer provider and chip", () => {
     });
 
     expect(mocks.readActiveTimerSnapshotAction).toHaveBeenCalledTimes(2);
+  });
+
+  it("defers a hidden-opener realtime refresh when no popout is owned", async () => {
+    vi.useFakeTimers();
+    mount();
+    await settle();
+    setHidden(true);
+
+    const onPayload = mocks.subscribe.mock.calls[0]?.[0] as (() => void) | undefined;
+    await act(async () => {
+      onPayload?.();
+      vi.advanceTimersByTime(800);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(mocks.readActiveTimerSnapshotAction).not.toHaveBeenCalled();
+  });
+
+  it("opens the pinned popout, stops that exact session, and tears down on native close", async () => {
+    vi.useFakeTimers();
+    const popout = installPopoutApi();
+    mount();
+    await settle();
+
+    await act(async () => {
+      buttonByLabel("Pop out timer to an always-on-top window")?.click();
+    });
+    await settle();
+
+    expect(popout.document.body.textContent).toContain("Ship the floating timer");
+    expect(popout.document.body.textContent).toContain("Running now");
+    expect(
+      document.body.textContent,
+    ).toContain("Focus window");
+
+    const popoutStop = popout.document.querySelector<HTMLButtonElement>(
+      'button[aria-label="Stop timer for Ship the floating timer"]',
+    );
+    await act(async () => {
+      popoutStop?.click();
+    });
+    await settle();
+
+    expect(mocks.stopActiveTimerSessionAction).toHaveBeenCalledWith("session-1");
+    expect(popout.document.body.textContent).toContain("Session ended");
+  });
+
+  it("tears down the owned popout on native close and restores the chip control", async () => {
+    vi.useFakeTimers();
+    const popout = installPopoutApi();
+    mount();
+    await settle();
+
+    await act(async () => {
+      buttonByLabel("Pop out timer to an always-on-top window")?.click();
+    });
+    await settle();
+    expect(document.body.textContent).toContain("Focus window");
+
+    await act(async () => {
+      popout.close();
+    });
+    await settle();
+
+    expect(document.body.textContent).toContain("Pop out");
+    expect(
+      buttonByLabel("Pop out timer to an always-on-top window"),
+    ).not.toBeUndefined();
+  });
+
+  it("marks the visible popout stopped after a remote stop while the opener is hidden", async () => {
+    vi.useFakeTimers();
+    const popout = installPopoutApi();
+    mount();
+    await settle();
+
+    await act(async () => {
+      buttonByLabel("Pop out timer to an always-on-top window")?.click();
+    });
+    await settle();
+    setHidden(true);
+
+    const onPayload = mocks.subscribe.mock.calls[0]?.[0] as (() => void) | undefined;
+    await act(async () => {
+      onPayload?.();
+      vi.advanceTimersByTime(800);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(mocks.readActiveTimerSnapshotAction).toHaveBeenCalledTimes(1);
+    expect(popout.document.body.textContent).toContain("Session ended");
+    expect(
+      popout.document.querySelector(
+        'button[aria-label="Stop timer for Ship the floating timer"]',
+      ),
+    ).toBeNull();
+  });
+
+  it("marks the last known state stale after the 10 second sync timeout", async () => {
+    vi.useFakeTimers();
+    mocks.readActiveTimerSnapshotAction.mockReturnValueOnce(
+      new Promise(() => {}) as never,
+    );
+    mount();
+    await settle();
+
+    const onPayload = mocks.subscribe.mock.calls[0]?.[0] as (() => void) | undefined;
+    await act(async () => {
+      onPayload?.();
+      vi.advanceTimersByTime(800);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      vi.advanceTimersByTime(10_000);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(document.body.textContent).toContain("Timer sync delayed");
+    expect(document.body.textContent).toContain("Timer sync timed out");
   });
 
   it("marks the last known state stale when a canonical read fails", async () => {
