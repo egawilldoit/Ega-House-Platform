@@ -163,6 +163,17 @@ body { display: block; }
   font-weight: 650;
   color: var(--ega-text, #171717);
 }
+.ega-timer-popout__sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
 .ega-timer-popout__note {
   margin: 0;
   font-size: 12px;
@@ -229,6 +240,8 @@ export function prepareTimerPopoutDocument(
 
   targetDocument.body.replaceChildren();
   targetDocument.body.className = "ega-timer-popout-body";
+  // Workspace dark/accent/density tokens are gated on this descendant marker.
+  targetDocument.body.setAttribute("data-workspace-theme", "workspace");
 
   const styles = sourceDocument.querySelectorAll(
     'link[rel="stylesheet"], style',

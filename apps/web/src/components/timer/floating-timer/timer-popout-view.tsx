@@ -28,6 +28,12 @@ function PopoutElapsed({ startedAt }: { startedAt: string }) {
   const [elapsedSeconds, setElapsedSeconds] = useState(() =>
     getElapsedDurationSeconds(startedAt),
   );
+  const [renderedStartedAt, setRenderedStartedAt] = useState(startedAt);
+
+  if (renderedStartedAt !== startedAt) {
+    setRenderedStartedAt(startedAt);
+    setElapsedSeconds(getElapsedDurationSeconds(startedAt));
+  }
 
   useEffect(() => {
     const update = () => {
@@ -39,7 +45,8 @@ function PopoutElapsed({ startedAt }: { startedAt: string }) {
   }, [startedAt]);
 
   return (
-    <p className="ega-timer-popout__clock" aria-label="Elapsed time">
+    <p className="ega-timer-popout__clock">
+      <span className="ega-timer-popout__sr">Elapsed time </span>
       {formatDurationClock(elapsedSeconds)}
     </p>
   );

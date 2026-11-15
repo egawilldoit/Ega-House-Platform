@@ -89,6 +89,7 @@ describe("prepareTimerPopoutDocument", () => {
 
     expect(root.id).toBe(TIMER_POPOUT_ROOT_ID);
     expect(target.body.contains(root)).toBe(true);
+    expect(target.body.getAttribute("data-workspace-theme")).toBe("workspace");
     expect(target.title).toBe("Focus timer | EGA House");
     expect(target.documentElement.lang).toBe("en-GB");
     expect(target.documentElement.getAttribute("data-theme")).toBe("dark");

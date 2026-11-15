@@ -184,6 +184,23 @@ describe("stopActiveTimerWithDependencies", () => {
     });
     expect(revalidateTimerSurfaces).not.toHaveBeenCalled();
   });
+
+  it("reports a committed stop as success even if revalidation throws", async () => {
+    const result = await stopActiveTimerWithDependencies(
+      "session-1",
+      createDependencies({
+        revalidateTimerSurfaces: () => {
+          throw new Error("revalidation unavailable");
+        },
+      }),
+    );
+
+    expect(result).toMatchObject({
+      ok: true,
+      outcome: "stopped",
+      stoppedTaskId: "task-1",
+    });
+  });
 });
 
 describe("normalizeTimerSessionId", () => {

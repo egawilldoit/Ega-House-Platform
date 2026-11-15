@@ -65,6 +65,7 @@ type ActiveTimerContextValue = {
   openPopout: () => void;
   stopSession: (sessionId?: string) => void;
   dismissStopError: () => void;
+  dismissPopoutError: () => void;
 };
 
 type TimerPopoutHandle = {
@@ -126,6 +127,20 @@ function applyServerSnapshot(
   result: ActiveTimerReadResult,
 ): ProviderState {
   if (result.ok) {
+    const incomingSyncedAt = Date.parse(result.syncedAt);
+    const currentSyncedAt = previous.syncedAt
+      ? Date.parse(previous.syncedAt)
+      : Number.NaN;
+    if (
+      Number.isFinite(incomingSyncedAt) &&
+      Number.isFinite(currentSyncedAt) &&
+      incomingSyncedAt < currentSyncedAt
+    ) {
+      // A router.refresh started before a stop can commit after it. Never let
+      // an older server snapshot resurrect a session already confirmed stopped.
+      return previous;
+    }
+
     return {
       ...previous,
       session: result.session,
@@ -204,6 +219,7 @@ export function ActiveTimerProvider({
   const refreshRef = useRef<(options?: { force?: boolean }) => void>(() => {});
   const hiddenPendingRef = useRef(false);
   const popoutRef = useRef<TimerPopoutHandle | null>(null);
+  const popoutOpeningRef = useRef(false);
   const lastPathnameRef = useRef(pathname);
 
   const clearPendingTimeout = useCallback(() => {
@@ -336,7 +352,9 @@ export function ActiveTimerProvider({
               ? "unauthenticated"
               : "stale",
           message: result.message || ACTIVE_TIMER_UNAVAILABLE_MESSAGE,
-          stopPendingSessionId: null,
+          ...(result.reason === "unauthenticated"
+            ? { stopPendingSessionId: null }
+            : {}),
         }));
       } catch {
         if (
@@ -462,10 +480,37 @@ export function ActiveTimerProvider({
       return;
     }
 
+    if (popoutOpeningRef.current) {
+      return;
+    }
+
+    popoutOpeningRef.current = true;
+
     void (async () => {
       let popoutWindow: Window | null = null;
       try {
         popoutWindow = await requestTimerPopoutWindow();
+
+        if (!mountedRef.current) {
+          try {
+            popoutWindow.close();
+          } catch {
+            // Provider already unmounted; close is best effort.
+          }
+          return;
+        }
+
+        if (popoutRef.current) {
+          // A second click raced the first request. Keep one owned window.
+          try {
+            popoutWindow.close();
+          } catch {
+            // Ignore a browser close refusal.
+          }
+          popoutRef.current.window.focus();
+          return;
+        }
+
         const container = prepareTimerPopoutDocument(
           popoutWindow.document,
           document,
@@ -516,6 +561,8 @@ export function ActiveTimerProvider({
           popoutError:
             "This browser could not open the always-on-top timer window. The in-app timer still works.",
         }));
+      } finally {
+        popoutOpeningRef.current = false;
       }
     })();
   }, []);
@@ -715,6 +762,10 @@ export function ActiveTimerProvider({
     setState((previous) => ({ ...previous, stopError: null }));
   }, []);
 
+  const dismissPopoutError = useCallback(() => {
+    setState((previous) => ({ ...previous, popoutError: null }));
+  }, []);
+
   const value = useMemo<ActiveTimerContextValue>(
     () => ({
       session: state.session,
@@ -731,8 +782,10 @@ export function ActiveTimerProvider({
         void stopSession(sessionId);
       },
       dismissStopError,
+      dismissPopoutError,
     }),
     [
+      dismissPopoutError,
       dismissStopError,
       openPopout,
       popoutOpen,
