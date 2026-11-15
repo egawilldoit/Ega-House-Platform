@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   updateMoneySettings: vi.fn(),
   rebaseMoneyDayStartBaseline: vi.fn(),
   listMoneyRolloverBridges: vi.fn(),
+  rolloverMoneyPeriod: vi.fn(),
   timezoneGet: vi.fn(),
 }));
 
@@ -25,6 +26,7 @@ vi.mock("@ega/application", async (importOriginal) => {
     updateMoneySettings: mocks.updateMoneySettings,
     rebaseMoneyDayStartBaseline: mocks.rebaseMoneyDayStartBaseline,
     listMoneyRolloverBridges: mocks.listMoneyRolloverBridges,
+    rolloverMoneyPeriod: mocks.rolloverMoneyPeriod,
   };
 });
 
@@ -168,6 +170,23 @@ function handlers() {
 describe("Money MCP tools", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it("passes a savings discrepancy rejection and acceptance retry through the MCP boundary", async () => {
+    mocks.rolloverMoneyPeriod
+      .mockResolvedValueOnce({ ok: false, code: "validation", errorMessage: "Accept the savings target difference" })
+      .mockResolvedValueOnce({ ok: true, data: { record: { id: "rollover-1" }, replayed: false, reconciliation: {}, weekWindows: [] } });
+    const input = {
+      operationId: "operation-1", periodId: PERIOD.id, expectedVersion: 2,
+      startDate: "2026-12-01", endDate: "2026-12-31", opening: { mode: "carry_forward" as const },
+    };
+    const h = handlers();
+    const rejected = await h.rolloverMoneyPeriod(authInfo(WRITER_PRINCIPAL), input);
+    expect(structured(rejected).error).toEqual({ code: "INVALID_ARGUMENT", message: "Accept the savings target difference" });
+    const accepted = await h.rolloverMoneyPeriod(authInfo(WRITER_PRINCIPAL), { ...input, operationId: "operation-2", acceptClosingDifferenceNote: "Reviewed savings shortfall" });
+    expect(structured(accepted)).toMatchObject({ ok: true, record: { id: "rollover-1" }, operationId: "operation-2" });
+    expect(mocks.rolloverMoneyPeriod.mock.calls[0][2]).toMatchObject({ sourcePeriodId: PERIOD.id, acceptClosingDifferenceNote: null });
+    expect(mocks.rolloverMoneyPeriod.mock.calls[1][2]).toMatchObject({ sourcePeriodId: PERIOD.id, acceptClosingDifferenceNote: "Reviewed savings shortfall" });
   });
 
   it("rebases day start only for finance writers and returns the canonical baseline", async () => {

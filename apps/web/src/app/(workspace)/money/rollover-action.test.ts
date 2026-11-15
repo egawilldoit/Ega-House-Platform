@@ -43,3 +43,11 @@ test("blank targets preserve copied policy; invalid amounts prevent rollover", a
   expect(await rolloverMoneyPeriodAction(data)).toEqual({ ok: false, error: "Enter a valid savings target in MAD." });
   expect(mocks.rollover).not.toHaveBeenCalled();
 });
+
+
+test("forwards the acceptance note for a savings difference", async () => {
+  const data = form();
+  data.set("acceptClosingDifferenceNote", "Savings transfer was delayed");
+  expect(await rolloverMoneyPeriodAction(data)).toEqual({ ok: true, error: null });
+  expect(mocks.rollover).toHaveBeenCalledWith(expect.anything(), expect.anything(), expect.objectContaining({ acceptClosingDifferenceNote: "Savings transfer was delayed" }), expect.anything(), expect.anything());
+});
