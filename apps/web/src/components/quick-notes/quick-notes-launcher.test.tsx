@@ -11,7 +11,10 @@ vi.mock("@/components/timer/floating-timer/active-timer-provider", () => ({
   useActiveTimer: mocks.useActiveTimer,
 }));
 
-import { QuickNotesLauncher } from "./quick-notes-launcher";
+import {
+  QuickNotesLauncher,
+  QuickNotesPanel,
+} from "./quick-notes-launcher";
 
 function makeQuickNotes(overrides: Record<string, unknown> = {}) {
   return {
@@ -43,7 +46,12 @@ let root: Root;
 function render(quickNotes = makeQuickNotes()) {
   mocks.useActiveTimer.mockReturnValue({ quickNotes });
   act(() => {
-    root.render(<QuickNotesLauncher />);
+    root.render(
+      <>
+        <QuickNotesLauncher />
+        <QuickNotesPanel />
+      </>,
+    );
   });
   return quickNotes;
 }
