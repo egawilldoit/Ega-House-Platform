@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 
 import { captureInboxIdea } from "@/components/inbox/capture-action";
 import {
-  clearQuickNoteDraft,
+  clearQuickNoteDraftIfUnchanged,
   createEmptyDraft,
   createIdempotencyKey,
   deriveNoteTitle,
@@ -74,13 +74,16 @@ export function useQuickNotesController(
     setDraft(next);
   }, []);
 
-  const resetForNewNote = useCallback(() => {
-    clearQuickNoteDraft(ownerRef.current);
-    replaceDraft(createEmptyDraft());
-    setError(null);
-    setStatus("saved-locally");
-    setConfirmNewNote(false);
-  }, [replaceDraft]);
+  const resetForNewNote = useCallback(
+    (acknowledged: QuickNoteDraft) => {
+      clearQuickNoteDraftIfUnchanged(ownerRef.current, acknowledged);
+      replaceDraft(createEmptyDraft());
+      setError(null);
+      setStatus("saved-locally");
+      setConfirmNewNote(false);
+    },
+    [replaceDraft],
+  );
 
   useEffect(() => {
     mountedRef.current = true;
@@ -93,7 +96,7 @@ export function useQuickNotesController(
     if (draft.text) {
       saveQuickNoteDraft(ownerRef.current, draft);
     } else {
-      clearQuickNoteDraft(ownerRef.current);
+      clearQuickNoteDraftIfUnchanged(ownerRef.current, draft);
     }
   }, [draft]);
 
@@ -144,7 +147,7 @@ export function useQuickNotesController(
         }
 
         if (draftRef.current.idempotencyKey === current.idempotencyKey) {
-          resetForNewNote();
+          resetForNewNote(current);
           setStatus("saved-to-backlog");
         } else {
           // The user started a new draft while the save was in flight. Clear
@@ -169,7 +172,7 @@ export function useQuickNotesController(
       setConfirmNewNote(true);
       return;
     }
-    resetForNewNote();
+    resetForNewNote(draftRef.current);
   }, [resetForNewNote]);
 
   return {
@@ -186,7 +189,10 @@ export function useQuickNotesController(
     }, []),
     save,
     requestNewNote,
-    confirmNewNoteAction: resetForNewNote,
+    confirmNewNoteAction: useCallback(
+      () => resetForNewNote(draftRef.current),
+      [resetForNewNote],
+    ),
     cancelNewNote: useCallback(() => setConfirmNewNote(false), []),
     dismissError: useCallback(() => {
       setError(null);
