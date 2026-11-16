@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { X } from "lucide-react";
+import { StickyNote, X } from "lucide-react";
 
 import { useActiveTimer } from "@/components/timer/floating-timer/active-timer-provider";
 import { QuickNotesEditor } from "./quick-notes-editor";
@@ -32,12 +32,13 @@ export function QuickNotesLauncher() {
       {!quickNotes.panelOpen ? (
         <button
           type="button"
-          className="ega-quick-notes-launcher"
+          className="topbar-icon-button ega-quick-notes-launcher"
           onClick={quickNotes.openPanel}
           aria-label="Open Quick notes"
+          title="Quick notes"
           data-testid="quick-notes-launcher"
         >
-          Quick notes
+          <StickyNote aria-hidden="true" />
         </button>
       ) : null}
 

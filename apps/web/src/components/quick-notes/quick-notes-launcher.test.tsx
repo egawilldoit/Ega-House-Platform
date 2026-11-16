@@ -83,7 +83,7 @@ describe("quick notes launcher", () => {
   it("is available globally and opens an editable in-app panel", () => {
     const quickNotes = render();
     const launcher = document.querySelector('[data-testid="quick-notes-launcher"]');
-    expect(launcher?.textContent).toContain("Quick notes");
+    expect(launcher?.getAttribute("aria-label")).toBe("Open Quick notes");
 
     act(() => {
       (launcher as HTMLButtonElement).click();

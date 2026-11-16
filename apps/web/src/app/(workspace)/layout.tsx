@@ -167,12 +167,12 @@ export default async function WorkspaceLayout({ children }: { children: ReactNod
           projects={projects}
           metrics={metrics}
           identity={identity}
+          topBarExtra={identity.id ? <QuickNotesLauncher /> : null}
         >
           {children}
         </WorkspaceShell>
 
         <FloatingTimerChip />
-        {identity.id ? <QuickNotesLauncher /> : null}
       </ActiveTimerProvider>
     </ToastProvider>
   );

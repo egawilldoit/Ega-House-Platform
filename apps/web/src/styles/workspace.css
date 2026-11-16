@@ -2735,25 +2735,12 @@ body:has([data-ega-save-bar]) .ega-timer-chip {
    Floating Quick Notes (global in-app surface)
    ══════════════════════════════════════════════════════════════ */
 
+/* The entry point lives in the top bar, not as a fixed overlay, so it can
+   never intercept pointer input on board canvases or other page content. */
 .ega-quick-notes-launcher {
-  position: fixed;
-  left: max(16px, env(safe-area-inset-left, 0px));
-  bottom: max(16px, env(safe-area-inset-bottom, 0px));
-  z-index: 35;
-  min-height: 38px;
-  padding: 0 14px;
-  border: 1px solid var(--ega-border-strong);
-  border-radius: 999px;
-  background: var(--ega-surface-elevated);
-  box-shadow: 0 8px 24px rgba(23, 23, 23, 0.12);
-  color: var(--ega-text);
-  font-size: var(--text-meta-lg);
-  font-weight: 650;
-  cursor: pointer;
-}
-
-.ega-quick-notes-launcher:hover {
-  background: var(--ega-surface-hover);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .ega-quick-notes-panel {
@@ -2809,13 +2796,11 @@ body:has([data-ega-save-bar]) .ega-timer-chip {
   outline-offset: 2px;
 }
 
-body:has([data-ega-save-bar]) .ega-quick-notes-launcher,
 body:has([data-ega-save-bar]) .ega-quick-notes-panel {
   bottom: calc(116px + env(safe-area-inset-bottom, 0px));
 }
 
 @media (max-width: 640px) {
-  .ega-quick-notes-launcher,
   .ega-quick-notes-panel {
     left: 12px;
     right: 12px;

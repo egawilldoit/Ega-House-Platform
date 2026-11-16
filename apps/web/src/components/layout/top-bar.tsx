@@ -12,6 +12,8 @@ type TopBarProps = {
   metrics: WorkspaceShellMetrics;
   identity: ShellIdentity;
   mobileNavigation?: ReactNode;
+  /** Global client actions supplied by the provider tree, never page content. */
+  topBarExtra?: ReactNode;
 };
 
 /**
@@ -22,7 +24,7 @@ type TopBarProps = {
  * The notification link carries a stable `data-has-unread` state so styling
  * never depends on dynamic accessible text.
  */
-export function TopBar({ metrics, identity, mobileNavigation }: TopBarProps) {
+export function TopBar({ metrics, identity, mobileNavigation, topBarExtra }: TopBarProps) {
   const canonicalUrl = useCanonicalUrl();
   const unreadCount = metrics.unreadNotificationCount;
   const notificationLabel =
@@ -33,6 +35,7 @@ export function TopBar({ metrics, identity, mobileNavigation }: TopBarProps) {
       <div className="app-topbar-context">{mobileNavigation}</div>
 
       <div className="app-topbar-actions">
+        {topBarExtra}
         <ThemeControl />
         <Link
           href={canonicalUrl.resolve("/notifications")}
