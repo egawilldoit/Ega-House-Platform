@@ -652,3 +652,32 @@ test("permission and unique failures map to forbidden and conflict", async () =>
   assert.equal(duplicateResult.ok, false);
   if (!duplicateResult.ok) assert.equal(duplicateResult.error.code, "conflict");
 });
+
+test("movement list applies the kind exclusion before the bounded page window", async () => {
+  const fake = new FakeSupabase();
+  fake.push("personal_expenses", { data: [], error: null });
+  const result = await new SupabaseMoneyRepository(
+    fake as unknown as SupabaseClient,
+  ).list(ACTOR, {
+    limit: 25,
+    offset: 25,
+    from: null,
+    to: null,
+    cutoff: null,
+    kind: null,
+    excludeKind: "expense",
+  });
+  assert.equal(result.ok, true);
+  const call = steps(fake, "personal_expenses");
+  assert.ok(call.includes("neq:kind=expense"));
+  assert.ok(call.includes("eq:owner_user_id=owner-money"));
+  assert.ok(call.includes("is:deleted_at=null"));
+  assert.ok(
+    call.indexOf("neq:kind=expense") < call.findIndex((step) => step.startsWith("range:")),
+  );
+  assert.ok(call.includes("range:25-49"));
+  assert.deepEqual(
+    call.filter((step) => step.startsWith("order:")),
+    ["order:booking_date:false", "order:created_at:false", "order:id:false"],
+  );
+});

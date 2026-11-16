@@ -1083,6 +1083,9 @@ export class SupabaseMoneyRepository implements MoneyMovementRepository {
     if (query.to) request = request.lte("booking_date", query.to);
     if (query.cutoff) request = request.lte("booking_date", query.cutoff);
     if (query.kind) request = request.eq("kind", query.kind);
+    // Applied before range() so page size and hasMore describe the displayed
+    // ledger, not a mixed page that is filtered down in the view.
+    if (query.excludeKind) request = request.neq("kind", query.excludeKind);
 
     const { data, error } = await request
       .order("booking_date", { ascending: false })
