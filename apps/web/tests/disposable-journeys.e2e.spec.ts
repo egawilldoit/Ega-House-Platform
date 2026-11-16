@@ -124,10 +124,18 @@ test("Money survives reload, exports only the owner, then edits and deletes", as
     expect(deleted.error).toBeNull();
     return deleted.data?.deleted_at;
   }).toBeTruthy();
-  const emptyLedger = page.getByText("No expenses yet.", { exact: true });
+  // The Money page refreshes itself on focus. A reload can briefly leave two
+  // server-rendered copies of the ledger in the DOM, so scope to the visible
+  // expense section and wait for one settled match before asserting.
+  const emptyLedger = page
+    .locator('section[aria-labelledby="money-expenses-heading"]')
+    .getByText("No expenses yet.", { exact: true })
+    .filter({ visible: true });
+  await expect.poll(() => emptyLedger.count()).toBe(1);
   await expect(emptyLedger).toBeVisible();
   await expect(row).toHaveCount(0);
   await page.reload();
+  await expect.poll(() => emptyLedger.count()).toBe(1);
   await expect(emptyLedger).toBeVisible();
   await expect(row).toHaveCount(0);
   const deleted = await a.from("personal_expenses").select("deleted_at").eq("id", expense.id).single();
