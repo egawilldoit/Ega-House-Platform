@@ -178,3 +178,90 @@ test("notification read state and channel preference survive reload", async ({ p
   expect(notification.error).toBeNull();
   expect(notification.data?.read_at).toBeTruthy();
 });
+
+test("Money rollover resets selected period choices and retains savings acceptance", async ({ page, owners }) => {
+  const { default: postgres } = await import("postgres");
+  const { readLocalEnvironment } = await import("../../../scripts/e2e/local-env.cjs");
+  const env = readLocalEnvironment();
+  const sql = postgres(env.DATABASE_URL, { max: 1, onnotice: () => {} });
+  const periods: string[] = [];
+  try {
+    const marker = await sql`SELECT id FROM e2e_private.run`;
+    expect(marker).toHaveLength(1);
+    expect(marker[0].id).toBe(env.E2E_RUN_ID);
+    for (const [index, date] of ["2026-11-01", "2026-11-10"].entries()) {
+      const period = await sql.begin(async tx => {
+        await tx`SET LOCAL ROLE authenticated`;
+        await tx`SELECT set_config('request.jwt.claim.sub', ${owners.ownerA.id}, true)`;
+        await tx`SELECT set_config('request.jwt.claims', ${JSON.stringify({ sub: owners.ownerA.id, role: "authenticated", aud: "authenticated" })}, true)`;
+        return tx`SELECT (p).id AS id FROM (SELECT public.money_create_period(
+          ${date}::date, ${date}::date, 'Africa/Casablanca', ${date}::date,
+          'initialized', 68900, ${date}::date, ${"a".repeat(64)},
+          ${sql.json({ opening: { source: "user_entered", recordedAt: "2026-11-01T00:00:00.000Z", cutoffDate: date, evidence: null, note: null, corrections: [] } })},
+          ${sql.json({ savingsTargetMinor: 12000, emergencyTargetMinor: 3000 })}, now()) AS p) created`;
+      });
+      const id: string = period[0].id;
+      periods.push(id);
+      await sql`UPDATE public.money_day_start_baselines SET policy_version_id = (SELECT id FROM public.money_policy_versions WHERE owner_user_id = ${owners.ownerA.id} AND period_id = ${id} ORDER BY version DESC LIMIT 1), availability = 'available', unavailable_reason = NULL, cash_minor = 68900, commitments_minor = 0, savings_target_minor = 12000, savings_funded_minor = 0, emergency_target_minor = 3000, emergency_used_minor = 0, inputs = '{"setupComplete":true}'::jsonb WHERE owner_user_id = ${owners.ownerA.id} AND period_id = ${id} AND date = ${date}::date`;
+      await sql`UPDATE public.money_periods SET day_start_setup_completed = true, version = version + 1, updated_at = now() WHERE id = ${id} AND owner_user_id = ${owners.ownerA.id}`;
+      await sql.begin(async tx => {
+        await tx`SET LOCAL ROLE authenticated`;
+        await tx`SELECT set_config('request.jwt.claim.sub', ${owners.ownerA.id}, true)`;
+        await tx`SELECT set_config('request.jwt.claims', ${JSON.stringify({ sub: owners.ownerA.id, role: "authenticated", aud: "authenticated" })}, true)`;
+        await tx`SELECT public.money_close_day(${id}::uuid, (SELECT version FROM public.money_periods WHERE id = ${id}), ${date}::date, 'CLOSED', ${`750e8400-e29b-41d4-a716-44665544001${index}`}::uuid, ${String(index + 1).repeat(64)}, ARRAY[]::uuid[], '2026-11-30T20:00:00Z'::timestamptz)`;
+      });
+    }
+  } finally {
+    await sql.end({ timeout: 5 });
+  }
+  await signInPwaOwner(page, owners.ownerA, `/money?periodId=${periods[0]}`);
+  const start = page.getByLabel("Successor start date (required)");
+  await expect(start).toHaveValue("2026-11-02");
+  await start.fill("2026-11-05");
+  await page.getByLabel("New savings target (MAD)").fill("999");
+  await page.getByRole("link", { name: "2026-11-10–2026-11-10" }).click();
+  await expect(start).toHaveValue("2026-11-11");
+  await expect(page.getByLabel("New savings target (MAD)")).toHaveValue("");
+  await start.fill("2026-11-12");
+  await page.getByLabel("Successor end date (required)").fill("2026-11-30");
+  await page.getByLabel("New savings target (MAD)").fill("25");
+  await page.getByLabel("New emergency target (MAD)").fill("12.50");
+  const note = page.getByLabel("Accept closing, restatement or savings differences (retained as provenance)");
+  const submit = page.getByRole("button", { name: "Roll over to 2026-11-12" });
+  const owner = await ownerClient(owners.ownerA);
+  await note.fill("Savings shortfall reviewed");
+  await submit.click();
+  await expect(page.getByRole("form", { name: "Period rollover" }).getByRole("alert")).toHaveText("1 day between 2026-11-10 and 2026-11-12 would belong to no period. Start on 2026-11-11 or explicitly allow the uncovered days.");
+  const afterGap = await owner.from("money_period_rollovers").select("id").eq("source_period_id", periods[1]);
+  expect(afterGap.error).toBeNull();
+  expect(afterGap.data).toEqual([]);
+  await expect(note).toHaveValue("Savings shortfall reviewed");
+  await expect(page.getByLabel("New savings target (MAD)")).toHaveValue("25");
+  await expect(page.getByLabel("New emergency target (MAD)")).toHaveValue("12.50");
+  const allowGap = page.getByLabel("Allow untracked days between the finished period and the successor");
+  await allowGap.check();
+  await note.clear();
+  await submit.click();
+  await expect(page.getByRole("form", { name: "Period rollover" }).getByRole("alert")).toContainText("Resolve or explicitly accept the savings target difference before rollover.");
+  const afterSavings = await owner.from("money_period_rollovers").select("id").eq("source_period_id", periods[1]);
+  expect(afterSavings.error).toBeNull();
+  expect(afterSavings.data).toEqual([]);
+  await expect(allowGap).toBeChecked();
+  await expect(page.getByLabel("New savings target (MAD)")).toHaveValue("25");
+  await expect(page.getByLabel("New emergency target (MAD)")).toHaveValue("12.50");
+  await note.fill("Savings shortfall reviewed");
+  await page.getByRole("button", { name: "Roll over to 2026-11-12" }).click();
+  await expect.poll(async () => {
+    const result = await owner.from("money_period_rollovers").select("successor_period_id,reconciliation_accepted_note").eq("source_period_id", periods[1]).maybeSingle();
+    return result.data;
+  }).toMatchObject({ reconciliation_accepted_note: "Savings shortfall reviewed" });
+  const receipt = await owner.from("money_period_rollovers").select("successor_period_id,reconciliation_accepted_note").eq("source_period_id", periods[1]).single();
+  expect(receipt.error).toBeNull();
+  if (!receipt.data) throw new Error("Rollover receipt was not persisted.");
+  const successor = await owner.from("money_periods").select("start_date,end_date,settings").eq("id", receipt.data.successor_period_id).single();
+  expect(successor.error).toBeNull();
+  expect(successor.data).toMatchObject({ start_date: "2026-11-12", end_date: "2026-11-30", settings: { savingsTargetMinor: 2500, emergencyTargetMinor: 1250 } });
+  await page.reload();
+  const persisted = await owner.from("money_period_rollovers").select("reconciliation_accepted_note").eq("source_period_id", periods[1]).single();
+  expect(persisted.data).toEqual({ reconciliation_accepted_note: "Savings shortfall reviewed" });
+});

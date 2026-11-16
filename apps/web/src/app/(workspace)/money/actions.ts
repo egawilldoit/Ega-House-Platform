@@ -873,6 +873,18 @@ export async function rolloverMoneyPeriodAction(
 
     const unpaidTreatment = formText(formData, "unpaidTreatment");
     const unpaidReason = formText(formData, "unpaidReason");
+    const settingsOverrides: Record<string, number> = {};
+    for (const [field, key, label] of [
+      ["savingsTarget", "savingsTargetMinor", "savings"],
+      ["emergencyTarget", "emergencyTargetMinor", "emergency"],
+    ] as const) {
+      const raw = formText(formData, field);
+      if (!raw) continue;
+      const amount = parseOpeningAmountToMinor(raw);
+      if (!amount.ok) return { ok: false, error: `Enter a valid ${label} target in MAD.` };
+      settingsOverrides[key] = amount.value;
+    }
+
 
     const result = await rolloverMoneyPeriod(
       context.actor,
@@ -885,12 +897,12 @@ export async function rolloverMoneyPeriodAction(
         expectedVersion,
         startDate,
         endDate,
-        allowUncoveredDays: false,
+        allowUncoveredDays: formText(formData, "allowUncoveredDays") === "true",
         opening,
         unpaidItems: unpaidTreatment
           ? { treatment: unpaidTreatment, reason: unpaidReason || null }
           : null,
-        settingsOverrides: null,
+        settingsOverrides,
         acceptClosingDifferenceNote:
           formText(formData, "acceptClosingDifferenceNote") || null,
       },
