@@ -552,6 +552,7 @@ test("list queries use inclusive booking dates, a cutoff, kind and bounded pagin
     cutoff: "2026-11-09",
     timezone: "Africa/Casablanca",
     kind: "income",
+    excludeKind: null,
   });
 
   const inverted = parseMoneyListQuery({ from: "2026-11-10", to: "2026-11-09" });
@@ -560,6 +561,20 @@ test("list queries use inclusive booking dates, a cutoff, kind and bounded pagin
   assert.equal(beforeEnd.ok, false);
   const badKind = parseMoneyListQuery({ kind: "transfer" });
   assert.equal(badKind.ok, false);
+});
+
+test("list queries accept a validated kind exclusion for non-expense ledgers", () => {
+  const excluded = parseMoneyListQuery({ excludeKind: "expense", limit: "25" });
+  assert.equal(excluded.ok, true);
+  if (excluded.ok) assert.equal(excluded.value.excludeKind, "expense");
+
+  const invalid = parseMoneyListQuery({ excludeKind: "transfer" });
+  assert.equal(invalid.ok, false);
+  if (!invalid.ok) assert.equal(invalid.field, "excludeKind");
+
+  const absent = parseMoneyListQuery({});
+  assert.equal(absent.ok, true);
+  if (absent.ok) assert.equal(absent.value.excludeKind, null);
 });
 
 test("state queries accept an optional cutoff and validated timezone", () => {
