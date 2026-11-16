@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
   clearQuickNoteDraft,
+  clearQuickNoteDraftIfUnchanged,
   createEmptyDraft,
   createIdempotencyKey,
   deriveNoteTitle,
@@ -69,6 +70,32 @@ describe("quick notes draft storage", () => {
     expect(repaired?.keyText).toBe("recovered");
     expect(repaired?.idempotencyKey.length).toBeGreaterThan(0);
     expect(repaired?.idempotencyKey).not.toContain("\n");
+  });
+
+  it("clears only the exact draft across competing workspace tabs", () => {
+    const acknowledged = {
+      text: "shared text",
+      idempotencyKey: "old-key",
+      keyText: "shared text",
+    };
+    saveQuickNoteDraft("owner-a", acknowledged);
+
+    // Another tab wrote a newer draft under the same owner key.
+    saveQuickNoteDraft("owner-a", {
+      text: "newer text",
+      idempotencyKey: "new-key",
+      keyText: "newer text",
+    });
+    clearQuickNoteDraftIfUnchanged("owner-a", acknowledged);
+
+    expect(loadQuickNoteDraft("owner-a")?.text).toBe("newer text");
+
+    clearQuickNoteDraftIfUnchanged("owner-a", {
+      text: "newer text",
+      idempotencyKey: "new-key",
+      keyText: "newer text",
+    });
+    expect(loadQuickNoteDraft("owner-a")).toBeNull();
   });
 
   it("generates distinct bounded idempotency keys", () => {

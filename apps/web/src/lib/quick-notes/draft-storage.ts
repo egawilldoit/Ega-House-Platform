@@ -102,6 +102,36 @@ export function clearQuickNoteDraft(
   }
 }
 
+/**
+ * Remove a stored draft only when it is still the exact draft being
+ * acknowledged or discarded. Two workspace tabs share one owner-scoped key;
+ * an older tab must never delete newer unsaved text written by another tab.
+ */
+export function clearQuickNoteDraftIfUnchanged(
+  ownerUserId: string | null | undefined,
+  expected: QuickNoteDraft,
+): void {
+  const key = quickNotesStorageKey(ownerUserId);
+  if (!key) {
+    return;
+  }
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) {
+      return;
+    }
+    const stored = JSON.parse(raw) as Partial<QuickNoteDraft> | null;
+    if (!stored || typeof stored !== "object") {
+      return;
+    }
+    if (stored.idempotencyKey === expected.idempotencyKey) {
+      window.localStorage.removeItem(key);
+    }
+  } catch {
+    // Ignore malformed storage or restrictions; never destroy unknown data.
+  }
+}
+
 /** First nonempty line, bounded, with a fallback for untitled notes. */
 export function deriveNoteTitle(text: string): string {
   const firstLine = String(text ?? "")

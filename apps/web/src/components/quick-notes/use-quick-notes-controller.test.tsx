@@ -40,6 +40,23 @@ function Harness({ ownerUserId }: { ownerUserId: string | null }) {
   );
 }
 
+function TwoTabHarness() {
+  const tabA = useQuickNotesController("owner-a");
+  const tabB = useQuickNotesController("owner-a");
+  return (
+    <div>
+      <textarea aria-label="tab-a" value={tabA.text} readOnly />
+      <textarea aria-label="tab-b" value={tabB.text} readOnly />
+      <span data-testid="status-b">{tabB.status}</span>
+      <button
+        data-testid="a-edit"
+        onClick={() => tabA.setText("newer from tab A")}
+      />
+      <button data-testid="b-save" onClick={tabB.save} />
+    </div>
+  );
+}
+
 function mount(ownerUserId: string | null = "owner-a") {
   act(() => {
     root.render(<Harness ownerUserId={ownerUserId} />);
@@ -242,6 +259,41 @@ describe("quick notes controller", () => {
     expect(document.querySelector('[data-testid="status"]')?.textContent).toBe(
       "saved-locally",
     );
+  });
+
+  it("does not erase a newer draft written by another workspace tab on save", async () => {
+    window.localStorage.setItem(
+      quickNotesStorageKey("owner-a")!,
+      JSON.stringify({
+        text: "shared text",
+        idempotencyKey: "shared-key",
+        keyText: "shared text",
+      }),
+    );
+
+    act(() => {
+      root.render(<TwoTabHarness />);
+    });
+    click("a-edit");
+    expect(stored("owner-a")?.text).toBe("newer from tab A");
+    const newerKey = stored("owner-a")?.idempotencyKey;
+
+    await act(async () => {
+      click("b-save");
+    });
+    await settle();
+
+    expect(mocks.captureInboxIdea).toHaveBeenCalledWith({
+      title: "shared text",
+      body: "shared text",
+      idempotencyKey: "shared-key",
+    });
+    expect(document.querySelector('[data-testid="status-b"]')?.textContent).toBe(
+      "saved-to-backlog",
+    );
+    expect(document.querySelector<HTMLTextAreaElement>('textarea[aria-label="tab-b"]')?.value).toBe("");
+    expect(stored("owner-a")?.text).toBe("newer from tab A");
+    expect(stored("owner-a")?.idempotencyKey).toBe(newerKey);
   });
 
   it("drops the previous owner's live draft on account switch", () => {
