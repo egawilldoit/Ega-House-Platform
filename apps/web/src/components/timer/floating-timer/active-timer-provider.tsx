@@ -20,6 +20,12 @@ import {
   stopActiveTimerSessionAction,
 } from "@/app/(workspace)/active-timer-actions";
 import { TimerPopoutView } from "@/components/timer/floating-timer/timer-popout-view";
+import { FloatingPopoutView } from "@/components/quick-notes/floating-popout-view";
+import type { QuickNotesEditorProps } from "@/components/quick-notes/quick-notes-editor";
+import {
+  useQuickNotesController,
+  type QuickNotesController,
+} from "@/components/quick-notes/use-quick-notes-controller";
 import { createClient } from "@/lib/supabase/client";
 import { subscribeToOwnerScopedRealtimeChanges } from "@/lib/supabase/realtime";
 import {
@@ -32,6 +38,7 @@ import {
 import {
   attachTimerPopoutLifecycle,
   prepareTimerPopoutDocument,
+  requestQuickNotesPopoutWindow,
   requestTimerPopoutWindow,
   shouldDeferHiddenTimerRefresh,
   supportsDocumentPictureInPicture,
@@ -52,6 +59,15 @@ type ProviderState = {
   popoutError: string | null;
 };
 
+type QuickNotesContextValue = QuickNotesController & {
+  popoutSupported: boolean;
+  popoutOpen: boolean;
+  popoutError: string | null;
+  /** Opens or focuses the one shared window with the notes editor revealed. */
+  popOut: () => void;
+  dismissPopoutError: () => void;
+};
+
 type ActiveTimerContextValue = {
   session: ActiveTimerSessionSnapshot | null;
   phase: ActiveTimerSyncPhase;
@@ -66,6 +82,8 @@ type ActiveTimerContextValue = {
   stopSession: (sessionId?: string) => void;
   dismissStopError: () => void;
   dismissPopoutError: () => void;
+  /** Quick Notes state and actions, sharing this provider's single PiP window. */
+  quickNotes: QuickNotesContextValue;
 };
 
 type TimerPopoutHandle = {
@@ -207,6 +225,11 @@ export function ActiveTimerProvider({
   const [popoutOpen, setPopoutOpen] = useState(false);
   const [popoutPinnedSession, setPopoutPinnedSession] =
     useState<ActiveTimerSessionSnapshot | null>(null);
+  const [popoutNotesActive, setPopoutNotesActive] = useState(false);
+
+  // Unsaved notes state lives here so the opener panel and the popout root can
+  // render the same editor without creating a second owner or a second window.
+  const quickNotesController = useQuickNotesController(ownerUserId);
 
   const stateRef = useRef(state);
   const mountedRef = useRef(true);
@@ -220,6 +243,7 @@ export function ActiveTimerProvider({
   const hiddenPendingRef = useRef(false);
   const popoutRef = useRef<TimerPopoutHandle | null>(null);
   const popoutOpeningRef = useRef(false);
+  const popoutNotesActiveRef = useRef(false);
   const lastPathnameRef = useRef(pathname);
 
   const clearPendingTimeout = useCallback(() => {
@@ -475,9 +499,14 @@ export function ActiveTimerProvider({
     [clearPendingTimeout, refresh, router],
   );
 
-  const openPopout = useCallback(() => {
+  const openPopout = useCallback((options?: { revealNotes?: boolean }) => {
+    if (options?.revealNotes) {
+      popoutNotesActiveRef.current = true;
+      setPopoutNotesActive(true);
+    }
+
     const current = stateRef.current.session;
-    if (!current) {
+    if (!current && !popoutNotesActiveRef.current) {
       return;
     }
 
@@ -495,7 +524,10 @@ export function ActiveTimerProvider({
     void (async () => {
       let popoutWindow: Window | null = null;
       try {
-        popoutWindow = await requestTimerPopoutWindow();
+        // requestWindow must stay in the same user gesture as the click.
+        popoutWindow = options?.revealNotes
+          ? await requestQuickNotesPopoutWindow()
+          : await requestTimerPopoutWindow();
 
         if (!mountedRef.current) {
           try {
@@ -540,18 +572,24 @@ export function ActiveTimerProvider({
             } catch {
               // The popout document may already be gone.
             }
+            popoutNotesActiveRef.current = false;
             setPopoutOpen(false);
+            setPopoutNotesActive(false);
             setPopoutPinnedSession(null);
+            // The scratch draft lives in the opener's controller, so a native
+            // close never discards it and never stops the timer.
           },
         );
 
         popoutRef.current = handle;
-        // The popout document is about:blank; resolve the task link against the
-        // opener origin so Open task cannot navigate a dead relative URL.
-        setPopoutPinnedSession({
-          ...current,
-          taskHref: new URL(current.taskHref, window.location.origin).toString(),
-        });
+        if (current) {
+          // The popout document is about:blank; resolve the task link against the
+          // opener origin so Open task cannot navigate a dead relative URL.
+          setPopoutPinnedSession({
+            ...current,
+            taskHref: new URL(current.taskHref, window.location.origin).toString(),
+          });
+        }
         setPopoutOpen(true);
         setState((previous) => ({ ...previous, popoutError: null }));
       } catch {
@@ -562,10 +600,14 @@ export function ActiveTimerProvider({
             // Ignore close restrictions after a failed setup.
           }
         }
+        // A failed notes request must not leave a hidden notes surface that a
+        // later timer popout would unexpectedly reveal.
+        popoutNotesActiveRef.current = false;
+        setPopoutNotesActive(false);
         setState((previous) => ({
           ...previous,
           popoutError:
-            "This browser could not open the always-on-top timer window. The in-app timer still works.",
+            "This browser could not open the always-on-top window. Notes and the timer still work in EGA House.",
         }));
       } finally {
         popoutOpeningRef.current = false;
@@ -584,6 +626,79 @@ export function ActiveTimerProvider({
     subscribeToPopoutSupport,
     getPopoutSupportSnapshot,
     getPopoutSupportServerSnapshot,
+  );
+
+  // A timer started after a notes-only popout must appear in the same window
+  // and keep the pinned-session stop semantics. Pin once, after the current
+  // render commits, so a server snapshot cannot trigger a cascading render.
+  useEffect(() => {
+    if (
+      !popoutOpen ||
+      !popoutNotesActive ||
+      popoutPinnedSession ||
+      !state.session
+    ) {
+      return;
+    }
+    const sessionToPin = state.session;
+    queueMicrotask(() => {
+      if (!mountedRef.current || popoutRef.current === null) {
+        return;
+      }
+      setPopoutPinnedSession({
+        ...sessionToPin,
+        taskHref: new URL(
+          sessionToPin.taskHref,
+          window.location.origin,
+        ).toString(),
+      });
+    });
+  }, [popoutNotesActive, popoutOpen, popoutPinnedSession, state.session]);
+
+  const closePopoutWindow = useCallback(() => {
+    const handle = popoutRef.current;
+    if (!handle) {
+      return;
+    }
+    try {
+      handle.window.close();
+    } catch {
+      // A browser may refuse programmatic close; native close still works.
+    }
+  }, []);
+
+  const notesEditorProps = useCallback(
+    (): Omit<QuickNotesEditorProps, "variant"> => ({
+      text: quickNotesController.text,
+      status: quickNotesController.status,
+      error: quickNotesController.error,
+      confirmNewNote: quickNotesController.confirmNewNote,
+      popoutSupported,
+      popoutOpen,
+      onChange: quickNotesController.setText,
+      onSave: quickNotesController.save,
+      onNewNote: quickNotesController.requestNewNote,
+      onConfirmNewNote: quickNotesController.confirmNewNoteAction,
+      onCancelNewNote: quickNotesController.cancelNewNote,
+      onPopOut: () => openPopout({ revealNotes: true }),
+      onClose: closePopoutWindow,
+      closeLabel: "Close floating window",
+    }),
+    [
+      closePopoutWindow,
+      openPopout,
+      popoutOpen,
+      popoutSupported,
+      quickNotesController.cancelNewNote,
+      quickNotesController.confirmNewNote,
+      quickNotesController.confirmNewNoteAction,
+      quickNotesController.error,
+      quickNotesController.requestNewNote,
+      quickNotesController.save,
+      quickNotesController.setText,
+      quickNotesController.status,
+      quickNotesController.text,
+    ],
   );
 
   // Mount lifecycle and in-flight response invalidation.
@@ -705,37 +820,66 @@ export function ActiveTimerProvider({
 
   const renderPopout = useCallback(() => {
     const handle = popoutRef.current;
-    if (!handle || !popoutPinnedSession) {
+    if (!handle || (!popoutPinnedSession && !popoutNotesActive)) {
       return;
     }
 
     const mainState = state;
+
+    if (popoutNotesActive) {
+      const timerProps = popoutPinnedSession
+        ? {
+            session: popoutPinnedSession,
+            isCurrent:
+              mainState.session?.sessionId === popoutPinnedSession.sessionId,
+            phase: mainState.phase,
+            message: mainState.message,
+            stopPending:
+              mainState.stopPendingSessionId === popoutPinnedSession.sessionId,
+            stopError: mainState.stopError,
+            onStop: () => {
+              void stopSession(popoutPinnedSession.sessionId);
+            },
+            onClose: closePopoutWindow,
+          }
+        : null;
+
+      handle.root.render(
+        <FloatingPopoutView timer={timerProps} notes={notesEditorProps()} />,
+      );
+      return;
+    }
+
+    if (!popoutPinnedSession) {
+      return;
+    }
+
+    const pinnedSession = popoutPinnedSession;
     const isCurrent =
-      mainState.session?.sessionId === popoutPinnedSession.sessionId;
+      mainState.session?.sessionId === pinnedSession.sessionId;
 
     handle.root.render(
       <TimerPopoutView
-        session={popoutPinnedSession}
+        session={pinnedSession}
         isCurrent={isCurrent}
         phase={mainState.phase}
         message={mainState.message}
-        stopPending={
-          mainState.stopPendingSessionId === popoutPinnedSession.sessionId
-        }
+        stopPending={mainState.stopPendingSessionId === pinnedSession.sessionId}
         stopError={mainState.stopError}
         onStop={() => {
-          void stopSession(popoutPinnedSession.sessionId);
+          void stopSession(pinnedSession.sessionId);
         }}
-        onClose={() => {
-          try {
-            handle.window.close();
-          } catch {
-            // A browser may refuse programmatic close; native close still works.
-          }
-        }}
+        onClose={closePopoutWindow}
       />,
     );
-  }, [popoutPinnedSession, state, stopSession]);
+  }, [
+    closePopoutWindow,
+    notesEditorProps,
+    popoutNotesActive,
+    popoutPinnedSession,
+    state,
+    stopSession,
+  ]);
 
   useEffect(() => {
     renderPopout();
@@ -789,6 +933,26 @@ export function ActiveTimerProvider({
       },
       dismissStopError,
       dismissPopoutError,
+      quickNotes: {
+        text: quickNotesController.text,
+        status: quickNotesController.status,
+        error: quickNotesController.error,
+        panelOpen: quickNotesController.panelOpen,
+        confirmNewNote: quickNotesController.confirmNewNote,
+        setText: quickNotesController.setText,
+        openPanel: quickNotesController.openPanel,
+        closePanel: quickNotesController.closePanel,
+        save: quickNotesController.save,
+        requestNewNote: quickNotesController.requestNewNote,
+        confirmNewNoteAction: quickNotesController.confirmNewNoteAction,
+        cancelNewNote: quickNotesController.cancelNewNote,
+        dismissError: quickNotesController.dismissError,
+        popoutSupported,
+        popoutOpen,
+        popoutError: state.popoutError,
+        popOut: () => openPopout({ revealNotes: true }),
+        dismissPopoutError,
+      },
     }),
     [
       dismissPopoutError,
@@ -796,6 +960,19 @@ export function ActiveTimerProvider({
       openPopout,
       popoutOpen,
       popoutSupported,
+      quickNotesController.cancelNewNote,
+      quickNotesController.closePanel,
+      quickNotesController.confirmNewNote,
+      quickNotesController.confirmNewNoteAction,
+      quickNotesController.dismissError,
+      quickNotesController.error,
+      quickNotesController.openPanel,
+      quickNotesController.panelOpen,
+      quickNotesController.requestNewNote,
+      quickNotesController.save,
+      quickNotesController.setText,
+      quickNotesController.status,
+      quickNotesController.text,
       state.message,
       state.phase,
       state.popoutError,

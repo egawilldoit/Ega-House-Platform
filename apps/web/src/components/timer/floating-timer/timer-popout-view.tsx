@@ -24,7 +24,7 @@ export type TimerPopoutViewProps = {
   onClose: () => void;
 };
 
-function PopoutElapsed({ startedAt }: { startedAt: string }) {
+export function PopoutElapsed({ startedAt }: { startedAt: string }) {
   const [elapsedSeconds, setElapsedSeconds] = useState(() =>
     getElapsedDurationSeconds(startedAt),
   );
@@ -66,11 +66,11 @@ function statusCopy(isCurrent: boolean, phase: ActiveTimerSyncPhase) {
 }
 
 /**
- * Isolated React tree rendered through its own root inside the popout window.
- * It receives plain serializable state on every provider update, so closing or
- * changing the timer can never leave detached React state in the main tab.
+ * Timer content only. Exported so the shared Timer + Notes popout can render
+ * the exact same timer surface without a second implementation of elapsed
+ * time, pinned-session stop, remote-stop copy or error messaging.
  */
-export function TimerPopoutView({
+export function PopoutTimerSummary({
   session,
   isCurrent,
   phase,
@@ -84,7 +84,7 @@ export function TimerPopoutView({
   const status = statusCopy(isCurrent, phase);
 
   return (
-    <div className="ega-timer-popout" role="region" aria-label="Focus timer">
+    <>
       <p className="ega-timer-popout__status" role="status" aria-live="polite">
         <span
           className="ega-timer-popout__dot"
@@ -156,6 +156,19 @@ export function TimerPopoutView({
           {stopError}
         </p>
       ) : null}
+    </>
+  );
+}
+
+/**
+ * Isolated React tree rendered through its own root inside the popout window.
+ * It receives plain serializable state on every provider update, so closing or
+ * changing the timer can never leave detached React state in the main tab.
+ */
+export function TimerPopoutView(props: TimerPopoutViewProps) {
+  return (
+    <div className="ega-timer-popout" role="region" aria-label="Focus timer">
+      <PopoutTimerSummary {...props} />
     </div>
   );
 }

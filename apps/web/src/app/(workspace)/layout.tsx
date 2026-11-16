@@ -8,6 +8,7 @@ import { listFavorites } from "@/lib/services/favorite-service";
 import type { SidebarGoal, SidebarProject } from "@/components/layout/sidebar";
 import { ActiveTimerProvider } from "@/components/timer/floating-timer/active-timer-provider";
 import { FloatingTimerChip } from "@/components/timer/floating-timer/floating-timer-chip";
+import { QuickNotesLauncher } from "@/components/quick-notes/quick-notes-launcher";
 import { WorkspaceShell } from "@/components/layout/workspace-shell";
 import { WorkspaceKeyboardShortcuts } from "@/components/layout/workspace-keyboard-shortcuts";
 import { GlobalQuickActionControllers } from "@/components/layout/global-quick-action-controllers";
@@ -171,6 +172,7 @@ export default async function WorkspaceLayout({ children }: { children: ReactNod
         </WorkspaceShell>
 
         <FloatingTimerChip />
+        {identity.id ? <QuickNotesLauncher /> : null}
       </ActiveTimerProvider>
     </ToastProvider>
   );
