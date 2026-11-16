@@ -194,6 +194,7 @@ export async function listMovements(
     to: query.to,
     cutoff: query.cutoff,
     kind: query.kind,
+    excludeKind: query.excludeKind,
   });
   if (!result.ok) {
     return failureFor(result.error.code, "Unable to load movements right now.");

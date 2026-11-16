@@ -307,6 +307,8 @@ export type MoneyListValues = Readonly<{
   cutoff: string | null;
   timezone: string | null;
   kind: MoneyKind | null;
+  /** Exclude one kind before pagination, e.g. the non-expense movement ledger. */
+  excludeKind: MoneyKind | null;
 }>;
 
 export type MoneyStateValues = Readonly<{
@@ -827,6 +829,7 @@ const LIST_KEYS = new Set([
   "cutoff",
   "timezone",
   "kind",
+  "excludeKind",
   "limit",
   "offset",
 ]);
@@ -1653,10 +1656,11 @@ function parseIntegerQuery(
 
 function parseOptionalMovementKind(
   raw: unknown,
+  field = "kind",
 ): { ok: true; value: MoneyKind | null } | MoneyValidationFailure {
   if (raw === undefined || raw === null) return { ok: true, value: null };
   if (!isMoneyKind(raw)) {
-    return failure("kind", "Choose a supported movement kind.");
+    return failure(field, "Choose a supported movement kind.");
   }
   return { ok: true, value: raw };
 }
@@ -1729,6 +1733,8 @@ export function parseMoneyListQuery(
 
   const kind = parseOptionalMovementKind(input.kind);
   if (!kind.ok) return kind;
+  const excludeKind = parseOptionalMovementKind(input.excludeKind, "excludeKind");
+  if (!excludeKind.ok) return excludeKind;
 
   return {
     ok: true,
@@ -1740,6 +1746,7 @@ export function parseMoneyListQuery(
       cutoff: cutoff.value,
       timezone: timezone.value,
       kind: kind.value,
+      excludeKind: excludeKind.value,
     },
   };
 }

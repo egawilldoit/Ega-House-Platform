@@ -252,6 +252,7 @@ export type MoneyListRecordQuery = Readonly<{
   to: string | null;
   cutoff: string | null;
   kind: MoneyKind | null;
+  excludeKind: MoneyKind | null;
 }>;
 
 export type MoneyUpdateRecordInput = Readonly<{

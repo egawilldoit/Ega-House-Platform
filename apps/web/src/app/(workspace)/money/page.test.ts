@@ -83,13 +83,25 @@ test("daily reference renders shared values with method and unavailable state", 
 });
 
 test("money ledger has bounded URL pagination and accessible loading failure recovery", () => {
-  assert.match(source, /limit:\s*"25"/);
-  assert.match(source, /Math\.min\(parsedOffset,\s*100_000\)/);
-  assert.match(source, /offset/);
+  assert.match(source, /limit:\s*String\(MONEY_PAGE_SIZE\)/);
+  assert.match(source, /resolveMoneyPagerOffsets\(params\)/);
+  assert.match(source, /moneyHref\(/);
   assert.match(source, /aria-label="Expense pages"/);
   assert.match(source, /role="alert"/);
   assert.match(source, /Retry/);
   assert.match(source, /No expenses yet/);
+});
+
+test("money page paginates expenses and non-expense movements independently with the period preserved", () => {
+  assert.match(source, /expenseOffset/);
+  assert.match(source, /movementOffset/);
+  assert.match(source, /excludeKind:\s*"expense"/);
+  assert.match(source, /moneyHref\(/);
+  assert.match(source, /aria-label="Expense pages"/);
+  assert.match(source, /aria-label="Movement pages"/);
+  assert.match(source, /All recorded expenses/);
+  assert.match(source, /non-expense movements/);
+  assert.doesNotMatch(source, /movements\.filter\(/);
 });
 
 test("money page exposes complete filtered CSV export and focus refresh", () => {
