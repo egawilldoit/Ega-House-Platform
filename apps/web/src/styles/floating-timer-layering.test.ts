@@ -55,7 +55,12 @@ describe("floating timer layering", () => {
   it("keeps the Quick Notes panel above shell chrome and below modal overlays", () => {
     const panel = zIndexFor(".ega-quick-notes-panel");
     const sidebar = zIndexFor(".app-sidebar");
+    const topbar = zIndexFor(".app-topbar");
 
+    // The top bar is a lower stacking context than the sidebar, which is why
+    // the fixed panel must be mounted outside the shell rather than in the
+    // top-bar slot that holds its entry button.
+    expect(topbar).toBeLessThan(sidebar);
     expect(panel).toBeGreaterThan(sidebar);
     expect(panel).toBeLessThan(40);
   });
