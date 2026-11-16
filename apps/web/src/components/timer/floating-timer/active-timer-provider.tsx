@@ -499,6 +499,8 @@ export function ActiveTimerProvider({
     [clearPendingTimeout, refresh, router],
   );
 
+  const closeQuickNotesPanel = quickNotesController.closePanel;
+
   const openPopout = useCallback((options?: { revealNotes?: boolean }) => {
     if (options?.revealNotes) {
       popoutNotesActiveRef.current = true;
@@ -591,6 +593,10 @@ export function ActiveTimerProvider({
           });
         }
         setPopoutOpen(true);
+        // One visible editor: the in-app panel was only needed until the
+        // always-on-top window was successfully opened. The draft stays in
+        // this controller, so closing the panel cannot discard text.
+        closeQuickNotesPanel();
         setState((previous) => ({ ...previous, popoutError: null }));
       } catch {
         if (popoutWindow && !popoutWindow.closed) {
@@ -613,7 +619,7 @@ export function ActiveTimerProvider({
         popoutOpeningRef.current = false;
       }
     })();
-  }, []);
+  }, [closeQuickNotesPanel]);
 
   // Keep event-handler reads current without mutating refs during render.
   useEffect(() => {
