@@ -45,6 +45,19 @@ test("keeps the notification affordance state explicit when nothing is unread", 
   assert.doesNotMatch(markup, /notification-dot/);
 });
 
+test("renders provider-owned global actions without adding page overlay markup", () => {
+  const markup = renderToStaticMarkup(
+    <TopBar
+      metrics={metrics}
+      identity={identity}
+      topBarExtra={<button aria-label="Open Quick notes">Notes</button>}
+    />,
+  );
+
+  assert.match(markup, /aria-label="Open Quick notes"/);
+  assert.match(markup, /app-topbar-actions/);
+});
+
 test("keeps the top bar restrained: account identity, no editorial pills", () => {
   const markup = renderToStaticMarkup(<TopBar metrics={metrics} identity={identity} />);
 
