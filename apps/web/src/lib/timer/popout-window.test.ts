@@ -5,9 +5,12 @@ import {
   TIMER_POPOUT_ROOT_ID,
   TIMER_POPOUT_SIZE,
   TIMER_POPOUT_STYLE_ID,
+  QUICK_NOTES_POPOUT_SIZE,
+  TIMER_POPOUT_BASE_STYLES,
   attachTimerPopoutLifecycle,
   getDocumentPictureInPicture,
   prepareTimerPopoutDocument,
+  requestQuickNotesPopoutWindow,
   requestTimerPopoutWindow,
   shouldDeferHiddenTimerRefresh,
   supportsDocumentPictureInPicture,
@@ -58,6 +61,20 @@ describe("Document Picture-in-Picture feature detection", () => {
     await expect(requestTimerPopoutWindow({})).rejects.toThrow(
       "Document Picture-in-Picture is not available.",
     );
+  });
+
+  it("requests a taller window for the notes editor and ships editor fallback styles", async () => {
+    const requestWindow = vi.fn(async () => ({}) as Window);
+    await requestQuickNotesPopoutWindow({
+      documentPictureInPicture: { requestWindow },
+    });
+
+    expect(requestWindow).toHaveBeenCalledWith(QUICK_NOTES_POPOUT_SIZE);
+    expect(QUICK_NOTES_POPOUT_SIZE.height).toBeGreaterThan(
+      TIMER_POPOUT_SIZE.height,
+    );
+    expect(TIMER_POPOUT_BASE_STYLES).toContain(".ega-quick-notes__textarea");
+    expect(TIMER_POPOUT_BASE_STYLES).toContain(".ega-floating-popout__timer");
   });
 
   it("defer hidden-opener refreshes only when no popout is owned", () => {
