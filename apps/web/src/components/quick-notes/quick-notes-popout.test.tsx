@@ -49,7 +49,10 @@ vi.mock("@/lib/supabase/realtime", () => ({
 
 import { ActiveTimerProvider, useActiveTimer } from "@/components/timer/floating-timer/active-timer-provider";
 import { FloatingTimerChip } from "@/components/timer/floating-timer/floating-timer-chip";
-import { QuickNotesLauncher } from "./quick-notes-launcher";
+import {
+  QuickNotesLauncher,
+  QuickNotesPanel,
+} from "./quick-notes-launcher";
 import type { ActiveTimerSessionSnapshot } from "@/lib/timer/active-timer-contract";
 
 const session: ActiveTimerSessionSnapshot = {
@@ -113,6 +116,7 @@ function mount(active: ActiveTimerSessionSnapshot | null = session) {
       >
         <FloatingTimerChip />
         <QuickNotesLauncher />
+        <QuickNotesPanel />
         <TestControls />
       </ActiveTimerProvider>,
     );
@@ -193,13 +197,17 @@ describe("shared Timer + Notes popout", () => {
       )?.value,
     ).toBe("first line\nsecond line");
     expect(mocks.stopActiveTimerSessionAction).not.toHaveBeenCalled();
+    // One visible editor: the in-app panel closes once the PiP window opens.
+    expect(document.querySelector('[data-testid="quick-notes-panel"]')).toBeNull();
 
     act(() => {
       target.close();
     });
     await settle();
 
-    expect(document.querySelector('[data-testid="quick-notes-panel"]')).not.toBeNull();
+    // Native close never discards the draft; reopening the panel restores it.
+    expect(document.querySelector('[data-testid="quick-notes-panel"]')).toBeNull();
+    clickByLabel("Open Quick notes");
     expect(
       document.querySelector<HTMLTextAreaElement>(
         'textarea[aria-label="Quick notes scratchpad"]',
