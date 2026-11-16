@@ -68,6 +68,11 @@ import { getWebUserPreferencesState } from "@/lib/services/user-preferences-serv
 import { getLocalDateInTimezone } from "@ega/domain";
 import { getExpenseSummary } from "@ega/application";
 import type { ExpenseCategory } from "@ega/domain/expenses";
+import {
+  MONEY_PAGE_SIZE,
+  moneyHref,
+  resolveMoneyPagerOffsets,
+} from "./pagination";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Money", description: "Your personal expense ledger." };
@@ -84,14 +89,20 @@ function movementKindLabel(kind: string): string {
   return kind.replaceAll("_", " ");
 }
 
-type Props = { searchParams: Promise<{ offset?: string; periodId?: string }> };
+type Props = {
+  searchParams: Promise<{
+    offset?: string;
+    expenseOffset?: string;
+    movementOffset?: string;
+    periodId?: string;
+  }>;
+};
 
 export default async function MoneyPage({ searchParams }: Props) {
   const user = await getCurrentUser();
   if (!user) redirect("/login?next=/money");
   const params = await searchParams;
-  const parsedOffset = /^\d+$/.test(params.offset ?? "") ? Number(params.offset) : 0;
-  const offset = Number.isSafeInteger(parsedOffset) ? Math.min(parsedOffset, 100_000) : 0;
+  const { expenseOffset, movementOffset } = resolveMoneyPagerOffsets(params);
   const selectedPeriodId =
     typeof params.periodId === "string" && params.periodId.trim()
       ? params.periodId.trim()
@@ -118,7 +129,7 @@ export default async function MoneyPage({ searchParams }: Props) {
   try {
     const time = await getWebTimeContext();
     timezone = time.persistedTimezone ?? MONEY_DEFAULT_TIMEZONE;
-    result = await listExpenses(actor, new SupabaseExpenseRepository(client), { limit: "25", offset: String(offset) }, { timezone });
+    result = await listExpenses(actor, new SupabaseExpenseRepository(client), { limit: String(MONEY_PAGE_SIZE), offset: String(expenseOffset) }, { timezone });
     // The period state is the shared owner context. A failed read renders as
     // unavailable rather than as an empty/invented period.
     const stateResult = await getMoneyState(
@@ -188,19 +199,20 @@ export default async function MoneyPage({ searchParams }: Props) {
     // MONEY-04 movement ledger: the same canonical rows and totals as HTTP/MCP.
     // Failures render as unavailable, never as a confirmed zero balance.
     const moneyRepository = new SupabaseMoneyRepository(client);
+    // Expenses live in the table above. The non-expense exclusion is part of
+    // the repository query, so the page window and hasMore describe only the
+    // rows this ledger actually renders.
     const movementsResult = await listMovements(
       actor,
       moneyRepository,
-      { limit: "25", offset: String(offset) },
+      {
+        limit: String(MONEY_PAGE_SIZE),
+        offset: String(movementOffset),
+        excludeKind: "expense",
+      },
       { timezone },
     ).catch(() => null);
-    // Expenses are managed in the expense table above; the movement ledger
-    // below shows non-expense movements so one purchase is never rendered twice.
-    movements = movementsResult?.ok
-      ? movementsResult.data.movements.filter(
-          (movement) => movement.kind !== "expense",
-        )
-      : null;
+    movements = movementsResult?.ok ? movementsResult.data.movements : null;
     movementsHasMore = movementsResult?.ok
       ? movementsResult.data.pagination.hasMore
       : false;
@@ -282,6 +294,18 @@ export default async function MoneyPage({ searchParams }: Props) {
   // A time-context outage makes the cutoff ambiguous; report the summary as
   // unavailable rather than presenting a default-timezone total as Today.
   const localToday = getLocalDateInTimezone(new Date(), timezone);
+  // The ledgers are global; only the totals projection is narrowed by the
+  // selected period. Label both explicitly so a historical selection never
+  // looks like it silently rewrote global rows or cash calculations.
+  const totalsCutoff =
+    moneyState?.cash.cutoffDate ?? moneyState?.dateResolution.resolvedDate ?? localToday;
+  const expenseLedgerScope =
+    "All recorded expenses across every period, newest first. Selecting a historical period does not change this ledger.";
+  const movementLedgerScope =
+    "All non-expense movements across every period, newest first. Selecting a historical period does not change this ledger.";
+  const totalsScope = moneyState?.period
+    ? `Totals cover the selected period from ${moneyState.period.startDate} through ${totalsCutoff}.`
+    : `Totals cover all recorded history through ${totalsCutoff}.`;
   const summaryResult = timeContextFailed
     ? null
     : await getExpenseSummary(
@@ -733,23 +757,29 @@ export default async function MoneyPage({ searchParams }: Props) {
     <RefreshOnFocus />
     <MoneyCreatePanel ownerKey={user.id} />
     <MoneyMovementPanel ownerKey={user.id} defaultBookingDate={localToday} />
-    {(!result || !result.ok) ? <section role="alert" className="mt-6 rounded-lg border border-ega-border p-5">
-      <p>Expenses could not be loaded.</p><a className="underline" href={`/money?offset=${offset}`}>Retry</a>
-    </section> : result.data.expenses.length === 0 ? <section className="mt-6 rounded-lg border border-ega-border p-5"><p className="text-ega-text-secondary">{offset === 0 ? "No expenses yet." : "No expenses on this page."}</p>{offset > 0 && <a className="underline" href={`/money?offset=${Math.max(0, offset - 25)}`}>Previous page</a>}</section> : <>
-      <div className="mt-6 overflow-x-auto rounded-lg border border-ega-border">
+    <section aria-labelledby="money-expenses-heading" className="mt-6">
+      <h2 id="money-expenses-heading" className="text-[length:var(--text-section)] font-semibold tracking-[var(--tracking-tight)]">Expenses</h2>
+      <p className="mt-1 text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">{expenseLedgerScope}</p>
+      {(!result || !result.ok) ? <section role="alert" className="mt-3 rounded-lg border border-ega-border p-5">
+        <p>Expenses could not be loaded.</p><a className="underline" href={moneyHref({ periodId: selectedPeriodId, expenseOffset, movementOffset })}>Retry</a>
+      </section> : result.data.expenses.length === 0 ? <section className="mt-3 rounded-lg border border-ega-border p-5"><p className="text-ega-text-secondary">{expenseOffset === 0 ? "No expenses yet." : "No expenses on this page."}</p>{expenseOffset > 0 && <a className="underline" href={moneyHref({ periodId: selectedPeriodId, expenseOffset: Math.max(0, expenseOffset - MONEY_PAGE_SIZE), movementOffset })}>Previous page</a>}</section> : <>
+      <div className="mt-3 overflow-x-auto rounded-lg border border-ega-border">
         <table className="w-full min-w-[50rem] text-left text-sm"><caption className="sr-only">Expenses</caption><thead><tr><th scope="col" className="p-3">Date</th><th scope="col" className="p-3">Merchant</th><th scope="col" className="p-3">Category</th><th scope="col" className="p-3">Need or want</th><th scope="col" className="p-3 text-right">Amount</th><th scope="col" className="p-3 text-right">Actions</th></tr></thead>
           <tbody>{result.data.expenses.map((expense) => <tr key={expense.id} className="border-t border-ega-border"><td className="p-3">{expense.occurredAt ? new Intl.DateTimeFormat("en-GB", { dateStyle: "medium", timeZone: timezone }).format(new Date(expense.occurredAt)) : `${expense.bookingDate} (time unknown)`}</td><td className="p-3">{expense.merchant ?? "Expense"}{expense.note && <p className="mt-1 text-xs text-ega-text-secondary">{expense.note}</p>}</td><td className="p-3">{expense.category.replaceAll("_", " ")}</td><td className="p-3">{expense.needVsWant}</td><td className="p-3 text-right tabular-nums">{new Intl.NumberFormat("fr-MA", { style: "currency", currency: "MAD", minimumFractionDigits: 2 }).format(expense.amountMinor / 100)}</td><td className="p-3"><div className="flex flex-col items-end gap-2"><MoneyRowActions ownerKey={user.id} expense={expense} />{expense.category === "coffee" ? <CoffeeVisitControls expenseId={expense.id} version={expense.version} recordVisit={recordCoffeeVisitAction} classifyAsGroceries={classifyExpenseCategoryAction} /> : null}</div></td></tr>)}</tbody>
         </table>
       </div>
-      <nav aria-label="Expense pages" className="mt-4 flex justify-between"><span>{offset > 0 && <a className="underline" href={`/money?offset=${Math.max(0, offset - 25)}`}>Previous</a>}</span><span>{result.data.pagination.hasMore && <a className="underline" href={`/money?offset=${offset + 25}`}>Next</a>}</span></nav>
+      <nav aria-label="Expense pages" className="mt-4 flex justify-between"><span>{expenseOffset > 0 && <a className="underline" href={moneyHref({ periodId: selectedPeriodId, expenseOffset: Math.max(0, expenseOffset - MONEY_PAGE_SIZE), movementOffset })}>Previous</a>}</span><span>{result.data.pagination.hasMore && <a className="underline" href={moneyHref({ periodId: selectedPeriodId, expenseOffset: expenseOffset + MONEY_PAGE_SIZE, movementOffset })}>Next</a>}</span></nav>
     </>}
+    </section>
 
     <section aria-labelledby="money-ledger-heading" className="mt-6 rounded-lg border border-ega-border p-5">
       <h2 id="money-ledger-heading" className="text-[length:var(--text-section)] font-semibold tracking-[var(--tracking-tight)]">
         Movement ledger
       </h2>
+      <p className="mt-1 text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">{movementLedgerScope}</p>
       {movementTotals ? (
         <>
+          <p className="mt-2 text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">{totalsScope}</p>
           <dl className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
             <div>
               <dt className="text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">Expense spending</dt>
@@ -786,7 +816,9 @@ export default async function MoneyPage({ searchParams }: Props) {
         </p>
       ) : movements.length === 0 ? (
         <p className="mt-3 text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
-          No movements recorded yet. Opening cash appears here once a period is initialized.
+          {movementOffset === 0
+            ? "No non-expense movements recorded yet. Opening cash appears here once a period is initialized."
+            : "No non-expense movements on this page."}
         </p>
       ) : (
         <div className="mt-3 overflow-x-auto">
@@ -830,8 +862,8 @@ export default async function MoneyPage({ searchParams }: Props) {
       )}
       {movements !== null ? (
         <nav aria-label="Movement pages" className="mt-4 flex justify-between">
-          <span>{offset > 0 && <a className="underline" href={`/money?offset=${Math.max(0, offset - 25)}`}>Previous</a>}</span>
-          <span>{movementsHasMore && <a className="underline" href={`/money?offset=${offset + 25}`}>Next</a>}</span>
+          <span>{movementOffset > 0 && <a className="underline" href={moneyHref({ periodId: selectedPeriodId, expenseOffset, movementOffset: Math.max(0, movementOffset - MONEY_PAGE_SIZE) })}>Previous</a>}</span>
+          <span>{movementsHasMore && <a className="underline" href={moneyHref({ periodId: selectedPeriodId, expenseOffset, movementOffset: movementOffset + MONEY_PAGE_SIZE })}>Next</a>}</span>
         </nav>
       ) : null}
     </section>

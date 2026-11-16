@@ -260,6 +260,7 @@ function makeRepository(options: { periods?: MoneyPeriod[] } = {}) {
         if (query.to && row.bookingDate > query.to) return false;
         if (query.cutoff && row.bookingDate > query.cutoff) return false;
         if (query.kind && row.kind !== query.kind) return false;
+        if (query.excludeKind && row.kind === query.excludeKind) return false;
         return true;
       });
       filtered.sort((a, b) => (a.bookingDate < b.bookingDate ? 1 : -1));
@@ -739,6 +740,110 @@ test("listMovements returns the effective cutoff and only that owner's rows", as
     result.data.movements.map((row) => row.bookingDate),
     ["2026-11-11", "2026-11-09"],
   );
+});
+
+test("listMovements shows an older non-expense row hidden by 25+ newer expenses", async () => {
+  const { repository, rows } = makeRepository();
+  for (let index = 0; index < 26; index += 1) {
+    rows.push(
+      movement({
+        idempotencyKey: `expense-${index}`,
+        kind: "expense",
+        bookingDate: "2026-11-11",
+      }),
+    );
+  }
+  rows.push(
+    movement({ idempotencyKey: "older-income", kind: "income", bookingDate: "2026-11-10" }),
+    movement({ idempotencyKey: "older-savings", kind: "savings_transfer", bookingDate: "2026-11-09" }),
+    movement({
+      ownerUserId: OTHER_ACTOR.userId,
+      idempotencyKey: "other-income",
+      kind: "income",
+      bookingDate: "2026-11-08",
+    }),
+  );
+
+  const result = await listMovements(
+    ACTOR,
+    repository,
+    { limit: "25", offset: "0", excludeKind: "expense" },
+    { timezone: "Africa/Casablanca" },
+  );
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.deepEqual(
+    result.data.movements.map((row) => [row.kind, row.bookingDate]),
+    [
+      ["income", "2026-11-10"],
+      ["savings_transfer", "2026-11-09"],
+    ],
+  );
+  assert.equal(result.data.pagination.hasMore, false);
+  assert.equal(result.data.pagination.offset, 0);
+});
+
+test("listMovements paginates non-expense rows without duplicates or omissions", async () => {
+  const { repository, rows } = makeRepository();
+  for (let day = 1; day <= 30; day += 1) {
+    rows.push(
+      movement({
+        idempotencyKey: `income-${day}`,
+        kind: "income",
+        bookingDate: `2026-11-${String(day).padStart(2, "0")}`,
+      }),
+    );
+    rows.push(
+      movement({
+        idempotencyKey: `expense-${day}`,
+        kind: "expense",
+        bookingDate: `2026-12-${String(day).padStart(2, "0")}`,
+      }),
+    );
+  }
+  rows.push(
+    movement({
+      ownerUserId: OTHER_ACTOR.userId,
+      idempotencyKey: "other-newest-income",
+      kind: "income",
+      bookingDate: "2026-12-31",
+    }),
+  );
+
+  const first = await listMovements(ACTOR, repository, {
+    limit: "25",
+    offset: "0",
+    excludeKind: "expense",
+  });
+  const second = await listMovements(ACTOR, repository, {
+    limit: "25",
+    offset: "25",
+    excludeKind: "expense",
+  });
+  assert.equal(first.ok, true);
+  assert.equal(second.ok, true);
+  if (!first.ok || !second.ok) return;
+  assert.equal(first.data.movements.length, 25);
+  assert.equal(first.data.pagination.hasMore, true);
+  assert.equal(second.data.movements.length, 5);
+  assert.equal(second.data.pagination.hasMore, false);
+  const ids = [...first.data.movements, ...second.data.movements].map((row) => row.id);
+  assert.equal(new Set(ids).size, 30);
+  assert.ok([...first.data.movements, ...second.data.movements].every((row) => row.kind !== "expense"));
+});
+
+test("listMovements returns an empty non-expense page without a false depletion message", async () => {
+  const { repository, rows } = makeRepository();
+  rows.push(movement({ idempotencyKey: "only-expense", kind: "expense" }));
+  const result = await listMovements(ACTOR, repository, {
+    limit: "25",
+    offset: "0",
+    excludeKind: "expense",
+  });
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.deepEqual(result.data.movements, []);
+  assert.equal(result.data.pagination.hasMore, false);
 });
 
 test("updateMovement rejects expense-only fields on non-expense kinds", async () => {
