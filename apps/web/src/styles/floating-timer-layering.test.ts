@@ -51,4 +51,12 @@ describe("floating timer layering", () => {
       /body:has\(\[data-ega-save-bar\]\) \.ega-timer-chip\s*\{[\s\S]*?bottom:\s*calc\(116px/,
     );
   });
+
+  it("keeps the Quick Notes panel above shell chrome and below modal overlays", () => {
+    const panel = zIndexFor(".ega-quick-notes-panel");
+    const sidebar = zIndexFor(".app-sidebar");
+
+    expect(panel).toBeGreaterThan(sidebar);
+    expect(panel).toBeLessThan(40);
+  });
 });

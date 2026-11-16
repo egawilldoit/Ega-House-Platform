@@ -14,6 +14,8 @@ type WorkspaceShellProps = {
   projects?: SidebarProject[];
   metrics: WorkspaceShellMetrics;
   identity: ShellIdentity;
+  /** Client chrome owned higher in the provider tree (e.g. Quick Notes). */
+  topBarExtra?: ReactNode;
 };
 
 /**
@@ -28,6 +30,7 @@ export function WorkspaceShell({
   projects = [],
   metrics,
   identity,
+  topBarExtra,
 }: WorkspaceShellProps) {
   const [collapsed, setCollapsed] = useState(false);
 
@@ -51,6 +54,7 @@ export function WorkspaceShell({
         <TopBar
           metrics={metrics}
           identity={identity}
+          topBarExtra={topBarExtra}
           mobileNavigation={<SidebarMobileDrawer projects={projects} metrics={metrics} />}
         />
 
