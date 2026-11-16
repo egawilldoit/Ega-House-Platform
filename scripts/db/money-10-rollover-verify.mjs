@@ -309,7 +309,7 @@ async function main() {
       overrides.openingMode ?? "carry_forward",
       overrides.unpaidTreatment ?? "carry_forward",
       overrides.unpaidReason ?? "still owed",
-      null,
+      overrides.acceptedNote ?? null,
       { modeledClosingCashMinor: 70800, pendingOccurrenceCount: 1 },
       overrides.occurrences ?? occurrences,
       overrides.carried ?? carried,
@@ -326,7 +326,19 @@ async function main() {
         args,
       );
 
-    const first = await user(A, (tx) => callRollover(tx, rolloverArgs("m10-op-1", hex("9"))));
+    let savingsDenied = false;
+    try {
+      await user(A, (tx) => callRollover(tx, rolloverArgs("m10-savings-denied", hex("a"), { acceptedNote: null })));
+    } catch (error) {
+      savingsDenied = error.code === "23514" && /savings/.test(error.message);
+    }
+    assert(savingsDenied, "the RPC rejects an unaccepted savings difference");
+    const beforeAcceptance = await sql.unsafe("SELECT lifecycle, successor_period_id FROM public.money_periods WHERE id=$1", [sourceId]);
+    assert(beforeAcceptance[0].lifecycle === "ended" && beforeAcceptance[0].successor_period_id === null, "rejection leaves the source untouched");
+
+    const first = await user(A, (tx) => callRollover(tx, rolloverArgs("m10-op-1", hex("9"), { acceptedNote: "Savings shortfall reviewed" })));
+    assert(first[0].result.rollover.reconciliation_accepted_note === "Savings shortfall reviewed", "acceptance note is retained");
+    assert(first[0].result.rollover.reconciliation.closeSummary.savingsTargetMinor === 12000 && first[0].result.rollover.reconciliation.closeSummary.savingsTransferredMinor === 2000, "server reconciliation evidence is retained");
     assert(first[0].result.replayed === false, "first rollover is not a replay");
     const successorId = first[0].result.rollover.successor_period_id;
     assert(successorId && successorId !== sourceId, "one successor was created");
@@ -412,7 +424,7 @@ async function main() {
     );
     console.log("[OBLIGATIONS] template occurrence regenerated; unpaid one-off carried once with reason history");
 
-    const replay = await user(A, (tx) => callRollover(tx, rolloverArgs("m10-op-1", hex("9"))));
+    const replay = await user(A, (tx) => callRollover(tx, rolloverArgs("m10-op-1", hex("9"), { acceptedNote: "Savings shortfall reviewed" })));
     assert(replay[0].result.replayed === true && replay[0].result.rollover.successor_period_id === successorId, "retry replays the original successor");
     const periodCount = await sql.unsafe(
       "SELECT count(*)::int AS n FROM public.money_periods WHERE owner_user_id=$1",
@@ -553,6 +565,17 @@ async function main() {
     // Finish the middle period through real closes too, so the second rollover
     // exercises the same retained-close gate. One middle-period expense is
     // corrected after its close to prove a restated snapshot needs acceptance.
+    // Match the copied savings target without changing net cash, so this case
+    // isolates the restated-close gate from savings reconciliation.
+    await sql.unsafe(
+      `INSERT INTO public.personal_expenses
+        (owner_user_id,amount_minor,currency,note,idempotency_key,create_fingerprint,kind,direction,
+         booking_date,counts_in_daily,period_id,category,need_vs_want,purpose)
+       VALUES
+         ($1,12000,'MAD','savings funding','m10-middle-income',repeat('8',64),'income','in','2026-12-01',false,$2,NULL,NULL,NULL),
+         ($1,12000,'MAD','savings transfer','m10-middle-savings',repeat('7',64),'savings_transfer','out','2026-12-01',false,$2,NULL,NULL,NULL)`,
+      [A, successorId],
+    );
     const successorExpense = await sql.unsafe(
       `INSERT INTO public.personal_expenses
         (owner_user_id,amount_minor,currency,note,idempotency_key,create_fingerprint,kind,direction,
@@ -637,8 +660,12 @@ async function main() {
     );
     assert(
       restatedSummary[0].summary.available === true &&
-        restatedSummary[0].summary.restatedDifferenceCount > 0,
-      "a post-close correction marks the retained close as restated",
+        restatedSummary[0].summary.restatedDifferenceCount > 0 &&
+        restatedSummary[0].summary.paidObligationMismatchCount === 0 &&
+        restatedSummary[0].summary.countedVisitMismatchCount === 0 &&
+        restatedSummary[0].summary.savingsTargetMinor === 12000 &&
+        restatedSummary[0].summary.savingsTransferredMinor === 12000,
+      "a post-close correction is isolated from payment, visit and savings differences",
     );
     console.log("[CLOSE] later correction is disclosed as a restated close snapshot");
 
@@ -697,7 +724,7 @@ async function main() {
     try {
       await user(A, (tx) => callRollover(tx, verifiedArgs));
     } catch (error) {
-      restatedRolloverDenied = error.code === "23514";
+      restatedRolloverDenied = error.code === "23514" && /explicit acceptance note/.test(error.message);
     }
     assert(
       restatedRolloverDenied,
@@ -1108,7 +1135,7 @@ async function main() {
         "carry_forward",
         null,
         null,
-        null,
+        "Savings shortfall reviewed",
         { modeledClosingCashMinor: 5000, pendingOccurrenceCount: 0 },
         [],
         [],
@@ -1307,8 +1334,10 @@ async function main() {
         paidSummary[0].summary.completeCloseEvidence === true &&
         paidSummary[0].summary.restatedDifferenceCount === 0 &&
         paidSummary[0].summary.paidObligationMismatchCount === 1 &&
-        paidSummary[0].summary.countedVisitMismatchCount === 0,
-      "the paid-payment mismatch is isolated from restated closes and visits",
+        paidSummary[0].summary.countedVisitMismatchCount === 0 &&
+        paidSummary[0].summary.savingsTargetMinor === 0 &&
+        paidSummary[0].summary.savingsTransferredMinor === 0,
+      "the paid-payment mismatch is isolated from restated closes, visits and savings",
     );
     const paidRolloverArgs = [
       paidPeriodId,
@@ -1341,7 +1370,7 @@ async function main() {
     try {
       await user(D, (tx) => callRollover(tx, paidRolloverArgs));
     } catch (error) {
-      paidDenied = error.code === "23514";
+      paidDenied = error.code === "23514" && /explicit acceptance note/.test(error.message);
     }
     assert(paidDenied, "a paid-payment mismatch needs an explicit acceptance note");
     paidRolloverArgs[20] = "paid payment mismatch reviewed";
@@ -1364,7 +1393,7 @@ async function main() {
           '2026-10-01'::date,'2026-10-02'::date,'Africa/Casablanca'::text,
           '2026-10-02'::date,'initialized'::text,1000::integer,'2026-10-01'::date,
           repeat('6',64)::text,'{"opening":{"source":"user_entered","recordedAt":"2026-10-01T00:00:00.000Z","cutoffDate":"2026-10-01","evidence":null,"note":null,"corrections":[]}}'::jsonb,
-          '{"savingsTargetMinor":500,"emergencyTargetMinor":50}'::jsonb,
+          '{"savingsTargetMinor":0,"emergencyTargetMinor":50}'::jsonb,
           now()::timestamptz) AS p) created`),
     );
     await user(C, (tx) =>
@@ -1446,8 +1475,10 @@ async function main() {
         visitSummary[0].summary.completeCloseEvidence === true &&
         visitSummary[0].summary.restatedDifferenceCount === 0 &&
         visitSummary[0].summary.paidObligationMismatchCount === 0 &&
-        visitSummary[0].summary.countedVisitMismatchCount === 1,
-      "the counted-visit mismatch is isolated from restated closes and paid payments",
+        visitSummary[0].summary.countedVisitMismatchCount === 1 &&
+        visitSummary[0].summary.savingsTargetMinor === 0 &&
+        visitSummary[0].summary.savingsTransferredMinor === 0,
+      "the counted-visit mismatch is isolated from restated closes, paid payments and savings",
     );
     const visitRolloverArgs = [
       lateCreated[0].id,
@@ -1480,7 +1511,7 @@ async function main() {
     try {
       await user(C, (tx) => callRollover(tx, visitRolloverArgs));
     } catch (error) {
-      visitDenied = error.code === "23514";
+      visitDenied = error.code === "23514" && /explicit acceptance note/.test(error.message);
     }
     assert(visitDenied, "a counted-visit mismatch needs an explicit acceptance note");
     visitRolloverArgs[20] = "counted visit mismatch reviewed";
