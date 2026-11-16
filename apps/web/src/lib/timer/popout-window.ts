@@ -19,6 +19,8 @@ export type DocumentPictureInPictureApi = {
 };
 
 export const TIMER_POPOUT_SIZE = { width: 372, height: 264 } as const;
+/** Taller window for the notes editor, with or without the timer summary. */
+export const QUICK_NOTES_POPOUT_SIZE = { width: 420, height: 460 } as const;
 
 /** Feature detection that never throws on partial/foreign implementations. */
 export function getDocumentPictureInPicture(
@@ -69,6 +71,18 @@ export async function requestTimerPopoutWindow(
   }
 
   return api.requestWindow(TIMER_POPOUT_SIZE);
+}
+
+/** Notes opt into a larger window from the same explicit user gesture. */
+export async function requestQuickNotesPopoutWindow(
+  target: unknown = typeof window === "undefined" ? undefined : window,
+): Promise<Window> {
+  const api = getDocumentPictureInPicture(target);
+  if (!api) {
+    throw new Error("Document Picture-in-Picture is not available.");
+  }
+
+  return api.requestWindow(QUICK_NOTES_POPOUT_SIZE);
 }
 
 /**
@@ -221,6 +235,119 @@ body { display: block; }
   color: var(--status-overdue, #b91c1c);
 }
 .ega-timer-popout__button:disabled { cursor: not-allowed; opacity: 0.55; }
+/* Shared Timer + Notes window */
+.ega-floating-popout { gap: 0; }
+.ega-floating-popout__timer {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--ega-divider, #eeeeee);
+}
+.ega-floating-popout__timer .ega-timer-popout__actions { margin-top: 0; padding-top: 8px; }
+.ega-floating-popout__notes {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+  padding-top: 12px;
+}
+.ega-floating-popout__notes-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--ega-text, #171717);
+}
+.ega-quick-notes__editor { display: flex; flex-direction: column; gap: 8px; min-height: 0; }
+.ega-quick-notes__label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ega-text-secondary, #5c5c5c);
+}
+.ega-quick-notes__textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 132px;
+  flex: 1 1 auto;
+  padding: 8px 10px;
+  border: 1px solid var(--ega-border-strong, #d6d6d6);
+  border-radius: 6px;
+  background: var(--ega-surface, #ffffff);
+  color: var(--ega-text, #171717);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.45;
+  resize: vertical;
+}
+.ega-quick-notes__textarea:focus-visible {
+  outline: 2px solid var(--ega-text, #171717);
+  outline-offset: 1px;
+}
+.ega-quick-notes__status {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ega-text-secondary, #5c5c5c);
+}
+.ega-quick-notes__status[data-status="saved-to-backlog"] { color: var(--signal-live, #15803d); }
+.ega-quick-notes__status[data-status="error"] { color: var(--status-overdue, #b91c1c); }
+.ega-quick-notes__error {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--status-overdue, #b91c1c);
+}
+.ega-quick-notes__confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid var(--ega-border-strong, #d6d6d6);
+  border-radius: 6px;
+}
+.ega-quick-notes__confirm p { margin: 0; font-size: 12px; }
+.ega-quick-notes__actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.ega-quick-notes__button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--ega-border-strong, #d6d6d6);
+  border-radius: 6px;
+  background: var(--ega-surface, #ffffff);
+  color: var(--ega-text, #171717);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.ega-quick-notes__button--primary {
+  border-color: var(--ega-accent, #171717);
+  background: var(--ega-accent, #171717);
+  color: var(--ega-surface, #ffffff);
+}
+.ega-quick-notes__button:focus-visible {
+  outline: 2px solid var(--ega-text, #171717);
+  outline-offset: 2px;
+}
+.ega-quick-notes__button:disabled { cursor: not-allowed; opacity: 0.55; }
+.ega-quick-notes__fallback {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--ega-text-secondary, #5c5c5c);
+}
+.ega-quick-notes__dismiss {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+}
 `;
 
 /** Copy origin documents styles and theme attributes, then add the fallback. */
