@@ -55,7 +55,12 @@ export function Tooltip({ content, children, side = "top", delayMs = 300, classN
         onFocus={show}
         onBlur={hide}
         className={cn(className ?? "inline-flex")}
-        aria-describedby={open ? tooltipId : undefined}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") {
+            event.preventDefault();
+            hide();
+          }
+        }}
       >
         {children}
       </div>
