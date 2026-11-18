@@ -169,7 +169,7 @@ function NowPanel({ model }: { model: HomeModel }) {
             Focus running
           </p>
           <div>
-            <h3 className="max-w-[60ch] break-words text-[length:var(--text-section)] font-semibold leading-tight tracking-[var(--tracking-tight)] text-[color:var(--ega-text)]">
+            <h3 className="max-w-[60ch] break-words text-[length:var(--text-section)] font-semibold leading-tight tracking-[var(--tracking-tight)] text-[color:var(--ega-text)] line-clamp-2">
               {task?.title ?? "Timer active"}
             </h3>
             {task ? (
@@ -216,7 +216,7 @@ function NowPanel({ model }: { model: HomeModel }) {
       <CardContent className="flex flex-col gap-4">
         <p className="glass-label">Start here</p>
         <div>
-          <h3 className="max-w-[60ch] break-words text-[length:var(--text-section)] font-semibold leading-tight tracking-[var(--tracking-tight)] text-[color:var(--ega-text)]">
+          <h3 className="max-w-[60ch] break-words text-[length:var(--text-section)] font-semibold leading-tight tracking-[var(--tracking-tight)] text-[color:var(--ega-text)] line-clamp-2">
             {task.title}
           </h3>
           <div className="mt-1.5">
