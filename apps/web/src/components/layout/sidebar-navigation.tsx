@@ -99,7 +99,7 @@ function SidebarProjectLink({
       href={href}
       aria-current={selected ? "page" : undefined}
       aria-label={getProjectAccessibleLabel(project)}
-      title={getProjectAccessibleLabel(project)}
+      title={compact ? undefined : getProjectAccessibleLabel(project)}
       className={cn("sidebar-link sidebar-project-link", selected && "selected")}
       onClick={onNavigate}
     >
@@ -124,7 +124,7 @@ function SidebarProjectLink({
   }
 
   return (
-    <Tooltip content={getProjectAccessibleLabel(project)} side="right" delayMs={100}>
+    <Tooltip content={getProjectAccessibleLabel(project)} side="right" delayMs={100} className="block w-full">
       {link}
     </Tooltip>
   );
@@ -207,7 +207,7 @@ function RouteLink({
       aria-current={active ? "page" : undefined}
       // Names and tooltips stay available when the sidebar collapses to an icon rail.
       aria-label={route.label}
-      title={route.label}
+      title={compact ? undefined : route.label}
       className={cn("sidebar-link workspace-nav-link", active && "active")}
       onClick={onNavigate}
     >
@@ -224,7 +224,7 @@ function RouteLink({
   }
 
   return (
-    <Tooltip content={route.label} side="right" delayMs={100}>
+    <Tooltip content={route.label} side="right" delayMs={100} className="block w-full">
       {link}
     </Tooltip>
   );
@@ -377,12 +377,11 @@ export function SidebarNavigation({
         )}
 
         {compact ? (
-          <Tooltip content="View all projects" side="right" delayMs={100}>
+          <Tooltip content="View all projects" side="right" delayMs={100} className="block w-full">
             <Link
               href={canonicalUrl.resolve("/tasks/projects")}
               aria-current={pathname === "/tasks/projects" ? "page" : undefined}
               aria-label="View all projects"
-              title="View all projects"
               className={cn(
                 "sidebar-link sidebar-project-link sidebar-view-all",
                 pathname === "/tasks/projects" && "selected",

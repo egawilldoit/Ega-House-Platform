@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useId, useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
 
@@ -14,6 +14,7 @@ type TooltipProps = {
 
 export function Tooltip({ content, children, side = "top", delayMs = 300, className }: TooltipProps) {
   const [open, setOpen] = useState(false);
+  const tooltipId = useId();
   const [coords, setCoords] = useState({ x: 0, y: 0 });
   const triggerRef = useRef<HTMLDivElement>(null);
   const timeoutRef = useRef<number | null>(null);
@@ -53,13 +54,15 @@ export function Tooltip({ content, children, side = "top", delayMs = 300, classN
         onMouseLeave={hide}
         onFocus={show}
         onBlur={hide}
-        className="inline-flex"
+        className={cn(className ?? "inline-flex")}
+        aria-describedby={open ? tooltipId : undefined}
       >
         {children}
       </div>
       {open && typeof document !== "undefined"
         ? createPortal(
             <div
+              id={tooltipId}
               role="tooltip"
               className={cn(
                 "pointer-events-none fixed z-[100] max-w-xs rounded-md border border-[var(--ega-border)] bg-[var(--ega-ink)] px-2.5 py-1.5 text-xs font-medium leading-4 text-[color:var(--ega-on-ink)] shadow-[var(--ega-shadow-md)]",
