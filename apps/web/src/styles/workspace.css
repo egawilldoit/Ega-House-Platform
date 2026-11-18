@@ -787,11 +787,17 @@
 .topbar-account-name {
   font-size: var(--text-meta-lg);
   font-weight: 550;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .topbar-account-email {
   font-size: var(--text-meta);
   color: var(--ega-text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .topbar-avatar {

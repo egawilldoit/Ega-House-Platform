@@ -119,6 +119,16 @@ function ActivityGrid({ pulse }: { pulse: HomeActivityPulse }) {
           </div>
         ))}
       </div>
+      <div className="sr-only">
+        <p>{summary}</p>
+        <ul>
+          {pulse.days.map((day) => (
+            <li key={day.date}>
+              {day.date}: {day.intensity > 0 ? `activity level ${day.intensity}` : "no activity"}
+            </li>
+          ))}
+        </ul>
+      </div>
     </div>
   );
 }

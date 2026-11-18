@@ -30,6 +30,7 @@ import {
 import { formatDisplayCount, formatDisplayCountLabel } from "@/lib/presentation-format";
 import type { WorkspaceShellMetrics } from "@/lib/workspace-shell";
 import { cn } from "@/lib/utils";
+import { Tooltip } from "@/components/ui/tooltip";
 import { useCanonicalUrl } from "@/lib/use-canonical-url";
 import { groupSidebarProjects, SidebarAreaHeading } from "./sidebar-areas";
 import { getSidebarTaskSignalBadge, SidebarSignalBadge } from "./shell-signals";
@@ -84,14 +85,16 @@ function SidebarProjectLink({
   project,
   selected,
   href,
+  compact = false,
   onNavigate,
 }: {
   project: SidebarProject;
   selected: boolean;
   href: string;
+  compact?: boolean;
   onNavigate?: () => void;
 }) {
-  return (
+  const link = (
     <Link
       href={href}
       aria-current={selected ? "page" : undefined}
@@ -114,6 +117,16 @@ function SidebarProjectLink({
         </span>
       ) : null}
     </Link>
+  );
+
+  if (!compact) {
+    return link;
+  }
+
+  return (
+    <Tooltip content={getProjectAccessibleLabel(project)} side="right" delayMs={100}>
+      {link}
+    </Tooltip>
   );
 }
 
@@ -175,18 +188,20 @@ function RouteLink({
   route,
   pathname,
   badge,
+  compact = false,
   onNavigate,
 }: {
   route: ShellRouteMeta;
   pathname: string;
   badge?: { label: string; tone: "active" | "muted" | "warn" | "error" } | null;
+  compact?: boolean;
   onNavigate?: () => void;
 }) {
   const canonicalUrl = useCanonicalUrl();
   const Icon = ROUTE_ICONS[route.href] ?? Grid2X2;
   const active = isActive(pathname, route.href);
 
-  return (
+  const link = (
     <Link
       href={canonicalUrl.resolve(route.href)}
       aria-current={active ? "page" : undefined}
@@ -202,6 +217,16 @@ function RouteLink({
       <span className="workspace-nav-label">{route.label}</span>
       {badge ? <SidebarSignalBadge label={badge.label} tone={badge.tone} /> : null}
     </Link>
+  );
+
+  if (!compact) {
+    return link;
+  }
+
+  return (
+    <Tooltip content={route.label} side="right" delayMs={100}>
+      {link}
+    </Tooltip>
   );
 }
 
@@ -249,6 +274,7 @@ export function SidebarNavigation({
                 route={route}
                 pathname={pathname}
                 badge={badge}
+                compact={compact}
                 onNavigate={onNavigate}
               />
             );
@@ -332,6 +358,7 @@ export function SidebarNavigation({
                         projectPathSlug === project.slug
                       }
                       href={canonicalUrl.resolve(`/tasks?project=${project.id}`)}
+                      compact={compact}
                       onNavigate={onNavigate}
                     />
                   ))}
@@ -349,24 +376,47 @@ export function SidebarNavigation({
           </Link>
         )}
 
-        <Link
-          href={canonicalUrl.resolve("/tasks/projects")}
-          aria-current={pathname === "/tasks/projects" ? "page" : undefined}
-          aria-label="View all projects"
-          title="View all projects"
-          className={cn(
-            "sidebar-link sidebar-project-link sidebar-view-all",
-            pathname === "/tasks/projects" && "selected",
-          )}
-          onClick={onNavigate}
-        >
-          <span className="sidebar-link-icon" aria-hidden="true">
-            <Folder />
-          </span>
-          <span className="workspace-nav-label">
-            {hiddenProjectCount > 0 ? `All workspaces (${projects.length})` : "All workspaces"}
-          </span>
-        </Link>
+        {compact ? (
+          <Tooltip content="View all projects" side="right" delayMs={100}>
+            <Link
+              href={canonicalUrl.resolve("/tasks/projects")}
+              aria-current={pathname === "/tasks/projects" ? "page" : undefined}
+              aria-label="View all projects"
+              title="View all projects"
+              className={cn(
+                "sidebar-link sidebar-project-link sidebar-view-all",
+                pathname === "/tasks/projects" && "selected",
+              )}
+              onClick={onNavigate}
+            >
+              <span className="sidebar-link-icon" aria-hidden="true">
+                <Folder />
+              </span>
+              <span className="workspace-nav-label">
+                {hiddenProjectCount > 0 ? `All workspaces (${projects.length})` : "All workspaces"}
+              </span>
+            </Link>
+          </Tooltip>
+        ) : (
+          <Link
+            href={canonicalUrl.resolve("/tasks/projects")}
+            aria-current={pathname === "/tasks/projects" ? "page" : undefined}
+            aria-label="View all projects"
+            title="View all projects"
+            className={cn(
+              "sidebar-link sidebar-project-link sidebar-view-all",
+              pathname === "/tasks/projects" && "selected",
+            )}
+            onClick={onNavigate}
+          >
+            <span className="sidebar-link-icon" aria-hidden="true">
+              <Folder />
+            </span>
+            <span className="workspace-nav-label">
+              {hiddenProjectCount > 0 ? `All workspaces (${projects.length})` : "All workspaces"}
+            </span>
+          </Link>
+        )}
       </section>
 
       <section
@@ -383,6 +433,7 @@ export function SidebarNavigation({
                 ? { label: String(metrics.unreadNotificationCount), tone: "warn" }
                 : null
             }
+            compact={compact}
             onNavigate={onNavigate}
           />
         ))}

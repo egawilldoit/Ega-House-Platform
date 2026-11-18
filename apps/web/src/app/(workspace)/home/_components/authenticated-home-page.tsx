@@ -45,7 +45,7 @@ function HomeHeader({ greeting, name }: { greeting: HomeGreeting | null; name: s
       <h1
         tabIndex={-1}
         data-shell-page-title
-        className="text-3xl font-semibold tracking-[var(--tracking-tight)] text-[color:var(--ega-text)] md:text-4xl"
+        className="break-words text-3xl font-semibold leading-tight tracking-[var(--tracking-tight)] text-[color:var(--ega-text)] md:text-4xl"
       >
         {greeting?.greeting ?? `Welcome back, ${name}`}
       </h1>
@@ -169,7 +169,7 @@ function NowPanel({ model }: { model: HomeModel }) {
             Focus running
           </p>
           <div>
-            <h3 className="max-w-[60ch] text-[length:var(--text-section)] font-semibold tracking-[var(--tracking-tight)] text-[color:var(--ega-text)]">
+            <h3 className="max-w-[60ch] break-words text-[length:var(--text-section)] font-semibold leading-tight tracking-[var(--tracking-tight)] text-[color:var(--ega-text)]">
               {task?.title ?? "Timer active"}
             </h3>
             {task ? (
@@ -216,7 +216,7 @@ function NowPanel({ model }: { model: HomeModel }) {
       <CardContent className="flex flex-col gap-4">
         <p className="glass-label">Start here</p>
         <div>
-          <h3 className="max-w-[60ch] text-[length:var(--text-section)] font-semibold tracking-[var(--tracking-tight)] text-[color:var(--ega-text)]">
+          <h3 className="max-w-[60ch] break-words text-[length:var(--text-section)] font-semibold leading-tight tracking-[var(--tracking-tight)] text-[color:var(--ega-text)]">
             {task.title}
           </h3>
           <div className="mt-1.5">
