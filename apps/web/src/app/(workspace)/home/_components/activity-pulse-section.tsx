@@ -70,8 +70,17 @@ function deriveConsistencyNote(days: HomeActivityPulseDay[], activeDays: number)
 
 function ActivityGrid({ pulse }: { pulse: HomeActivityPulse }) {
   const columns = buildCompactActivityWeeks(pulse.days, WEEKS_SHOWN);
-  const activeDays = pulse.days.filter(isActiveDay).length;
-  const summary = `Activity pulse for the last 12 weeks: ${activeDays} active days, current streak ${pulse.currentStreak} days.`;
+  const displayedDays = columns
+    .flat()
+    .filter((day): day is HomeActivityPulseDay => Boolean(day));
+  const displayedActiveDays = displayedDays.filter(isActiveDay).length;
+  const firstDisplayedDate = displayedDays[0]?.date;
+  const lastDisplayedDate = displayedDays[displayedDays.length - 1]?.date;
+  const summary = `Activity pulse for ${displayedDays.length} displayed days${
+    firstDisplayedDate && lastDisplayedDate
+      ? ` from ${firstDisplayedDate} to ${lastDisplayedDate}`
+      : ""
+  }: ${displayedActiveDays} active days, current streak ${pulse.currentStreak} days.`;
 
   return (
     <div>
@@ -118,6 +127,16 @@ function ActivityGrid({ pulse }: { pulse: HomeActivityPulse }) {
             )}
           </div>
         ))}
+      </div>
+      <div className="sr-only">
+        <p>{summary}</p>
+        <ul>
+          {displayedDays.map((day) => (
+            <li key={day.date}>
+              {day.date}: {day.intensity > 0 ? `activity level ${day.intensity}` : "no activity"}
+            </li>
+          ))}
+        </ul>
       </div>
     </div>
   );

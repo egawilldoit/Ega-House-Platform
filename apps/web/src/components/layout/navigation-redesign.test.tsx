@@ -160,7 +160,12 @@ describe("EGA-654 collapsed sidebar keeps every destination", () => {
 
       const today = container.querySelector('a[href="/today"]');
       expect(today?.getAttribute("aria-label")).toBe("Today");
-      expect(today?.getAttribute("title")).toBe("Today");
+      if (!compact) {
+        expect(today?.getAttribute("title")).toBe("Today");
+      } else {
+        expect(today?.getAttribute("title")).toBeNull();
+        expect(today?.parentElement?.className).toContain("block w-full");
+      }
       expect(today?.getAttribute("aria-current")).toBe("page");
 
       for (const link of Array.from(container.querySelectorAll("a"))) {
