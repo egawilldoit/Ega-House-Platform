@@ -144,3 +144,23 @@ it("shows the no-activity note when there is no activity at all", async () => {
 
   expect(rendered.textContent).toContain("No activity yet this year");
 });
+
+
+it("exposes only the displayed 84-day window in the accessible list", async () => {
+  const dates = Array.from({ length: 365 }, (_, index) =>
+    new Date(Date.UTC(2025, 0, 1 + index)).toISOString().slice(0, 10),
+  );
+  const days = dates.map((date, index) => ({
+    date,
+    intensity: (index === 0 || index >= dates.length - 3 ? 2 : 0) as 0 | 2,
+  }));
+  const pulse = buildPulse({ days });
+  const rendered = await renderSection(pulse);
+
+  const card = rendered.querySelector('[data-testid="home-activity-pulse"]');
+  const items = Array.from(card?.querySelectorAll("ul li") ?? []).map((node) => node.textContent ?? "");
+
+  expect(items).toHaveLength(84);
+  expect(items.some((text) => text.startsWith(dates[0]))).toBe(false);
+  expect(items.some((text) => text.startsWith(dates[dates.length - 1]))).toBe(true);
+});
