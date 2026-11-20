@@ -1,0 +1,86 @@
+export * from "./auth/actor";
+export * from "./shared/result";
+export * from "./projects/ports";
+export * from "./projects/progress";
+export * from "./projects/areas";
+export * from "./projects/read-model";
+export * from "./projects/service";
+export * from "./projects/templates";
+export * from "./goals/ports";
+export * from "./goals/read-model";
+export * from "./goals/service";
+export * from "./archive/ports";
+export * from "./archive/read-model";
+export * from "./tasks/ports";
+export * from "./tasks/mutations-ports";
+export * from "./tasks/read-model";
+export * from "./tasks/activity-read-model";
+export * from "./tasks/list-view";
+export * from "./tasks/focus-queue";
+export * from "./tasks/service";
+export * from "./tasks/comments";
+export * from "./tasks/recurrence";
+export * from "./notifications/ports";
+export * from "./notifications/service";
+export * from "./notifications/delivery";
+export * from "./notifications/policy";
+export * from "./today/read-model";
+export * from "./today/ports";
+export * from "./today/plan";
+export * from "./today/service";
+export * from "./operator/snapshot";
+export * from "./operator/proposal";
+export * from "./operator/lifecycle";
+export * from "./timer/ports";
+export * from "./timer/service";
+export * from "./timer/tracked-time";
+export * from "./friction/ports";
+export * from "./friction/stale-blocked-signals";
+export * from "./friction/estimate-accuracy";
+export * from "./friction/context-switch";
+export * from "./friction/neglected-goal";
+export * from "./friction/workload-imbalance";
+export * from "./shared/duration";
+export * from "./shared/time-context";
+export * from "./shared/execution-evidence";
+export * from "./preferences/user-preferences";
+export * from "./work-targets/progress";
+export * from "./expenses/ports";
+export * from "./expenses/service";
+export * from "./expenses/summary";
+export * from "./expenses/export";
+export * from "./money/ports";
+export * from "./money/periods";
+export * from "./money/service";
+export * from "./money/summary";
+export * from "./money/budgets";
+export * from "./money/coffee";
+export * from "./checkins/ports";
+export * from "./checkins/service";
+export * from "./weekly-review/ports";
+export * from "./weekly-review/evidence-review";
+export * from "./weekly-review/read-model";
+export * from "./weekly-review/draft";
+export * from "./weekly-review/comparison";
+export * from "./health/workload-snapshot";
+export * from "./health/recommendations";
+export * from "./inbox/ports";
+export * from "./inbox/service";
+export * from "./inbox/read-model";
+export * from "./inbox/convert";
+export * from "./inbox/ai-classification-port";
+export * from "./inbox/ai-suggest";
+export * from "./ai/structured-suggestion-port";
+
+export type {
+  GoalHealth,
+  GoalStatus,
+  GoalViewFilter,
+  ProjectStatus,
+  ProjectViewFilter,
+  TaskPriority,
+  TaskRecurrenceRule,
+  TaskStatus,
+} from "@ega/domain";
+export * from "./money/obligations";
+export * from "./money/obligation-ports";
