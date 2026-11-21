@@ -9,6 +9,12 @@ so a locked-down or air-gapped build still compiles.
 | `instrument-sans-latin-var.woff2` | Instrument Sans | `400 700` | `wght 400 700` | `--font-body-next` |
 | `sora-latin-var.woff2` | Sora | `100 800` | `wght 100 800` | `--font-display-next` |
 | `jetbrains-mono-latin-var.woff2` | JetBrains Mono | `400 600` | `wght 100 800` | `--font-mono-next` |
+| `newsreader-latin-var.woff2` | Newsreader | `400 600` | `opsz 6 72, wght 200 800` | `--tw-font-serif` (Today only) |
+| `ibm-plex-sans-latin-var.woff2` | IBM Plex Sans | `400 600` | `wght 100 700` | `--tw-font-sans` (Today only) |
+
+The two Today-only families are loaded by `src/app/(workspace)/today/page.tsx`,
+not the root layout, so other routes never download them. Each has its OFL
+licence beside it (`OFL-newsreader.txt`, `OFL-ibm-plex-sans.txt`).
 
 `Declared weight` is the `@font-face` descriptor emitted by `layout.tsx`;
 `File axis` is what the binary actually supports. Mono is declared `400 600`

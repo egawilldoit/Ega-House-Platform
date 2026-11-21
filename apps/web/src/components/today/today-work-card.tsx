@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 import type { OperatorWorkToday } from "@ega/application";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 export type TodayMoneySummary = Readonly<{
   available: boolean;
@@ -51,21 +51,18 @@ export function TodayWorkCard({ work, money, routine }: TodayWorkCardProps) {
     <Card>
       <CardHeader>
         <CardTitle>Work, money and routine</CardTitle>
-        <CardDescription>
-          One glance at today — each card draws from its canonical source.
-        </CardDescription>
       </CardHeader>
-      <CardContent className="flex flex-col gap-4">
-        <section aria-label="Work progress">
+      <CardContent className="flex flex-col divide-y divide-[var(--ega-divider)]">
+        <section aria-label="Work progress" className="pb-3">
           {work ? (
             <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
-              <p className="text-[length:var(--text-meta-lg)] font-medium">
+              <p className="tabular-nums text-[length:var(--text-meta-lg)] font-medium">
                 {formatSeconds(work.trackedSeconds)} tracked / {formatMinutes(work.workTargetMinutes)} target
               </p>
-              <Link className="underline" href="/work-analytics">
+              <Link className="text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)] underline decoration-[var(--ega-border-strong)] underline-offset-2 hover:text-[color:var(--ega-text)]" href="/work-analytics">
                 Work analytics
               </Link>
-              <p className="w-full text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
+              <p className="w-full tabular-nums text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
                 {work.jobSearchConfigured
                   ? `Job search inside that total: ${formatSeconds(work.jobSearchSeconds)} / ${formatMinutes(work.jobSearchTargetMinutes)} target.`
                   : "Job search is not configured yet — no search minutes counted."}
@@ -74,37 +71,37 @@ export function TodayWorkCard({ work, money, routine }: TodayWorkCardProps) {
           ) : (
             <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
               <p className="text-[length:var(--text-meta-lg)]">Work progress unavailable right now.</p>
-              <Link className="underline" href="/work-analytics">
+              <Link className="text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)] underline decoration-[var(--ega-border-strong)] underline-offset-2 hover:text-[color:var(--ega-text)]" href="/work-analytics">
                 Work analytics
               </Link>
             </div>
           )}
         </section>
 
-        <section aria-label="Today spending">
+        <section aria-label="Today spending" className="py-3">
           {money.available ? (
             money.truncated ? (
               <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
-                <p className="text-[length:var(--text-meta-lg)] font-medium">
+                <p className="tabular-nums text-[length:var(--text-meta-lg)] font-medium">
                   At least {formatMad(money.totalMinor ?? 0)} recorded today (incomplete)
                 </p>
-                <Link className="underline" href="/money">
+                <Link className="text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)] underline decoration-[var(--ega-border-strong)] underline-offset-2 hover:text-[color:var(--ega-text)]" href="/money">
                   Open Money
                 </Link>
               </div>
             ) : money.totalMinor !== null && money.totalMinor > 0 ? (
               <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
-                <p className="text-[length:var(--text-meta-lg)] font-medium">
+                <p className="tabular-nums text-[length:var(--text-meta-lg)] font-medium">
                   {formatMad(money.totalMinor)} recorded today
                 </p>
-                <Link className="underline" href="/money">
+                <Link className="text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)] underline decoration-[var(--ega-border-strong)] underline-offset-2 hover:text-[color:var(--ega-text)]" href="/money">
                   Open Money
                 </Link>
               </div>
             ) : (
               <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
                 <p className="text-[length:var(--text-meta-lg)]">No spending recorded today yet.</p>
-                <Link className="underline" href="/money">
+                <Link className="text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)] underline decoration-[var(--ega-border-strong)] underline-offset-2 hover:text-[color:var(--ega-text)]" href="/money">
                   Open Money
                 </Link>
               </div>
@@ -112,26 +109,26 @@ export function TodayWorkCard({ work, money, routine }: TodayWorkCardProps) {
           ) : (
             <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
               <p className="text-[length:var(--text-meta-lg)]">Money unavailable right now.</p>
-              <Link className="underline" href="/money">
+              <Link className="text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)] underline decoration-[var(--ega-border-strong)] underline-offset-2 hover:text-[color:var(--ega-text)]" href="/money">
                 Open Money
               </Link>
             </div>
           )}
         </section>
 
-        <section aria-label="Routine check-in">
+        <section aria-label="Routine check-in" className="pt-3">
           {routine.available ? (
             routine.saved ? (
               <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
                 <p className="text-[length:var(--text-meta-lg)] font-medium">Check-in saved for today.</p>
-                <Link className="underline" href="/shutdown">
+                <Link className="text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)] underline decoration-[var(--ega-border-strong)] underline-offset-2 hover:text-[color:var(--ega-text)]" href="/shutdown">
                   Open Shutdown
                 </Link>
               </div>
             ) : (
               <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
                 <p className="text-[length:var(--text-meta-lg)]">No check-in yet — two minutes at Shutdown.</p>
-                <Link className="underline" href="/shutdown">
+                <Link className="text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)] underline decoration-[var(--ega-border-strong)] underline-offset-2 hover:text-[color:var(--ega-text)]" href="/shutdown">
                   Open Shutdown
                 </Link>
               </div>
@@ -139,7 +136,7 @@ export function TodayWorkCard({ work, money, routine }: TodayWorkCardProps) {
           ) : (
             <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
               <p className="text-[length:var(--text-meta-lg)]">Check-in status unavailable right now.</p>
-              <Link className="underline" href="/shutdown">
+              <Link className="text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)] underline decoration-[var(--ega-border-strong)] underline-offset-2 hover:text-[color:var(--ega-text)]" href="/shutdown">
                 Open Shutdown
               </Link>
             </div>

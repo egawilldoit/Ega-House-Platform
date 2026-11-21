@@ -103,11 +103,11 @@ export function MorningStartupPanel({
           ) : null}
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid gap-4 border-y border-[var(--ega-divider)] py-3 sm:grid-cols-2">
           <section aria-labelledby="morning-startup-yesterday-heading" className="flex flex-col gap-1.5">
             <h4
               id="morning-startup-yesterday-heading"
-              className="text-[length:var(--text-micro)] font-semibold uppercase tracking-[var(--tracking-widest)] text-[color:var(--ega-text-tertiary)]"
+              className="text-[length:var(--text-meta)] font-medium text-[color:var(--ega-text-secondary)]"
             >
               Yesterday
             </h4>
@@ -148,11 +148,7 @@ export function MorningStartupPanel({
                       </li>
                     ))}
                   </ul>
-                ) : (
-                  <p className="text-[length:var(--text-meta-lg)] text-[color:var(--ega-text-secondary)]">
-                    No completed work recorded yesterday.
-                  </p>
-                )}
+                ) : null}
               </>
             )}
           </section>
@@ -160,7 +156,7 @@ export function MorningStartupPanel({
           <section aria-labelledby="morning-startup-carryover-heading" className="flex flex-col gap-1.5">
             <h4
               id="morning-startup-carryover-heading"
-              className="text-[length:var(--text-micro)] font-semibold uppercase tracking-[var(--tracking-widest)] text-[color:var(--ega-text-tertiary)]"
+              className="text-[length:var(--text-meta)] font-medium text-[color:var(--ega-text-secondary)]"
             >
               Carryovers
             </h4>
@@ -186,11 +182,7 @@ export function MorningStartupPanel({
                   </li>
                 ))}
               </ul>
-            ) : (
-              <p className="text-[length:var(--text-meta-lg)] text-[color:var(--ega-text-secondary)]">
-                Nothing is carrying over right now.
-              </p>
-            )}
+            ) : null}
           </section>
         </div>
 
@@ -198,11 +190,11 @@ export function MorningStartupPanel({
           <section
             aria-labelledby="morning-startup-planned-heading"
             data-testid="morning-startup-planned"
-            className="flex flex-col gap-1.5 rounded-[var(--radius-sm)] border border-[var(--ega-divider)] bg-[color:var(--ega-surface-subtle)] px-3 py-2.5"
+            className="flex flex-col gap-1.5 border-l-2 border-[var(--tw-accent,var(--ega-border-strong))] pl-3"
           >
             <h4
               id="morning-startup-planned-heading"
-              className="text-[length:var(--text-micro)] font-semibold uppercase tracking-[var(--tracking-widest)] text-[color:var(--ega-text-tertiary)]"
+              className="text-[length:var(--text-meta)] font-medium text-[color:var(--ega-text-secondary)]"
             >
               Planned for today ({model.selectedOutcomes.length}
               {model.plannedActionableCount > model.selectedOutcomes.length
@@ -254,11 +246,10 @@ export function MorningStartupPanel({
 
           <p
             id="morning-startup-outcomes-help"
-            className="text-[length:var(--text-meta-lg)] leading-[var(--leading-relaxed)] text-[color:var(--ega-text-secondary)]"
+            className="text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]"
           >
-            Pick one project and 1 to 3 outcome tasks. Choosing a project adds its outcomes to
-            today; existing planned work stays. The Primary badge appears only when every planned
-            outcome shares one project.
+            Choose 1 to 3 tasks from a project. Choosing a project adds its outcomes to today;
+            existing planned work stays.
           </p>
 
           {model.groups.length === 0 ? (
@@ -276,7 +267,7 @@ export function MorningStartupPanel({
               }
             />
           ) : (
-            <div className="grid gap-3 md:grid-cols-2">
+            <div className="grid gap-x-6 md:grid-cols-2">
               {model.groups.map((group, groupIndex) => {
                 const helpId = `morning-startup-group-${groupIndex}-help`;
                 return (
@@ -284,7 +275,7 @@ export function MorningStartupPanel({
                     key={group.key}
                     action={startMorningOutcomesAction}
                     data-testid={`morning-startup-group-${groupIndex}`}
-                    className="rounded-[var(--radius-md)] border border-[var(--ega-border)] bg-[color:var(--ega-surface)] p-3"
+                    className="border-t border-[var(--ega-divider)] py-3"
                   >
                     <input type="hidden" name="returnTo" value={returnTo} />
                     <fieldset className="flex flex-col gap-2" aria-describedby={helpId}>
@@ -292,10 +283,7 @@ export function MorningStartupPanel({
                         {group.projectName}
                         {group.isPrimary ? <Badge tone="info">Primary</Badge> : null}
                       </legend>
-                      <p
-                        id={helpId}
-                        className="text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]"
-                      >
+                      <p id={helpId} className="sr-only">
                         Choose 1 to 3 tasks from this project.
                       </p>
                       <ul className="flex flex-col gap-1.5">
@@ -354,7 +342,6 @@ export function MorningStartupPanel({
             >
               Create a task in Tasks
             </Link>
-            . This startup flow only selects existing work.
           </p>
         </section>
       </CardContent>
