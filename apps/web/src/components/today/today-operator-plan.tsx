@@ -40,9 +40,6 @@ export function TodayOperatorPlan({
           <div>
             <p className="glass-label">Daily Operator</p>
             <CardTitle className="mt-1 text-[length:var(--text-section)]">Primary plan</CardTitle>
-            <p className="mt-1 max-w-2xl text-[length:var(--text-meta)] leading-5 text-[color:var(--ega-text-secondary)]">
-              Review the recommended lane before anything is added to Today. Operator suggestions never change work silently.
-            </p>
           </div>
           {proposal ? <Badge tone={proposal.status === "generated" ? "warn" : "success"}>{proposalStatusLabel(proposal.status)}</Badge> : null}
         </div>
