@@ -16,7 +16,7 @@
   --tw-rule: #dde1e8;
   --tw-text: #1a1e27;
   --tw-muted: #5a6374;
-  --tw-accent: #1a8a72;
+  --tw-accent: #14755f;
   --tw-warn: #b4512b;
 
   --ega-surface: var(--tw-canvas);
@@ -44,12 +44,12 @@ html[data-theme="dark"] .today-workbench {
   --tw-warn: #d96b43;
 }
 
-/* Open canvas: the shell background matches the workbench while on Today. */
-html:has(.today-workbench.today-workbench) {
-  --ega-bg: #f4f5f8;
+/* Open canvas scoped to Today's content area so the shared sidebar and top bar keep their shell colors. */
+.app-page:has(.today-workbench) {
+  background: #f4f5f8;
 }
-html[data-theme="dark"]:has(.today-workbench.today-workbench) {
-  --ega-bg: #12151b;
+html[data-theme="dark"] .app-page:has(.today-workbench) {
+  background: #12151b;
 }
 
 /* ---------- Header ---------- */
@@ -72,18 +72,14 @@ html[data-theme="dark"]:has(.today-workbench.today-workbench) {
   color: var(--tw-muted);
   font-variant-numeric: tabular-nums;
 }
-.today-workbench .app-page-actions .btn-instrument {
+.today-workbench .app-page-actions .btn-instrument-muted {
   background: transparent;
   border-color: var(--tw-rule);
   color: var(--tw-text);
   box-shadow: none;
 }
-.today-workbench .app-page-actions .btn-instrument:hover {
+.today-workbench .app-page-actions .btn-instrument-muted:hover {
   background: var(--tw-hover);
-}
-.today-workbench .app-page-actions [data-testid="today-add-task"] {
-  color: var(--tw-accent);
-  border-color: color-mix(in srgb, var(--tw-accent) 45%, var(--tw-rule));
 }
 
 /* ---------- Sentence case: no all-caps eyebrows ---------- */
@@ -203,12 +199,6 @@ html[data-theme="dark"]:has(.today-workbench.today-workbench) {
 }
 .today-workbench .tw-stage [data-testid="today-timer-active"] .text-\[color\:var\(--status-healthy\)\] {
   color: var(--tw-accent);
-}
-
-/* Verdigris accents on owned controls only; the user's accent preference still
-   drives shared primary buttons. */
-.today-workbench input[type="checkbox"] {
-  accent-color: var(--tw-accent);
 }
 
 @media (prefers-reduced-motion: no-preference) {

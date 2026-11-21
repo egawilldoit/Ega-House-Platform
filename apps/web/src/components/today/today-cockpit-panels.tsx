@@ -269,7 +269,7 @@ export function ActiveTimerPanel({
       <Card label="Focus session" title="No session running" data-testid="today-timer-idle">
         <CardContent className="flex flex-col gap-3">
           <p className="text-[length:var(--text-meta-lg)] leading-[var(--leading-snug)] text-[color:var(--ega-text-secondary)]">
-            Start a timer from any task below.
+            Start a session from Start here or Suggested next.
           </p>
           <Link
             href="/timer"

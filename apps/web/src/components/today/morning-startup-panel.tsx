@@ -248,7 +248,8 @@ export function MorningStartupPanel({
             id="morning-startup-outcomes-help"
             className="text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]"
           >
-            Choosing a project adds its outcomes to today; existing planned work stays.
+            Choose 1 to 3 tasks from a project. Choosing a project adds its outcomes to today;
+            existing planned work stays.
           </p>
 
           {model.groups.length === 0 ? (
