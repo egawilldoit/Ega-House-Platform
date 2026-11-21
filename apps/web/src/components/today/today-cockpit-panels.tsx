@@ -15,7 +15,7 @@ import { formatTaskToken, isTaskCompletedStatus } from "@/lib/task-domain";
 import { formatTaskEstimate } from "@/lib/task-estimate";
 import { TaskDueDateLabel } from "@/components/tasks/task-due-date-label";
 import { getTodayTaskHref } from "@/components/today/today-task-card";
-import { Clock3, ExternalLink, ListChecks, Play, Radio, Square } from "lucide-react";
+import { ExternalLink, ListChecks, Play, Radio, Square } from "lucide-react";
 
 type TodayCockpitActionProps = {
   task: TodayPlannerTask;
@@ -268,16 +268,9 @@ export function ActiveTimerPanel({
     return (
       <Card label="Focus session" title="No session running" data-testid="today-timer-idle">
         <CardContent className="flex flex-col gap-3">
-          <div className="flex items-start gap-3">
-            <Clock3
-              className="mt-0.5 h-4 w-4 shrink-0 text-[color:var(--ega-text-tertiary)]"
-              aria-hidden="true"
-            />
-            <p className="text-[length:var(--text-meta-lg)] leading-[var(--leading-snug)] text-[color:var(--ega-text-secondary)]">
-              Start a session from Start here or Suggested next. The timer keeps
-              running across the workspace while it is active.
-            </p>
-          </div>
+          <p className="text-[length:var(--text-meta-lg)] leading-[var(--leading-snug)] text-[color:var(--ega-text-secondary)]">
+            Start a timer from any task below.
+          </p>
           <Link
             href="/timer"
             className="btn-instrument btn-instrument-muted flex h-8 w-fit items-center px-3 text-sm"

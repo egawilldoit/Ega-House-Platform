@@ -1,5 +1,8 @@
 import type { Metadata } from "next";
+import localFont from "next/font/local";
 import Link from "next/link";
+
+import "@/styles/today-workbench.css";
 
 import { clearCompletedFromTodayAction } from "@/app/(workspace)/today/actions";
 import {
@@ -59,6 +62,26 @@ import { getFrictionRadar } from "@/lib/services/friction-service";
 import { getOperatorProposalData } from "@/lib/services/operator-proposal-service";
 import { getWorkspaceShellMetrics } from "@/lib/workspace-shell";
 import { CalendarCheck2, CheckCircle2, CircleDashed, CircleOff, CirclePlay } from "lucide-react";
+
+// Today-only typography, self-hosted (see src/app/fonts/README.md): Newsreader
+// for the heading and focus anchor, IBM Plex Sans for the workbench body.
+const newsreader = localFont({
+  src: "../../fonts/newsreader-latin-var.woff2",
+  weight: "400 600",
+  style: "normal",
+  variable: "--tw-font-serif",
+  display: "swap",
+});
+
+const plexSans = localFont({
+  src: "../../fonts/ibm-plex-sans-latin-var.woff2",
+  weight: "400 600",
+  style: "normal",
+  variable: "--tw-font-sans",
+  display: "swap",
+});
+
+const workbenchClassName = `today-workbench ${newsreader.variable} ${plexSans.variable}`;
 
 export const metadata: Metadata = {
   title: "Today",
@@ -196,13 +219,10 @@ export default async function TodayPage({
 
   if (todayResult.errorMessage || !todayResult.data) {
     return (
-      <>
-        <WorkspacePageHeader
-          title="Today"
-          description="Focus on what matters today. Make progress, one step at a time."
-        />
+      <div className={workbenchClassName}>
+        <WorkspacePageHeader title="Today" description="Your daily plan." />
         <PlannerErrorState actionError={actionError} />
-      </>
+      </div>
     );
   }
 
@@ -370,11 +390,6 @@ export default async function TodayPage({
 
   return (
     <>
-      <WorkspacePageHeader
-        title="Today"
-        description={`${formatDisplayDate(todayData.date, "detail")} · Focus on what matters today. Make progress, one step at a time.`}
-        actions={<TodayHeaderActions ownerKey={user?.id ?? ""} />}
-      />
       <OwnerScopedRealtimeRefresh
         ownerUserId={user?.id ?? null}
         channelPrefix="today"
@@ -386,16 +401,6 @@ export default async function TodayPage({
       <RefreshOnFocus />
       {/* Reconnect/visibility reconciliation for the rail's Active Timer panel. */}
       <TimerSyncStatus surface="today" ownerUserId={user?.id ?? null} />
-
-      {showStoppedTaskPrompt ? (
-        <TimerStopOutcomePrompt
-          taskId={stoppedTaskId ?? ""}
-          taskTitle={stoppedTaskTitle}
-          returnTo={returnTo}
-        />
-      ) : null}
-
-      <TimerActionFeedback actionError={actionError} actionSuccess={actionSuccess} />
 
       {selectedTaskId ? (
         <TaskDrawerHost
@@ -423,15 +428,42 @@ export default async function TodayPage({
         />
       ) : null}
 
-      <TodayKpiRow
-        summary={todayData.summary}
-        hasActiveTimer={Boolean(todayData.activeTimer)}
-        globalOverdueCount={shellMetrics.overdueTaskCount}
-      />
+      <div className={workbenchClassName}>
+        <WorkspacePageHeader
+          title="Today"
+          description={formatDisplayDate(todayData.date, "detail")}
+          actions={<TodayHeaderActions ownerKey={user?.id ?? ""} />}
+        />
 
-      <div className="workspace-main-rail-grid">
-        {/* Left / Main Column: Focus & Execution */}
-        <div className="flex flex-col gap-4">
+        {showStoppedTaskPrompt ? (
+          <TimerStopOutcomePrompt
+            taskId={stoppedTaskId ?? ""}
+            taskTitle={stoppedTaskTitle}
+            returnTo={returnTo}
+          />
+        ) : null}
+
+        <TimerActionFeedback actionError={actionError} actionSuccess={actionSuccess} />
+
+        {/* The single elevated surface: focus session + daily metrics. */}
+        <section className="tw-stage" aria-label="Focus">
+          <ActiveTimerPanel
+            activeTimer={todayData.activeTimer}
+            returnTo={returnTo}
+            startedAt={activeTimerStartedAt}
+          />
+          <TodayKpiRow
+            summary={todayData.summary}
+            hasActiveTimer={Boolean(todayData.activeTimer)}
+            globalOverdueCount={shellMetrics.overdueTaskCount}
+            workTargetMinutes={morningStartup.workTargetMinutes}
+            workTargetLabel={morningStartup.workTargetLabel}
+          />
+        </section>
+
+        <div className="workspace-main-rail-grid">
+        {/* Left / Main Column: open workbench */}
+        <div className="tw-canvas tw-main flex flex-col gap-4">
           <MorningStartupPanel model={morningStartup} />
 
           <TodayWorkCard work={snapshot.work} money={todayMoney} routine={todayRoutine} />
@@ -600,14 +632,8 @@ export default async function TodayPage({
           </TodaySection>
         </div>
 
-        {/* Right / Rail Column: Active Timer, Timeline, Intelligence, Plans */}
-        <div className="workspace-secondary-rail">
-          <ActiveTimerPanel
-            activeTimer={todayData.activeTimer}
-            returnTo={returnTo}
-            startedAt={activeTimerStartedAt}
-          />
-
+        {/* Right / Rail Column: Schedule, Intelligence, Plans (quiet) */}
+        <div className="tw-canvas tw-rail workspace-secondary-rail">
           <TodayLanePanel
             scheduledBlocks={todayData.scheduledBlocks}
             dueTodayCarryover={dueTodayCarryover}
@@ -625,6 +651,7 @@ export default async function TodayPage({
             returnTo={returnTo}
           />
         </div>
+      </div>
       </div>
     </>
   );
