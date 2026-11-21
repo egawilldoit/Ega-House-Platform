@@ -179,6 +179,14 @@ jobs:
           fi
           git diff --check "$BASE"...HEAD
           test -z "$(git status --porcelain)"
+      - name: Guard against tracked database dumps and backups
+        shell: bash
+        run: |
+          if ! test -z "$(git ls-files | grep -iE '(\.dump$|\.bak$|^backups/)')"; then
+            echo "::error::Database dumps and backups must not be tracked; see .gitignore."
+            git ls-files | grep -iE '(\.dump$|\.bak$|^backups/)'
+            exit 1
+          fi
       - name: Set up Node 22
         uses: actions/setup-node@v6
         with:

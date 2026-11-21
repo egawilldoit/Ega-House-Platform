@@ -58,3 +58,9 @@ graphify-out/
 /.e2e-local/
 **/test-results/
 **/playwright-report/
+
+# Database dumps and backups
+backups/
+*.dump
+*.bak
+*.sql.gz
