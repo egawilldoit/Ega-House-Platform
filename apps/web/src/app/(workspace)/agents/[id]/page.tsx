@@ -20,11 +20,10 @@ import {
 import { getAgentActor } from "@/lib/services/agent-registry-service";
 import { AgentCredentialRow } from "../credential-row";
 import { setAgentArchivedAction, updateAgentAction } from "../actions";
-import { IssueCredentialForm } from "./issue-credential-form";
 
 export const metadata: Metadata = {
   title: "Agent",
-  description: "Agent identity, granted capabilities and recent observed activity.",
+  description: "Agent identity and observed activity.",
 };
 
 export const dynamic = "force-dynamic";
@@ -144,8 +143,8 @@ function AgentDetail({ agent }: { agent: AgentActorDetail }) {
           {agent.credentials.length === 0 ? (
             <EmptyState
               icon={Bot}
-              title="No credentials yet"
-              description="Issue a credential to let this agent authenticate. The raw token is shown once."
+              title="No credentials"
+              description="No legacy credentials are registered for this agent. Credential issuance was retired with the legacy agent API."
             />
           ) : (
             <ul>
@@ -158,17 +157,6 @@ function AgentDetail({ agent }: { agent: AgentActorDetail }) {
               ))}
             </ul>
           )}
-          <div className="border-t border-[var(--ega-divider)] px-4 py-4">
-            <h3 className="mb-3 text-[length:var(--text-panel-title)] font-semibold text-[color:var(--ega-text)]">
-              Issue a credential
-            </h3>
-            <IssueCredentialForm agentId={agent.id} disabled={archived} />
-            {archived ? (
-              <p className="mt-2 text-[length:var(--text-meta)] text-[color:var(--ega-text-tertiary)]">
-                Reactivate this agent before issuing another credential.
-              </p>
-            ) : null}
-          </div>
         </Card>
 
         <Card clip level="standard">
@@ -182,7 +170,7 @@ function AgentDetail({ agent }: { agent: AgentActorDetail }) {
             <EmptyState
               icon={History}
               title="No activity observed yet"
-              description="Agent events appear here after a credential performs an action through the agent API."
+              description="Agent events appear here for activity attributed to this identity."
             />
           ) : (
             <ul>

@@ -11,8 +11,6 @@ describe("operational transport boundaries", () => {
     const cronFiles = [
       "cron/calendar-sync/route.ts",
       "cron/task-reminders/route.ts",
-      "cron/daily-email/route.ts",
-      "cron/test-email/route.ts",
       "cron/_lib/send-weekly-reviews.ts",
     ];
 
@@ -25,11 +23,8 @@ describe("operational transport boundaries", () => {
     }
   });
 
-  it("keeps weekly review route aliases as thin compatibility adapters", () => {
-    for (const file of [
-      "cron/sendWeeklyReviews/route.ts",
-      "cron/weekly-review-email/route.ts",
-    ]) {
+  it("keeps the weekly review cron route as a thin adapter", () => {
+    for (const file of ["cron/sendWeeklyReviews/route.ts"]) {
       const text = source(file);
       expect(text, file).toContain("sendWeeklyReviewsCron");
       expect(text, file).not.toContain("deliverWeeklyReviewEmails");

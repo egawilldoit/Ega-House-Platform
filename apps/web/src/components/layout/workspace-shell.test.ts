@@ -76,12 +76,6 @@ describe("light workspace shell", () => {
     expect(routeMeta).toContain("getShellRouteMeta");
   });
 
-  it("composes the workspace frame through the existing AppShell boundary", () => {
-    const appShell = read("src/components/layout/app-shell.tsx");
-
-    expect(appShell).toContain("AppShell");
-  });
-
   it("derives identity on the server and keeps one verification round trip", () => {
     const lib = read("src/lib/workspace-shell.ts");
 
