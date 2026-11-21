@@ -13,7 +13,7 @@ The repository governance contract is `AGENTS.md` plus scoped nested `AGENTS.md`
 | OpenCode | `.opencode/`, root/nested `AGENTS.md` | repository config is for plugins/skills; repository governance stays in `AGENTS.md` | No |
 | Hermes | `HERMES_MASTER_PROMPT.md`, `.hermes/skills`, `.agents/skills`, `scripts/agent/preflight-hermes-skills.mjs` | fallback entry prompt points to repository governance; project-local skills require the configured/trusted discovery path | No |
 | Repository skills | `.agents/skills/*/SKILL.md`, `skills-lock.json` | workflow specializations selected by task trigger; never higher authority than repository/product policy | No |
-| Graphify / Pi compatibility | `.pi/agent/skills/graphify`, mirrored Graphify skill locations | code-graph/helper capability only | No |
+| Graphify skill | `.opencode/skills/graphify` | code-graph/helper capability only; platform-mirrored copies deduplicated in PR-01 | No |
 
 Tool-specific files may define hooks, plugins, skill discovery, transport, or runtime integration. They must not silently redefine branch policy, merge authority, product behavior, queue semantics, or validation truth.
 

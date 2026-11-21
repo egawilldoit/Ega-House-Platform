@@ -86,7 +86,7 @@ export default async function AgentsPage({
     <>
       <WorkspacePageHeader
       title="Agents"
-      description="Owner-registered agent identities, their credentials and observed activity."
+      description="Owner-registered agent identities and observed activity."
     />
       <div className="flex flex-col gap-4">
         {params.error ? (
@@ -126,7 +126,7 @@ export default async function AgentsPage({
             <EmptyState
               icon={Bot}
               title="No agents registered yet"
-              description="Register an identity first, then issue it a revocable credential. Agent names are owner-declared labels, not verified vendor identities."
+              description="Register an identity to label agent activity. Agent names are owner-declared labels, not verified vendor identities."
             />
           ) : (
             <ul>

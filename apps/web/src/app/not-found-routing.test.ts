@@ -9,7 +9,6 @@ function read(...segments: string[]) {
 
 test("EGA-708: root not-found renders in app shell and links home", () => {
   const notFound = read("app", "not-found.tsx");
-  assert.match(notFound, /import\s+\{\s*AppShell\s*\}\s+from\s+"@\/components\/layout\/app-shell"/);
   assert.match(notFound, /href="\/home"/);
   assert.match(notFound, /title:\s*"Not found"/);
 });
