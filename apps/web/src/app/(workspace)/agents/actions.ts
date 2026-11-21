@@ -3,11 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
-import type { AgentTokenScopes } from "@/lib/contracts/agent";
-import type { IssueCredentialState } from "@/lib/agent-credential-issue-state";
 import {
   createAgentActor,
-  issueAgentCredential,
   revokeAgentCredential,
   setAgentActorArchived,
   updateAgentActor,
@@ -84,58 +81,6 @@ export async function setAgentArchivedAction(formData: FormData): Promise<never>
       } revoked.`
     : "Agent reactivated.";
   redirect(withFeedback(returnTo, "notice", message));
-}
-
-function readScopes(formData: FormData): AgentTokenScopes {
-  const tasks: NonNullable<AgentTokenScopes["tasks"]> = {};
-  if (formData.get("tasks.read") === "on") tasks.read = true;
-  if (formData.get("tasks.create") === "on") tasks.create = true;
-  if (formData.get("tasks.updateAny") === "on") tasks.updateAny = true;
-  if (formData.get("tasks.archive") === "on") tasks.archive = true;
-  if (formData.get("tasks.bulk") === "on") tasks.bulk = true;
-  if (formData.get("tasks.comment") === "on") tasks.comment = true;
-
-  return {
-    ...(Object.keys(tasks).length > 0 ? { tasks } : {}),
-    ...(formData.get("projects.read") === "on" ? { projects: { read: true } } : {}),
-    ...(formData.get("goals.read") === "on" ? { goals: { read: true } } : {}),
-  };
-}
-
-/**
- * Issues one credential and returns the raw token to the client once. The token
- * is never placed in a URL or persisted anywhere except its HMAC hash.
- */
-export async function issueCredentialAction(
-  previous: IssueCredentialState,
-  formData: FormData,
-): Promise<IssueCredentialState> {
-  const agentId = text(formData, "agentId");
-  const result = await issueAgentCredential({
-    agentId,
-    name: formData.get("name"),
-    scopes: readScopes(formData),
-  });
-
-  if (!result.ok) {
-    return {
-      status: "error",
-      token: null,
-      tokenPrefix: null,
-      errorMessage: result.errorMessage,
-      attempt: previous.attempt + 1,
-    };
-  }
-
-  revalidatePath(`/agents/${agentId}`);
-  revalidatePath("/agents");
-  return {
-    status: "success",
-    token: result.token,
-    tokenPrefix: result.tokenPrefix,
-    errorMessage: null,
-    attempt: previous.attempt + 1,
-  };
 }
 
 export async function revokeCredentialAction(formData: FormData): Promise<never> {
