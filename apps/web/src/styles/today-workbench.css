@@ -1,0 +1,208 @@
+/*
+ * Today workbench — "Drafting Slate & Studio Verdigris".
+ *
+ * Visual-only layer scoped to `/today` via `.today-workbench`. It remaps the
+ * existing `--ega-*` tokens inside the page so every reused panel inherits the
+ * calmer palette, flattens nested card chrome into an open canvas separated by
+ * 1px hairline rules, and keeps exactly one elevated surface (`.tw-stage`).
+ * No component behaviour depends on anything in this file.
+ */
+
+.today-workbench {
+  /* Cool-paper (light) */
+  --tw-canvas: #f4f5f8;
+  --tw-surface: #ffffff;
+  --tw-hover: #eceef3;
+  --tw-rule: #dde1e8;
+  --tw-text: #1a1e27;
+  --tw-muted: #5a6374;
+  --tw-accent: #14755f;
+  --tw-warn: #b4512b;
+
+  --ega-surface: var(--tw-canvas);
+  --ega-surface-subtle: var(--tw-hover);
+  --ega-surface-hover: var(--tw-hover);
+  --ega-border: var(--tw-rule);
+  --ega-divider: var(--tw-rule);
+  --ega-text: var(--tw-text);
+  --ega-text-secondary: var(--tw-muted);
+  --ega-text-tertiary: var(--tw-muted);
+  --status-overdue: var(--tw-warn);
+
+  font-family: var(--tw-font-sans), var(--font-body);
+  color: var(--tw-text);
+}
+
+html[data-theme="dark"] .today-workbench {
+  --tw-canvas: #12151b;
+  --tw-surface: #191d26;
+  --tw-hover: #1e232e;
+  --tw-rule: #252a36;
+  --tw-text: #e6e8ee;
+  --tw-muted: #8a93a6;
+  --tw-accent: #2bb89a;
+  --tw-warn: #d96b43;
+}
+
+/* Open canvas scoped to Today's content area so the shared sidebar and top bar keep their shell colors. */
+.app-page:has(.today-workbench) {
+  background: #f4f5f8;
+}
+html[data-theme="dark"] .app-page:has(.today-workbench) {
+  background: #12151b;
+}
+
+/* ---------- Header ---------- */
+.today-workbench .app-page-header {
+  padding-bottom: 18px;
+  margin-bottom: 24px;
+  border-bottom: 1px solid var(--tw-rule);
+}
+.today-workbench .app-page-eyebrow {
+  display: none;
+}
+.today-workbench .app-page-title {
+  font-family: var(--tw-font-serif), Georgia, serif;
+  font-size: 2.25rem;
+  font-weight: 500;
+  letter-spacing: -0.015em;
+  line-height: 1.1;
+}
+.today-workbench .app-page-description {
+  color: var(--tw-muted);
+  font-variant-numeric: tabular-nums;
+}
+.today-workbench .app-page-actions .btn-instrument-muted {
+  background: transparent;
+  border-color: var(--tw-rule);
+  color: var(--tw-text);
+  box-shadow: none;
+}
+.today-workbench .app-page-actions .btn-instrument-muted:hover {
+  background: var(--tw-hover);
+}
+
+/* ---------- Sentence case: no all-caps eyebrows ---------- */
+.today-workbench .uppercase,
+.today-workbench .glass-label {
+  font-family: inherit;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: var(--text-meta);
+  font-weight: 500;
+  color: var(--tw-muted);
+}
+
+/* ---------- Tabular figures for timers, durations, counts ---------- */
+.today-workbench .tabular-nums,
+.today-workbench time,
+.today-workbench .rank {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Flatten: open canvas + hairlines ---------- */
+.today-workbench .tw-canvas > *,
+.today-workbench .tw-stage > * {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  --panel-pad: 0px;
+}
+.today-workbench .tw-canvas > * + * {
+  border-top: 1px solid var(--tw-rule);
+  padding-top: 20px;
+}
+.today-workbench .tw-canvas > * > .border-b:first-child,
+.today-workbench .tw-stage > * > .border-b:first-child {
+  border-bottom: 0;
+  padding-bottom: 4px;
+}
+.today-workbench .tw-canvas .row,
+.today-workbench .tw-canvas .task-row {
+  padding-inline: 4px;
+}
+.today-workbench .tw-canvas .row:hover,
+.today-workbench .tw-canvas .task-row:hover {
+  background: var(--tw-hover);
+}
+.today-workbench .tw-main {
+  gap: 24px;
+}
+.today-workbench .tw-rail {
+  gap: 18px;
+}
+
+/* Flatten nested cards inside the diagnostics disclosure so no card-in-card remains. */
+.today-workbench [data-testid="today-intelligence-panel"] > summary {
+  padding-inline: 4px;
+  border-radius: 6px;
+}
+.today-workbench [data-testid="today-intelligence-panel"] > div {
+  padding-inline: 0;
+  border-top-color: var(--tw-rule);
+}
+.today-workbench [data-testid="today-intelligence-panel"] > div > * {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  --panel-pad: 0px;
+}
+.today-workbench [data-testid="today-intelligence-panel"] > div > * + * {
+  border-top: 1px solid var(--tw-rule);
+  padding-top: 14px;
+}
+.today-workbench [data-testid="today-intelligence-panel"] > div > * > .border-b:first-child {
+  border-bottom: 0;
+  padding-top: 0;
+  padding-bottom: 4px;
+}
+
+/* Quiet rail: secondary to task selection. */
+.today-workbench .tw-rail h3 {
+  font-size: var(--text-body);
+  font-weight: 500;
+}
+.today-workbench .tw-rail > *:not(:first-child) {
+  color: var(--tw-muted);
+}
+
+/* ---------- The one elevated surface ---------- */
+.today-workbench .tw-stage {
+  display: grid;
+  gap: 0;
+  margin-bottom: 28px;
+  background: var(--tw-surface);
+  border: 1px solid var(--tw-rule);
+  border-radius: 12px;
+}
+.today-workbench .tw-stage > * {
+  padding: 20px 22px;
+}
+.today-workbench .tw-stage > * + * {
+  border-top: 1px solid var(--tw-rule);
+}
+@media (min-width: 900px) {
+  .today-workbench .tw-stage {
+    grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  }
+  .today-workbench .tw-stage > * + * {
+    border-top: 0;
+    border-left: 1px solid var(--tw-rule);
+  }
+}
+.today-workbench .tw-stage h3 {
+  font-family: var(--tw-font-serif), Georgia, serif;
+  font-size: 1.5rem;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+}
+.today-workbench .tw-stage [data-testid="today-timer-active"] .text-\[color\:var\(--status-healthy\)\] {
+  color: var(--tw-accent);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .today-workbench .tw-progress-fill {
+    transition: width 400ms ease;
+  }
+}
