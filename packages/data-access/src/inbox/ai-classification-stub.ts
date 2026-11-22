@@ -2,11 +2,11 @@
  * Data-access stub for provider-neutral Inbox AI classification (EGA-508).
  * Provider-neutral foundation implemented. Concrete suggestion experience blocked on HITL provider/model decision.
  *
- * This is a server-only integration layer stub. It implements the same
- * provider-neutral port as the server adapter but lives in data-access so
- * composition can import it without depending on `apps/server`.
+ * This is a server-only integration layer stub. It implements the
+ * provider-neutral port directly in data-access so composition can import it
+ * without depending on `apps/server`.
  *
- * Invariants identical to `apps/server/src/adapters/inbox-ai-stub.ts`:
+ * Invariants:
  * - No concrete provider wiring (HITL blocked)
  * - No secrets in config, generation, or logs
  * - Bounded input is enforced in application; this stub just returns safe fallback
