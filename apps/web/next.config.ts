@@ -27,8 +27,6 @@ const nextConfig: NextConfig = {
       { source: "/work-analytics", destination: "/review", permanent: false },
       { source: "/work-analytics/:path*", destination: "/review", permanent: false },
       { source: "/friction", destination: "/review", permanent: false },
-      { source: "/timer", destination: "/today", permanent: false },
-      { source: "/timer/:path*", destination: "/today", permanent: false },
       { source: "/startup", destination: "/today", permanent: false },
       { source: "/notifications", destination: "/today", permanent: false },
       { source: "/help", destination: "/today", permanent: false },

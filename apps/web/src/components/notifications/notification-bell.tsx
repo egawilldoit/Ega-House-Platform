@@ -106,6 +106,10 @@ export function NotificationBell({ initialUnreadCount }: { initialUnreadCount: n
   function handleOpenChange(next: boolean) {
     setOpen(next);
     if (next) {
+      // A prior in-flight or aborted refresh must never block a fresh open
+      // from loading the first page; reset the guard so the seeded/changed
+      // notification is always fetched.
+      loadingRef.current = false;
       // Refresh the first page on every open so notifications created since the
       // last open appear; older pages still append from the new cursor.
       void load(null, false);
