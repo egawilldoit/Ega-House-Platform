@@ -560,6 +560,7 @@ test("captures normalized Supabase review errors with code", async () => {
     tasks: [],
     goals: [],
     reviews: [],
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   }) as any;
   const originalFrom = base.from.bind(base);
   base.from = (table: string) => {

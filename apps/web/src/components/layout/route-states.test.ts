@@ -8,7 +8,6 @@ const ROOT = process.cwd();
 // Authenticated workspace routes audited for EGA-799. Auth/public routes keep
 // their own recovery surfaces and are intentionally out of this set.
 const WORKSPACE_ROUTES = [
-  "app/(workspace)/dashboard",
   "app/(workspace)/today",
   "app/(workspace)/tasks",
   "app/(workspace)/tasks/projects",
@@ -23,16 +22,11 @@ const WORKSPACE_ROUTES = [
   "app/(workspace)/notifications",
   "app/(workspace)/backlog",
   "app/(workspace)/startup",
-  "app/(workspace)/shutdown",
   "app/(workspace)/help",
   "app/(workspace)/settings/account",
-  "app/(workspace)/apps",
-  "app/(workspace)/apps/[workspace]",
   "app/(workspace)/agents",
   "app/(workspace)/agents/[id]",
   "app/(workspace)/friction",
-  "app/(workspace)/home",
-  "app/(workspace)/favorites",
   "app/(workspace)/archive",
 ];
 

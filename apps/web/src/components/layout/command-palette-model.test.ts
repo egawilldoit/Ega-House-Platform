@@ -18,14 +18,14 @@ import {
 test("navigation items include the full route set when the query is empty", () => {
   const labels = filterNavigationItems("").map((item) => item.label);
 
-  assert.deepEqual(labels, ["Today", "Tasks", "Goals", "Timer", "Review", "Analytics", "Backlog", "Archive", "Notifications", "Startup", "Shutdown", "Apps", "Help", "Settings"]);
+  assert.deepEqual(labels, ["Today", "Tasks", "Projects", "Money", "Review"]);
 });
 
 test("filters navigation items case-insensitively and drops non-matches", () => {
   const items = filterNavigationItems("TA");
 
-  // With expanded nav, "TA" matches Tasks and Startup (sTArtup)
-  assert.deepEqual(items.map((item) => item.label), ["Tasks", "Startup"]);
+  // "TA" matches Tasks only in the reduced route set.
+  assert.deepEqual(items.map((item) => item.label), ["Tasks"]);
 });
 
 test("groups search hits into sections with deep-link hrefs", () => {

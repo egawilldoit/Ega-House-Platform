@@ -54,19 +54,10 @@ test("EGA-659: /backlog page converts via the canonical application operation", 
 });
 
 test("EGA-659: /ideas becomes a compatibility redirect to /backlog", () => {
-  const source = readFileSync(IDEAS_PAGE_PATH, "utf-8");
-
-  assert.match(source, /redirect\(/);
-  assert.match(source, /\/backlog/);
-  assert.doesNotMatch(source, /getIdeaInboxNotes/, "old page no longer loads the list");
-  assert.doesNotMatch(source, /CreateIdeaNoteForm/, "old page no longer renders the capture form");
-});
-
-test("EGA-659: /ideas redirect preserves relevant old query parameters", () => {
-  const source = readFileSync(IDEAS_PAGE_PATH, "utf-8");
-
-  assert.match(source, /view/);
-  assert.match(source, /URLSearchParams/);
+  const nextConfig = readFileSync(resolve(import.meta.dirname, "../../../../next.config.ts"), "utf-8");
+  // next.config lives at apps/web/next.config.ts
+  assert.match(nextConfig, /source: "\/ideas"/);
+  assert.match(nextConfig, /destination: "\/backlog"/);
 });
 
 

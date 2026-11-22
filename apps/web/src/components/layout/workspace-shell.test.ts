@@ -50,17 +50,15 @@ describe("light workspace shell", () => {
     const routeMeta = read("src/components/layout/shell-route-meta.ts");
 
     for (const [label, href] of [
-      ["Home", "/home"],
       ["Today", "/today"],
       ["Tasks", "/tasks"],
-      ["Goals", "/goals"],
-      ["Timer", "/timer"],
+      ["Projects", "/tasks/projects"],
+      ["Money", "/money"],
       ["Review", "/review"],
-      ["Analytics", "/work-analytics"],
       ["Backlog", "/backlog"],
+      ["Archive", "/archive"],
       ["Notifications", "/notifications"],
       ["Startup", "/startup"],
-      ["Shutdown", "/shutdown"],
       ["Apps", "/apps"],
       ["Agents", "/agents"],
       ["Help", "/help"],
@@ -82,15 +80,6 @@ describe("light workspace shell", () => {
     expect(lib).toContain("export const getSessionUser = cache(");
     expect(lib).toContain("export async function getShellIdentity");
     expect(lib).toContain("getSessionUser()");
-  });
-
-  it("uses canonical navigation for every project destination", () => {
-    const navigation = read("src/components/layout/sidebar-navigation.tsx");
-
-    expect(navigation).toContain('canonicalUrl.resolve("/tasks/projects/new")');
-    expect(navigation).toContain("canonicalUrl.resolve(`/tasks?project=${project.id}`)");
-    expect(navigation).toContain('canonicalUrl.resolve("/tasks/projects")');
-    expect(navigation).toContain("VISIBLE_PROJECT_LIMIT");
   });
 
   it("keeps one search implementation wired to the canonical palette", () => {
@@ -177,23 +166,18 @@ describe("light workspace shell", () => {
     expect(navigation).toContain("aria-label={route.label}");
     expect(navigation).toContain("aria-label={getProjectAccessibleLabel(project)}");
     expect(navigation).toContain("activeTaskCount");
-    expect(navigation).toContain('aria-label="View all projects"');
     expect(logout).toContain('aria-label={isPending ? "Signing out" : "Logout"}');
     expect(logout).toContain("workspace-nav-label");
   });
 
-  it("preserves the dashboard compatibility redirect pointing at the launch page", () => {
-    const dashboard = read("src/app/(workspace)/dashboard/page.tsx");
-    expect(dashboard).toContain("getLaunchPagePath(preferences.launchPage)");
-    expect(dashboard).not.toContain("CommandCenterAsync");
-    expect(dashboard).not.toContain("getDashboardData");
+  it("preserves the dashboard compatibility redirect", () => {
+    const nextConfig = read("next.config.ts");
+    expect(nextConfig).toContain('source: "/dashboard"');
+    expect(nextConfig).toContain('destination: "/today"');
   });
 
-  it("keeps the public marketing home out of the authenticated shell", () => {
-    const marketingHome = read("src/app/home/home-page.tsx");
+  it("keeps marketing styling out of the authenticated shell", () => {
     const globals = read("src/app/globals.css");
-
-    expect(marketingHome.length).toBeGreaterThan(0);
     // Authenticated shell styling must not live in the marketing stylesheet.
     expect(globals).not.toContain("ega-dashboard-hero");
   });

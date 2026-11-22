@@ -1,6 +1,21 @@
 import type { WorkspaceSearchResults } from "@/lib/services/workspace-search-service";
 import type { WorkspaceSearchScope } from "@/lib/workspace-search";
-import { WORKSPACE_COMMANDS, filterWorkspaceCommands } from "@/lib/workspace-commands";
+import { COMMAND_ROUTES } from "@/components/layout/shell-route-meta";
+
+type WorkspaceCommand = { id: string; label: string; group: "navigate" | "create"; href: `/${string}` | null; event: "capture" | "quick-task" | null; hint: string | null };
+const WORKSPACE_COMMANDS: readonly WorkspaceCommand[] = [
+  ...COMMAND_ROUTES.map((route) => ({ id: `nav-${route.label.toLowerCase()}`, label: route.label, group: "navigate" as const, href: route.href, event: null, hint: null })),
+  { id: "create-backlog", label: "Add to Backlog", group: "create", href: null, event: "capture", hint: "Capture" },
+  { id: "create-task", label: "New task", group: "create", href: null, event: "quick-task", hint: "Task" },
+  { id: "create-project", label: "New Project", group: "create", href: "/tasks/projects/new", event: null, hint: "Project" },
+];
+function filterWorkspaceCommands(query: string, group?: WorkspaceCommand["group"]): WorkspaceCommand[] {
+  const normalized = query.trim().toLowerCase();
+  return WORKSPACE_COMMANDS.filter((command) => {
+    if (group && command.group !== group) return false;
+    return normalized ? command.label.toLowerCase().includes(normalized) : true;
+  });
+}
 
 export type CommandPaletteGroupId = "go-to" | "tasks" | "projects" | "goals" | "ideas" | "quick-actions";
 
@@ -264,5 +279,3 @@ export function nextActiveIndex(current: number, count: number, delta: number): 
 
   return (current + delta + count) % count;
 }
-
-export { WORKSPACE_COMMANDS };

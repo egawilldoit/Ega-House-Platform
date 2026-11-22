@@ -74,8 +74,8 @@ describe("CommandPalette", () => {
     });
 
     const options = document.body.querySelectorAll('[role="option"]');
-    // 14 destinations plus three creation commands.
-    expect(options.length).toBe(17);
+    // 5 destinations plus three creation commands.
+    expect(options.length).toBe(8);
     expect(options[0].textContent).toContain("Today");
     expect(options[0].getAttribute("aria-selected")).toBe("true");
 

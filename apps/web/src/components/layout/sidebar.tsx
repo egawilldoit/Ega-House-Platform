@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { Suspense } from "react";
 
 import type { WorkspaceShellMetrics } from "@/lib/workspace-shell";
 import { SidebarCreateButton } from "./sidebar-create-button";
@@ -73,13 +74,15 @@ export function Sidebar({
 
       {/* The only scroll region: primary navigation, workspaces, system nav. */}
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain [scrollbar-width:thin]">
-        <SidebarNavigation
-          favorites={favorites}
-          projects={projects}
-          metrics={metrics}
-          compact={collapsed}
-          className="overflow-visible"
-        />
+        <Suspense fallback={null}>
+          <SidebarNavigation
+            favorites={favorites}
+            projects={projects}
+            metrics={metrics}
+            compact={collapsed}
+            className="overflow-visible"
+          />
+        </Suspense>
       </div>
 
       {/* Single unified Create button pinned below the scroll region. */}
