@@ -7,7 +7,7 @@ import { moveFavorite, toggleFavorite, type FavoriteKind } from "@/lib/services/
 
 function returnPath(raw: unknown): string {
   const value = String(raw ?? "").trim();
-  if (!value.startsWith("/") || value.startsWith("//")) return "/favorites";
+  if (!value.startsWith("/") || value.startsWith("//")) return "/today";
   return value;
 }
 
@@ -25,7 +25,6 @@ export async function toggleFavoriteAction(formData: FormData): Promise<never> {
     redirect(`${target}?actionError=${encodeURIComponent(result.errorMessage)}`);
   }
 
-  revalidatePath("/favorites");
   revalidatePath(target.split("?")[0] ?? "/");
   redirect(
     `${target}?actionSuccess=${encodeURIComponent(
@@ -41,8 +40,7 @@ export async function moveFavoriteAction(formData: FormData): Promise<never> {
   const result = await moveFavorite(kind, entityId, direction);
 
   if (result.errorMessage) {
-    redirect(`/favorites?actionError=${encodeURIComponent(result.errorMessage)}`);
+    redirect(`/today?actionError=${encodeURIComponent(result.errorMessage)}`);
   }
-  revalidatePath("/favorites");
-  redirect("/favorites");
+  redirect("/today");
 }

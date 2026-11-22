@@ -18,13 +18,36 @@ import {
 test("navigation items include the full route set when the query is empty", () => {
   const labels = filterNavigationItems("").map((item) => item.label);
 
-  assert.deepEqual(labels, ["Today", "Tasks", "Goals", "Timer", "Review", "Analytics", "Backlog", "Archive", "Notifications", "Startup", "Shutdown", "Apps", "Help", "Settings"]);
+  assert.deepEqual(labels, [
+    "Today",
+    "Tasks",
+    "Projects",
+    "Money",
+    "Review",
+    "Goals",
+    "Timer",
+    "Analytics",
+    "Backlog",
+    "Archive",
+    "Notifications",
+    "Startup",
+    "Agents",
+    "Help",
+    "Settings",
+  ]);
+});
+
+test("keeps retained secondary destinations searchable", () => {
+  const labels = filterNavigationItems("archive").map((item) => item.label);
+
+  assert.deepEqual(labels, ["Archive"]);
+  assert.equal(filterNavigationItems("apps").length, 0);
+  assert.equal(filterNavigationItems("shutdown").length, 0);
 });
 
 test("filters navigation items case-insensitively and drops non-matches", () => {
   const items = filterNavigationItems("TA");
 
-  // With expanded nav, "TA" matches Tasks and Startup (sTArtup)
   assert.deepEqual(items.map((item) => item.label), ["Tasks", "Startup"]);
 });
 

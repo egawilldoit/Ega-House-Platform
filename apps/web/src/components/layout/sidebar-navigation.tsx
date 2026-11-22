@@ -1,8 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
-import { useId } from "react";
+import { usePathname } from "next/navigation";
 import {
   Archive,
   BarChart3,
@@ -10,16 +9,13 @@ import {
   CalendarCheck2,
   CheckSquare,
   CircleHelp,
-  ExternalLink,
   FileText,
   Flag,
-  Folder,
   Grid2X2,
   House,
   Lightbulb,
   Wallet,
   Bot,
-  Plus,
   Power,
   Rocket,
   Settings,
@@ -27,15 +23,13 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
-import { formatDisplayCount, formatDisplayCountLabel } from "@/lib/presentation-format";
 import type { WorkspaceShellMetrics } from "@/lib/workspace-shell";
 import { cn } from "@/lib/utils";
 import { Tooltip } from "@/components/ui/tooltip";
 import { useCanonicalUrl } from "@/lib/use-canonical-url";
-import { groupSidebarProjects, SidebarAreaHeading } from "./sidebar-areas";
 import { getSidebarTaskSignalBadge, SidebarSignalBadge } from "./shell-signals";
 import { SidebarLogout } from "./sidebar-logout";
-import { COMMAND_ROUTES, SYSTEM_ROUTES, type ShellRouteMeta } from "./shell-route-meta";
+import { COMMAND_ROUTES, type ShellRouteMeta } from "./shell-route-meta";
 
 export type SidebarProject = {
   id: string;
@@ -72,64 +66,6 @@ type SidebarNavigationProps = {
   className?: string;
 };
 
-/**
- * The row's accessible name and tooltip both say what the compact number
- * counts, using the canonical `activeTaskCount` field.
- */
-function getProjectAccessibleLabel(project: SidebarProject) {
-  if (project.activeTaskCount <= 0) return project.name;
-  return `${project.name} — ${formatDisplayCountLabel(project.activeTaskCount, "active task")}`;
-}
-
-function SidebarProjectLink({
-  project,
-  selected,
-  href,
-  compact = false,
-  onNavigate,
-}: {
-  project: SidebarProject;
-  selected: boolean;
-  href: string;
-  compact?: boolean;
-  onNavigate?: () => void;
-}) {
-  const link = (
-    <Link
-      href={href}
-      aria-current={selected ? "page" : undefined}
-      aria-label={getProjectAccessibleLabel(project)}
-      title={compact ? undefined : getProjectAccessibleLabel(project)}
-      className={cn("sidebar-link sidebar-project-link", selected && "selected")}
-      onClick={onNavigate}
-    >
-      <span
-        className="project-dot"
-        style={{ background: getProjectColor(project.name) }}
-        aria-hidden="true"
-      />
-      <span className="workspace-nav-label min-w-0 flex-1 truncate">
-        {project.name}
-      </span>
-      {project.activeTaskCount > 0 ? (
-        <span className="sidebar-project-count" aria-hidden="true">
-          {formatDisplayCount(project.activeTaskCount)}
-        </span>
-      ) : null}
-    </Link>
-  );
-
-  if (!compact) {
-    return link;
-  }
-
-  return (
-    <Tooltip content={getProjectAccessibleLabel(project)} side="right" delayMs={100} className="block w-full">
-      {link}
-    </Tooltip>
-  );
-}
-
 const ROUTE_ICONS: Record<string, LucideIcon> = {
   "/home": House,
   "/today": CalendarCheck2,
@@ -149,28 +85,6 @@ const ROUTE_ICONS: Record<string, LucideIcon> = {
   "/help": CircleHelp,
   "/settings/account": Settings,
 };
-
-const PROJECT_COLORS = [
-  "var(--ega-data-blue)",
-  "var(--ega-data-orange)",
-  "var(--ega-data-purple)",
-  "var(--ega-data-green)",
-  "var(--ega-data-yellow)",
-  "var(--ega-data-slate)",
-] as const;
-
-/** Compact workspace list: a useful subset stays visible, everything stays reachable. */
-const VISIBLE_PROJECT_LIMIT = 6;
-
-function getProjectColor(name: string) {
-  let hash = 0;
-  for (let index = 0; index < name.length; index += 1) {
-    const charCode = name.codePointAt(index) ?? 0;
-    hash = charCode + ((hash << 5) - hash);
-  }
-
-  return PROJECT_COLORS[Math.abs(hash) % PROJECT_COLORS.length];
-}
 
 function isActive(pathname: string, href: string) {
   if (href === "/tasks") {
@@ -231,25 +145,13 @@ function RouteLink({
 }
 
 export function SidebarNavigation({
-  favorites = [],
-  projects = [],
   metrics,
   compact = false,
   onNavigate,
   className,
 }: SidebarNavigationProps) {
   const pathname = usePathname();
-  const searchParams = useSearchParams();
-  const canonicalUrl = useCanonicalUrl();
   const taskBadge = getSidebarTaskSignalBadge(metrics);
-  const selectedProjectId = searchParams.get("project");
-  const projectPathSlug = pathname.startsWith("/tasks/projects/")
-    ? pathname.split("/")[3]
-    : null;
-  const visibleProjects = projects.slice(0, VISIBLE_PROJECT_LIMIT);
-  const hiddenProjectCount = Math.max(0, projects.length - visibleProjects.length);
-  const projectGroups = groupSidebarProjects(visibleProjects);
-  const areaHeadingPrefix = useId();
 
   return (
     <nav
@@ -262,9 +164,7 @@ export function SidebarNavigation({
             const badge =
               route.href === "/tasks"
                 ? taskBadge
-                : route.href === "/timer" && metrics.hasActiveTimer
-                  ? { label: "Live", tone: "active" as const }
-                  : route.href === "/review" && metrics.reviewMissing
+                : route.href === "/review" && metrics.reviewMissing
                     ? { label: "Due", tone: "warn" as const }
                     : null;
 
@@ -282,179 +182,11 @@ export function SidebarNavigation({
         </div>
       </section>
 
-      {favorites.length > 0 ? (
-        <section className="sidebar-section workspace-nav-section" aria-labelledby="workspace-favorites-label">
-          <div className="sidebar-section-heading">
-            <div id="workspace-favorites-label" className="sidebar-section-label">
-              Favourites
-            </div>
-          </div>
-          <div className="sidebar-project-list">
-            {favorites.slice(0, 6).map((favorite) => (
-              <Link
-                key={favorite.id}
-                href={canonicalUrl.resolve(favorite.href)}
-                className="sidebar-link"
-                onClick={onNavigate}
-                title={favorite.label}
-              >
-                <span className="workspace-nav-icon" aria-hidden="true">★</span>
-                <span className="workspace-nav-label min-w-0 flex-1 truncate">
-                  {favorite.label}
-                </span>
-              </Link>
-            ))}
-          </div>
-        </section>
-      ) : null}
 
-      <section
-        className="sidebar-section sidebar-project-section workspace-nav-section"
-        aria-labelledby="workspace-projects-label"
-      >
-        <div className="sidebar-section-heading">
-          <div id="workspace-projects-label" className="sidebar-section-label">
-            Workspaces
-          </div>
-          <Link
-            href={canonicalUrl.resolve("/tasks/projects/new")}
-            className="sidebar-section-action"
-            aria-label="Create new project"
-            title="New project"
-            onClick={onNavigate}
-          >
-            <Plus aria-hidden="true" />
-          </Link>
-        </div>
 
-        {visibleProjects.length > 0 ? (
-          <div className="sidebar-project-list">
-            {projectGroups.map((group) => {
-              const headingId = `${areaHeadingPrefix}-${group.key}`;
-
-              return (
-                <div
-                  key={group.key}
-                  className={cn(
-                    "sidebar-project-group",
-                    group.unassigned && "sidebar-project-group-unassigned",
-                  )}
-                  role="group"
-                  aria-labelledby={headingId}
-                >
-                  <SidebarAreaHeading
-                    headingId={headingId}
-                    name={group.name}
-                    icon={group.icon}
-                    color={group.color}
-                    projectCount={group.projects.length}
-                  />
-                  {group.projects.map((project) => (
-                    <SidebarProjectLink
-                      key={project.id}
-                      project={project}
-                      selected={
-                        selectedProjectId === project.id ||
-                        projectPathSlug === project.slug
-                      }
-                      href={canonicalUrl.resolve(`/tasks?project=${project.id}`)}
-                      compact={compact}
-                      onNavigate={onNavigate}
-                    />
-                  ))}
-                </div>
-              );
-            })}
-          </div>
-        ) : (
-          <Link
-            href={canonicalUrl.resolve("/tasks/projects/new")}
-            className="sidebar-project-empty"
-            onClick={onNavigate}
-          >
-            Create first project
-          </Link>
-        )}
-
-        {compact ? (
-          <Tooltip content="View all projects" side="right" delayMs={100} className="block w-full">
-            <Link
-              href={canonicalUrl.resolve("/tasks/projects")}
-              aria-current={pathname === "/tasks/projects" ? "page" : undefined}
-              aria-label="View all projects"
-              className={cn(
-                "sidebar-link sidebar-project-link sidebar-view-all",
-                pathname === "/tasks/projects" && "selected",
-              )}
-              onClick={onNavigate}
-            >
-              <span className="sidebar-link-icon" aria-hidden="true">
-                <Folder />
-              </span>
-              <span className="workspace-nav-label">
-                {hiddenProjectCount > 0 ? `All workspaces (${projects.length})` : "All workspaces"}
-              </span>
-            </Link>
-          </Tooltip>
-        ) : (
-          <Link
-            href={canonicalUrl.resolve("/tasks/projects")}
-            aria-current={pathname === "/tasks/projects" ? "page" : undefined}
-            aria-label="View all projects"
-            title="View all projects"
-            className={cn(
-              "sidebar-link sidebar-project-link sidebar-view-all",
-              pathname === "/tasks/projects" && "selected",
-            )}
-            onClick={onNavigate}
-          >
-            <span className="sidebar-link-icon" aria-hidden="true">
-              <Folder />
-            </span>
-            <span className="workspace-nav-label">
-              {hiddenProjectCount > 0 ? `All workspaces (${projects.length})` : "All workspaces"}
-            </span>
-          </Link>
-        )}
-      </section>
-
-      <section
-        className="sidebar-section sidebar-general-section workspace-nav-section"
-        aria-label="System"
-      >
-        {SYSTEM_ROUTES.map((route) => (
-          <RouteLink
-            key={route.href}
-            route={route}
-            pathname={pathname}
-            badge={
-              route.href === "/notifications" && metrics.unreadNotificationCount > 0
-                ? { label: String(metrics.unreadNotificationCount), tone: "warn" }
-                : null
-            }
-            compact={compact}
-            onNavigate={onNavigate}
-          />
-        ))}
-
-        <a
-          href="https://hermes.egawilldoit.online/"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="sidebar-link workspace-nav-link"
-          aria-label="Hermes"
-          title="Hermes"
-          onClick={onNavigate}
-        >
-          <span className="sidebar-link-icon" aria-hidden="true">
-            <Bot />
-          </span>
-          <span className="workspace-nav-label">Hermes</span>
-          <ExternalLink className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-        </a>
-
+      <div className="sidebar-section workspace-nav-section" aria-label="Account">
         <SidebarLogout />
-      </section>
+      </div>
     </nav>
   );
 }

@@ -174,14 +174,12 @@ test("task mutation invalidates task-affected workspace paths without duplicatio
   );
 
   // No duplicate paths: /tasks appears exactly once, deduped from returnTo normalization
-  assert.equal(revalidateRecorder.calls.length, 6);
+  assert.equal(revalidateRecorder.calls.length, 4);
   assert.deepEqual(revalidateRecorder.calls, [
     "/tasks",
     "/tasks/projects",
-    "/dashboard",
     "/today",
     "/timer",
-    "/review",
   ]);
 });
 
@@ -196,14 +194,12 @@ test("task mutation with returnTo to a unique path includes it deduped", async (
   );
 
   // /tasks/projects is already in the list; query string normalized out, deduped
-  assert.equal(revalidateRecorder.calls.length, 6);
+  assert.equal(revalidateRecorder.calls.length, 4);
   assert.deepEqual(revalidateRecorder.calls, [
     "/tasks",
     "/tasks/projects",
-    "/dashboard",
     "/today",
     "/timer",
-    "/review",
   ]);
 });
 
@@ -217,15 +213,15 @@ test("task mutation with returnTo to different path includes it", async () => {
     revalidateRecorder.dependency,
   );
 
-  // /dashboard is already in the list, so returnTo normalizes and dedupes
-  assert.equal(revalidateRecorder.calls.length, 6);
+  // /dashboard stays a valid returnTo but is not a cached workspace projection,
+  // so it is not invalidated by an ordinary task edit.
+  assert.equal(revalidateRecorder.calls.length, 5);
   assert.deepEqual(revalidateRecorder.calls, [
     "/tasks",
     "/tasks/projects",
-    "/dashboard",
     "/today",
     "/timer",
-    "/review",
+    "/dashboard",
   ]);
 });
 
@@ -240,13 +236,12 @@ test("timer mutation invalidates timer-affected paths without duplication", asyn
   );
 
   // No duplicate /dashboard — normalized and deduped
-  assert.equal(revalidateRecorder.calls.length, 5);
+  assert.equal(revalidateRecorder.calls.length, 4);
   assert.deepEqual(revalidateRecorder.calls, [
     "/timer",
     "/tasks",
-    "/dashboard",
     "/today",
-    "/review",
+    "/dashboard",
   ]);
 });
 
@@ -261,13 +256,11 @@ test("timer mutation with returnTo to /tasks dedupes without duplicate", async (
   );
 
   // /tasks normalized from returnTo, but already in list — no duplicate
-  assert.equal(revalidateRecorder.calls.length, 5);
+  assert.equal(revalidateRecorder.calls.length, 3);
   assert.deepEqual(revalidateRecorder.calls, [
     "/timer",
     "/tasks",
-    "/dashboard",
     "/today",
-    "/review",
   ]);
 });
 
@@ -281,14 +274,12 @@ test("timer stop mutation still invalidates all timer-dependent surfaces", async
     revalidateRecorder.dependency,
   );
 
-  // Timer stop affects: /timer (itself), /tasks (shows running timer), /dashboard (timer summary), /today, /review
-  assert.equal(revalidateRecorder.calls.length, 5);
+  // Timer stop affects: /timer (itself), /tasks (shows running timer), /today
+  assert.equal(revalidateRecorder.calls.length, 3);
   assert.deepEqual(revalidateRecorder.calls, [
     "/timer",
     "/tasks",
-    "/dashboard",
     "/today",
-    "/review",
   ]);
 });
 
@@ -303,13 +294,11 @@ test("today mutation invalidates today-affected paths without duplication", asyn
   );
 
   // No duplicate /today — normalized and deduped
-  assert.equal(revalidateRecorder.calls.length, 5);
+  assert.equal(revalidateRecorder.calls.length, 3);
   assert.deepEqual(revalidateRecorder.calls, [
     "/today",
-    "/dashboard",
     "/tasks",
     "/timer",
-    "/review",
   ]);
 });
 
@@ -323,14 +312,13 @@ test("today mutation with returnTo to /dashboard dedupes", async () => {
     revalidateRecorder.dependency,
   );
 
-  // /dashboard is already in the set — no duplicate
-  assert.equal(revalidateRecorder.calls.length, 5);
+  // /dashboard is a returnTo only; routine Today writes do not invalidate it.
+  assert.equal(revalidateRecorder.calls.length, 4);
   assert.deepEqual(revalidateRecorder.calls, [
     "/today",
-    "/dashboard",
     "/tasks",
     "/timer",
-    "/review",
+    "/dashboard",
   ]);
 });
 
@@ -345,14 +333,11 @@ test("startup mutation invalidates startup-affected paths without duplication", 
   );
 
   // No duplicate /today — normalized and deduped
-  assert.equal(revalidateRecorder.calls.length, 6);
+  assert.equal(revalidateRecorder.calls.length, 3);
   assert.deepEqual(revalidateRecorder.calls, [
     "/startup",
     "/today",
     "/tasks",
-    "/dashboard",
-    "/timer",
-    "/review",
   ]);
 });
 
@@ -367,14 +352,11 @@ test("startup mutation with returnTo to /startup dedupes", async () => {
   );
 
   // /startup already present — no duplicate
-  assert.equal(revalidateRecorder.calls.length, 6);
+  assert.equal(revalidateRecorder.calls.length, 3);
   assert.deepEqual(revalidateRecorder.calls, [
     "/startup",
     "/today",
     "/tasks",
-    "/dashboard",
-    "/timer",
-    "/review",
   ]);
 });
 
@@ -389,14 +371,11 @@ test("shutdown mutation invalidates shutdown-affected paths without duplication"
   );
 
   // No duplicate /shutdown — normalized and deduped
-  assert.equal(revalidateRecorder.calls.length, 6);
+  assert.equal(revalidateRecorder.calls.length, 3);
   assert.deepEqual(revalidateRecorder.calls, [
     "/shutdown",
     "/today",
-    "/dashboard",
     "/tasks",
-    "/timer",
-    "/review",
   ]);
 });
 
@@ -410,15 +389,13 @@ test("shutdown mutation with returnTo to /dashboard dedupes", async () => {
     revalidateRecorder.dependency,
   );
 
-  // /dashboard already in set — no duplicate
-  assert.equal(revalidateRecorder.calls.length, 6);
+  // /dashboard is a returnTo only; shutdown writes do not invalidate it.
+  assert.equal(revalidateRecorder.calls.length, 4);
   assert.deepEqual(revalidateRecorder.calls, [
     "/shutdown",
     "/today",
-    "/dashboard",
     "/tasks",
-    "/timer",
-    "/review",
+    "/dashboard",
   ]);
 });
 
@@ -492,4 +469,16 @@ test("returnTo=/tasks?status=blocked dedupes to single /tasks", async () => {
   // /tasks appears only once (not twice as before: explicit + getPathname(returnTo))
   const taskPaths = revalidateRecorder.calls.filter((p) => p === "/tasks");
   assert.equal(taskPaths.length, 1, `Expected exactly 1 "/tasks" call, got ${taskPaths.length}: ${JSON.stringify(revalidateRecorder.calls)}`);
+});
+
+test("routine task and timer mutations stay path-scoped", async () => {
+  const { revalidateWorkspaceFor } = await import("./workspace-navigation");
+
+  for (const mutationType of ["task", "timer"] as const) {
+    const recorder = createRevalidateRecorder();
+    revalidateWorkspaceFor(mutationType, { returnTo: "/tasks" }, recorder.dependency);
+    assert.ok(!recorder.calls.includes("/review"), `${mutationType} must not bust Review`);
+    assert.ok(!recorder.calls.includes("/dashboard"), `${mutationType} must not invalidate the dead /dashboard route`);
+    assert.ok(recorder.calls.length <= 4, `${mutationType} should touch at most four projections`);
+  }
 });

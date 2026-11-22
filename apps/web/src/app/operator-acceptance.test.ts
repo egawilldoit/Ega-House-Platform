@@ -12,37 +12,21 @@ describe("EGA-516 Operator acceptance", () => {
     expect(page).not.toContain('redirect("/dashboard")');
     // Today remains its own deep workspace, reachable from the shell.
     const routeMeta = read("src/components/layout/shell-route-meta.ts");
-    expect(routeMeta).toContain('href: "/home"');
     expect(routeMeta).toContain('href: "/today"');
   });
 
-  it("/dashboard no longer computes competing command-center model and redirects to the launch page", () => {
-    const dashboardPage = read("src/app/(workspace)/dashboard/page.tsx");
-    expect(dashboardPage).toContain("getLaunchPagePath(preferences.launchPage)");
-    // Should not import or compute competing dashboard-data panels
-    expect(dashboardPage).not.toContain("getDashboardData");
-    expect(dashboardPage).not.toContain("CommandCenterAsync");
-    expect(dashboardPage).not.toContain("getDashboardHealthData");
+  it("/dashboard redirects to the launch page via next.config", () => {
+    const nextConfig = read("next.config.ts");
+    expect(nextConfig).toContain('source: "/dashboard"');
+    expect(nextConfig).toContain('destination: "/today"');
   });
 
-  it("Apps launcher advertises Home directly and /dashboard stays a legacy redirect (EGA-709)", () => {
-    // The launcher must not link the retired /dashboard route: it only
-    // server-redirects to the configured launch page, so operators lost the
-    // history entry.
-    const launcherItems = read("src/app/(workspace)/apps/launcher-items.ts");
-    expect(launcherItems).not.toContain('"/dashboard"');
-    expect(launcherItems).toContain('label: "Home"');
-    expect(launcherItems).toContain('href: "/home"');
-
-    // /apps/dashboard deep links go straight to Home instead of chaining
-    // /apps/dashboard -> /dashboard -> /home.
-    const appsWorkspacePage = read("src/app/(workspace)/apps/[workspace]/page.tsx");
-    expect(appsWorkspacePage).toContain('dashboard: "/home"');
-    expect(appsWorkspacePage).toContain('home: "/home"');
-
-    // Old bookmarks still resolve: /dashboard redirects to the launch page.
-    const dashboardPage = read("src/app/(workspace)/dashboard/page.tsx");
-    expect(dashboardPage).toContain("getLaunchPagePath");
+  it("Apps and dashboard are legacy redirects to /today (EGA-709)", () => {
+    const nextConfig = read("next.config.ts");
+    expect(nextConfig).toContain('source: "/apps"');
+    expect(nextConfig).toContain('source: "/apps/:workspace"');
+    expect(nextConfig).toContain('source: "/dashboard"');
+    expect(nextConfig).toContain('destination: "/today"');
   });
 
   it("web Today no longer forks shared ranking/status semantics", () => {
@@ -50,9 +34,10 @@ describe("EGA-516 Operator acceptance", () => {
     // Must use canonical operator service, not web-local planner service
     expect(todayPage).toContain("getOperatorSnapshotData");
     expect(todayPage).toContain('from "@/lib/services/operator-service"');
-    expect(todayPage).toContain("TodayIntelligencePanel");
-    expect(todayPage).toContain("getHealthSnapshotData");
-    expect(todayPage).toContain("getFrictionRadar");
+    // Lean Today: diagnostics live on /review and /friction, not the daily plan.
+    expect(todayPage).not.toContain("TodayIntelligencePanel");
+    expect(todayPage).not.toContain("getHealthSnapshotData");
+    expect(todayPage).not.toContain("getFrictionRadar");
     // Should delegate ranking to shared @ega/application, not web's buildTodayPlan
     expect(todayPage).not.toContain("getTodayPlannerData");
     // The operator service itself must be thin and delegate to @ega/application
@@ -83,12 +68,12 @@ describe("EGA-516 Operator acceptance", () => {
     const { createAuthenticatedActor } = await import("@ega/application");
     const { getOperatorSnapshot } = await import("@ega/application/operator/snapshot");
     // Use a minimal fake port that succeeds
-    const fakePort: any = {
+    const fakePort = {
       listSelectedTasks: async () => ({ ok: true, value: [] }),
       listPinnedSuggestions: async () => ({ ok: true, value: [] }),
       listInProgressSuggestions: async () => ({ ok: true, value: [] }),
       getTodayTimerSnapshot: async () => ({ ok: true, value: { activeTimer: null, trackedTodaySeconds: 0 } }),
-    };
+    } as unknown as Parameters<typeof getOperatorSnapshot>[1];
     const result = await getOperatorSnapshot(createAuthenticatedActor("user-1"), fakePort, { date: "2026-08-10" });
     expect(result.ok).toBe(true);
     if (!result.ok) return;

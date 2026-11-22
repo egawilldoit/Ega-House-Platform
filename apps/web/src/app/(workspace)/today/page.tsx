@@ -6,6 +6,10 @@ import "@/styles/today-workbench.css";
 
 import { clearCompletedFromTodayAction } from "@/app/(workspace)/today/actions";
 import {
+  saveTodayCheckinAction,
+  saveTodayReflectionNoteAction,
+} from "@/app/(workspace)/today/checkin-actions";
+import {
   addTaskDependencyAction,
   removeTaskDependencyAction,
   updateTaskFieldAction,
@@ -14,26 +18,24 @@ import {
 import { TaskDrawerHost } from "@/components/tasks/drawer/task-drawer-host";
 
 import { OwnerScopedRealtimeRefresh } from "@/components/realtime/owner-scoped-realtime-refresh";
-import { RefreshOnFocus } from "@/components/refresh-on-focus";
 import {
   ActiveTimerPanel,
   FocusQueuePanel,
   StartHerePanel,
 } from "@/components/today/today-cockpit-panels";
-import { TodayIntelligencePanel } from "@/components/today/today-intelligence-panel";
 import { TodayKpiRow } from "@/components/today/today-kpi-row";
-import { TodayLanePanel } from "@/components/today/today-lane-panel";
 import { TodayOperatorPlan } from "@/components/today/today-operator-plan";
 import { MorningStartupPanel } from "@/components/today/morning-startup-panel";
-import { TodaySection } from "@/components/today/today-section";
 import { TodayTaskCard } from "@/components/today/today-task-card";
 import { TodayHeaderActions } from "@/components/today/today-header-actions";
+import { DailyCheckinForm } from "@/components/shutdown/daily-checkin-form";
+import { ShutdownReflectionForm } from "@/components/shutdown/shutdown-reflection-form";
 import { TimerActionFeedback } from "@/components/timer/timer-action-feedback";
 import { TimerStopOutcomePrompt } from "@/components/timer/timer-stop-outcome-prompt";
 import { TimerSyncStatus } from "@/components/timer/timer-sync-status";
 import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
+import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import { EmptyState } from "@/components/ui/empty-state";
 import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import { formatDisplayDate } from "@/lib/presentation-format";
 import { isTaskCompletedStatus } from "@/lib/task-domain";
@@ -41,10 +43,6 @@ import { getCurrentUser } from "@/lib/services/auth-service";
 import { getOperatorSnapshotData } from "@/lib/services/operator-service";
 import { getMorningStartupData } from "@/lib/services/morning-startup-service";
 import { getWebDailyCheckin } from "@/lib/services/checkin-service";
-import { createAuthenticatedActor, getExpenseSummary } from "@ega/application";
-import { SupabaseExpenseRepository } from "@ega/data-access";
-import { createClient } from "@/lib/supabase/server";
-import { TodayWorkCard } from "@/components/today/today-work-card";
 import { parseStartupRetryIds } from "@/lib/morning-startup";
 import { getActiveTimerSession } from "@/lib/services/timer-service";
 import { getTaskDrawerDetail } from "@/lib/services/task-service";
@@ -52,16 +50,16 @@ import { listTaskSubtasks } from "@/lib/services/subtask-service";
 import { listTaskAttachments } from "@/lib/services/attachment-service";
 import { getTaskActivity } from "@/lib/services/task-activity-service";
 import { getTaskCommentThread } from "@/lib/services/task-comment-service";
-import { isFavorite } from "@/lib/services/favorite-service";
-import { toggleFavoriteAction } from "@/app/(workspace)/favorites/actions";
 import { TASK_SUBTASK_ACTIONS } from "@/lib/task-subtask-actions";
 import { TASK_COMMENT_ACTIONS } from "@/lib/task-comment-actions";
 import { buildTaskDrawerLink } from "@/lib/task-drawer-url";
-import { getHealthSnapshotData } from "@/lib/services/health-snapshot-service";
-import { getFrictionRadar } from "@/lib/services/friction-service";
-import { getOperatorProposalData } from "@/lib/services/operator-proposal-service";
+import {
+  getActiveOperatorProposalData,
+  getOperatorProposalData,
+} from "@/lib/services/operator-proposal-service";
 import { getWorkspaceShellMetrics } from "@/lib/workspace-shell";
-import { CalendarCheck2, CheckCircle2, CircleDashed, CircleOff, CirclePlay } from "lucide-react";
+import type { TodayPlannerTask } from "@/lib/services/today-planner-service";
+import { CalendarCheck2, CheckCircle2, CircleOff, ListChecks } from "lucide-react";
 
 // Today-only typography, self-hosted (see src/app/fonts/README.md): Newsreader
 // for the heading and focus anchor, IBM Plex Sans for the workbench body.
@@ -88,48 +86,12 @@ export const metadata: Metadata = {
   description: "Focus on what matters today. Make progress, one step at a time.",
 };
 
-async function loadTodayCards(snapshot: Awaited<ReturnType<typeof getOperatorSnapshotData>>["data"]) {
-  const moneyUnavailable = {
-    available: false as const,
-    totalMinor: null as number | null,
-    truncated: false,
-  };
-  const routineUnavailable = { available: false, saved: false };
-  if (!snapshot) return { money: moneyUnavailable, routine: routineUnavailable };
-  const [moneyResult, routineResult] = await Promise.all([
-    (async () => {
-      try {
-        const user = await getCurrentUser();
-        if (!user) return moneyUnavailable;
-        const client = await createClient();
-        // Same canonical day summary the Money page and personal-ops MCP tool
-        // use, so one cutoff cannot disagree across surfaces.
-        const summary = await getExpenseSummary(
-          createAuthenticatedActor(user.id),
-          new SupabaseExpenseRepository(client),
-          { localDate: snapshot.date, timezone: snapshot.timezone },
-        );
-        if (!summary.ok) return moneyUnavailable;
-        return {
-          available: true,
-          totalMinor: summary.data.day.totalMinor,
-          truncated: summary.data.day.truncated,
-        };
-      } catch {
-        return moneyUnavailable;
-      }
-    })(),
-    (async () => {
-      try {
-        const loaded = await getWebDailyCheckin({ localDate: snapshot.date, timezone: snapshot.timezone });
-        if (loaded.errorMessage) return routineUnavailable;
-        return { available: true, saved: loaded.checkin !== null };
-      } catch {
-        return routineUnavailable;
-      }
-    })(),
-  ]);
-  return { money: moneyResult, routine: routineResult };
+function dedupeTasksById(tasks: TodayPlannerTask[]): TodayPlannerTask[] {
+  const byId = new Map<string, TodayPlannerTask>();
+  for (const task of tasks) {
+    if (!byId.has(task.id)) byId.set(task.id, task);
+  }
+  return [...byId.values()];
 }
 
 function PlannerErrorState({ actionError }: { actionError: string | null }) {
@@ -164,6 +126,26 @@ function PlannerErrorState({ actionError }: { actionError: string | null }) {
   );
 }
 
+async function loadOperatorProposal(input: {
+  operatorProposalId: string | null;
+  planRequested: boolean;
+  localDate: string;
+}) {
+  try {
+    if (input.operatorProposalId) {
+      return await getOperatorProposalData({ proposalId: input.operatorProposalId });
+    }
+    if (input.planRequested) {
+      return await getActiveOperatorProposalData({ localDate: input.localDate });
+    }
+  } catch {
+    return { data: null, errorMessage: "The approval plan is unavailable." };
+  }
+
+  // No plan surface is requested: Today never pays for a proposal read.
+  return { data: null, errorMessage: null };
+}
+
 export default async function TodayPage({
   searchParams,
 }: {
@@ -172,6 +154,8 @@ export default async function TodayPage({
     actionSuccess?: string;
     stoppedTaskId?: string;
     operatorProposalId?: string;
+    plan?: string;
+    finishDay?: string;
     task?: string;
     taskMode?: string;
     taskUpdateError?: string;
@@ -186,6 +170,8 @@ export default async function TodayPage({
   const actionSuccess = resolvedSearchParams.actionSuccess?.slice(0, 180) ?? null;
   const stoppedTaskId = resolvedSearchParams.stoppedTaskId?.slice(0, 80) ?? null;
   const operatorProposalId = resolvedSearchParams.operatorProposalId?.slice(0, 80) ?? null;
+  const planRequested = resolvedSearchParams.plan === "1";
+  const finishDayRequested = resolvedSearchParams.finishDay === "1";
   const selectedTaskId = resolvedSearchParams.task?.slice(0, 80) ?? null;
   const taskUpdateError = resolvedSearchParams.taskUpdateError?.slice(0, 180) ?? null;
   const taskUpdateSuccess = resolvedSearchParams.taskUpdateSuccess?.slice(0, 180) ?? null;
@@ -193,29 +179,14 @@ export default async function TodayPage({
   const startupSkipped = resolvedSearchParams.startup === "skipped";
   const startupRetryIds = parseStartupRetryIds(resolvedSearchParams.startupRetry);
 
-  const [todayResult, healthResult, frictionResult, user, proposalResult, shellMetrics] =
-    await Promise.all([
-      getOperatorSnapshotData(),
-      getHealthSnapshotData().catch(() => ({
-        errorMessage: "Workload guidance is unavailable.",
-        data: null,
-        recommendations: [],
-      })),
-      getFrictionRadar().catch(() => ({
-        errorMessage: "Friction signals are unavailable.",
-        data: null,
-      })),
-      getCurrentUser(),
-      operatorProposalId
-        ? getOperatorProposalData({ proposalId: operatorProposalId }).catch(() => ({
-            data: null,
-            errorMessage: "The approval plan is unavailable.",
-          }))
-        : Promise.resolve({ data: null, errorMessage: null }),
-      // Request-memoized and already resolved by the workspace layout; reusing it keeps the
-      // visible "overdue" metric on the same canonical semantics as the sidebar.
-      getWorkspaceShellMetrics(),
-    ]);
+  // Only the canonical plan, identity, and shell metrics are eager. Identity and
+  // shell metrics are request-memoized, so the workspace layout, Today, and the
+  // operator snapshot share one verification and one metrics query per request.
+  const [todayResult, user, shellMetrics] = await Promise.all([
+    getOperatorSnapshotData(),
+    getCurrentUser(),
+    getWorkspaceShellMetrics(),
+  ]);
 
   if (todayResult.errorMessage || !todayResult.data) {
     return (
@@ -228,19 +199,21 @@ export default async function TodayPage({
 
   const snapshot = todayResult.data;
 
-  // Concise after-Fajr startup panel. Its yesterday read is bounded and
-  // failure-tolerant; a failed read becomes an inline note, never a blank Today.
-  const morningStartup = await getMorningStartupData(snapshot, {
-    skipped: startupSkipped,
-    retryIds: startupRetryIds,
-  });
-
-  // Unified Today cards (PO-01): Money and routine draw from their actual
-  // sources. Each load is independently failure-tolerant and maps to an
-  // honest unavailable state instead of a fabricated zero.
-  const todayCards = await loadTodayCards(snapshot);
-  const todayMoney = todayCards.money;
-  const todayRoutine = todayCards.routine;
+  // Secondary work is contextual: the startup panel is always cheap, the
+  // proposal read happens only for an explicit plan surface, and the check-in
+  // read happens only after the user opens Finish day.
+  const [morningStartup, proposalResult, checkinResult] = await Promise.all([
+    getMorningStartupData(snapshot, {
+      skipped: startupSkipped,
+      retryIds: startupRetryIds,
+    }),
+    loadOperatorProposal({ operatorProposalId, planRequested, localDate: snapshot.date }),
+    finishDayRequested
+      ? getWebDailyCheckin({ localDate: snapshot.date, timezone: snapshot.timezone }).catch(
+          () => ({ checkin: null, errorMessage: "Check-in is unavailable right now." }),
+        )
+      : Promise.resolve({ checkin: null, errorMessage: null }),
+  ]);
 
   // Bounded active-session read, only when the snapshot says a session ran. It
   // supplies startedAt for the live elapsed display; Today never computes timer
@@ -294,7 +267,6 @@ export default async function TodayPage({
     suggestions: snapshot.suggestions,
     summary: snapshot.summary,
     activeTimer: enrichedActiveTimer,
-    signals: snapshot.signals,
   };
 
   const returnTo = selectedTaskId ? buildTaskDrawerLink("/today", selectedTaskId) : "/today";
@@ -319,16 +291,14 @@ export default async function TodayPage({
     data: [],
     errorMessage: null,
   };
-  let selectedTaskIsFavourite = false;
 
-  if (selectedTaskId && selectedTaskResult?.kind === "found") {
-    const [subtasksResult, activityPageResult, commentsResult, attachmentsResult, isFavouriteResult] =
+  if (selectedTaskId) {
+    const [subtasksResult, activityPageResult, commentsResult, attachmentsResult] =
       await Promise.all([
         listTaskSubtasks(selectedTaskId),
         getTaskActivity(selectedTaskId, { limit: 8 }),
         getTaskCommentThread(selectedTaskId),
         listTaskAttachments(selectedTaskId),
-        isFavorite("task", selectedTaskId),
       ]);
 
     selectedTaskSubtasks = subtasksResult.data ?? [];
@@ -336,24 +306,8 @@ export default async function TodayPage({
     selectedTaskActivity = activityPageResult.items;
     selectedTaskComments = commentsResult;
     selectedTaskAttachments = attachmentsResult;
-    selectedTaskIsFavourite = isFavouriteResult;
-  } else if (selectedTaskId) {
-    const [subtasksResult, activityPageResult, commentsResult, attachmentsResult, isFavouriteResult] =
-      await Promise.all([
-        listTaskSubtasks(selectedTaskId),
-        getTaskActivity(selectedTaskId, { limit: 8 }),
-        getTaskCommentThread(selectedTaskId),
-        listTaskAttachments(selectedTaskId),
-        isFavorite("task", selectedTaskId),
-      ]);
-
-    selectedTaskSubtasks = subtasksResult.data ?? [];
-    selectedTaskActivityPage = activityPageResult;
-    selectedTaskActivity = activityPageResult.items;
-    selectedTaskComments = commentsResult;
-    selectedTaskAttachments = attachmentsResult;
-    selectedTaskIsFavourite = isFavouriteResult;
   }
+
   const activeTimerSessionId = todayData.activeTimer?.sessionId ?? null;
   const flexibleTodayActionable = todayData.flexibleTasks.filter(
     (task) => task.status !== "blocked" && !isTaskCompletedStatus(task.status),
@@ -382,11 +336,44 @@ export default async function TodayPage({
     ...todayData.planned.filter((task) => !task.isPlannedForToday),
   ];
 
+  // Next is the canonical focus queue, kept compact. Scheduled, due-today, and
+  // flexible work that is not already queued stays one collapsed step away so
+  // no planned state silently disappears from Today.
+  const nextTasks = dedupeTasksById(todayData.focusQueue).filter(
+    (task) =>
+      task.id !== todayData.startHere?.id &&
+      task.status !== "blocked" &&
+      !isTaskCompletedStatus(task.status),
+  );
+  const nextTaskIds = new Set(nextTasks.map((task) => task.id));
+  const alsoTodayTasks = dedupeTasksById([
+    ...todayData.scheduledBlocks,
+    ...dueTodayCarryover,
+    ...flexibleTodayActionable,
+  ]).filter(
+    (task) =>
+      !nextTaskIds.has(task.id) &&
+      task.id !== todayData.startHere?.id &&
+      task.status !== "blocked" &&
+      !isTaskCompletedStatus(task.status),
+  );
+
   const allDoneToday =
     allTodayCount > 0 &&
     todayData.summary.plannedCount === 0 &&
     todayData.summary.inProgressCount === 0 &&
     todayData.completed.length > 0;
+
+  // Startup opens only while Today has no plan yet; otherwise it stays one
+  // quiet line until the operator chooses it.
+  const startupOpen = allTodayCount === 0 && !morningStartup.skipped;
+  const activeProposalStatus = proposalResult.data?.status;
+  const activeProposal =
+    activeProposalStatus === "generated" || activeProposalStatus === "approved"
+      ? proposalResult.data
+      : null;
+  const showOperatorPlan = planRequested || Boolean(activeProposal);
+  const finishDayHref = "/today?finishDay=1#finish-day";
 
   return (
     <>
@@ -396,10 +383,7 @@ export default async function TodayPage({
         tables={["tasks", "task_sessions"]}
         reconcileOnVisibility={false}
       />
-      {/* Externally written expenses (e.g. via MCP) appear after focus/reload
-          without adding a realtime subscription for the Money ledger. */}
-      <RefreshOnFocus />
-      {/* Reconnect/visibility reconciliation for the rail's Active Timer panel. */}
+      {/* Reconnect/visibility reconciliation for the Now panel's active timer. */}
       <TimerSyncStatus surface="today" ownerUserId={user?.id ?? null} />
 
       {selectedTaskId ? (
@@ -418,8 +402,6 @@ export default async function TodayPage({
           commentMentions={selectedTaskComments.mentionCandidates}
           commentsError={selectedTaskComments.errorMessage}
           commentActions={TASK_COMMENT_ACTIONS}
-          isFavourite={selectedTaskIsFavourite}
-          favouriteAction={toggleFavoriteAction}
           subtaskActions={TASK_SUBTASK_ACTIONS}
           updateError={taskUpdateTaskId === selectedTaskId ? taskUpdateError : null}
           updateSuccess={taskUpdateTaskId === selectedTaskId ? taskUpdateSuccess : null}
@@ -445,13 +427,20 @@ export default async function TodayPage({
 
         <TimerActionFeedback actionError={actionError} actionSuccess={actionSuccess} />
 
-        {/* The single elevated surface: focus session + daily metrics. */}
-        <section className="tw-stage" aria-label="Focus">
-          <ActiveTimerPanel
-            activeTimer={todayData.activeTimer}
-            returnTo={returnTo}
-            startedAt={activeTimerStartedAt}
-          />
+        {/* Now: the current focus task, the live session, and today's figures. */}
+        <section className="tw-stage" aria-label="Now">
+          <div className="flex flex-col gap-4">
+            <ActiveTimerPanel
+              activeTimer={todayData.activeTimer}
+              returnTo={returnTo}
+              startedAt={activeTimerStartedAt}
+            />
+            <StartHerePanel
+              task={todayData.startHere}
+              returnTo={returnTo}
+              activeTimerSessionId={activeTimerSessionId}
+            />
+          </div>
           <TodayKpiRow
             summary={todayData.summary}
             hasActiveTimer={Boolean(todayData.activeTimer)}
@@ -462,196 +451,253 @@ export default async function TodayPage({
         </section>
 
         <div className="workspace-main-rail-grid">
-        {/* Left / Main Column: open workbench */}
-        <div className="tw-canvas tw-main flex flex-col gap-4">
-          <MorningStartupPanel model={morningStartup} />
-
-          <TodayWorkCard work={snapshot.work} money={todayMoney} routine={todayRoutine} />
-
-          <StartHerePanel
-            task={todayData.startHere}
-            returnTo={returnTo}
-            activeTimerSessionId={activeTimerSessionId}
-          />
-
-          {allTodayCount === 0 ? (
-            <Card>
-              <CardContent className="flex flex-wrap items-center justify-between gap-3 py-3">
-                <p className="flex items-center gap-2 text-[length:var(--text-meta-lg)] text-[color:var(--ega-text-secondary)]">
+          {/* Left / Main Column: one execution queue and quiet day-closing surfaces. */}
+          <div className="tw-canvas tw-main flex flex-col gap-4">
+            <details
+              className="tw-disclosure"
+              data-testid="today-startup-disclosure"
+              open={startupOpen}
+            >
+              <summary className="flex cursor-pointer items-center justify-between gap-3 py-1 text-sm font-medium text-[color:var(--ega-text)]">
+                <span className="flex items-center gap-2">
                   <CalendarCheck2
                     className="h-4 w-4 shrink-0 text-[color:var(--ega-text-tertiary)]"
                     aria-hidden="true"
                   />
-                  Nothing planned yet for today. Plan from backlog or create a task.
-                </p>
-                <div className="flex flex-wrap items-center gap-2">
+                  Daily startup
+                </span>
+                <Badge tone={morningStartup.isRestDay ? "muted" : "info"}>
+                  {morningStartup.skipped ? "Skipped" : morningStartup.workTargetLabel}
+                </Badge>
+              </summary>
+              <div className="pt-3">
+                <MorningStartupPanel model={morningStartup} />
+              </div>
+            </details>
+
+            {allTodayCount === 0 ? (
+              <Card>
+                <CardContent className="flex flex-wrap items-center justify-between gap-3 py-3">
+                  <p className="flex items-center gap-2 text-[length:var(--text-meta-lg)] text-[color:var(--ega-text-secondary)]">
+                    <CalendarCheck2
+                      className="h-4 w-4 shrink-0 text-[color:var(--ega-text-tertiary)]"
+                      aria-hidden="true"
+                    />
+                    Nothing planned yet for today. Plan from backlog or create a task.
+                  </p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Link
+                      href="/tasks"
+                      className="btn-instrument flex h-8 items-center px-3 text-sm"
+                    >
+                      + Plan from Backlog
+                    </Link>
+                  </div>
+                </CardContent>
+              </Card>
+            ) : null}
+
+            {allDoneToday ? (
+              <Card className="border-[var(--status-healthy-border)] bg-[var(--status-healthy-bg)]">
+                <CardContent className="flex items-center gap-3 py-3 text-sm font-medium text-[color:var(--ega-text)]">
+                  <CheckCircle2 className="h-4 w-4 shrink-0 text-[color:var(--status-healthy)]" aria-hidden="true" />
+                  <span>All done for today! {todayData.completed.length} {todayData.completed.length === 1 ? "task" : "tasks"} completed.</span>
+                </CardContent>
+              </Card>
+            ) : null}
+
+            <FocusQueuePanel
+              tasks={nextTasks}
+              returnTo={returnTo}
+              activeTimerSessionId={activeTimerSessionId}
+              excludeTaskId={todayData.startHere?.id ?? null}
+            />
+
+            {alsoTodayTasks.length > 0 ? (
+              <details className="tw-disclosure" data-testid="today-also">
+                <summary className="flex cursor-pointer items-center justify-between gap-3 py-1 text-sm font-medium text-[color:var(--ega-text)]">
+                  <span className="flex items-center gap-2">
+                    <CalendarCheck2
+                      className="h-4 w-4 shrink-0 text-[color:var(--ega-text-tertiary)]"
+                      aria-hidden="true"
+                    />
+                    Also today
+                  </span>
+                  <Badge tone="muted">{alsoTodayTasks.length}</Badge>
+                </summary>
+                <div className="pt-3">
+                  {alsoTodayTasks.map((task) => (
+                    <TodayTaskCard
+                      key={task.id}
+                      task={task}
+                      returnTo={returnTo}
+                      activeTimerSessionId={activeTimerSessionId}
+                    />
+                  ))}
+                </div>
+              </details>
+            ) : null}
+
+            {todayData.blocked.length > 0 ? (
+              <details className="tw-disclosure" data-testid="today-blocked">
+                <summary className="flex cursor-pointer items-center justify-between gap-3 py-1 text-sm font-medium text-[color:var(--ega-text)]">
+                  <span className="flex items-center gap-2">
+                    <CircleOff
+                      className="h-4 w-4 shrink-0 text-[color:var(--ega-text-tertiary)]"
+                      aria-hidden="true"
+                    />
+                    Blocked
+                  </span>
+                  <Badge tone="warn">{todayData.blocked.length}</Badge>
+                </summary>
+                <div className="pt-3">
+                  {todayData.blocked.map((task) => (
+                    <TodayTaskCard
+                      key={task.id}
+                      task={task}
+                      returnTo={returnTo}
+                      activeTimerSessionId={activeTimerSessionId}
+                    />
+                  ))}
+                </div>
+              </details>
+            ) : null}
+
+            <details className="tw-disclosure" data-testid="today-done">
+              <summary className="flex cursor-pointer items-center justify-between gap-3 py-1 text-sm font-medium text-[color:var(--ega-text)]">
+                <span className="flex items-center gap-2">
+                  <CheckCircle2
+                    className="h-4 w-4 shrink-0 text-[color:var(--ega-text-tertiary)]"
+                    aria-hidden="true"
+                  />
+                  Done
+                </span>
+                <Badge tone={todayData.completed.length > 0 ? "success" : "muted"}>
+                  {todayData.completed.length}
+                </Badge>
+              </summary>
+              <div className="pt-3">
+                {todayData.completed.length > 0 ? (
+                  <>
+                    {todayData.summary.clearableCompletedCount > 0 ? (
+                      <form action={clearCompletedFromTodayAction} className="mb-2 flex justify-end">
+                        <input type="hidden" name="returnTo" value={returnTo} />
+                        <PendingSubmitButton
+                          type="submit"
+                          variant="secondary"
+                          size="sm"
+                          pendingLabel="Clearing..."
+                        >
+                          Clear completed from Today
+                        </PendingSubmitButton>
+                      </form>
+                    ) : null}
+                    {todayData.completed.map((task) => (
+                      <TodayTaskCard
+                        key={task.id}
+                        task={task}
+                        returnTo={returnTo}
+                        isCompleted
+                        activeTimerSessionId={activeTimerSessionId}
+                      />
+                    ))}
+                  </>
+                ) : (
+                  <p className="py-1 text-[length:var(--text-meta-lg)] text-[color:var(--ega-text-secondary)]">
+                    Nothing completed yet today. Finished work collects here.
+                  </p>
+                )}
+              </div>
+            </details>
+
+            {finishDayRequested ? (
+              <section id="finish-day" aria-label="Finish day" className="flex flex-col gap-4">
+                <div>
+                  <h2 className="flex items-center gap-2 text-[length:var(--text-section)] font-semibold text-[color:var(--ega-text)]">
+                    <ListChecks
+                      className="h-4 w-4 shrink-0 text-[color:var(--ega-text-tertiary)]"
+                      aria-hidden="true"
+                    />
+                    Finish day
+                  </h2>
+                  <p className="mt-1 text-[length:var(--text-meta-lg)] text-[color:var(--ega-text-secondary)]">
+                    Two minutes to close the loop: what moved, what got in the way, and tomorrow&apos;s
+                    first move.
+                  </p>
+                </div>
+                {checkinResult.errorMessage ? (
+                  <p className="feedback-block feedback-block-warn" role="status">
+                    {checkinResult.errorMessage}
+                  </p>
+                ) : null}
+                <div className="grid gap-4 md:grid-cols-2">
+                  <Card>
+                    <CardContent className="pt-4">
+                      <DailyCheckinForm
+                        checkin={checkinResult.checkin}
+                        defaultLocalDate={todayData.date}
+                        action={saveTodayCheckinAction}
+                        returnTo="/today?finishDay=1"
+                      />
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="pt-4">
+                      <ShutdownReflectionForm
+                        action={saveTodayReflectionNoteAction}
+                        returnTo="/today?finishDay=1"
+                      />
+                    </CardContent>
+                  </Card>
+                </div>
+              </section>
+            ) : (
+              <Card data-testid="today-finish-day">
+                <CardContent className="flex flex-wrap items-center justify-between gap-3 py-3">
+                  <p className="text-[length:var(--text-meta-lg)] text-[color:var(--ega-text-secondary)]">
+                    Check in and set tomorrow&apos;s first move when you are ready to close the day.
+                  </p>
                   <Link
-                    href="/tasks"
-                    className="btn-instrument flex h-8 items-center px-3 text-sm"
+                    href={finishDayHref}
+                    className="btn-instrument btn-instrument-muted flex h-8 items-center px-3 text-sm"
                   >
-                    + Plan from Backlog
+                    Finish day
                   </Link>
-                </div>
-              </CardContent>
-            </Card>
-          ) : null}
+                </CardContent>
+              </Card>
+            )}
+          </div>
 
-          {allDoneToday ? (
-            <Card className="border-[var(--status-healthy-border)] bg-[var(--status-healthy-bg)]">
-              <CardContent className="flex items-center gap-3 py-3 text-sm font-medium text-[color:var(--ega-text)]">
-                <CheckCircle2 className="h-4 w-4 shrink-0 text-[color:var(--status-healthy)]" aria-hidden="true" />
-                <span>All done for today! {todayData.completed.length} {todayData.completed.length === 1 ? "task" : "tasks"} completed.</span>
-              </CardContent>
-            </Card>
-          ) : null}
-
-          <FocusQueuePanel
-            tasks={todayData.focusQueue}
-            returnTo={returnTo}
-            activeTimerSessionId={activeTimerSessionId}
-            excludeTaskId={todayData.startHere?.id ?? null}
-          />
-
-          {dueTodayCarryover.length > 0 ? (
-            <TodaySection
-              title="Due today / active"
-              count={dueTodayCarryover.length}
-              tone="info"
-              description="Tasks due today that are not part of the manual plan."
-              compactWhenEmpty
-              emptyState={
-                <div className="px-4 py-6">
-                  <EmptyState
-                    icon={CirclePlay}
-                    title="No due-today carryover"
-                    description="Tasks due today but not manually planned appear here."
-                  />
-                </div>
-              }
-            >
-              {dueTodayCarryover.map((task) => (
-                <TodayTaskCard
-                  key={task.id}
-                  task={task}
-                  returnTo={returnTo}
-                  activeTimerSessionId={activeTimerSessionId}
-                />
-              ))}
-            </TodaySection>
-          ) : null}
-
-          {flexibleTodayActionable.length > 0 ? (
-            <TodaySection
-              title="Flexible today"
-              count={flexibleTodayActionable.length}
-              tone="muted"
-              description="Unscheduled tasks planned for today."
-              compactWhenEmpty
-              emptyState={
-                <div className="px-4 py-6">
-                  <EmptyState
-                    icon={CircleDashed}
-                    title="No flexible tasks planned"
-                    description="Unscheduled tasks planned for today appear here."
-                  />
-                </div>
-              }
-            >
-              {flexibleTodayActionable.map((task) => (
-                <TodayTaskCard
-                  key={task.id}
-                  task={task}
-                  returnTo={returnTo}
-                  activeTimerSessionId={activeTimerSessionId}
-                />
-              ))}
-            </TodaySection>
-          ) : null}
-
-          {todayData.blocked.length > 0 ? (
-            <TodaySection
-              title="Blocked"
-              count={todayData.blocked.length}
-              tone="warn"
-              compactWhenEmpty
-              emptyState={
-                <div className="px-4 py-6">
-                  <EmptyState
-                    icon={CircleOff}
-                    title="No blocked tasks"
-                    description="Blocked work surfaces here when a task status is set to blocked."
-                  />
-                </div>
-              }
-            >
-              {todayData.blocked.map((task) => (
-                <TodayTaskCard
-                  key={task.id}
-                  task={task}
-                  returnTo={returnTo}
-                  activeTimerSessionId={activeTimerSessionId}
-                />
-              ))}
-            </TodaySection>
-          ) : null}
-
-          <TodaySection
-            title="Completed today"
-            count={todayData.completed.length}
-            compactWhenEmpty
-            headerActions={
-              todayData.summary.clearableCompletedCount > 0 ? (
-                <form action={clearCompletedFromTodayAction}>
-                  <input type="hidden" name="returnTo" value={returnTo} />
-                  <PendingSubmitButton
-                    type="submit"
-                    variant="secondary"
-                    size="sm"
-                    pendingLabel="Clearing..."
-                  >
-                    Clear completed from Today
-                  </PendingSubmitButton>
-                </form>
-              ) : null
-            }
-            emptyState={
-              <p className="px-4 py-4 text-[length:var(--text-meta-lg)] text-[color:var(--ega-text-secondary)]">
-                Nothing completed yet today. Finished work collects here.
-              </p>
-            }
-          >
-            {todayData.completed.map((task) => (
-              <TodayTaskCard
-                key={task.id}
-                task={task}
+          {/* Right / Rail Column: optional plan, never a permanent block. */}
+          <div id="plan" className="tw-canvas tw-rail workspace-secondary-rail">
+            {showOperatorPlan ? (
+              <TodayOperatorPlan
+                tasks={todayData.focusQueue}
+                proposal={activeProposal}
+                proposalError={planRequested ? proposalResult.errorMessage : null}
                 returnTo={returnTo}
-                isCompleted
-                activeTimerSessionId={activeTimerSessionId}
               />
-            ))}
-          </TodaySection>
+            ) : (
+              <Card data-testid="today-plan-invite">
+                <CardContent className="flex flex-col gap-2 py-3">
+                  <p className="text-[length:var(--text-meta-lg)] text-[color:var(--ega-text)]">
+                    Want a second opinion on today&apos;s order?
+                  </p>
+                  <p className="text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
+                    Build an explainable plan from the current focus lane, then approve it before it
+                    changes Today.
+                  </p>
+                  <Link
+                    href="/today?plan=1#plan"
+                    className="btn-instrument btn-instrument-muted flex h-8 w-fit items-center px-3 text-sm"
+                  >
+                    Plan
+                  </Link>
+                </CardContent>
+              </Card>
+            )}
+          </div>
         </div>
-
-        {/* Right / Rail Column: Schedule, Intelligence, Plans (quiet) */}
-        <div className="tw-canvas tw-rail workspace-secondary-rail">
-          <TodayLanePanel
-            scheduledBlocks={todayData.scheduledBlocks}
-            dueTodayCarryover={dueTodayCarryover}
-            flexibleTasks={flexibleTodayActionable}
-            returnTo={returnTo}
-            activeTimerSessionId={activeTimerSessionId}
-          />
-
-          <TodayIntelligencePanel health={healthResult} friction={frictionResult} />
-
-          <TodayOperatorPlan
-            tasks={todayData.focusQueue}
-            proposal={proposalResult.data}
-            proposalError={proposalResult.errorMessage}
-            returnTo={returnTo}
-          />
-        </div>
-      </div>
       </div>
     </>
   );

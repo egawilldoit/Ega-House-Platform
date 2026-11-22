@@ -48,45 +48,36 @@ function getWorkspaceRevalidationPaths(
 ) {
   const normalizedReturnTo = getPathname(returnTo);
 
-  // Helper: push unique pathnames only — removes duplicates from iterable sources
+  // Helper: push unique pathnames only — removes duplicates from iterable sources.
+  // Routines stay scoped to the surfaces that actually project the mutation:
+  // no workspace-root/layout invalidation, no dead /dashboard route, and no
+  // expensive /review recompute for an ordinary task or timer tick.
   const pathSets: Record<WorkspaceMutationType, string[]> = {
     task: [
       "/tasks",
       "/tasks/projects",
-      "/dashboard",
       "/today",
       "/timer",
-      "/review",
     ],
     timer: [
       "/timer",
       "/tasks",
-      "/dashboard",
       "/today",
-      "/review",
     ],
     today: [
       "/today",
-      "/dashboard",
       "/tasks",
       "/timer",
-      "/review",
     ],
     startup: [
       "/startup",
       "/today",
       "/tasks",
-      "/dashboard",
-      "/timer",
-      "/review",
     ],
     shutdown: [
       "/shutdown",
       "/today",
-      "/dashboard",
       "/tasks",
-      "/timer",
-      "/review",
     ],
   };
 

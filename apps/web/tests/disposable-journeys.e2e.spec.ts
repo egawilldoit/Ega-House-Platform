@@ -144,7 +144,9 @@ test("Money survives reload, exports only the owner, then edits and deletes", as
 });
 
 test("shutdown check-in and routine evidence persist through a reload", async ({ page, owners }) => {
-  await signInPwaOwner(page, owners.ownerA, "/shutdown");
+  await signInPwaOwner(page, owners.ownerA, "/today");
+  // /shutdown is retired; the check-in form now lives in Today's Finish day surface.
+  await page.goto("/today?finishDay=1#finish-day");
   await page.getByLabel("What closed out today?").fill("E2E shipped a verified outcome");
   await page.getByLabel("Personal time (minutes, optional)").fill("45");
   await page.getByLabel("Run (minutes)", { exact: true }).fill("25");

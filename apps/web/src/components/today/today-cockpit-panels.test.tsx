@@ -47,7 +47,7 @@ test("Up next hides the Start Here task and keeps the canonical queue order", ()
   );
 
   // The queue is a suggestion lane, not the planned-today lane.
-  assert.match(markup, /Suggested next/);
+  assert.match(markup, /Next/);
   assert.doesNotMatch(markup, /Up next/);
   assert.doesNotMatch(markup, /Start here work/);
   assert.ok(markup.indexOf("First queued") < markup.indexOf("Second queued"));
