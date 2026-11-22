@@ -514,6 +514,7 @@ export function TaskDrawerHost({
 
       {planning && updateInlineAction ? (
         <TaskDrawerPlanningSection
+          key={`planning-${task.id}`}
           taskId={task.id}
           status={task.status}
           priority={task.priority}

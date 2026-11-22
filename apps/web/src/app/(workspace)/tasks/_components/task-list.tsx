@@ -272,15 +272,17 @@ export function TaskList({
             Clear
           </button>
 
-          {message ? (
-            <span
-              role="status"
-              className="text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]"
-            >
-              {message}
-            </span>
-          ) : null}
         </div>
+      ) : null}
+
+      {message ? (
+        <p
+          role="status"
+          data-testid="task-list-message"
+          className="px-[18px] py-1.5 text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]"
+        >
+          {message}
+        </p>
       ) : null}
 
       <ul

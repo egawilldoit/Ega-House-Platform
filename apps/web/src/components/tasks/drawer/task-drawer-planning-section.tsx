@@ -9,6 +9,7 @@ import {
   TASK_RECURRENCE_RULE_VALUES,
   formatTaskRecurrenceRule,
 } from "@/lib/task-recurrence";
+import { TASK_STATUS_VALUES, formatTaskToken } from "@/lib/task-domain";
 import type { TaskDrawerPlanning } from "@/lib/services/task-drawer-planning-service";
 import type { TaskReminderRecord } from "@/lib/services/task-service";
 
@@ -67,10 +68,29 @@ export function TaskDrawerPlanningSection({
 }: TaskDrawerPlanningSectionProps) {
   const [projectId, setProjectId] = useState(planning.projectId ?? "");
   const [goalId, setGoalId] = useState(planning.goalId ?? "");
-  const projectChanged = projectId !== (planning.projectId ?? "");
-  // A goal belongs to one project. Changing project clears the goal so the
-  // server never rejects an otherwise valid planning update.
-  const effectiveGoalId = projectChanged ? "" : goalId;
+  const [statusValue, setStatusValue] = useState(status);
+  const [blockedReasonValue, setBlockedReasonValue] = useState(
+    blockedReason ?? "",
+  );
+
+  // A goal belongs to one project. Changing project clears the selection so the
+  // server never rejects an otherwise valid planning update; the user can then
+  // pick a goal from the newly selected project's options.
+  const projectGoals = planning.goalOptions.filter(
+    (goal) => goal.projectId === projectId,
+  );
+  const currentGoal =
+    planning.goalId && projectId === (planning.projectId ?? "")
+      ? { id: planning.goalId, title: planning.goalName ?? "Current goal" }
+      : null;
+  const goalChoices =
+    currentGoal && !projectGoals.some((goal) => goal.id === currentGoal.id)
+      ? [currentGoal, ...projectGoals]
+      : projectGoals;
+  const statusValues: string[] = [...TASK_STATUS_VALUES];
+  if (statusValue && !statusValues.includes(statusValue)) {
+    statusValues.unshift(statusValue);
+  }
 
   return (
     <section
@@ -87,18 +107,31 @@ export function TaskDrawerPlanningSection({
       <form action={updateInlineAction} className="mt-2 flex flex-col gap-3">
         <input type="hidden" name="taskId" value={taskId} />
         <input type="hidden" name="returnTo" value={returnTo} />
-        <input type="hidden" name="status" value={status} />
         <input type="hidden" name="priority" value={priority} />
-        <input type="hidden" name="goalId" value={effectiveGoalId} />
         <input type="hidden" name="dueDate" value={dueDate ?? ""} />
         <input
           type="hidden"
           name="estimateMinutes"
           value={estimateMinutes === null ? "" : String(estimateMinutes)}
         />
-        <input type="hidden" name="blockedReason" value={blockedReason ?? ""} />
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <label className="flex flex-col gap-1 text-[length:var(--text-meta)] text-[color:var(--ega-text-tertiary)]">
+            Status
+            <select
+              name="status"
+              value={statusValue}
+              onChange={(event) => setStatusValue(event.target.value)}
+              className="h-8 rounded-[var(--radius-sm)] border border-[var(--ega-border)] bg-[var(--ega-surface)] px-1.5 text-xs text-[color:var(--ega-text)]"
+            >
+              {statusValues.map((value) => (
+                <option key={value} value={value}>
+                  {formatTaskToken(value)}
+                </option>
+              ))}
+            </select>
+          </label>
+
           <label className="flex flex-col gap-1 text-[length:var(--text-meta)] text-[color:var(--ega-text-tertiary)]">
             Project
             <select
@@ -106,6 +139,7 @@ export function TaskDrawerPlanningSection({
               value={projectId}
               onChange={(event) => {
                 setProjectId(event.target.value);
+                setGoalId("");
               }}
               required
               className="h-8 rounded-[var(--radius-sm)] border border-[var(--ega-border)] bg-[var(--ega-surface)] px-1.5 text-xs text-[color:var(--ega-text)]"
@@ -126,14 +160,17 @@ export function TaskDrawerPlanningSection({
           <label className="flex flex-col gap-1 text-[length:var(--text-meta)] text-[color:var(--ega-text-tertiary)]">
             Goal
             <select
-              value={effectiveGoalId}
+              name="goalId"
+              value={goalId}
               onChange={(event) => setGoalId(event.target.value)}
               className="h-8 rounded-[var(--radius-sm)] border border-[var(--ega-border)] bg-[var(--ega-surface)] px-1.5 text-xs text-[color:var(--ega-text)]"
             >
               <option value="">No goal</option>
-              {planning.goalId && planning.goalName ? (
-                <option value={planning.goalId}>{planning.goalName}</option>
-              ) : null}
+              {goalChoices.map((goal) => (
+                <option key={goal.id} value={goal.id}>
+                  {goal.title}
+                </option>
+              ))}
             </select>
           </label>
 
@@ -179,6 +216,22 @@ export function TaskDrawerPlanningSection({
             />
           </label>
         </div>
+
+        {statusValue === "blocked" ? (
+          <label className="flex flex-col gap-1 text-[length:var(--text-meta)] text-[color:var(--ega-text-tertiary)]">
+            Blocked reason
+            <input
+              name="blockedReason"
+              value={blockedReasonValue}
+              onChange={(event) => setBlockedReasonValue(event.target.value)}
+              required
+              placeholder="What is currently blocking this task?"
+              className="h-8 rounded-[var(--radius-sm)] border border-[var(--ega-border)] bg-[var(--ega-surface)] px-1.5 text-xs text-[color:var(--ega-text)]"
+            />
+          </label>
+        ) : (
+          <input type="hidden" name="blockedReason" value="" />
+        )}
 
         <div className="flex flex-wrap items-end gap-3">
           <label className="flex items-center gap-2 text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">

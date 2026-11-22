@@ -569,4 +569,63 @@ describe("TaskDrawer activity", () => {
     render(TASK);
     expect(document.body.textContent).toContain("No activity recorded yet.");
   });
+
+  it("resets planning state when switching between tasks in the drawer", async () => {
+    const projectOptions = [
+      { id: "p1", name: "Project one" },
+      { id: "p2", name: "Project two" },
+    ];
+    const planningFor = (projectId: string) => ({
+      projectId,
+      goalId: null,
+      projectName: "Project one",
+      goalName: null,
+      dueDate: null,
+      scheduledStartAt: null,
+      scheduledEndAt: null,
+      calendarSyncEnabled: false,
+      calendarReminderMinutes: 10,
+      recurrenceRule: null,
+      reminders: [],
+      projectOptions,
+      goalOptions: [],
+    });
+    const renderTask = (taskId: string, projectId: string) => {
+      currentParams = new URLSearchParams(`task=${taskId}`);
+      act(() =>
+        root.render(
+          <TaskDrawerHost
+            task={{ ...TASK, id: taskId }}
+            updateFieldAction={updateFieldAction}
+            updateDraftAction={updateDraftAction}
+            addDependencyAction={dependencyAction}
+            removeDependencyAction={dependencyAction}
+            ownerId="owner-1"
+            planning={planningFor(projectId)}
+            projectOptions={projectOptions}
+            updateInlineAction={vi.fn()}
+          />,
+        ),
+      );
+    };
+
+    renderTask("t1", "p1");
+    const projectSelect = () =>
+      document.body.querySelector<HTMLSelectElement>('select[name="projectId"]');
+    expect(projectSelect()?.value).toBe("p1");
+
+    // Change task A's local project selection, then switch to task B.
+    await act(async () => {
+      const select = projectSelect()!;
+      Object.getOwnPropertyDescriptor(Object.getPrototypeOf(select), "value")?.set?.call(
+        select,
+        "p2",
+      );
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    expect(projectSelect()?.value).toBe("p2");
+
+    renderTask("t2", "p1");
+    expect(projectSelect()?.value).toBe("p1");
+  });
 });

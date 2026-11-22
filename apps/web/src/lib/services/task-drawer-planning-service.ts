@@ -28,6 +28,7 @@ export type TaskDrawerPlanning = {
   recurrenceRule: TaskRecurrenceRecord["rule"] | null;
   reminders: TaskReminderRecord[];
   projectOptions: Array<{ id: string; name: string }>;
+  goalOptions: Array<{ id: string; title: string; projectId: string }>;
 };
 
 export async function getTaskDrawerPlanning(
@@ -41,6 +42,7 @@ export async function getTaskDrawerPlanning(
 
   let reminders: TaskReminderRecord[] = [];
   let projectOptions: Array<{ id: string; name: string }> = [];
+  let goalOptions: Array<{ id: string; title: string; projectId: string }> = [];
   try {
     const supabase = await resolveSupabaseClient();
     const remindersByTaskId = await getTaskRemindersForTasks(supabase, [
@@ -58,6 +60,25 @@ export async function getTaskDrawerPlanning(
     projectOptions = [];
   }
 
+  try {
+    // Request-scoped RLS keeps goal options inside the authenticated owner's
+    // workspace. A read failure must not hide the rest of the drawer: the
+    // selector still shows the task's current goal as a fallback option.
+    const supabase = await resolveSupabaseClient();
+    const { data, error } = await supabase
+      .from("goals")
+      .select("id, title, project_id")
+      .order("title", { ascending: true });
+    if (error) throw new Error(error.message);
+    goalOptions = (data ?? []).map((goal) => ({
+      id: goal.id,
+      title: goal.title,
+      projectId: goal.project_id,
+    }));
+  } catch {
+    goalOptions = [];
+  }
+
   const task = taskResult.data;
   return {
     projectId: task.project_id,
@@ -72,5 +93,6 @@ export async function getTaskDrawerPlanning(
     recurrenceRule: task.task_recurrences[0]?.rule ?? null,
     reminders,
     projectOptions,
+    goalOptions,
   };
 }

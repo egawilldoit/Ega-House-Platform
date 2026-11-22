@@ -151,6 +151,29 @@ describe("TaskList", () => {
     });
   });
 
+  it("shows a rejected completion checkbox action even with no rows selected", async () => {
+    const denied: BulkTaskResult = {
+      operationId: null,
+      field: "status",
+      applied: 0,
+      results: [{ taskId: "task-1", outcome: "error", message: "Not allowed" }],
+      undoable: false,
+      errorMessage: "You cannot complete this task.",
+    };
+    await render([buildTask()], {
+      bulkFieldAction: vi.fn(async () => denied),
+    });
+
+    expect(container.querySelector('[data-testid="task-list-message"]')).toBeNull();
+
+    await click(container.querySelector('[data-testid="task-status-task-1"]')!);
+
+    expect(container.querySelector('[data-testid="task-list-message"]')?.textContent).toContain(
+      "You cannot complete this task.",
+    );
+    expect(container.querySelector('[aria-label="Bulk task actions"]')).toBeNull();
+  });
+
   it("opens the canonical drawer from a row click and keyboard Enter", async () => {
     await render([buildTask()]);
 
