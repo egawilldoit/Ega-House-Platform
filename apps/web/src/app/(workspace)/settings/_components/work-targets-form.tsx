@@ -81,7 +81,7 @@ export function WorkTargetsForm({
                     inputMode="decimal"
                     min="0"
                     max="24"
-                    step="0.25"
+                    step="0.01"
                     required
                     defaultValue={minutesToHoursValue(targets[day].work)}
                     className="h-9 w-24 rounded-[var(--radius-sm)] border border-[var(--ega-border)] bg-[var(--ega-surface)] px-2 text-[length:var(--text-body)] tabular-nums"
@@ -98,7 +98,7 @@ export function WorkTargetsForm({
                     inputMode="decimal"
                     min="0"
                     max="24"
-                    step="0.25"
+                    step="0.01"
                     required
                     defaultValue={minutesToHoursValue(targets[day].jobSearch)}
                     className="h-9 w-24 rounded-[var(--radius-sm)] border border-[var(--ega-border)] bg-[var(--ega-surface)] px-2 text-[length:var(--text-body)] tabular-nums"

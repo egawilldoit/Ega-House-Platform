@@ -23,8 +23,6 @@ const nextConfig: NextConfig = {
       { source: "/home", destination: "/today", permanent: false },
       { source: "/shutdown", destination: "/today", permanent: false },
       { source: "/favorites", destination: "/today", permanent: false },
-      { source: "/goals", destination: "/tasks/projects", permanent: false },
-      { source: "/goals/:path*", destination: "/tasks/projects", permanent: false },
       { source: "/archive", destination: "/tasks?tab=archived", permanent: false },
       { source: "/work-analytics", destination: "/review", permanent: false },
       { source: "/work-analytics/:path*", destination: "/review", permanent: false },

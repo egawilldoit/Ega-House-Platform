@@ -1,7 +1,7 @@
 "use client";
 
 import { Bell, CheckCheck, ExternalLink } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   Popover,
@@ -31,10 +31,11 @@ function formatCreatedAt(value: string): string {
 /**
  * Top-bar notification history.
  *
- * The retired `/notifications` page is replaced by this popover: it loads the
- * first page on open, pages older notifications with the stored cursor and
- * mutates read state through the canonical owner-scoped service. The unread
- * count mirrors the server prop so an account switch cannot keep a stale badge.
+ * The retired `/notifications` page is replaced by this popover: it refreshes
+ * the first page on every open, pages older notifications with the stored
+ * cursor and mutates read state through the canonical owner-scoped service. The
+ * unread count mirrors the server prop so an account switch cannot keep a stale
+ * badge.
  */
 export function NotificationBell({ initialUnreadCount }: { initialUnreadCount: number }) {
   const canonicalUrl = useCanonicalUrl();
@@ -51,6 +52,9 @@ export function NotificationBell({ initialUnreadCount }: { initialUnreadCount: n
       : initialUnreadCount;
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  // Every open starts a refresh; the ref keeps a rapid close/reopen or a page
+  // load from firing overlapping requests for the same first page.
+  const loadingRef = useRef(false);
 
   function updateUnreadCount(value: number) {
     setDraftCount({ base: initialUnreadCount, value });
@@ -78,6 +82,8 @@ export function NotificationBell({ initialUnreadCount }: { initialUnreadCount: n
     unreadCount > 0 ? `Notifications (${unreadCount} unread)` : "Notifications";
 
   async function load(cursor: string | null, append: boolean) {
+    if (loadingRef.current) return;
+    loadingRef.current = true;
     setPending(true);
     setErrorMessage(null);
     try {
@@ -92,13 +98,16 @@ export function NotificationBell({ initialUnreadCount }: { initialUnreadCount: n
     } catch {
       setErrorMessage("Unable to load notifications right now.");
     } finally {
+      loadingRef.current = false;
       setPending(false);
     }
   }
 
   function handleOpenChange(next: boolean) {
     setOpen(next);
-    if (next && rows === null) {
+    if (next) {
+      // Refresh the first page on every open so notifications created since the
+      // last open appear; older pages still append from the new cursor.
       void load(null, false);
     }
   }

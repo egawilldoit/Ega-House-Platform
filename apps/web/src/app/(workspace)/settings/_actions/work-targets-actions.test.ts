@@ -74,6 +74,17 @@ describe("updateWorkTargetsAction", () => {
     expect(patch.personalOperations.guidance).toEqual(DEFAULT_PERSONAL_OPERATIONS.guidance);
   });
 
+  it("accepts the two-decimal hours a 20-minute target renders as", async () => {
+    await expect(
+      updateWorkTargetsAction(formData({ "work-monday": "0.33" })),
+    ).rejects.toThrow("NEXT_REDIRECT:/settings?tab=preferences&success=Work+targets+saved.");
+
+    const patch = update.mock.calls[0]?.[0] as {
+      personalOperations: typeof DEFAULT_PERSONAL_OPERATIONS;
+    };
+    expect(patch.personalOperations.targets.monday.work).toBe(20);
+  });
+
   it("rejects invalid hours before writing", async () => {
     await expect(
       updateWorkTargetsAction(formData({ "jobSearch-friday": "30" })),

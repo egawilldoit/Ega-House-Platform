@@ -117,6 +117,55 @@ describe("NotificationBell", () => {
     expect(actions.loadNotificationsAction).toHaveBeenLastCalledWith("cursor-2");
   });
 
+  it("refreshes the history every time the bell is reopened", async () => {
+    await render();
+
+    const trigger = () => {
+      const button = container.querySelector<HTMLButtonElement>(".topbar-notification");
+      if (!button) throw new Error("trigger missing");
+      return button;
+    };
+
+    await act(async () => {
+      trigger().click();
+    });
+    await flush();
+    expect(actions.loadNotificationsAction).toHaveBeenCalledTimes(1);
+    expect(document.body.textContent).toContain("Reminder");
+
+    // Dismiss, then land a notification that was created after the last open.
+    await act(async () => {
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    });
+    await flush();
+    actions.loadNotificationsAction.mockResolvedValueOnce({
+      ok: true,
+      rows: [
+        {
+          id: "n2",
+          title: "New reminder",
+          body: "A task became due",
+          createdAt: "2026-11-22T11:00:00.000Z",
+          targetHref: null,
+          isUnread: true,
+        },
+      ],
+      unreadCount: 2,
+      nextCursor: null,
+    });
+
+    await act(async () => {
+      trigger().click();
+    });
+    await flush();
+
+    expect(actions.loadNotificationsAction).toHaveBeenCalledTimes(2);
+    expect(actions.loadNotificationsAction).toHaveBeenLastCalledWith(null);
+    expect(document.body.textContent).toContain("New reminder");
+    expect(document.body.textContent).not.toContain("Reminder");
+    expect(trigger().getAttribute("aria-label")).toBe("Notifications (2 unread)");
+  });
+
   it("marks a row read locally and decrements the unread count", async () => {
     await render();
     const trigger = container.querySelector<HTMLButtonElement>(".topbar-notification");
