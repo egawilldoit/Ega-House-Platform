@@ -1,8 +1,6 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, expect, it, vi } from "vitest";
 
 function makeChain(result: unknown) {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const chain: Record<string, any> = {};
   for (const method of ["select", "eq", "gte", "lt", "order"]) {
     chain[method] = vi.fn(() => chain);

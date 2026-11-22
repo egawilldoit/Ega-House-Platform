@@ -1,10 +1,8 @@
-import { cache } from "react";
 import type { ReactNode } from "react";
 import { createClient } from "@/lib/supabase/server";
 import { getShellIdentity, getSessionUser } from "@/lib/workspace-shell";
 import { getActiveTimerSession } from "@/lib/services/timer-service";
 
-import type { SidebarGoal, SidebarProject } from "@/components/layout/sidebar";
 import { ActiveTimerProvider } from "@/components/timer/floating-timer/active-timer-provider";
 import { FloatingTimerChip } from "@/components/timer/floating-timer/floating-timer-chip";
 import {
