@@ -28,13 +28,25 @@ import { getCurrentUser } from "@/lib/services/auth-service";
  * Scheduling still posts no cash.
  */
 
-const MONEY_PATHS = ["/money/bills", "/money/subscriptions"] as const;
+const RECURRING_PATH = "/money/recurring";
+const RECURRING_TYPES = ["bill", "subscription"] as const;
 
+/** Accept only the canonical recurring route, preserving an optional type filter. */
 function returnPath(raw: FormDataEntryValue | null): string {
   const value = typeof raw === "string" ? raw : "";
-  return (MONEY_PATHS as readonly string[]).includes(value)
-    ? value
-    : "/money/bills";
+  const [path, query = ""] = value.split("?");
+  if (path !== RECURRING_PATH) return RECURRING_PATH;
+  const type = new URLSearchParams(query).get("type");
+  return (RECURRING_TYPES as readonly string[]).includes(type ?? "")
+    ? `${RECURRING_PATH}?type=${type}`
+    : RECURRING_PATH;
+}
+
+function withParams(path: string, params: Record<string, string>): string {
+  const [base, query = ""] = path.split("?");
+  const search = new URLSearchParams(query);
+  for (const [key, value] of Object.entries(params)) search.set(key, value);
+  return `${base}?${search.toString()}`;
 }
 
 function text(formData: FormData, field: string): string {
@@ -49,18 +61,17 @@ function optionalText(formData: FormData, field: string): string | null {
 
 function succeed(path: string, notice: string): never {
   revalidatePath("/money");
-  revalidatePath("/money/bills");
-  revalidatePath("/money/subscriptions");
-  redirect(`${path}?${new URLSearchParams({ notice }).toString()}`);
+  revalidatePath(RECURRING_PATH);
+  redirect(withParams(path, { notice }));
 }
 
 function fail(path: string, message: string): never {
-  redirect(`${path}?${new URLSearchParams({ error: message }).toString()}`);
+  redirect(withParams(path, { error: message }));
 }
 
 async function paymentDependencies() {
   const user = await getCurrentUser();
-  if (!user) redirect("/login?next=/money/bills");
+  if (!user) redirect("/login?next=/money/recurring");
   const client = await createClient();
   return {
     actor: createAuthenticatedActor(user.id),

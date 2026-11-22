@@ -29,6 +29,10 @@ const periodPanelSource = readFileSync(
   resolve(import.meta.dirname, "./_components/money-period-panel.tsx"),
   "utf8",
 );
+const overviewSource = readFileSync(
+  resolve(import.meta.dirname, "./_components/money-overview-panels.tsx"),
+  "utf8",
+);
 
 test("money actions derive the actor from the verified session and never accept an owner", () => {
   assert.match(actionsSource, /getCurrentUser\(\)/);
@@ -69,11 +73,11 @@ test("category caps save through one validated preference patch without blocking
   // Caps are advisory only: the create path must not consult categoryCaps.
   const createBody = actionsSource.slice(actionsSource.indexOf("createExpenseAction"), actionsSource.indexOf("updateExpenseAction"));
   assert.doesNotMatch(createBody, /categoryCaps/);
-  assert.match(pageSource, /CategoryCapsForm/);
-  assert.match(pageSource, /MONEY_ADVISORY_CAP_LABEL/);
+  assert.match(overviewSource, /CategoryCapsForm/);
+  assert.match(overviewSource, /MONEY_ADVISORY_CAP_LABEL/);
   // The rendered heading text itself, not only the identifier reference.
   assert.equal(MONEY_ADVISORY_CAP_LABEL, "Advisory monthly category cap");
-  assert.match(pageSource, /\{MONEY_ADVISORY_CAP_LABEL\}/);
+  assert.match(overviewSource, /\{MONEY_ADVISORY_CAP_LABEL\}/);
 });
 
 test("money period actions share the verified session, repository and centime parser", () => {

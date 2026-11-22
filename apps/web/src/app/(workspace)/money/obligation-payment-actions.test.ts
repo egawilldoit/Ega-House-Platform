@@ -169,7 +169,7 @@ describe("MONEY-07 obligation payment web actions", () => {
     const location = await captureRedirect(() =>
       payObligationFormAction(
         form({
-          returnTo: "/money/bills",
+          returnTo: "/money/recurring?type=bill",
           obligationId: "22222222-2222-4222-8222-222222222222",
           version: "1",
           bookingDate: "2026-11-05",
@@ -186,7 +186,7 @@ describe("MONEY-07 obligation payment web actions", () => {
     const location = await captureRedirect(() =>
       payObligationFormAction(
         form({
-          returnTo: "/money/bills",
+          returnTo: "/money/recurring?type=bill",
           obligationId: "22222222-2222-4222-8222-222222222222",
           version: "1",
           bookingDate: "2026-11-05",
@@ -204,7 +204,7 @@ describe("MONEY-07 obligation payment web actions", () => {
     const location = await captureRedirect(() =>
       payObligationFormAction(
         form({
-          returnTo: "/money/bills",
+          returnTo: "/money/recurring?type=bill",
           obligationId: "22222222-2222-4222-8222-222222222222",
           version: "1",
           bookingDate: "2026-11-05",
@@ -221,7 +221,7 @@ describe("MONEY-07 obligation payment web actions", () => {
     const location = await captureRedirect(() =>
       payObligationFormAction(
         form({
-          returnTo: "/money/bills",
+          returnTo: "/money/recurring?type=bill",
           obligationId: "22222222-2222-4222-8222-222222222222",
           version: "1",
           bookingDate: "2026-11-05",
@@ -233,7 +233,7 @@ describe("MONEY-07 obligation payment web actions", () => {
       ),
     );
 
-    expect(location).toContain("/money/bills?notice=");
+    expect(location).toContain("/money/recurring?type=bill&notice=");
     expect(location).toContain("Payment+recorded");
     const pay = repositoryCalls.find((call) => call.method === "pay");
     const input = pay?.input as {
@@ -261,7 +261,7 @@ describe("MONEY-07 obligation payment web actions", () => {
     const location = await captureRedirect(() =>
       payObligationFormAction(
         form({
-          returnTo: "/money/subscriptions",
+          returnTo: "/money/recurring?type=subscription",
           obligationId: "22222222-2222-4222-8222-222222222222",
           version: "1",
           bookingDate: "2026-11-05",
@@ -270,7 +270,7 @@ describe("MONEY-07 obligation payment web actions", () => {
         }),
       ),
     );
-    expect(location).toContain("/money/subscriptions?error=");
+    expect(location).toContain("/money/recurring?type=subscription&error=");
     expect(location).not.toContain("notice=");
   });
 
@@ -279,7 +279,7 @@ describe("MONEY-07 obligation payment web actions", () => {
     const location = await captureRedirect(() =>
       correctObligationPaymentFormAction(
         form({
-          returnTo: "/money/bills",
+          returnTo: "/money/recurring?type=bill",
           obligationId: "22222222-2222-4222-8222-222222222222",
           version: "2",
           amount: "3550.00",
@@ -290,7 +290,7 @@ describe("MONEY-07 obligation payment web actions", () => {
       ),
     );
 
-    expect(location).toContain("/money/bills?notice=");
+    expect(location).toContain("/money/recurring?type=bill&notice=");
     expect(location).toContain("Payment+corrected");
     const correct = repositoryCalls.find((call) => call.method === "correct");
     const input = correct?.input as {
@@ -309,7 +309,7 @@ describe("MONEY-07 obligation payment web actions", () => {
     const location = await captureRedirect(() =>
       correctObligationPaymentFormAction(
         form({
-          returnTo: "/money/bills",
+          returnTo: "/money/recurring?type=bill",
           obligationId: "22222222-2222-4222-8222-222222222222",
           version: "2",
           amount: "3550.555",
@@ -327,7 +327,7 @@ describe("MONEY-07 obligation payment web actions", () => {
     const location = await captureRedirect(() =>
       undoObligationPaymentFormAction(
         form({
-          returnTo: "/money/bills",
+          returnTo: "/money/recurring?type=bill",
           obligationId: "22222222-2222-4222-8222-222222222222",
           version: "2",
           operationId: "op-3",
@@ -335,7 +335,7 @@ describe("MONEY-07 obligation payment web actions", () => {
       ),
     );
 
-    expect(location).toContain("/money/bills?notice=");
+    expect(location).toContain("/money/recurring?type=bill&notice=");
     expect(location).toContain("Payment+undone");
     const undo = repositoryCalls.find((call) => call.method === "undo");
     const input = undo?.input as {

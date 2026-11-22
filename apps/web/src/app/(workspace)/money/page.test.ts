@@ -6,6 +6,10 @@ import { createAuthenticatedActor, listExpenses } from "@ega/application";
 import type { ExpenseRepository } from "@ega/application";
 
 const source = readFileSync(resolve(import.meta.dirname, "./page.tsx"), "utf8");
+const overviewSource = readFileSync(
+  resolve(import.meta.dirname, "./_components/money-overview-panels.tsx"),
+  "utf8",
+);
 
 test("money page derives actor from verified user and reads through expense application", () => {
   assert.match(source, /getCurrentUser\(\)/);
@@ -47,9 +51,9 @@ test("money page reads shared reserves with request-scoped repositories and rend
     /getCurrentMoneyReserves\(actor,\s*\{\s*period: moneyState\.period,\s*periods: new SupabaseMoneyPeriodRepository\(client\),\s*budgets: new SupabaseMoneyBudgetRepository\(client\),\s*\}\)/,
   );
   for (const field of ["recordedCashMinor", "unpaidCommitmentsMinor", "savingsTargetMinor", "fundedSavingsMinor", "unfundedSavingsMinor", "emergencyTargetMinor", "emergencyUsedMinor", "remainingEmergencyMinor", "safeFlexibleMinor"]) {
-    assert.match(source, new RegExp(`reserves\\.${field}`));
+    assert.match(overviewSource, new RegExp(`reserves\\.${field}`));
   }
-  assert.match(source, /reserve inputs are incomplete or could not be loaded/);
+  assert.match(overviewSource, /reserve inputs are incomplete or could not be loaded/);
 });
 
 test("money ledger displays need-vs-want and keeps notes visible beside merchants", () => {
@@ -74,12 +78,13 @@ test("money page renders recorded cash and the movement ledger through the share
 });
 
 test("daily reference renders shared values with method and unavailable state", () => {
-  assert.match(source, /dayStartBaseline\?\.dailyReference\?\.available/);
-  assert.match(source, /Daily reference/);
-  assert.match(source, /Daily remaining/);
-  assert.match(source, /dailyReference\.algorithm/);
-  assert.match(source, /Unavailable — baseline or complete daily expense data is missing/);
-  assert.doesNotMatch(source, /dailyRemainingMinor\s*\?\?/);
+  assert.match(overviewSource, /moneyState\.dayStartBaseline\?\.dailyReference/);
+  assert.match(overviewSource, /reference\?\.available/);
+  assert.match(overviewSource, /Daily reference/);
+  assert.match(overviewSource, /Daily remaining/);
+  assert.match(overviewSource, /reference\.algorithm/);
+  assert.match(overviewSource, /Unavailable — baseline or complete daily expense data is missing/);
+  assert.doesNotMatch(overviewSource, /dailyRemainingMinor\s*\?\?/);
 });
 
 test("money ledger has bounded URL pagination and accessible loading failure recovery", () => {
@@ -105,19 +110,19 @@ test("money page paginates expenses and non-expense movements independently with
 });
 
 test("money page exposes complete filtered CSV export and focus refresh", () => {
-  assert.match(source, /action="\/money\/export"/);
-  assert.match(source, /name="from"/);
-  assert.match(source, /name="to"/);
-  assert.match(source, /Download CSV/);
-  assert.match(source, /never silently cut off/);
+  assert.match(overviewSource, /action="\/money\/export"/);
+  assert.match(overviewSource, /name="from"/);
+  assert.match(overviewSource, /name="to"/);
+  assert.match(overviewSource, /Download CSV/);
+  assert.match(overviewSource, /never silently cut off/);
   assert.match(source, /RefreshOnFocus/);
 });
 
 test("unavailable or truncated spending is never shown as a complete zero", () => {
-  assert.match(source, /Progress unavailable — not shown as zero/);
-  assert.match(source, /Incomplete reading — not shown as zero/);
-  assert.match(source, /summary\.monthToDate\.truncated/);
-  assert.match(source, /Spending summaries unavailable right now/);
+  assert.match(overviewSource, /Progress unavailable — not shown as zero/);
+  assert.match(overviewSource, /Incomplete reading — not shown as zero/);
+  assert.match(overviewSource, /summary\.monthToDate\.truncated/);
+  assert.match(overviewSource, /Spending summaries unavailable right now/);
 });
 
 test("page query values succeed through the actual listExpenses parser and repository path", async () => {
@@ -146,8 +151,9 @@ test("page query values succeed through the actual listExpenses parser and repos
   });
 });
 
-test("money page renders durable day close evidence and restated totals", () => {
+test("money page renders durable day close evidence only while tracking", () => {
   assert.match(source, /MoneyDayClosePanel/);
+  assert.match(source, /\(lifecycle === "tracking" \|\| lifecycle === "ended" \|\| lifecycle === "rolled_over"\) && moneyState\.period/);
   assert.match(source, /dayClose=\{moneyState\.dayClose\}/);
   assert.match(source, /lastClose=\{moneyState\.lastClose\}/);
   assert.match(source, /recentCloses=\{moneyState\.recentCloses\}/);
@@ -157,7 +163,8 @@ test("money page renders durable day close evidence and restated totals", () => 
 
 test("money page previews rollover only for an ended source through shared use cases", () => {
   assert.match(source, /MoneyRolloverPanel/);
-  assert.match(source, /moneyState\.period\?\.lifecycle === "ended"/);
+  assert.match(source, /const lifecycle = moneyState\?\.period\?\.lifecycle \?\? null/);
+  assert.match(source, /lifecycle === "ended" && moneyState\.period/);
   assert.match(source, /getMoneyRolloverPreviewForPeriod\(/);
   assert.match(source, /new SupabaseMoneyRolloverRepository\(client\)/);
   assert.match(source, /new SupabaseObligationRepository\(client\)/);
@@ -170,8 +177,8 @@ test("money page previews rollover only for an ended source through shared use c
 });
 
 test("daily reference shows the active day's included spending even when it is zero", () => {
-  assert.match(source, /Daily included spending/);
-  assert.match(source, /dailyReference\.dailyIncludedExpenseMinor/);
-  assert.match(source, /Days left in period/);
-  assert.match(source, /dailyReference\.daysRemaining/);
+  assert.match(overviewSource, /Daily included spending/);
+  assert.match(overviewSource, /reference\.dailyIncludedExpenseMinor/);
+  assert.match(overviewSource, /Days left in period/);
+  assert.match(overviewSource, /reference\.daysRemaining/);
 });

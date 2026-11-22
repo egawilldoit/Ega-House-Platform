@@ -3,9 +3,8 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import test from "node:test";
 
-const billsSource = readFileSync(resolve(import.meta.dirname, "./page.tsx"), "utf8");
-const subscriptionsSource = readFileSync(
-  resolve(import.meta.dirname, "../subscriptions/page.tsx"),
+const recurringSource = readFileSync(
+  resolve(import.meta.dirname, "./page.tsx"),
   "utf8",
 );
 const viewSource = readFileSync(
@@ -16,14 +15,30 @@ const actionsSource = readFileSync(
   resolve(import.meta.dirname, "../obligations-actions.ts"),
   "utf8",
 );
+const nextConfigSource = readFileSync(
+  resolve(import.meta.dirname, "../../../../../next.config.ts"),
+  "utf8",
+);
 
-test("bills and subscriptions render the same occurrence view filtered by kind", () => {
-  assert.match(billsSource, /<ObligationsView kind="bill"/);
-  assert.match(subscriptionsSource, /<ObligationsView kind="subscription"/);
+test("one recurring route filters the same occurrence view by type", () => {
+  assert.match(recurringSource, /<ObligationsView filter=\{filterOf/);
+  assert.match(recurringSource, /value === "bill" \|\| value === "subscription"/);
   // One shared server component/repository; no second bill or subscription store.
   assert.match(viewSource, /new SupabaseObligationRepository\(client\)/);
   assert.match(viewSource, /listObligations\(actor, repository, \{\s*kind,/);
+  assert.match(viewSource, /filter === "all" \? null : filter/);
   assert.doesNotMatch(viewSource, /bill_paid|subscription_paid|paidFlag/);
+});
+
+test("legacy bills and subscriptions routes redirect to the recurring filter", () => {
+  assert.match(
+    nextConfigSource,
+    /source: "\/money\/bills", destination: "\/money\/recurring\?type=bill"/,
+  );
+  assert.match(
+    nextConfigSource,
+    /source: "\/money\/subscriptions", destination: "\/money\/recurring\?type=subscription"/,
+  );
 });
 
 test("the view derives the owner from verified auth and uses shared use cases", () => {
