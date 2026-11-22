@@ -5,20 +5,7 @@ import { useTransition, type KeyboardEvent } from "react";
 
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
-
-export const PROJECT_TABS = [
-  { value: "overview", label: "Overview" },
-  { value: "list", label: "List" },
-  { value: "files", label: "Files" },
-] as const;
-
-export type ProjectTab = (typeof PROJECT_TABS)[number]["value"];
-
-export function normalizeProjectTab(value: string | null | undefined): ProjectTab {
-  if (value === "list") return "list";
-  if (value === "files") return "files";
-  return "overview";
-}
+import { PROJECT_TABS, type ProjectTab } from "./project-tabs";
 
 type ProjectTabNavProps = {
   activeTab: ProjectTab;

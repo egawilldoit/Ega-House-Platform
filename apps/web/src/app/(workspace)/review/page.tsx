@@ -1,5 +1,6 @@
 import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
 import type { Metadata } from "next";
+import { CanonicalLink } from "@/components/layout/canonical-link";
 import { getFrictionRadar } from "@/lib/services/friction-service";
 import { getHealthSnapshotData } from "@/lib/services/health-snapshot-service";
 import { getReviewPageModel } from "./_lib/review-page-model";
@@ -40,9 +41,17 @@ export default async function ReviewPage({
         title="Review"
         description="Weekly review reflection workflow."
         actions={
-          <ExportCsvButton href={resolvedSearchParams.weekOf ? `/review/export?weekOf=${encodeURIComponent(resolvedSearchParams.weekOf)}` : "/review/export"}>
-            Export CSV
-          </ExportCsvButton>
+          <div className="flex flex-wrap items-center gap-2">
+            <CanonicalLink
+              href="/timer#recent-sessions"
+              className="btn-instrument btn-instrument-muted flex h-8 items-center px-3 text-sm"
+            >
+              Timer history
+            </CanonicalLink>
+            <ExportCsvButton href={resolvedSearchParams.weekOf ? `/review/export?weekOf=${encodeURIComponent(resolvedSearchParams.weekOf)}` : "/review/export"}>
+              Export CSV
+            </ExportCsvButton>
+          </div>
         }
       />
       <ReviewPageView model={model} health={health} friction={friction} />

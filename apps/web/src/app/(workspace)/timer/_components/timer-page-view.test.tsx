@@ -106,6 +106,7 @@ test("TimerPageView renders the dense recent-session evidence table", () => {
   const markup = renderToStaticMarkup(<TimerPageView model={buildModel()} />);
 
   assert.match(markup, /<table class="data-table/);
+  assert.match(markup, /id="recent-sessions"/);
   assert.match(markup, />Task</);
   assert.match(markup, />Project</);
   assert.match(markup, />Date \/ Time</);

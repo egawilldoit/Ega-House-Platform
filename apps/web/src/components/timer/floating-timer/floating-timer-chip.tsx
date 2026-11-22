@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { ExternalLink, Pin, Square } from "lucide-react";
+import { ExternalLink, Pin, Square, Timer } from "lucide-react";
 
 import { useActiveTimer } from "@/components/timer/floating-timer/active-timer-provider";
+import { useCanonicalUrl } from "@/lib/use-canonical-url";
 import {
   formatDurationClock,
   getElapsedDurationSeconds,
@@ -74,6 +75,7 @@ function ChipElapsed({ startedAt }: { startedAt: string }) {
  * workspace routes. The one-second clock is isolated in `ChipElapsed`.
  */
 export function FloatingTimerChip() {
+  const canonicalUrl = useCanonicalUrl();
   const {
     session,
     phase,
@@ -137,6 +139,15 @@ export function FloatingTimerChip() {
         >
           <ExternalLink aria-hidden="true" />
           Open task
+        </Link>
+
+        <Link
+          href={canonicalUrl.resolve("/timer#recent-sessions")}
+          className="ega-timer-chip__button"
+          aria-label="Open timer history"
+        >
+          <Timer aria-hidden="true" />
+          Timer
         </Link>
 
         {popoutSupported ? (

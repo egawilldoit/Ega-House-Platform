@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { formatDisplayDate } from "@/lib/presentation-format";
-import { ChevronDown, FolderKanban, Plus } from "lucide-react";
+import { ChevronDown, FolderKanban, Plus, Target } from "lucide-react";
 
 import {
   createAuthenticatedActor,
@@ -30,6 +30,7 @@ import {
 import { AreaColorDot, AreaIconView } from "@/components/projects/area-icon";
 import { InlineProjectStatusForm } from "@/components/projects/inline-project-status-form";
 import { ProjectAreaForm } from "@/components/projects/project-area-form";
+import { CanonicalLink } from "@/components/layout/canonical-link";
 import { TasksWorkspaceShell } from "@/components/tasks/tasks-workspace-shell";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
@@ -355,6 +356,15 @@ export default async function TasksProjectsPage({ searchParams }: TasksProjectsP
       description="Project directory — grouped by area, with status, active work, progress, and recency."
       actions={
         <div className="flex flex-wrap items-center gap-2">
+          <CanonicalLink
+            href="/goals?view=all"
+            aria-label="Goals across all projects"
+            title="Goals across all projects"
+            className={cn(buttonVariants({ variant: "secondary" }), "flex h-8 items-center gap-2 px-3")}
+          >
+            <Target className="h-4 w-4" aria-hidden="true" />
+            Goals
+          </CanonicalLink>
           <Link
             href="/tasks/projects/areas"
             className={cn(buttonVariants({ variant: "secondary" }), "flex h-8 items-center px-3")}

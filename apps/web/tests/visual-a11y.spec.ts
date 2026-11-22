@@ -8,6 +8,8 @@ const authenticatedRoutes = [
   "/dashboard",
   "/today",
   "/tasks",
+  "/goals",
+  "/timer",
   "/settings",
   "/settings?tab=preferences",
   "/settings?tab=integrations",
