@@ -9,15 +9,9 @@ import {
 // Retired destinations keep a redirect in next.config.ts and must not reappear
 // as palette commands. Every retained page stays discoverable even though the
 // sidebar intentionally shows only the five primary destinations.
-const RETIRED_PALETTE_ROUTES = new Set(["/apps", "/shutdown"]);
-const RETAINED_PRIMARY_ROUTES: readonly ShellRouteMeta[] = [
-  { href: "/goals", label: "Goals", group: "primary", description: "Direction and progress" },
-  { href: "/timer", label: "Timer", group: "primary", description: "Focus session" },
-  { href: "/work-analytics", label: "Analytics", group: "primary", description: "Operational evidence" },
-];
+const RETIRED_PALETTE_ROUTES = new Set(["/apps", "/shutdown", "/goals", "/timer", "/work-analytics", "/archive", "/startup", "/friction"]);
 const PALETTE_ROUTES: readonly ShellRouteMeta[] = [
   ...COMMAND_ROUTES,
-  ...RETAINED_PRIMARY_ROUTES,
   ...SYSTEM_ROUTES.filter((route) => !RETIRED_PALETTE_ROUTES.has(route.href)),
 ];
 

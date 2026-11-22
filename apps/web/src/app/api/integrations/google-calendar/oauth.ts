@@ -102,7 +102,8 @@ export function getSettingsRedirectUrl(
   message: string,
   errorCode?: GoogleCalendarOAuthFailureCode,
 ) {
-  const url = new URL("/settings/account", requestUrl);
+  const url = new URL("/settings", requestUrl);
+  url.searchParams.set("tab", "integrations");
   url.searchParams.set(type, message);
   if (type === "error" && errorCode) {
     url.searchParams.set("errorCode", errorCode);

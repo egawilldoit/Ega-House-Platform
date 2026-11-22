@@ -62,28 +62,27 @@ test("a persisted row is normalized before use", async () => {
   const repository = new FakeUserPreferencesRepository({
     ...DEFAULT_USER_PREFERENCES,
     theme: "dark",
-    density: "compact",
+    reducedMotion: true,
   });
   const result = await getUserPreferences(ACTOR, repository);
 
   assert.equal(result.ok, true);
   if (!result.ok) return;
   assert.equal(result.data.theme, "dark");
-  assert.equal(result.data.density, "compact");
-  assert.equal(result.data.accent, "neutral");
+  assert.equal(result.data.reducedMotion, true);
 });
 
 test("a patch merges over the current row and persists under the verified owner", async () => {
   const repository = new FakeUserPreferencesRepository(null);
   const result = await updateUserPreferences(ACTOR, repository, {
     theme: "dark",
-    accent: "violet",
+    reducedMotion: true,
   });
 
   assert.equal(result.ok, true);
   if (!result.ok) return;
   assert.equal(result.data.theme, "dark");
-  assert.equal(result.data.accent, "violet");
+  assert.equal(result.data.reducedMotion, true);
   // Untouched fields keep the previous/default value.
   assert.equal(result.data.launchPage, "home");
   assert.equal(result.data.taskOpenMode, "panel");
@@ -149,8 +148,7 @@ test("one invalid field rejects the whole patch and writes nothing", async () =>
   const repository = new FakeUserPreferencesRepository(null);
   const result = await updateUserPreferences(ACTOR, repository, {
     theme: "dark",
-    accent: "violet",
-    density: "tiny",
+    taskLayout: "table",
   });
 
   assert.equal(result.ok, false);
@@ -179,8 +177,6 @@ test("a theme patch sends no schedule and a schedule patch sends no appearance",
   assert.deepEqual(sent[1], { personalOperations: schedule });
   for (const field of [
     "theme",
-    "accent",
-    "density",
     "reducedMotion",
     "launchPage",
     "taskLayout",

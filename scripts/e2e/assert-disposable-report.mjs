@@ -21,11 +21,8 @@ export const journeys = {
     "two timer clients reconcile a competing start and safely retry an old stop",
   ],
   "pwa-personal-operations.e2e.spec.ts": [
-    "owner edits, reloads and pauses a personal schedule through the redesigned UI",
-    "dirty schedule survives browser Back/Forward and clears after Discard",
-    "confirmed anchor leave discards the draft and reaches the destination once",
-    "server rejects overlapping guidance without persisting the edited target",
-    "reduced motion and keyboard editing save and restore the schedule",
+    "owner edits daily work targets and the theme from tabbed Settings",
+    "invalid target hours are rejected before any write",
   ],
 };
 

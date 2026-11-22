@@ -198,7 +198,8 @@ test("Google Calendar settings redirect includes specific safe error code", () =
     "token_exchange_failed",
   );
 
-  assert.equal(url.pathname, "/settings/account");
+  assert.equal(url.pathname, "/settings");
+  assert.equal(url.searchParams.get("tab"), "integrations");
   assert.equal(url.searchParams.get("errorCode"), "token_exchange_failed");
   assert.equal(
     url.searchParams.get("error"),

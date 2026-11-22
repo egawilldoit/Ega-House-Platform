@@ -6,7 +6,6 @@ export type ShortcutRouteId =
   | "timer"
   | "review"
   | "backlog"
-  | "notifications"
   | "settings"
   | "apps";
 
@@ -25,8 +24,7 @@ export const SHORTCUT_ROUTE_MAP: Record<ShortcutRouteId, `/${string}`> = {
   timer: "/timer",
   review: "/review",
   backlog: "/backlog",
-  notifications: "/notifications",
-  settings: "/settings/account",
+  settings: "/settings",
   apps: "/apps",
 };
 
@@ -44,12 +42,6 @@ export const SHORTCUT_HELP_SECTIONS: Array<{
       { id: "go-review", description: "Go to Review", combo: "G then R", group: "Navigation" },
       { id: "go-projects", description: "Go to Projects", combo: "G then P", group: "Navigation" },
       { id: "go-backlog", description: "Go to Backlog", combo: "G then B", group: "Navigation" },
-      {
-        id: "go-notifications",
-        description: "Go to Notifications",
-        combo: "G then N",
-        group: "Navigation",
-      },
       { id: "go-settings", description: "Go to Settings", combo: "G then S", group: "Navigation" },
       { id: "go-apps", description: "Open Apps launcher", combo: "G then A", group: "Navigation" },
     ],
@@ -102,7 +94,6 @@ export const SHORTCUT_NAV_KEY_MAP: Record<string, ShortcutRouteId> = {
   d: "today",
   g: "goals",
   i: "timer",
-  n: "notifications",
   o: "goals",
   p: "projects",
   r: "review",

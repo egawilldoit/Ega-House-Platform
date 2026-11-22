@@ -6,8 +6,6 @@ import {
   DEFAULT_PERSONAL_OPERATIONS,
   DEFAULT_USER_PREFERENCES,
   LAUNCH_PAGE_PATHS,
-  USER_ACCENT_VALUES,
-  USER_DENSITY_VALUES,
   USER_LAUNCH_PAGE_VALUES,
   USER_TASK_LAYOUT_VALUES,
   USER_TASK_OPEN_MODE_VALUES,
@@ -22,8 +20,6 @@ import {
 
 test("the supported values match the shipped CSS and views", () => {
   assert.deepEqual(USER_THEME_VALUES, ["system", "light", "dark"]);
-  assert.deepEqual(USER_ACCENT_VALUES, ["neutral", "blue", "green", "violet", "amber"]);
-  assert.deepEqual(USER_DENSITY_VALUES, ["comfortable", "compact"]);
   assert.deepEqual(USER_LAUNCH_PAGE_VALUES, ["home", "today", "tasks"]);
   // Table and Calendar are intentionally absent until those views exist.
   assert.deepEqual(USER_TASK_LAYOUT_VALUES, ["list", "kanban"]);
@@ -36,8 +32,6 @@ test("defaults preserve the pre-preferences workspace behaviour", () => {
     jobSearchReference: null,
     categoryCaps: {},
     theme: "system",
-    accent: "neutral",
-    density: "comfortable",
     reducedMotion: false,
     launchPage: "home",
     taskLayout: "list",
@@ -52,8 +46,6 @@ test("normalizeUserPreferences fills invalid fields per field", () => {
 
   const normalized = normalizeUserPreferences({
     theme: "dark",
-    accent: "sepia",
-    density: "tiny",
     reducedMotion: "yes",
     launchPage: "calendar",
     taskLayout: "table",
@@ -61,8 +53,6 @@ test("normalizeUserPreferences fills invalid fields per field", () => {
   });
 
   assert.equal(normalized.theme, "dark");
-  assert.equal(normalized.accent, "neutral");
-  assert.equal(normalized.density, "comfortable");
   assert.equal(normalized.reducedMotion, false);
   assert.equal(normalized.launchPage, "home");
   assert.equal(normalized.taskLayout, "list");
@@ -72,12 +62,6 @@ test("normalizeUserPreferences fills invalid fields per field", () => {
 test("only supported enum values survive normalization", () => {
   for (const theme of USER_THEME_VALUES) {
     assert.equal(normalizeUserPreferences({ theme }).theme, theme);
-  }
-  for (const accent of USER_ACCENT_VALUES) {
-    assert.equal(normalizeUserPreferences({ accent }).accent, accent);
-  }
-  for (const density of USER_DENSITY_VALUES) {
-    assert.equal(normalizeUserPreferences({ density }).density, density);
   }
   for (const launchPage of USER_LAUNCH_PAGE_VALUES) {
     assert.equal(normalizeUserPreferences({ launchPage }).launchPage, launchPage);
@@ -119,11 +103,18 @@ test("parseUserPreferencesPatch ignores unknown keys and absent values", () => {
   assert.deepEqual(result.value, { theme: "light" });
 });
 
+test("retired accent and density keys are ignored instead of written", () => {
+  const parsed = parseUserPreferencesPatch({ accent: "blue", density: "compact" });
+  assert.equal(parsed.ok, true);
+  if (!parsed.ok) return;
+  assert.deepEqual(parsed.value, {});
+  assert.equal("accent" in normalizeUserPreferences({ accent: "blue" }), false);
+  assert.equal("density" in normalizeUserPreferences({ density: "compact" }), false);
+});
+
 test("parseUserPreferencesPatch rejects an unsupported enum instead of coercing it", () => {
   const cases: Array<[string, unknown, string]> = [
     ["theme", "sepia", "Choose Light, Dark or System."],
-    ["accent", "red", "Choose a supported accent."],
-    ["density", "tiny", "Choose Comfortable or Compact density."],
     ["launchPage", "calendar", "Choose Home, Today or Tasks on launch."],
     ["taskLayout", "table", "Choose List or Kanban as the task layout."],
     ["taskOpenMode", "modal", "Choose Side panel or Full page."],

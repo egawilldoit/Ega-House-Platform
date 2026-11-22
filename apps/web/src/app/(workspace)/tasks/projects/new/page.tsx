@@ -107,7 +107,7 @@ export default async function NewProjectPage() {
             </CardDescription>
             <p className="text-[length:var(--text-meta)] text-ega-text-secondary">
               Need a new area?{" "}
-              <Link href="/settings/areas" className="font-medium underline-offset-2 hover:underline">
+              <Link href="/tasks/projects/areas" className="font-medium underline-offset-2 hover:underline">
                 Manage areas in Settings
               </Link>
               .

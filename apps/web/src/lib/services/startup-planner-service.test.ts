@@ -560,7 +560,7 @@ test("captures normalized Supabase review errors with code", async () => {
     tasks: [],
     goals: [],
     reviews: [],
-  }) as any;
+  });
   const originalFrom = base.from.bind(base);
   base.from = (table: string) => {
     const result = originalFrom(table);

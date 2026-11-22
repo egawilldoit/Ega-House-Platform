@@ -80,8 +80,6 @@ function repo(fake: FakePreferencesSupabase) {
 
 const STORED_ROW = {
   theme: "dark",
-  accent: "violet",
-  density: "compact",
   reduced_motion: true,
   launch_page: "today",
   task_layout: "kanban",
@@ -116,8 +114,6 @@ test("get reads the owner row scoped by verified user_id", async () => {
       jobSearchReference: null,
       categoryCaps: {},
       theme: "dark",
-      accent: "violet",
-      density: "compact",
       reducedMotion: true,
       launchPage: "today",
       taskLayout: "kanban",
@@ -204,7 +200,7 @@ test("get preserves legacy preferences when the schedule column is missing", asy
     const fake = new FakePreferencesSupabase([{ data: null, error }, { data: STORED_ROW, error: null }]);
     const result = await repo(fake).get(ACTOR);
     assert.equal(result.ok && result.value?.theme, "dark");
-    assert.equal(result.ok && result.value?.accent, "violet");
+    assert.equal(result.ok && result.value?.launchPage, "today");
     assert.ok(fake.calls[1]?.steps.includes("eq:user_id=owner-preferences"));
     assert.ok(!fake.calls[1]?.steps[0]?.includes("personal_operations"));
   }
@@ -228,7 +224,7 @@ test("get treats an unapplied additive migration as the documented defaults", as
 test("get normalizes an unsupported stored value per field", async () => {
   const fake = new FakePreferencesSupabase([
     {
-      data: { ...STORED_ROW, theme: "sepia", accent: null, reduced_motion: null },
+      data: { ...STORED_ROW, theme: "sepia", reduced_motion: null },
       error: null,
     },
   ]);
@@ -237,9 +233,8 @@ test("get normalizes an unsupported stored value per field", async () => {
   assert.equal(result.ok, true);
   if (!result.ok || !result.value) return;
   assert.equal(result.value.theme, DEFAULT_USER_PREFERENCES.theme);
-  assert.equal(result.value.accent, DEFAULT_USER_PREFERENCES.accent);
   assert.equal(result.value.reducedMotion, DEFAULT_USER_PREFERENCES.reducedMotion);
-  assert.equal(result.value.density, "compact");
+  assert.equal(result.value.taskLayout, "kanban");
 });
 
 test("get sanitizes unexpected errors", async () => {
@@ -284,7 +279,7 @@ test("patch reads the returned composite object", async () => {
   assert.equal(result.ok, true);
   if (!result.ok) return;
   assert.equal(result.value.theme, "light");
-  assert.equal(result.value.accent, "violet");
+  assert.equal(result.value.taskLayout, "kanban");
   assert.deepEqual(result.value.personalOperations, PERSISTED_SCHEDULE);
 });
 
@@ -300,7 +295,7 @@ test("patch reads a one-element array response", async () => {
   assert.equal(result.ok, true);
   if (!result.ok) return;
   assert.equal(result.value.theme, "light");
-  assert.equal(result.value.density, "compact");
+  assert.equal(result.value.launchPage, "today");
   assert.deepEqual(result.value.personalOperations, PERSISTED_SCHEDULE);
 });
 
@@ -339,7 +334,7 @@ test("a null personal_operations column falls back to defaults and keeps appeara
   assert.equal(result.ok, true);
   if (!result.ok || !result.value) return;
   assert.equal(result.value.theme, "light");
-  assert.equal(result.value.accent, "violet");
+  assert.equal(result.value.launchPage, "today");
   assert.equal(result.value.personalOperations.paused, false);
   assert.deepEqual(
     result.value.personalOperations.targets.monday,

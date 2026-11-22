@@ -5,17 +5,14 @@ import { usePathname } from "next/navigation";
 import {
   Archive,
   BarChart3,
-  Bell,
   CalendarCheck2,
   CheckSquare,
-  CircleHelp,
   FileText,
   Flag,
   Grid2X2,
   House,
   Lightbulb,
   Wallet,
-  Bot,
   Power,
   Rocket,
   Settings,
@@ -77,13 +74,10 @@ const ROUTE_ICONS: Record<string, LucideIcon> = {
   "/money": Wallet,
   "/backlog": Lightbulb,
   "/archive": Archive,
-  "/notifications": Bell,
   "/startup": Rocket,
   "/shutdown": Power,
   "/apps": Grid2X2,
-  "/agents": Bot,
-  "/help": CircleHelp,
-  "/settings/account": Settings,
+  "/settings": Settings,
 };
 
 function isActive(pathname: string, href: string) {
@@ -91,7 +85,7 @@ function isActive(pathname: string, href: string) {
     return pathname === "/tasks" || pathname.startsWith("/tasks/");
   }
 
-  if (href === "/settings/account") {
+  if (href === "/settings") {
     return pathname === "/settings" || pathname.startsWith("/settings/");
   }
 

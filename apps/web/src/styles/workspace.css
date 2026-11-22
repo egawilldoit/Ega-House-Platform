@@ -2731,12 +2731,6 @@ html[data-reduce-motion="true"] .workspace-drawer-panel-enter {
   }
 }
 
-/* The preferences save bar is a deliberate z-45 action surface. Lift the chip
-   above its footprint instead of competing for the same corner. */
-body:has([data-ega-save-bar]) .ega-timer-chip {
-  bottom: calc(116px + env(safe-area-inset-bottom, 0px));
-}
-
 /* ══════════════════════════════════════════════════════════════
    Floating Quick Notes (global in-app surface)
    ══════════════════════════════════════════════════════════════ */
@@ -2800,10 +2794,6 @@ body:has([data-ega-save-bar]) .ega-timer-chip {
 .ega-quick-notes-launcher:focus-visible {
   outline: var(--ega-focus-outline);
   outline-offset: 2px;
-}
-
-body:has([data-ega-save-bar]) .ega-quick-notes-panel {
-  bottom: calc(116px + env(safe-area-inset-bottom, 0px));
 }
 
 @media (max-width: 640px) {

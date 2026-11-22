@@ -6,20 +6,6 @@ const workspaceCss = readFileSync(
   resolve(process.cwd(), "src/styles/workspace.css"),
   "utf8",
 );
-const preferencesCss = readFileSync(
-  resolve(
-    process.cwd(),
-    "src/app/(workspace)/settings/preferences/preferences.module.css",
-  ),
-  "utf8",
-);
-const preferencesForm = readFileSync(
-  resolve(
-    process.cwd(),
-    "src/app/(workspace)/settings/preferences/personal-operations-form.tsx",
-  ),
-  "utf8",
-);
 
 function zIndexFor(selector: string) {
   const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -42,14 +28,6 @@ describe("floating timer layering", () => {
     expect(chip).toBeLessThan(desktopDrawerOverlay);
     expect(chip).toBeLessThan(mobileDrawerLayer);
     expect(chip).toBeLessThan(mobileDrawerPanel);
-  });
-
-  it("lifts the chip clear of the z-45 preferences save bar instead of covering it", () => {
-    expect(preferencesCss).toMatch(/\.saveBar\s*\{[\s\S]*?z-index:\s*45/);
-    expect(preferencesForm).toContain('data-ega-save-bar');
-    expect(workspaceCss).toMatch(
-      /body:has\(\[data-ega-save-bar\]\) \.ega-timer-chip\s*\{[\s\S]*?bottom:\s*calc\(116px/,
-    );
   });
 
   it("keeps the Quick Notes panel above shell chrome and below modal overlays", () => {

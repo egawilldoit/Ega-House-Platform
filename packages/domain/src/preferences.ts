@@ -33,12 +33,6 @@ export type { Day, PersonalOperations, PersonalOperationsDayPlan, PersonalOperat
 export const USER_THEME_VALUES = ["system", "light", "dark"] as const;
 export type UserTheme = (typeof USER_THEME_VALUES)[number];
 
-export const USER_ACCENT_VALUES = ["neutral", "blue", "green", "violet", "amber"] as const;
-export type UserAccent = (typeof USER_ACCENT_VALUES)[number];
-
-export const USER_DENSITY_VALUES = ["comfortable", "compact"] as const;
-export type UserDensity = (typeof USER_DENSITY_VALUES)[number];
-
 export const USER_LAUNCH_PAGE_VALUES = ["home", "today", "tasks"] as const;
 export type UserLaunchPage = (typeof USER_LAUNCH_PAGE_VALUES)[number];
 
@@ -97,8 +91,6 @@ export type UserPreferences = Readonly<{
   jobSearchReference: JobSearchReference | null;
   categoryCaps: UserCategoryCaps;
   theme: UserTheme;
-  accent: UserAccent;
-  density: UserDensity;
   /** Explicit app-level reduction; the OS setting always applies on top. */
   reducedMotion: boolean;
   launchPage: UserLaunchPage;
@@ -121,16 +113,14 @@ export function isUserCategoryCaps(value: unknown): value is UserCategoryCaps {
 
 /**
  * Defaults reproduce the workspace as it behaved before preferences existed:
- * System theme, neutral accent, comfortable density, no extra motion
- * reduction, Home launch, List layout and the side-panel task detail.
+ * System theme, no extra motion reduction, Home launch, List layout and the
+ * side-panel task detail.
  */
 export const DEFAULT_USER_PREFERENCES: UserPreferences = Object.freeze({
   personalOperations: DEFAULT_PERSONAL_OPERATIONS,
   jobSearchReference: null,
   categoryCaps: Object.freeze({}),
   theme: "system",
-  accent: "neutral",
-  density: "comfortable",
   reducedMotion: false,
   launchPage: "home",
   taskLayout: "list",
@@ -143,14 +133,6 @@ function isOneOf<T extends string>(values: readonly T[], value: unknown): value 
 
 export function isUserTheme(value: unknown): value is UserTheme {
   return isOneOf(USER_THEME_VALUES, value);
-}
-
-export function isUserAccent(value: unknown): value is UserAccent {
-  return isOneOf(USER_ACCENT_VALUES, value);
-}
-
-export function isUserDensity(value: unknown): value is UserDensity {
-  return isOneOf(USER_DENSITY_VALUES, value);
 }
 
 export function isUserLaunchPage(value: unknown): value is UserLaunchPage {
@@ -198,8 +180,6 @@ export function normalizeUserPreferences(input: unknown): UserPreferences {
     jobSearchReference: isJobSearchReference(value.jobSearchReference) ? value.jobSearchReference : null,
     categoryCaps: isUserCategoryCaps(value.categoryCaps) ? { ...value.categoryCaps } : {},
     theme: isUserTheme(value.theme) ? value.theme : DEFAULT_USER_PREFERENCES.theme,
-    accent: isUserAccent(value.accent) ? value.accent : DEFAULT_USER_PREFERENCES.accent,
-    density: isUserDensity(value.density) ? value.density : DEFAULT_USER_PREFERENCES.density,
     reducedMotion:
       typeof value.reducedMotion === "boolean"
         ? value.reducedMotion
@@ -229,8 +209,6 @@ const PATCH_FIELDS = [
   "jobSearchReference",
   "categoryCaps",
   "theme",
-  "accent",
-  "density",
   "reducedMotion",
   "launchPage",
   "taskLayout",
@@ -293,18 +271,6 @@ export function parseUserPreferencesPatch(input: unknown): UserPreferencesPatchP
           return { ok: false, field, message: "Choose Light, Dark or System." };
         }
         patch.theme = raw;
-        break;
-      case "accent":
-        if (!isUserAccent(raw)) {
-          return { ok: false, field, message: "Choose a supported accent." };
-        }
-        patch.accent = raw;
-        break;
-      case "density":
-        if (!isUserDensity(raw)) {
-          return { ok: false, field, message: "Choose Comfortable or Compact density." };
-        }
-        patch.density = raw;
         break;
       case "launchPage":
         if (!isUserLaunchPage(raw)) {
