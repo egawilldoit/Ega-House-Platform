@@ -199,7 +199,7 @@ export function FocusQueuePanel({
   return (
     <Card
       label="Queue"
-      title="Suggested next"
+      title="Next"
       action={
         <Badge tone="muted" data-testid="today-focus-queue-count">
           {visibleUpNext.length}

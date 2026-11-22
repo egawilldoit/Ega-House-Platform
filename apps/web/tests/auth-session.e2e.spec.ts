@@ -2,7 +2,9 @@ import { test, expect } from "./disposable-fixtures";
 import { signInPwaOwner } from "./pwa-fixtures";
 
 test("protected pages reject a signed-out browser", async ({ request }) => {
-  for (const path of ["/dashboard", "/tasks", "/timer", "/review"]) {
+  // Retired routes such as /dashboard are handled by config redirects before
+  // this guard runs; cover only live protected workspace destinations here.
+  for (const path of ["/backlog", "/tasks", "/timer", "/review"]) {
     // Exercise the real host-routing policy on loopback without following its public redirect.
     const response = await request.get(path, {
       headers: { "x-forwarded-host": "www.egawilldoit.online" }, maxRedirects: 0,

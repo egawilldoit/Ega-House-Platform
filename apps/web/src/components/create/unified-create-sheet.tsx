@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 
+import { loadCreateOptionsAction } from "@/app/(workspace)/create-options-actions";
 import { Button } from "@/components/ui/button";
 import { QuickTaskSheetPanel } from "@/components/tasks/quick-task-sheet";
 import { InboxCapturePanel } from "@/components/inbox/inbox-capture-sheet";
@@ -34,6 +35,36 @@ export function UnifiedCreateSheet({
   const [backlogProjectId, setBacklogProjectId] = useState(projects[0]?.id ?? "");
   const [taskActiveTab, setTaskActiveTab] = useState<"single" | "multi">("single");
   const lastFocusedElementRef = useRef<HTMLElement | null>(null);
+  const [loadedOptions, setLoadedOptions] = useState<{
+    projects: { id: string; name: string }[];
+    goals: { id: string; title: string; project_id: string }[];
+  } | null>(null);
+  const optionsRequestRef = useRef<Promise<void> | null>(null);
+
+  const resolvedProjects = projects.length > 0 ? projects : (loadedOptions?.projects ?? []);
+  const resolvedGoals = goals.length > 0 ? goals : (loadedOptions?.goals ?? []);
+  const effectiveTaskProjectId = taskProjectId || resolvedProjects[0]?.id || "";
+  const effectiveBacklogProjectId = backlogProjectId || resolvedProjects[0]?.id || "";
+
+  // The shell passes no eager options; fetch them the first time a create
+  // surface is requested so task creation works without charging every route.
+  const ensureOptions = useCallback((): Promise<void> => {
+    if (projects.length > 0 || optionsRequestRef.current) {
+      return optionsRequestRef.current ?? Promise.resolve();
+    }
+    const request = loadCreateOptionsAction()
+      .then((result) => {
+        setLoadedOptions({ projects: result.projects ?? [], goals: result.goals ?? [] });
+      })
+      .catch(() => {
+        setLoadedOptions({ projects: [], goals: [] });
+      })
+      .finally(() => {
+        optionsRequestRef.current = null;
+      });
+    optionsRequestRef.current = request;
+    return request;
+  }, [projects]);
 
   function closeSheet() {
     setOpen(false);
@@ -46,13 +77,14 @@ export function UnifiedCreateSheet({
   }
 
   useEffect(() => {
-    const handleQuickTask = (event: Event) => {
+    const handleQuickTask = async (event: Event) => {
       const activeElement = document.activeElement;
       lastFocusedElementRef.current =
         activeElement instanceof HTMLElement && activeElement !== document.body
           ? activeElement
           : null;
       const detail = (event as CustomEvent<{ status?: string }>).detail;
+      await ensureOptions();
       setTaskStatus(
         detail?.status && isTaskStatus(detail.status) ? detail.status : "todo",
       );
@@ -60,23 +92,25 @@ export function UnifiedCreateSheet({
       setOpen(true);
     };
 
-    const handleInboxCapture = () => {
+    const handleInboxCapture = async () => {
       const activeElement = document.activeElement;
       lastFocusedElementRef.current =
         activeElement instanceof HTMLElement && activeElement !== document.body
           ? activeElement
           : null;
+      await ensureOptions();
       setMode("backlog");
       setOpen(true);
     };
 
-    const handleUnifiedCreate = (event: Event) => {
+    const handleUnifiedCreate = async (event: Event) => {
       const customEvent = event as CustomEvent<{ mode?: CreateMode }>;
       const activeElement = document.activeElement;
       lastFocusedElementRef.current =
         activeElement instanceof HTMLElement && activeElement !== document.body
           ? activeElement
           : null;
+      await ensureOptions();
       setMode(customEvent.detail?.mode ?? "task");
       setOpen(true);
     };
@@ -90,7 +124,7 @@ export function UnifiedCreateSheet({
       window.removeEventListener(INBOX_CAPTURE_EVENT, handleInboxCapture);
       window.removeEventListener(UNIFIED_CREATE_EVENT, handleUnifiedCreate);
     };
-  }, []);
+  }, [ensureOptions]);
 
   return (
     <DialogPrimitive.Root
@@ -213,8 +247,8 @@ export function UnifiedCreateSheet({
               >
                 <QuickTaskSheetPanel
                   key={`task-${taskStatus}`}
-                  projects={projects}
-                  goals={goals}
+                  projects={resolvedProjects}
+                  goals={resolvedGoals}
                   activeTab={taskActiveTab}
                   onTabChange={setTaskActiveTab}
                   onSuccess={(submittedMode, skippedCount) => {
@@ -225,7 +259,7 @@ export function UnifiedCreateSheet({
                   hideHeader={true}
                   initialCommand={draftTitle}
                   onCommandChange={setDraftTitle}
-                  selectedProjectId={taskProjectId}
+                  selectedProjectId={effectiveTaskProjectId}
                   onProjectIdChange={setTaskProjectId}
                   selectedStatus={taskStatus}
                 />
@@ -238,10 +272,10 @@ export function UnifiedCreateSheet({
                 className="flex min-h-0 flex-1 flex-col overflow-hidden"
               >
                 <InboxCapturePanel
-                  projects={projects}
+                  projects={resolvedProjects}
                   title={draftTitle}
                   onTitleChange={setDraftTitle}
-                  projectId={backlogProjectId}
+                  projectId={effectiveBacklogProjectId}
                   onProjectIdChange={setBacklogProjectId}
                   onSuccess={closeSheet}
                   onCancel={closeSheet}

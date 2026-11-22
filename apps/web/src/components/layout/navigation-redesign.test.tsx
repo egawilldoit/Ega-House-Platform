@@ -110,9 +110,9 @@ describe("EGA-654 navigation structure", () => {
     const navigation = read("components", "layout", "sidebar-navigation.tsx");
     // Names are unconditional (not gated on the compact prop).
     expect(navigation).toContain("aria-label={route.label}");
-    // The project row names what its compact count counts.
-    expect(navigation).toContain("aria-label={getProjectAccessibleLabel(project)}");
-    expect(navigation).toContain("activeTaskCount");
+    // PR-02 retired per-project rows; destinations come from the single route registry.
+    expect(navigation).toContain("COMMAND_ROUTES.map");
+    expect(navigation).not.toContain("getProjectAccessibleLabel");
   });
 });
 

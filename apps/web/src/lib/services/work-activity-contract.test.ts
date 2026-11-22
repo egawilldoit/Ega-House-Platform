@@ -5,7 +5,6 @@ import {
   buildWorkActivityCalendar,
   resolveWorkActivityIntensityLevel,
 } from "./work-activity-service";
-import { toHomeActivityPulse } from "@/app/(workspace)/home/_lib/home-activity-pulse";
 
 test("Work Activity Contract: session-only activity produces active day and correct intensity", () => {
   const calendar = buildWorkActivityCalendar({
@@ -92,40 +91,4 @@ test("Work Activity Contract: zero day produces intensity 0 and inactive state",
   assert.equal(day?.completedTaskCount, 0);
   assert.equal(day?.intensityLevel, 0);
   assert.equal(day?.isActive, false);
-});
-
-test("Work Activity Contract: Home streak matches Analytics streak and intensity is canonical", () => {
-  const calendar = buildWorkActivityCalendar({
-    sessions: [
-      { started_at: "2026-09-19T10:00:00.000Z", ended_at: "2026-09-19T11:00:00.000Z" },
-      { started_at: "2026-09-20T10:00:00.000Z", ended_at: "2026-09-20T11:00:00.000Z" },
-    ],
-    completionEvents: [],
-    timezone: "UTC",
-    startDate: "2026-09-18",
-    endDate: "2026-09-20",
-    nowIso: "2026-09-20T18:00:00.000Z",
-  });
-
-  assert.equal(calendar.currentStreak, 2);
-
-  const homePulse = toHomeActivityPulse(calendar);
-
-  // Home pulse current streak must align with canonical analytics calendar streak
-  assert.equal(homePulse.currentStreak, calendar.currentStreak);
-  assert.equal(homePulse.currentStreak, 2);
-
-  // Home pulse day intensities match resolveWorkActivityIntensityLevel
-  for (const pulseDay of homePulse.days) {
-    const calendarDay = calendar.days.find((d) => d.date === pulseDay.date);
-    if (calendarDay) {
-      assert.equal(
-        pulseDay.intensity,
-        resolveWorkActivityIntensityLevel({
-          trackedSeconds: calendarDay.trackedSeconds,
-          completedTaskCount: calendarDay.completedTaskCount,
-        }),
-      );
-    }
-  }
 });

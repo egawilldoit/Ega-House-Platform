@@ -7,19 +7,11 @@ export type ShellRouteMeta = {
 };
 
 export const COMMAND_ROUTES = [
-  { href: "/home", label: "Home", group: "primary", description: "Workspace overview" },
   { href: "/today", label: "Today", group: "primary", description: "Daily execution" },
   { href: "/tasks", label: "Tasks", group: "primary", description: "Work inventory" },
-  { href: "/goals", label: "Goals", group: "primary", description: "Direction and progress" },
-  { href: "/timer", label: "Timer", group: "primary", description: "Focus session" },
-  { href: "/review", label: "Review", group: "primary", description: "Weekly feedback loop" },
+  { href: "/tasks/projects", label: "Projects", group: "primary", description: "Workspaces" },
   { href: "/money", label: "Money", group: "primary", description: "Personal expense ledger" },
-  {
-    href: "/work-analytics",
-    label: "Analytics",
-    group: "primary",
-    description: "Operational evidence",
-  },
+  { href: "/review", label: "Review", group: "primary", description: "Weekly feedback loop" },
 ] as const satisfies readonly ShellRouteMeta[];
 
 export const SYSTEM_ROUTES = [

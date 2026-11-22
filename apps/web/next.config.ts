@@ -13,6 +13,17 @@ const nextConfig: NextConfig = {
     // from there, not from apps/web.
     root: path.resolve(__dirname, "..", ".."),
   },
+  async redirects() {
+    return [
+      { source: "/dashboard", destination: "/today", permanent: false },
+      { source: "/ideas", destination: "/backlog", permanent: false },
+      { source: "/apps", destination: "/today", permanent: false },
+      { source: "/apps/:workspace", destination: "/today", permanent: false },
+      { source: "/home", destination: "/today", permanent: false },
+      { source: "/shutdown", destination: "/today", permanent: false },
+      { source: "/favorites", destination: "/today", permanent: false },
+    ];
+  },
 };
 
 export default withSentryConfig(nextConfig, {

@@ -132,29 +132,17 @@ html[data-theme="dark"] .app-page:has(.today-workbench) {
   gap: 18px;
 }
 
-/* Flatten nested cards inside the diagnostics disclosure so no card-in-card remains. */
-.today-workbench [data-testid="today-intelligence-panel"] > summary {
+/* Compact day sections: one summary line, details on demand. */
+.today-workbench .tw-disclosure > summary {
   padding-inline: 4px;
   border-radius: 6px;
 }
-.today-workbench [data-testid="today-intelligence-panel"] > div {
-  padding-inline: 0;
-  border-top-color: var(--tw-rule);
+.today-workbench .tw-disclosure > summary:hover {
+  background: var(--tw-hover);
 }
-.today-workbench [data-testid="today-intelligence-panel"] > div > * {
-  background: transparent;
-  border: 0;
-  border-radius: 0;
-  --panel-pad: 0px;
-}
-.today-workbench [data-testid="today-intelligence-panel"] > div > * + * {
-  border-top: 1px solid var(--tw-rule);
-  padding-top: 14px;
-}
-.today-workbench [data-testid="today-intelligence-panel"] > div > * > .border-b:first-child {
-  border-bottom: 0;
-  padding-top: 0;
-  padding-bottom: 4px;
+.today-workbench .tw-disclosure[open] > summary {
+  border-bottom: 1px solid var(--tw-rule);
+  padding-bottom: 12px;
 }
 
 /* Quiet rail: secondary to task selection. */

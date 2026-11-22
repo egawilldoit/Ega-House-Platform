@@ -12,6 +12,12 @@ function getTodayReturnPath(rawReturnTo: unknown) {
   return "/today";
 }
 
+function withOperatorProposalId(returnPath: string, proposalId: string) {
+  const target = new URL(returnPath, "https://egawilldoit.online");
+  target.searchParams.set("operatorProposalId", proposalId);
+  return `${target.pathname}${target.search}${target.hash}`;
+}
+
 export async function createOperatorProposalAction(formData: FormData) {
   const returnPath = getTodayReturnPath(formData.get("returnTo"));
   const proposedTaskIds = formData
@@ -33,7 +39,7 @@ export async function createOperatorProposalAction(formData: FormData) {
   const proposalId = String((result.data as { id?: unknown } | null)?.id ?? "");
   if (!proposalId) redirectWithWorkspaceFeedback(returnPath, { errorMessage: "The plan could not be prepared right now." });
 
-  redirectWithWorkspaceFeedback(`${returnPath}?operatorProposalId=${encodeURIComponent(proposalId)}`, {
+  redirectWithWorkspaceFeedback(withOperatorProposalId(returnPath, proposalId), {
     successMessage: "Plan prepared for your approval.",
   });
 }
@@ -48,7 +54,9 @@ export async function approveOperatorProposalAction(formData: FormData) {
 
   // Refresh to canonical server state after explicit approval — no Today mutations yet (nothing changes before approval)
   revalidateWorkspaceFor("today", { returnTo: returnPath });
-  redirectWithWorkspaceFeedback(returnPath, { successMessage: "Proposal approved. Ready to apply to Today." });
+  redirectWithWorkspaceFeedback(withOperatorProposalId(returnPath, proposalId), {
+    successMessage: "Proposal approved. Ready to apply to Today.",
+  });
 }
 
 export async function applyApprovedOperatorProposalAction(formData: FormData) {
