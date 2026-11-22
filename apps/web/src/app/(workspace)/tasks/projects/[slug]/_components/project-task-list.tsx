@@ -2,20 +2,14 @@ import Link from "next/link";
 import { ChevronRight, ListChecks } from "lucide-react";
 
 import {
-  cancelTaskReminderAction,
-  createTaskReminderAction,
-  deleteTaskAction,
   pinTaskAction,
   unpinTaskAction,
-  updateTaskInlineAction,
 } from "@/app/(workspace)/tasks/actions";
 import { CreateTaskForm } from "@/app/(workspace)/tasks/create-task-form";
 import { EstimateVsActualBadge } from "@/components/tasks/estimate-vs-actual-badge";
 import { FocusPinToggleForm } from "@/components/tasks/focus-pin-toggle-form";
-import { InlineTaskUpdateForm } from "@/components/tasks/inline-task-update-form";
 import { TaskDueDateLabel } from "@/components/tasks/task-due-date-label";
 import { TaskFilterControls } from "@/components/tasks/task-filter-controls";
-import { TaskReminderPanel } from "@/components/tasks/task-reminder-panel";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -66,9 +60,7 @@ export function ProjectTaskList({
   activeView,
   taskFilterBasePath,
   returnTo,
-  taskUpdateError,
   taskUpdateSuccess,
-  taskUpdateTaskId,
   focusQueue,
   taskTotalDurations,
   taskOpenSessionIds,
@@ -110,15 +102,13 @@ export function ProjectTaskList({
           {tasks.length ? (
             <ul className="rows">
               {tasks.map((task, index) => {
-                const inlineError = taskUpdateTaskId === task.id ? taskUpdateError : null;
-
                 return (
                   <li
                     key={task.id}
                     id={`task-${task.id}`}
                     className="scroll-mt-24 border-b border-[var(--ega-divider)] last:border-b-0"
                   >
-                    <details className="group" open={Boolean(inlineError)}>
+                    <details className="group">
                       <summary className="row cursor-pointer list-none">
                         <span className="row-main">
                           <span className="row-title">
@@ -187,32 +177,10 @@ export function ProjectTaskList({
                           </p>
                         ) : null}
 
-                        <TaskReminderPanel
-                          taskId={task.id}
-                          reminders={task.task_reminders}
-                          returnTo={returnTo}
-                          createAction={createTaskReminderAction}
-                          cancelAction={cancelTaskReminderAction}
-                        />
-
-                        <InlineTaskUpdateForm
-                          action={updateTaskInlineAction}
-                          deleteAction={deleteTaskAction}
-                          taskId={task.id}
-                          taskTitle={task.title}
-                          returnTo={returnTo}
-                          defaultStatus={task.status}
-                          defaultPriority={task.priority}
-                          defaultDueDate={task.due_date}
-                          defaultEstimateMinutes={task.estimate_minutes}
-                          defaultScheduledStartAt={task.scheduled_start_at}
-                          defaultScheduledEndAt={task.scheduled_end_at}
-                          defaultCalendarSyncEnabled={task.calendar_sync_enabled}
-                          defaultCalendarReminderMinutes={task.calendar_reminder_minutes}
-                          defaultBlockedReason={task.blocked_reason}
-                          defaultRecurrenceRule={task.task_recurrences[0]?.rule ?? null}
-                          error={inlineError}
-                        />
+                        <p className="text-[length:var(--text-meta)] text-[color:var(--ega-text-tertiary)]">
+                          Edit this task in the detail drawer to change status, dates,
+                          schedule or reminders.
+                        </p>
 
                         <FocusPinToggleForm
                           action={task.focus_rank ? unpinTaskAction : pinTaskAction}

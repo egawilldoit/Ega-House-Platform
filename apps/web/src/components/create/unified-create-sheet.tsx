@@ -19,12 +19,14 @@ export type CreateMode = "task" | "backlog";
 export type UnifiedCreateSheetProps = {
   projects?: { id: string; name: string }[];
   goals?: { id: string; title: string; project_id: string }[];
+  ownerId?: string | null;
   initialMode?: CreateMode;
 };
 
 export function UnifiedCreateSheet({
   projects = [],
   goals = [],
+  ownerId = null,
   initialMode = "task",
 }: UnifiedCreateSheetProps) {
   const [open, setOpen] = useState(false);
@@ -273,6 +275,7 @@ export function UnifiedCreateSheet({
               >
                 <InboxCapturePanel
                   projects={resolvedProjects}
+                  ownerId={ownerId}
                   title={draftTitle}
                   onTitleChange={setDraftTitle}
                   projectId={effectiveBacklogProjectId}

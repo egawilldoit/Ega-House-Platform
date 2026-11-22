@@ -11,9 +11,12 @@ import {
 } from "@/app/(workspace)/today/checkin-actions";
 import {
   addTaskDependencyAction,
+  cancelTaskReminderAction,
+  createTaskReminderAction,
   removeTaskDependencyAction,
   updateTaskFieldAction,
   updateTaskFieldDraftAction,
+  updateTaskInlineAction,
 } from "@/app/(workspace)/tasks/actions";
 import { TaskDrawerHost } from "@/components/tasks/drawer/task-drawer-host";
 
@@ -46,6 +49,7 @@ import { getWebDailyCheckin } from "@/lib/services/checkin-service";
 import { parseStartupRetryIds } from "@/lib/morning-startup";
 import { getActiveTimerSession } from "@/lib/services/timer-service";
 import { getTaskDrawerDetail } from "@/lib/services/task-service";
+import { getTaskDrawerPlanning } from "@/lib/services/task-drawer-planning-service";
 import { listTaskSubtasks } from "@/lib/services/subtask-service";
 import { listTaskAttachments } from "@/lib/services/attachment-service";
 import { getTaskActivity } from "@/lib/services/task-activity-service";
@@ -274,6 +278,9 @@ export default async function TodayPage({
     ? await getTaskDrawerDetail(selectedTaskId)
     : null;
   const selectedTask = selectedTaskResult?.kind === "found" ? selectedTaskResult.task : null;
+  const selectedTaskPlanning = selectedTask
+    ? await getTaskDrawerPlanning(selectedTask.id)
+    : null;
 
   let selectedTaskSubtasks: Awaited<ReturnType<typeof listTaskSubtasks>>["data"] = [];
   let selectedTaskActivityPage: Awaited<ReturnType<typeof getTaskActivity>> = {
@@ -407,6 +414,11 @@ export default async function TodayPage({
           updateSuccess={taskUpdateTaskId === selectedTaskId ? taskUpdateSuccess : null}
           addDependencyAction={addTaskDependencyAction}
           removeDependencyAction={removeTaskDependencyAction}
+          planning={selectedTaskPlanning}
+          projectOptions={selectedTaskPlanning?.projectOptions ?? []}
+          updateInlineAction={updateTaskInlineAction}
+          createReminderAction={createTaskReminderAction}
+          cancelReminderAction={cancelTaskReminderAction}
         />
       ) : null}
 

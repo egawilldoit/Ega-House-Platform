@@ -5,6 +5,7 @@ import { UnifiedCreateSheet } from "@/components/create/unified-create-sheet";
 type GlobalQuickActionControllersProps = {
   projects?: { id: string; name: string }[];
   goals?: { id: string; title: string; project_id: string }[];
+  ownerId?: string | null;
 };
 
 /**
@@ -18,6 +19,7 @@ type GlobalQuickActionControllersProps = {
 export function GlobalQuickActionControllers({
   projects = [],
   goals = [],
+  ownerId = null,
 }: GlobalQuickActionControllersProps) {
-  return <UnifiedCreateSheet projects={projects} goals={goals} />;
+  return <UnifiedCreateSheet projects={projects} goals={goals} ownerId={ownerId} />;
 }

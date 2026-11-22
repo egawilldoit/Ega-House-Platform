@@ -8,6 +8,10 @@ vi.mock("@/lib/hooks/use-display-timezone", () => ({
   useDisplayTimezone: () => "UTC",
 }));
 
+vi.mock("@/app/(workspace)/tasks/actions", () => ({
+  createTaskAction: vi.fn(),
+}));
+
 import { QuickTaskSheetPanel } from "./quick-task-sheet";
 
 const projects = [
@@ -23,14 +27,23 @@ const goals = [
 let container: HTMLDivElement;
 let root: Root;
 
-function setValue(element: HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement, next: string) {
-  const descriptor = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(element), "value");
+function setValue(
+  element: HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement,
+  next: string,
+) {
+  const descriptor = Object.getOwnPropertyDescriptor(
+    Object.getPrototypeOf(element),
+    "value",
+  );
   descriptor?.set?.call(element, next);
   element.dispatchEvent(new Event("input", { bubbles: true }));
   element.dispatchEvent(new Event("change", { bubbles: true }));
 }
 
-async function change(element: HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement, next: string) {
+async function change(
+  element: HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement,
+  next: string,
+) {
   await act(async () => {
     setValue(element, next);
   });
@@ -55,102 +68,56 @@ afterEach(async () => {
   container.remove();
 });
 
-describe("QuickTaskSheetPanel command token overrides", () => {
-  it("keeps manually overridden goal/priority/status/estimate/due after an ordinary title edit", async () => {
-    root = createRoot(container);
-    await act(async () => {
-      root.render(
-        <DialogPrimitive.Root open>
-          <DialogPrimitive.Content>
-            <QuickTaskSheetPanel
-          projects={projects}
-          goals={goals}
-          activeTab="single"
-          onTabChange={() => {}}
-          onSuccess={() => {}}
-          selectedProjectId="alpha"
-          initialCommand="Fix bug #Alpha high 45m @blocked:waiting today"
-        />
-          </DialogPrimitive.Content>
-        </DialogPrimitive.Root>,
-      );
-    });
-
-    await change(field("quick-task-goal"), "g1");
-    await change(field("quick-task-priority"), "low");
-    await change(field("quick-task-status"), "todo");
-    await change(field("quick-task-estimate"), "90");
-    await change(field("quick-task-due-date"), "2026-12-01");
-    // Keep the blocked-reason field happy if it appears.
-    await act(async () => {});
-
-    expect(field("quick-task-goal").value).toBe("g1");
-    expect(field("quick-task-priority").value).toBe("low");
-    expect(field("quick-task-status").value).toBe("todo");
-    expect(field("quick-task-estimate").value).toBe("90");
-    expect(field("quick-task-due-date").value).toBe("2026-12-01");
-
-    await change(field("quick-task-command"), "Fix bug #Alpha high 45m @blocked:waiting today x");
-
-    expect(field("quick-task-goal").value).toBe("g1");
-    expect(field("quick-task-priority").value).toBe("low");
-    expect(field("quick-task-status").value).toBe("todo");
-    expect(field("quick-task-estimate").value).toBe("90");
-    expect(field("quick-task-due-date").value).toBe("2026-12-01");
+async function renderPanel(initialCommand = "") {
+  root = createRoot(container);
+  await act(async () => {
+    root.render(
+      <DialogPrimitive.Root open>
+        <DialogPrimitive.Content>
+          <QuickTaskSheetPanel
+            projects={projects}
+            goals={goals}
+            activeTab="single"
+            onTabChange={() => {}}
+            onSuccess={() => {}}
+            selectedProjectId="alpha"
+            initialCommand={initialCommand}
+          />
+        </DialogPrimitive.Content>
+      </DialogPrimitive.Root>,
+    );
   });
+}
 
-  it("keeps a manually selected project despite a stale project token", async () => {
-    root = createRoot(container);
-    await act(async () => {
-      root.render(
-        <DialogPrimitive.Root open>
-          <DialogPrimitive.Content>
-            <QuickTaskSheetPanel
-          projects={projects}
-          goals={goals}
-          activeTab="single"
-          onTabChange={() => {}}
-          onSuccess={() => {}}
-          selectedProjectId="alpha"
-          initialCommand="Fix bug #Alpha"
-        />
-          </DialogPrimitive.Content>
-        </DialogPrimitive.Root>,
-      );
-    });
+describe("QuickTaskSheetPanel lean capture", () => {
+  it("keeps a manually selected project when the title changes", async () => {
+    await renderPanel("Fix bug");
 
     await change(field("quick-task-project"), "beta");
     expect(field("quick-task-project").value).toBe("beta");
 
-    await change(field("quick-task-command"), "Fix bug #Alpha x");
+    await change(field("quick-task-command"), "Fix bug in beta");
 
     expect(field("quick-task-project").value).toBe("beta");
+    expect(field("quick-task-command").value).toBe("Fix bug in beta");
   });
 
-  it("still applies a parsed token after it changes", async () => {
-    root = createRoot(container);
-    await act(async () => {
-      root.render(
-        <DialogPrimitive.Root open>
-          <DialogPrimitive.Content>
-            <QuickTaskSheetPanel
-          projects={projects}
-          goals={goals}
-          activeTab="single"
-          onTabChange={() => {}}
-          onSuccess={() => {}}
-          selectedProjectId="alpha"
-          initialCommand="Fix bug"
-        />
-          </DialogPrimitive.Content>
-        </DialogPrimitive.Root>,
-      );
-    });
+  it("keeps priority and due date out of the title text", async () => {
+    await renderPanel("Fix bug");
 
-    expect(field("quick-task-priority").value).toBe("medium");
+    await change(field("quick-task-priority"), "high");
+    await change(field("quick-task-due-date"), "2026-12-01");
+    await change(field("quick-task-command"), "Fix bug today");
 
-    await change(field("quick-task-command"), "Fix bug high");
-
+    expect(field("quick-task-command").value).toBe("Fix bug today");
     expect(field("quick-task-priority").value).toBe("high");
+    expect(field("quick-task-due-date").value).toBe("2026-12-01");
+  });
+
+  it("does not render a multi-draft surface", async () => {
+    await renderPanel("Fix bug");
+
+    expect(container.querySelector('[role="tablist"]')).toBeNull();
+    expect(container.textContent).not.toContain("Create tasks");
   });
 });

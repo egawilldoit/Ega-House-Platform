@@ -40,9 +40,9 @@ test("quick task disabled state stays legible instead of fading the control", ()
   assert.match(block, /disabled:opacity-100/);
 });
 
-test("quick task exposes correct wording for both creation modes", () => {
+test("quick task exposes correct wording for the single capture path", () => {
   assert.match(source, /label="Create task"/);
-  assert.match(source, /label="Create tasks"/);
+  assert.doesNotMatch(source, /label="Create tasks"/);
 });
 
 test("quick task modal does not pin the footer to an empty full-height form", () => {
@@ -53,8 +53,12 @@ test("quick task modal does not pin the footer to an empty full-height form", ()
 });
 
 test("quick task dialog sizes to its content instead of reserving full height", () => {
-  // A short state (for example "project required") must not render a tall empty
-  // panel; long forms still grow to the cap and scroll internally.
-  assert.match(source, /max-h-\[min\(50rem,calc\(100dvh-2rem\)\)\]/);
+  // The shared shell dialog owns the cap; the lean panel must not force a
+  // viewport-height form.
+  const shellSource = readFileSync(
+    join(process.cwd(), "src/components/create/unified-create-sheet.tsx"),
+    "utf8",
+  );
+  assert.match(shellSource, /max-h-\[min\(52rem,calc\(100dvh-2rem\)\)\]/);
   assert.doesNotMatch(source, /h-\[calc\(100dvh-2rem\)\]/);
 });

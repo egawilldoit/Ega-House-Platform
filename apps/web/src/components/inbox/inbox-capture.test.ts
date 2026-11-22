@@ -31,7 +31,8 @@ test("EGA-659: Add to Backlog capture supports optional Project (no goal/priorit
 
 test("EGA-659: Add to Backlog capture passes projectId through draft and submit", () => {
   assert.match(captureSource, /projectId/);
-  assert.match(captureSource, /saveDraft\(\{ title, body, projectId, idempotencyKey/);
+  assert.match(captureSource, /saveDraft\(/);
+  assert.match(captureSource, /saveDraft\(draftToSave, ownerId\)/);
   assert.match(captureSource, /setProjectId/);
   assert.match(captureActionSource, /projectId/);
   assert.match(captureActionSource, /createIdeaNote\([\s\S]*projectId/);
@@ -47,17 +48,31 @@ test("inbox capture uses client-generated idempotency key and preserves it for r
   assert.match(captureSource, /createIdempotencyKey/);
   assert.match(captureSource, /idempotencyKeyRef\.current/);
   assert.match(captureSource, /X-Idempotency-Key|idempotencyKey/);
-  assert.match(captureSource, /saveDraft.*idempotencyKey/);
+  assert.match(captureSource, /saveDraft\(draftToSave, ownerId\)/);
   assert.match(captureSource, /setError\(/);
   assert.match(captureSource, /if \(!result\.ok\)/);
   assert.match(captureSource, /setError\(result\.error\)/);
   assert.match(captureSource, /return;/);
-  assert.match(captureSource, /clearDraftStorage/);
+  assert.match(captureSource, /clearDraftStorage\(ownerId\)/);
   assert.match(captureSource, /idempotencyKeyRef\.current = createIdempotencyKey/);
 });
 
+test("inbox capture draft is scoped to the verified owner, never one global key", () => {
+  const draftStorageSource = read("lib", "inbox-capture", "draft-storage.ts");
+  assert.match(draftStorageSource, /ega:inbox-capture-draft:/);
+  assert.match(draftStorageSource, /if \(!ownerUserId/);
+  assert.match(captureSource, /ownerId\?: string \| null/);
+  assert.match(captureSource, /loadDraft\(ownerId\)/);
+  assert.match(captureSource, /saveDraft\(draftToSave, ownerId\)/);
+  assert.match(captureSource, /clearDraftStorage\(ownerId\)/);
+});
+
 test("EGA-659: capture draft preserves projectId alongside title/notes/idempotency key", () => {
-  assert.match(captureSource, /type Draft = \{[\s\S]*title: string;[\s\S]*body: string;[\s\S]*projectId: string;[\s\S]*idempotencyKey: string;/);
+  const draftStorageSource = read("lib", "inbox-capture", "draft-storage.ts");
+  assert.match(
+    draftStorageSource,
+    /export type InboxCaptureDraft = \{[\s\S]*title: string;[\s\S]*body: string;[\s\S]*projectId: string;[\s\S]*idempotencyKey: string;/,
+  );
   assert.match(captureSource, /loadDraft[\s\S]*projectId/);
   assert.match(captureSource, /setTitle\(draft\.title\)[\s\S]*setBody\(draft\.body\)[\s\S]*setProjectId/);
 });
@@ -65,7 +80,7 @@ test("EGA-659: capture draft preserves projectId alongside title/notes/idempoten
 test("inbox capture preserves draft on transient failure and never reports false success", () => {
   assert.match(captureSource, /try \{[\s\S]+captureInboxIdea/);
   assert.match(captureSource, /catch \(err\)[\s\S]+setError\(/);
-  assert.match(captureSource, /saveDraft\(\{ title, body, projectId, idempotencyKey: keyToUse \}\)/);
+  assert.match(captureSource, /saveDraft\(draftToSave, ownerId\)/);
   assert.match(captureSource, /if \(!result\.ok\)[\s\S]+setError/);
   assert.match(captureSource, /setSuccess\("Added to Backlog\."\)/);
 });
@@ -75,7 +90,6 @@ test("inbox capture keyboard accessibility: focus, Esc, shortcut", () => {
   assert.match(captureSource, /aria-label="Backlog capture title"/);
   assert.match(captureSource, /aria-label="Close backlog capture panel"/);
   assert.match(captureSource, /role="alert"/);
-  assert.match(captureSource, /onOpenChange/);
   assert.match(shortcutSource, /INBOX_CAPTURE_EVENT/);
   assert.match(shortcutSource, /isExactShortcutCombo\(event, \{ key: "i", metaOrCtrl: true, shift: true \}\)/);
   assert.match(keyboardDefs, /open-inbox-capture/);
@@ -125,9 +139,8 @@ test("inbox capture success updates state without full-page refresh", () => {
   assert.doesNotMatch(captureSource, /window\.location\.reload/);
 });
 
-test("inbox capture sheet and trigger expose stable test ids", () => {
+test("inbox capture panel and trigger expose stable test ids", () => {
   assert.match(triggerSource, /data-testid="inbox-quick-capture-trigger"/);
-  assert.match(captureSource, /data-testid="inbox-quick-capture-sheet"/);
   assert.match(captureSource, /data-testid="inbox-capture-title-input"/);
   assert.match(captureSource, /data-testid="inbox-capture-submit"/);
 });

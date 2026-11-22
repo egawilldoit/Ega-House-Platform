@@ -17,6 +17,7 @@ const nextConfig: NextConfig = {
     return [
       { source: "/dashboard", destination: "/today", permanent: false },
       { source: "/ideas", destination: "/backlog", permanent: false },
+      { source: "/backlog", destination: "/tasks?tab=inbox", permanent: false },
       { source: "/apps", destination: "/today", permanent: false },
       { source: "/apps/:workspace", destination: "/today", permanent: false },
       { source: "/home", destination: "/today", permanent: false },
