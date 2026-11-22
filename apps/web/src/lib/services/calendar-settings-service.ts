@@ -1,11 +1,19 @@
+import {
+  DEFAULT_CALENDAR_REMINDER_MINUTES,
+  normalizeCalendarReminderMinutes,
+} from "@ega/domain";
+
 import { createClient } from "@/lib/supabase/server";
 import { encryptCalendarToken } from "@/lib/services/calendar-token-crypto";
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
 export const GOOGLE_CALENDAR_PROVIDER = "google";
-export const DEFAULT_CALENDAR_REMINDER_MINUTES = 10;
-export const MAX_CALENDAR_REMINDER_MINUTES = 10080;
+export {
+  DEFAULT_CALENDAR_REMINDER_MINUTES,
+  MAX_CALENDAR_REMINDER_MINUTES,
+  normalizeCalendarReminderMinutes,
+} from "@ega/domain";
 
 export type CalendarIntegrationSettingsView = {
   connected: boolean;
@@ -107,16 +115,6 @@ async function requireAuthenticatedUserId(supabase: SupabaseServerClient) {
     errorMessage: null,
     userId: data.user.id,
   };
-}
-
-export function normalizeCalendarReminderMinutes(value: unknown) {
-  const parsed = Number.parseInt(String(value ?? ""), 10);
-
-  if (!Number.isFinite(parsed)) {
-    return DEFAULT_CALENDAR_REMINDER_MINUTES;
-  }
-
-  return Math.min(Math.max(parsed, 0), MAX_CALENDAR_REMINDER_MINUTES);
 }
 
 export function normalizeCalendarId(value: unknown) {

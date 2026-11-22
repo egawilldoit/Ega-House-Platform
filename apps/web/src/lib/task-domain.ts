@@ -7,6 +7,8 @@ export {
   TASK_PRIORITY_VALUES,
   TASK_STATUSES,
   TASK_STATUS_VALUES,
+  TASK_TITLE_LENGTH_ERROR,
+  TASK_TITLE_MAX,
   isCanonicalTaskStatus,
   isGoalStatus,
   isProjectStatus,
@@ -14,6 +16,7 @@ export {
   isTaskCompletedStatus,
   isTaskPriority,
   isTaskStatus,
+  isTaskTitleWithinLimit,
 } from "@ega/domain";
 export type { GoalHealth, GoalStatus, ProjectStatus, TaskPriority, TaskStatus } from "@ega/domain";
 
@@ -34,7 +37,3 @@ export function getTaskStatusTone(status: string) {
   if (["in progress", "in_progress", "active"].includes(normalized)) return "accent" as const;
   return "neutral" as const;
 }
-
-// Matches the tasks.title varchar(256) column and the MCP task contract.
-export const TASK_TITLE_MAX = 256;
-export const TASK_TITLE_LENGTH_ERROR = `Title must be ${TASK_TITLE_MAX} characters or fewer.`;

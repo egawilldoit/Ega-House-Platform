@@ -1,10 +1,8 @@
 import { TASK_TITLE_MAX, TASK_TITLE_LENGTH_ERROR } from "@/lib/task-domain";
-import { zonedWallTimeToUtcIso } from "@ega/domain/time-context";
 import { createClient } from "@/lib/supabase/server";
 import type { Json, TablesInsert, TablesUpdate } from "@/lib/supabase/database.types";
 import {
   getTodayLocalIsoDate,
-  isDateOnlyValue,
   normalizeTaskDueDateInput,
   normalizeTaskStartDateInput,
   normalizeTaskPlannedDateInput,
@@ -22,8 +20,6 @@ import type {
   TaskCalendarDateField,
   TaskCalendarView,
 } from "@/lib/task-list";
-import { normalizeTaskEstimateInput } from "@/lib/task-estimate";
-import { normalizeTaskScheduleInput } from "@/lib/task-schedule";
 import {
   getFirstTaskRecurrenceDateAfter,
   getNextTaskRecurrenceDateFromAnchor,
@@ -32,21 +28,42 @@ import {
   type TaskRecurrenceRule,
 } from "@/lib/task-recurrence";
 import {
-  TASK_PRIORITY_VALUES,
-  TASK_STATUS_VALUES,
   isTaskCompletedStatus,
-  isTaskPriority,
-  isTaskStatus,
   type TaskPriority,
   type TaskStatus,
 } from "@/lib/task-domain";
 import type { ManualWorkedTimePayload } from "@/lib/manual-worked-time";
 import {
   DEFAULT_CALENDAR_REMINDER_MINUTES,
-  normalizeCalendarReminderMinutes,
 } from "@/lib/services/calendar-settings-service";
 import { enqueueCalendarSyncJob } from "@/lib/services/calendar-sync-service";
 import type { GoogleCalendarClient } from "@/lib/services/google-calendar-service";
+import {
+  TASK_FIELD_PATCH_FIELDS,
+  buildTaskFieldPatchInput,
+  isTaskFieldPatchField,
+  type TaskFieldPatchCurrent,
+  type TaskFieldPatchField,
+} from "@ega/application/tasks/field-patch";
+import {
+  normalizeTaskReminderCancelInput,
+  normalizeTaskReminderCreateInput,
+  isTaskReminderChannel,
+  isTaskReminderStatus,
+  type TaskReminderChannel,
+  type TaskReminderStatus,
+} from "@ega/application/tasks/reminder-input";
+import {
+  getTaskInsertScopeError,
+  type TaskScopeSnapshot,
+} from "@ega/application/tasks/scope";
+import { buildRescheduledWallWindow } from "@ega/application/tasks/schedule-window";
+import {
+  normalizeTaskBlockedReasonInput,
+  validateTaskInlineUpdateInput,
+  type ValidateTaskInlineUpdateInput,
+  type ValidatedTaskInlineUpdateInput,
+} from "@ega/application/tasks/write-policy";
 import {
   taskViewFromLegacyInput,
   type TaskDueFilter,
@@ -55,11 +72,11 @@ import {
 } from "@/lib/task-list";
 import {
   applyTaskView,
+  scopeTaskViewToAvailableOptions,
   type TaskViewRecord,
 } from "@ega/application/tasks/view";
 import {
   canExactlyCountTaskViewFilters,
-  normalizeTaskViewDefinition,
 } from "@ega/contracts/common/task-list";
 import type { TaskViewFilter as TaskArchiveViewFilter } from "@/lib/task-archive";
 import { getTaskTrackedTimeSummary } from "@/lib/task-session";
@@ -96,6 +113,16 @@ import {
   normalizeTaskSavedViewFilters,
 } from "@/lib/task-saved-views";
 
+/**
+ * Web task adapter.
+ *
+ * Reusable task policy lives in `@ega/application/tasks/*` and `@ega/domain`;
+ * this module keeps request-scoped Supabase I/O, the legacy row/record shapes
+ * and web-only side effects (calendar sync jobs, timer guards, recurrence
+ * follow-ups, drawer projections). The precise residual inventory and its
+ * reasons are recorded in
+ * `docs/agent-context/task-authority-consolidation.md`.
+ */
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
 type CreateTasksOptions = {
@@ -127,17 +154,24 @@ type TaskSavedViewSelectRow = {
   updated_at: string;
 };
 
-export const TASK_REMINDER_CHANNEL_VALUES = ["email"] as const;
-export const TASK_REMINDER_STATUS_VALUES = [
-  "pending",
-  "processing",
-  "sent",
-  "failed",
-  "cancelled",
-] as const;
-
-export type TaskReminderChannel = (typeof TASK_REMINDER_CHANNEL_VALUES)[number];
-export type TaskReminderStatus = (typeof TASK_REMINDER_STATUS_VALUES)[number];
+export {
+  TASK_FIELD_PATCH_FIELDS,
+  buildRescheduledWallWindow,
+  buildTaskFieldPatchInput,
+  getTaskInsertScopeError,
+  isTaskFieldPatchField,
+  isTaskReminderChannel,
+  isTaskReminderStatus,
+  normalizeTaskBlockedReasonInput,
+  validateTaskInlineUpdateInput,
+  type TaskFieldPatchCurrent,
+  type TaskFieldPatchField,
+  type TaskReminderChannel,
+  type TaskReminderStatus,
+  type TaskScopeSnapshot,
+  type ValidateTaskInlineUpdateInput,
+  type ValidatedTaskInlineUpdateInput,
+};
 
 export type TaskReminderRecord = {
   id: string;
@@ -161,11 +195,6 @@ export type TaskRecurrenceRecord = {
   last_generated_at: string | null;
   created_at: string;
   updated_at: string;
-};
-
-export type TaskScopeSnapshot = {
-  projectIds: Set<string>;
-  goalsById: Map<string, { id: string; project_id: string }>;
 };
 
 export type TasksWorkspaceFilters = {
@@ -259,62 +288,6 @@ export type TasksWorkspaceCalendarOptions = {
 
 export type TaskRecord = TasksWorkspaceData["tasks"][number];
 
-export type ValidateTaskInlineUpdateInput = {
-  taskId: string;
-  title?: unknown;
-  projectId?: unknown;
-  goalId?: unknown;
-  description?: unknown;
-  status: string;
-  priority: string;
-  startDate?: unknown;
-  dueDate: unknown;
-  plannedForDate?: unknown;
-  estimateMinutes: unknown;
-  blockedReason: unknown;
-  recurrenceRule?: unknown;
-  recurrenceAnchorDate?: unknown;
-  recurrenceTimezone?: unknown;
-  scheduledStartAt?: unknown;
-  scheduledEndAt?: unknown;
-  /**
-   * Canonical account IANA timezone used to interpret scheduled wall times.
-   * Supplied by the server action from the owner's persisted Time Context —
-   * never a numeric browser offset.
-   */
-  accountTimezone?: string;
-  /**
-   * Canonical account local date (YYYY-MM-DD) from the owner's Time Context.
-   * Used as the recurrence anchor fallback instead of the runtime-local date
-   * so web writes agree with the Hono transport near account midnight.
-   */
-  fallbackAnchorDate?: string;
-  calendarSyncEnabled?: unknown;
-  calendarReminderMinutes?: unknown;
-};
-
-export type ValidatedTaskInlineUpdateInput = {
-  taskId: string;
-  title?: string;
-  projectId?: string;
-  goalId?: string | null;
-  description?: string | null;
-  status: TaskStatus;
-  priority: TaskPriority;
-  startDate?: string | null;
-  dueDate: string | null;
-  plannedForDate?: string | null;
-  estimateMinutes: number | null;
-  blockedReason: string | null;
-  recurrenceRule?: TaskRecurrenceRule | null;
-  recurrenceAnchorDate?: string | null;
-  recurrenceTimezone?: string | null;
-  scheduledStartAt?: string | null;
-  scheduledEndAt?: string | null;
-  calendarSyncEnabled?: boolean;
-  calendarReminderMinutes?: number;
-};
-
 const SYSTEM_TASK_SAVED_VIEWS = [
   {
     id: DEEP_WORK_SAVED_VIEW_ID,
@@ -337,30 +310,6 @@ const SYSTEM_TASK_SAVED_VIEWS = [
     definition_json: DUE_THIS_WEEK_SAVED_VIEW_DEFINITION,
   },
 ] as const;
-
-export function normalizeTaskBlockedReasonInput(value: unknown) {
-  const normalized = String(value ?? "").trim();
-  return normalized.length > 0 ? normalized : null;
-}
-
-export function isTaskReminderChannel(value: string): value is TaskReminderChannel {
-  return TASK_REMINDER_CHANNEL_VALUES.includes(value as TaskReminderChannel);
-}
-
-export function isTaskReminderStatus(value: string): value is TaskReminderStatus {
-  return TASK_REMINDER_STATUS_VALUES.includes(value as TaskReminderStatus);
-}
-
-function getTaskBlockedReasonValidationError(
-  status: TaskStatus,
-  blockedReason: string | null,
-) {
-  if (status === "blocked" && !blockedReason) {
-    return "Blocked reason is required when status is Blocked.";
-  }
-
-  return null;
-}
 
 type CreateTaskScopeErrorResult = {
   errorMessage: string;
@@ -476,31 +425,6 @@ async function getVisibleTaskScope(
   };
 }
 
-export function getTaskInsertScopeError(
-  row: TablesInsert<"tasks">,
-  scope: TaskScopeSnapshot,
-) {
-  if (!scope.projectIds.has(row.project_id)) {
-    return "Selected project is unavailable.";
-  }
-
-  if (!row.goal_id) {
-    return null;
-  }
-
-  const goal = scope.goalsById.get(row.goal_id);
-
-  if (!goal) {
-    return "Selected goal is unavailable.";
-  }
-
-  if (goal.project_id !== row.project_id) {
-    return "Selected goal does not belong to the chosen project.";
-  }
-
-  return null;
-}
-
 export async function getTaskScopeSnapshot(options?: { supabase?: SupabaseServerClient }) {
   const supabase = await resolveSupabaseClient(options?.supabase);
   const scopeResult = await getVisibleTaskScope(supabase);
@@ -515,113 +439,6 @@ export async function getTaskScopeSnapshot(options?: { supabase?: SupabaseServer
   return {
     errorMessage: null,
     data: scopeResult.scope,
-  };
-}
-
-function parseTaskReminderDateTime(rawValue: string, timezone: unknown) {
-  const localMatch = rawValue.match(
-    /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/,
-  );
-
-  if (!localMatch) {
-    const parsed = new Date(rawValue);
-    return Number.isNaN(parsed.getTime())
-      ? { errorMessage: "Reminder time is required.", value: null }
-      : { errorMessage: null, value: parsed };
-  }
-
-  const normalizedTimezone = String(timezone ?? "").trim();
-  if (!normalizedTimezone) {
-    return { errorMessage: "Reminder timezone is required.", value: null };
-  }
-
-  try {
-    const [, yearValue, monthValue, dayValue, hourValue, minuteValue, secondValue = "00"] =
-      localMatch;
-    const isoValue = zonedWallTimeToUtcIso({
-      timezone: normalizedTimezone,
-      date: `${yearValue}-${monthValue}-${dayValue}`,
-      time: `${hourValue}:${minuteValue}:${secondValue}`,
-    });
-    return { errorMessage: null, value: new Date(isoValue) };
-  } catch {
-    return { errorMessage: "Reminder time is invalid for the account timezone.", value: null };
-  }
-}
-
-function normalizeTaskReminderCreateInput(input: {
-  taskId: string;
-  remindAt: unknown;
-  channel?: unknown;
-  status?: unknown;
-  timezone?: unknown;
-  now?: Date;
-}) {
-  const taskId = input.taskId.trim();
-  const channel = String(input.channel ?? "email").trim() || "email";
-  const status = String(input.status ?? "pending").trim() || "pending";
-  const rawRemindAt = String(input.remindAt ?? "").trim();
-  const reminderTimeResult = parseTaskReminderDateTime(rawRemindAt, input.timezone);
-  const remindAtDate = reminderTimeResult.value;
-  const now = input.now ?? new Date();
-
-  if (!taskId) {
-    return { errorMessage: "Task is required." };
-  }
-
-  if (!rawRemindAt || reminderTimeResult.errorMessage || !remindAtDate) {
-    return {
-      errorMessage: reminderTimeResult.errorMessage ?? "Reminder time is required.",
-    };
-  }
-
-  if (!isTaskReminderChannel(channel)) {
-    return { errorMessage: "Reminder channel is not supported." };
-  }
-
-  if (!isTaskReminderStatus(status) || status !== "pending") {
-    return { errorMessage: "Reminder status is not supported." };
-  }
-
-  if (remindAtDate.getTime() <= now.getTime()) {
-    return { errorMessage: "Reminder time must be in the future." };
-  }
-
-  return {
-    errorMessage: null,
-    data: {
-      taskId,
-      remindAtIso: remindAtDate.toISOString(),
-      channel,
-      status,
-    },
-  };
-}
-
-function normalizeTaskReminderCancelInput(input: {
-  taskId: string;
-  reminderId: string;
-  status?: unknown;
-}) {
-  const taskId = input.taskId.trim();
-  const reminderId = input.reminderId.trim();
-  const status = String(input.status ?? "cancelled").trim() || "cancelled";
-
-  if (!taskId || !reminderId) {
-    return { errorMessage: "Reminder cancel request is invalid." };
-  }
-
-  if (!isTaskReminderStatus(status) || status !== "cancelled") {
-    return { errorMessage: "Reminder status is not supported." };
-  }
-
-  return {
-    errorMessage: null,
-    data: {
-      taskId,
-      reminderId,
-      status,
-    },
   };
 }
 
@@ -1012,23 +829,10 @@ export async function getTasksWorkspaceData(
       sort: filters.activeSort,
       activeOnly: filters.activeTasksOnly,
     });
-  const projectIds = new Set(projectsResult.data.map((project) => project.id));
-  const visibleGoalIds = new Set(visibleGoals.map((goal) => goal.id));
-  const scopedView =
-    normalizeTaskViewDefinition({
-      ...baseView,
-      filters: baseView.filters.flatMap((filter) => {
-        if (filter.field === "project") {
-          const values = filter.values.filter((value) => projectIds.has(value));
-          return values.length > 0 ? [{ ...filter, values }] : [];
-        }
-        if (filter.field === "goal") {
-          const values = filter.values.filter((value) => visibleGoalIds.has(value));
-          return values.length > 0 ? [{ ...filter, values }] : [];
-        }
-        return [filter];
-      }),
-    }) ?? baseView;
+  const scopedView = scopeTaskViewToAvailableOptions(baseView, {
+    projectIds: projectsResult.data.map((project) => project.id),
+    goalIds: visibleGoals.map((goal) => goal.id),
+  });
 
   const applyQuery = (query: TaskReadQuery): TaskReadQuery => {
     if (activeProjectId) query = query.eq("project_id", activeProjectId);
@@ -1751,179 +1555,6 @@ export async function cancelTaskReminder(
   return {
     errorMessage: null,
     data: normalizeTaskReminderRow(data),
-  };
-}
-
-export function validateTaskInlineUpdateInput(input: ValidateTaskInlineUpdateInput) {
-  const taskId = input.taskId.trim();
-  const title = input.title === undefined ? undefined : String(input.title ?? "").trim();
-  const projectId =
-    input.projectId === undefined ? undefined : String(input.projectId ?? "").trim();
-  const goalId =
-    input.goalId === undefined ? undefined : String(input.goalId ?? "").trim() || null;
-  const description =
-    input.description === undefined
-      ? undefined
-      : String(input.description ?? "").trim() || null;
-  const status = input.status.trim();
-  const priority = input.priority.trim();
-  const startDateResult =
-    input.startDate === undefined
-      ? { value: undefined, error: null }
-      : normalizeTaskStartDateInput(input.startDate);
-  const dueDateResult = normalizeTaskDueDateInput(input.dueDate);
-  const plannedForDateResult =
-    input.plannedForDate === undefined
-      ? { value: undefined as string | null | undefined, error: null as string | null }
-      : normalizeTaskPlannedDateInput(input.plannedForDate);
-  const estimateResult = normalizeTaskEstimateInput(input.estimateMinutes);
-  const blockedReason = normalizeTaskBlockedReasonInput(input.blockedReason);
-  const recurrenceRuleResult =
-    input.recurrenceRule === undefined
-      ? { errorMessage: null, schedule: undefined }
-      : normalizeTaskRecurrenceScheduleInput({
-          rule: input.recurrenceRule,
-          anchorDate: input.recurrenceAnchorDate,
-          timezone: input.recurrenceTimezone,
-          defaultTimezone: input.accountTimezone,
-          fallbackAnchorDate: dueDateResult.value ?? input.fallbackAnchorDate ?? getTodayLocalIsoDate(),
-        });
-  const hasScheduleFields =
-    input.scheduledStartAt !== undefined || input.scheduledEndAt !== undefined;
-  const hasCalendarFields =
-    input.calendarSyncEnabled !== undefined || input.calendarReminderMinutes !== undefined;
-  const scheduleResult = hasScheduleFields
-    ? normalizeTaskScheduleInput({
-        scheduledStartAt: input.scheduledStartAt ?? "",
-        scheduledEndAt: input.scheduledEndAt ?? "",
-        timezone: input.accountTimezone ?? "UTC",
-      })
-    : null;
-
-  if (!taskId) {
-    return {
-      errorMessage: "Task update request is invalid.",
-    };
-  }
-
-  if (title !== undefined && !title) {
-    return {
-      errorMessage: "Task title is required.",
-    };
-  }
-
-  if (title !== undefined && title.length > TASK_TITLE_MAX) {
-    return { errorMessage: TASK_TITLE_LENGTH_ERROR };
-  }
-
-  if (projectId !== undefined && !projectId) {
-    return {
-      errorMessage: "Project is required.",
-    };
-  }
-
-  if (!isTaskStatus(status)) {
-    return {
-      errorMessage: `Status must be one of: ${TASK_STATUS_VALUES.join(", ")}.`,
-    };
-  }
-
-  if (!isTaskPriority(priority)) {
-    return {
-      errorMessage: `Priority must be one of: ${TASK_PRIORITY_VALUES.join(", ")}.`,
-    };
-  }
-
-  if (startDateResult.error) {
-    return {
-      errorMessage: startDateResult.error,
-    };
-  }
-
-  if (dueDateResult.error) {
-    return {
-      errorMessage: dueDateResult.error,
-    };
-  }
-
-  if (startDateResult.value && dueDateResult.value && dueDateResult.value < startDateResult.value) {
-    return {
-      errorMessage: "Due date cannot be before the start date.",
-    };
-  }
-
-  if (plannedForDateResult.error) {
-    return {
-      errorMessage: plannedForDateResult.error,
-    };
-  }
-
-  if (estimateResult.error) {
-    return {
-      errorMessage: estimateResult.error,
-    };
-  }
-
-  if (recurrenceRuleResult.errorMessage) {
-    return {
-      errorMessage: recurrenceRuleResult.errorMessage,
-    };
-  }
-
-  if (scheduleResult?.error) {
-    return {
-      errorMessage: scheduleResult.error,
-    };
-  }
-
-  const blockedReasonError = getTaskBlockedReasonValidationError(status, blockedReason);
-  if (blockedReasonError) {
-    return {
-      errorMessage: blockedReasonError,
-    };
-  }
-
-  const normalizedBlockedReason = status === "blocked" ? blockedReason : null;
-
-  return {
-    errorMessage: null,
-    data: {
-      taskId,
-      ...(title === undefined ? {} : { title }),
-      ...(projectId === undefined ? {} : { projectId }),
-      ...(goalId === undefined ? {} : { goalId }),
-      ...(description === undefined ? {} : { description }),
-      status,
-      priority,
-      ...(startDateResult.value === undefined ? {} : { startDate: startDateResult.value }),
-      dueDate: dueDateResult.value,
-      ...(plannedForDateResult.value === undefined
-        ? {}
-        : { plannedForDate: plannedForDateResult.value }),
-      estimateMinutes: estimateResult.value,
-      blockedReason: normalizedBlockedReason,
-      ...(scheduleResult
-        ? {
-            scheduledStartAt: scheduleResult.scheduledStartAtIso,
-            scheduledEndAt: scheduleResult.scheduledEndAtIso,
-          }
-        : {}),
-      ...(hasCalendarFields
-        ? {
-            calendarSyncEnabled: input.calendarSyncEnabled === "on",
-            calendarReminderMinutes: normalizeCalendarReminderMinutes(
-              input.calendarReminderMinutes,
-            ),
-          }
-        : {}),
-      ...(input.recurrenceRule === undefined
-        ? {}
-        : {
-            recurrenceRule: recurrenceRuleResult.schedule?.rule ?? null,
-            recurrenceAnchorDate: recurrenceRuleResult.schedule?.anchorDate ?? null,
-            recurrenceTimezone: recurrenceRuleResult.schedule?.timezone ?? null,
-          }),
-    } satisfies ValidatedTaskInlineUpdateInput,
   };
 }
 
@@ -2735,100 +2366,6 @@ export async function getTaskDrawerDetail(
 }
 
 /**
- * Fields the drawer may patch one at a time.
- *
- * Deliberately narrow: project/goal, recurrence, reminders and scheduling keep
- * their dedicated services because they carry side effects a generic patch must
- * not bypass.
- */
-export const TASK_FIELD_PATCH_FIELDS = [
-  "title",
-  "description",
-  "status",
-  "priority",
-  "project",
-  "startDate",
-  "dueDate",
-  "plannedDate",
-  "estimateMinutes",
-  "blockedReason",
-] as const;
-
-export type TaskFieldPatchField = (typeof TASK_FIELD_PATCH_FIELDS)[number];
-
-export function isTaskFieldPatchField(value: string): value is TaskFieldPatchField {
-  return (TASK_FIELD_PATCH_FIELDS as readonly string[]).includes(value);
-}
-
-/** The current values a single-field patch must carry forward unchanged. */
-export type TaskFieldPatchCurrent = {
-  title: string;
-  description: string | null;
-  status: string;
-  priority: string;
-  project_id: string;
-  start_date: string | null;
-  due_date: string | null;
-  planned_for_date: string | null;
-  estimate_minutes: number | null;
-  blocked_reason: string | null;
-};
-
-/**
- * Merge one changed field into the task's current values.
- *
- * `validateTaskInlineUpdateInput` requires status/priority/due/estimate/blocked
- * together, so a single-field patch cannot forward only the changed field. The
- * current values come from the server-side row, never from hidden client fields,
- * so an unrelated stale field can never be written back.
- */
-export function buildTaskFieldPatchInput(
-  taskId: string,
-  current: TaskFieldPatchCurrent,
-  field: string,
-  value: string,
-): { errorMessage: null; input: ValidateTaskInlineUpdateInput } | { errorMessage: string } {
-  if (!isTaskFieldPatchField(field)) {
-    return { errorMessage: "Unsupported task field update." };
-  }
-
-  const input: ValidateTaskInlineUpdateInput = {
-    taskId,
-    // Carried only when the patch targets it: `updateTaskInline` rewrites every
-    // field it receives, and a priority/due edit must not touch the title.
-    title: field === "title" ? value : undefined,
-    // Same rule as the title: only a description edit carries a description, so
-    // a status/priority patch can never overwrite text the drawer did not show.
-    description: field === "description" ? value : undefined,
-    status: current.status,
-    priority: current.priority,
-    startDate: current.start_date ?? "",
-    dueDate: current.due_date ?? "",
-    // Carried only for a planned-date patch: `updateTaskInline` writes every
-    // field it receives, so unrelated patches must leave the date untouched.
-    plannedForDate: field === "plannedDate" ? value : undefined,
-    estimateMinutes: current.estimate_minutes,
-    blockedReason: current.blocked_reason,
-  };
-
-  if (field === "status") input.status = value;
-  if (field === "priority") input.priority = value;
-  if (field === "project") {
-    input.projectId = value;
-    // The goal must belong to the selected project. Match the bulk path by
-    // clearing it only when the project actually changes.
-    if (value !== current.project_id) input.goalId = "";
-  }
-  if (field === "startDate") input.startDate = value;
-  if (field === "dueDate") input.dueDate = value;
-  if (field === "plannedDate") input.plannedForDate = value;
-  if (field === "estimateMinutes") input.estimateMinutes = value;
-  if (field === "blockedReason") input.blockedReason = value;
-
-  return { errorMessage: null, input };
-}
-
-/**
  * Move/resize a planned task bar: both date-only endpoints in one versioned
  * write.
  *
@@ -3036,63 +2573,6 @@ export type TaskCalendarRescheduleResult = {
 
 const TASK_CALENDAR_MOVE_SELECT =
   "id, title, description, status, priority, due_date, planned_for_date, scheduled_start_at, scheduled_end_at, calendar_sync_enabled, estimate_minutes, blocked_reason, updated_at";
-
-function padCalendarPart(value: number) {
-  return String(value).padStart(2, "0");
-}
-
-function formatUtcWallDate(valueMs: number) {
-  const date = new Date(valueMs);
-  return `${date.getUTCFullYear()}-${padCalendarPart(date.getUTCMonth() + 1)}-${padCalendarPart(
-    date.getUTCDate(),
-  )}T${padCalendarPart(date.getUTCHours())}:${padCalendarPart(date.getUTCMinutes())}`;
-}
-
-/**
- * Preserve the block's wall-clock duration while moving it to another local
- * date/time. The returned values are `datetime-local` strings interpreted in
- * the owner's timezone by the canonical schedule validator.
- */
-export function buildRescheduledWallWindow(input: {
-  currentStartIso: string;
-  currentEndIso: string;
-  timezone: string;
-  targetDate: string;
-  targetTime?: string | null;
-}): { errorMessage: null; startLocal: string; endLocal: string } | { errorMessage: string } {
-  if (!isDateOnlyValue(input.targetDate)) {
-    return { errorMessage: "Choose a valid day to move this block." };
-  }
-
-  const currentStart = getLocalWallTimeParts(input.currentStartIso, input.timezone);
-  const currentEnd = getLocalWallTimeParts(input.currentEndIso, input.timezone);
-  if (!currentStart || !currentEnd) {
-    return { errorMessage: "Unable to read the scheduled block right now." };
-  }
-
-  const targetTime = (input.targetTime ?? "").trim() || currentStart.time;
-  if (!/^\d{2}:\d{2}$/.test(targetTime)) {
-    return { errorMessage: "Start time must use HH:MM." };
-  }
-
-  const startCarrierMs = Date.parse(`${currentStart.date}T${currentStart.time}:00.000Z`);
-  const endCarrierMs = Date.parse(`${currentEnd.date}T${currentEnd.time}:00.000Z`);
-  const durationMinutes = Math.round((endCarrierMs - startCarrierMs) / 60_000);
-  if (!Number.isFinite(durationMinutes) || durationMinutes <= 0) {
-    return { errorMessage: "The scheduled block is invalid." };
-  }
-
-  const targetStartMs = Date.parse(`${input.targetDate}T${targetTime}:00.000Z`);
-  if (!Number.isFinite(targetStartMs)) {
-    return { errorMessage: "Choose a valid day and time to move this block." };
-  }
-
-  return {
-    errorMessage: null,
-    startLocal: `${input.targetDate}T${targetTime}`,
-    endLocal: formatUtcWallDate(targetStartMs + durationMinutes * 60_000),
-  };
-}
 
 type CalendarMoveTaskRow = {
   id: string;

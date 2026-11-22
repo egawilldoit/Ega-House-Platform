@@ -5,6 +5,7 @@ import {
   TASK_PRIORITY_LABELS,
   TASK_STATUS_GROUP_ORDER,
   TASK_STATUS_LABELS,
+  normalizeTaskViewDefinition,
   type TaskViewFilter,
   type TaskViewGroupBy,
   type TaskViewSort,
@@ -436,4 +437,38 @@ export function applyTaskView<T extends TaskViewRecord>(
     totalCount,
     truncated: totalCount > items.length,
   };
+}
+
+/**
+ * Drop project/goal filter values that are not visible to the owner (unknown
+ * ids, another owner's ids, or a goal outside the selected project). The same
+ * echo-back rule applies to the web toolbar, saved views and the mobile/Hono
+ * read model, so an unknown id can never narrow a query or leak existence.
+ */
+export function scopeTaskViewToAvailableOptions(
+  view: TaskViewDefinition,
+  options: Readonly<{
+    projectIds: Iterable<string>;
+    goalIds: Iterable<string>;
+  }>,
+): TaskViewDefinition {
+  const projectIds = new Set(options.projectIds);
+  const goalIds = new Set(options.goalIds);
+
+  return (
+    normalizeTaskViewDefinition({
+      ...view,
+      filters: view.filters.flatMap((filter) => {
+        if (filter.field === "project") {
+          const values = filter.values.filter((value) => projectIds.has(value));
+          return values.length > 0 ? [{ ...filter, values }] : [];
+        }
+        if (filter.field === "goal") {
+          const values = filter.values.filter((value) => goalIds.has(value));
+          return values.length > 0 ? [{ ...filter, values }] : [];
+        }
+        return [filter];
+      }),
+    }) ?? view
+  );
 }

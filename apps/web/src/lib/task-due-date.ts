@@ -1,92 +1,28 @@
-import { isTaskCompletedStatus } from "@/lib/task-domain";
+import {
+  getLocalTodayIsoDate,
+  isTaskDateOnlyValue,
+  isTaskDueSoon,
+  isTaskDueToday,
+  isTaskOverdue,
+  shiftTaskDateOnlyValue,
+} from "@ega/domain";
 
-function padDatePart(value: number) {
-  return String(value).padStart(2, "0");
-}
+/**
+ * Web-facing aliases for the canonical calendar-date helpers. The rules live in
+ * `@ega/domain` so Web, Hono and MCP share one date authority.
+ */
+export const getTodayLocalIsoDate = getLocalTodayIsoDate;
+export const isDateOnlyValue = isTaskDateOnlyValue;
+export const shiftDateOnlyValue = shiftTaskDateOnlyValue;
 
-function isTaskComplete(status: string | null | undefined) {
-  return isTaskCompletedStatus(status);
-}
-
-export function getTodayLocalIsoDate(now = new Date()) {
-  return [
-    now.getFullYear(),
-    padDatePart(now.getMonth() + 1),
-    padDatePart(now.getDate()),
-  ].join("-");
-}
-
-export function isDateOnlyValue(value: string) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    return false;
-  }
-
-  const parsed = new Date(`${value}T00:00:00.000Z`);
-
-  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
-}
-
-export function shiftDateOnlyValue(value: string, days: number) {
-  const parsed = new Date(`${value}T00:00:00.000Z`);
-
-  if (Number.isNaN(parsed.getTime())) {
-    return value;
-  }
-
-  parsed.setUTCDate(parsed.getUTCDate() + days);
-  return parsed.toISOString().slice(0, 10);
-}
-
-export function normalizeTaskStartDateInput(rawValue: unknown) {
-  const value = String(rawValue ?? "").trim();
-
-  if (!value) {
-    return { value: null, error: null };
-  }
-
-  if (!isDateOnlyValue(value)) {
-    return {
-      value: null,
-      error: "Start date must be a valid date in YYYY-MM-DD format.",
-    };
-  }
-
-  return { value, error: null };
-}
-
-export function normalizeTaskDueDateInput(rawValue: unknown) {
-  const value = String(rawValue ?? "").trim();
-
-  if (!value) {
-    return { value: null, error: null };
-  }
-
-  if (!isDateOnlyValue(value)) {
-    return {
-      value: null,
-      error: "Due date must be a valid date in YYYY-MM-DD format.",
-    };
-  }
-
-  return { value, error: null };
-}
-
-export function normalizeTaskPlannedDateInput(rawValue: unknown) {
-  const value = String(rawValue ?? "").trim();
-
-  if (!value) {
-    return { value: null, error: null };
-  }
-
-  if (!isDateOnlyValue(value)) {
-    return {
-      value: null,
-      error: "Planned date must be a valid date in YYYY-MM-DD format.",
-    };
-  }
-
-  return { value, error: null };
-}
+export {
+  isTaskDueSoon,
+  isTaskDueToday,
+  isTaskOverdue,
+  normalizeTaskDueDateInput,
+  normalizeTaskPlannedDateInput,
+  normalizeTaskStartDateInput,
+} from "@ega/domain";
 
 export function formatTaskDueDate(value: string) {
   return new Intl.DateTimeFormat("en-US", {
@@ -95,36 +31,6 @@ export function formatTaskDueDate(value: string) {
     year: "numeric",
     timeZone: "UTC",
   }).format(new Date(`${value}T00:00:00.000Z`));
-}
-
-export function isTaskOverdue(
-  dueDate: string | null | undefined,
-  status?: string | null,
-  today = getTodayLocalIsoDate(),
-) {
-  return Boolean(dueDate && !isTaskComplete(status) && dueDate < today);
-}
-
-export function isTaskDueToday(
-  dueDate: string | null | undefined,
-  status?: string | null,
-  today = getTodayLocalIsoDate(),
-) {
-  return Boolean(dueDate && !isTaskComplete(status) && dueDate === today);
-}
-
-export function isTaskDueSoon(
-  dueDate: string | null | undefined,
-  status?: string | null,
-  today = getTodayLocalIsoDate(),
-  daysAhead = 7,
-) {
-  if (!dueDate || isTaskComplete(status)) {
-    return false;
-  }
-
-  const rangeEnd = shiftDateOnlyValue(today, daysAhead);
-  return dueDate >= today && dueDate <= rangeEnd;
 }
 
 export function getTaskDueDateState(

@@ -287,6 +287,30 @@ export function getLocalDateInTimezone(date: Date, timeZone: string): string {
 }
 
 /**
+ * Local wall-clock date and HH:MM for an instant in an IANA timezone.
+ * Returns null for an unparseable instant so callers can surface a validation
+ * error instead of inventing a time.
+ */
+export function getLocalWallTimeParts(
+  iso: string,
+  timezone: string,
+): { date: string; time: string } | null {
+  const parsed = Date.parse(iso);
+  if (!Number.isFinite(parsed)) return null;
+  const date = getLocalDateInTimezone(new Date(parsed), timezone);
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone: timezone,
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+  const parts = formatter.formatToParts(new Date(parsed));
+  const hour = parts.find((part) => part.type === "hour")?.value ?? "00";
+  const minute = parts.find((part) => part.type === "minute")?.value ?? "00";
+  return { date, time: `${hour === "24" ? "00" : hour}:${minute}` };
+}
+
+/**
  * UTC instants [startUtcIso, endUtcIso) covering the local calendar month that
  * contains `dateStr` in `timezone`. Month boundaries follow the owner's local
  * calendar, so a month can start/end at a non-UTC midnight across DST.
