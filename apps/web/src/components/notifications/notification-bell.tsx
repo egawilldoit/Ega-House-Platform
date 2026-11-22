@@ -256,7 +256,7 @@ export function NotificationBell({ initialUnreadCount }: { initialUnreadCount: n
                   />
                   <div className="min-w-0 flex-1">
                     <p className={cn("text-[length:var(--text-body)]", row.isUnread && "font-semibold")}>
-                      {row.title}
+                      <span>{row.title}</span>
                       {row.isUnread ? <span className="sr-only"> Unread</span> : null}
                     </p>
                     {row.body ? (

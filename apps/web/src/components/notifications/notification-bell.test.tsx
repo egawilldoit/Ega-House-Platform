@@ -104,6 +104,13 @@ describe("NotificationBell", () => {
 
     expect(actions.loadNotificationsAction).toHaveBeenCalledWith(null);
     expect(document.body.textContent).toContain("Reminder");
+    // The title must be its own element so an exact-text query still resolves
+    // even though unread rows also expose a screen-reader-only " Unread" hint.
+    expect(
+      Array.from(document.body.querySelectorAll("span")).some(
+        (candidate) => candidate.textContent === "Reminder",
+      ),
+    ).toBe(true);
     expect(document.body.textContent).toContain("Load older notifications");
 
     const loadOlder = Array.from(document.body.querySelectorAll("button")).find(
