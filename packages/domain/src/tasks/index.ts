@@ -1,6 +1,11 @@
 export * from "./status";
 export * from "./recurrence";
 export * from "./due-date";
+export * from "./date-only";
+export * from "./estimate";
+export * from "./schedule";
+export * from "./title";
+export * from "./calendar-reminder";
 
 export * from "./subtasks";
 export * from "./comments";

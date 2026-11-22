@@ -1,5 +1,4 @@
 import {
-  getLocalDateInTimezone,
   getLocalDayWindow,
   getWeekWindow,
 } from "@ega/domain/time-context";
@@ -261,24 +260,7 @@ function formatClockMinute(totalMinutes: number) {
 }
 
 /** Local wall-clock date/time of an instant in the owner's timezone. */
-export function getLocalWallTimeParts(
-  iso: string,
-  timezone: string,
-): { date: string; time: string } | null {
-  const parsed = Date.parse(iso);
-  if (!Number.isFinite(parsed)) return null;
-  const date = getLocalDateInTimezone(new Date(parsed), timezone);
-  const formatter = new Intl.DateTimeFormat("en-US", {
-    timeZone: timezone,
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  });
-  const parts = formatter.formatToParts(new Date(parsed));
-  const hour = parts.find((part) => part.type === "hour")?.value ?? "00";
-  const minute = parts.find((part) => part.type === "minute")?.value ?? "00";
-  return { date, time: `${hour === "24" ? "00" : hour}:${minute}` };
-}
+export { getLocalWallTimeParts } from "@ega/domain";
 
 type TimedSegment = {
   date: string;

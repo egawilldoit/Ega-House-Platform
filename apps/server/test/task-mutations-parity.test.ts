@@ -17,6 +17,10 @@ import {
  * TASKS mutation parity: create/update/pin flows answer the legacy
  * `{ ok: true, task }` enriched envelope, force verified ownership, and map
  * missing tasks to 404 exactly like `/api/mobile/tasks*` did.
+ *
+ * Hono side of the Web/Hono/MCP write-validation matrix: the Web validator and
+ * the real MCP handler are covered by
+ * `apps/web/src/lib/services/task-service-cross-transport-parity.test.ts`.
  */
 
 function queueHydratedRow(fake: FakeSupabase, rowIndex: number, overrides: Record<string, unknown> = {}) {
@@ -79,6 +83,21 @@ test("PARITY CREATE: blocked without reason rejects with the legacy validation m
     (await response.json()).error.message,
     "Blocked reason is required when status is Blocked.",
   );
+});
+
+test("PARITY UPDATE: blocked without reason rejects before any repository write", async () => {
+  const fake = new FakeSupabase();
+  const response = await makeApp(fake).request("/api/tasks/t-overdue", {
+    method: "PATCH",
+    headers: JSON_HEADERS,
+    body: JSON.stringify({ status: "blocked" }),
+  });
+  assert.equal(response.status, 400);
+  assert.equal(
+    (await response.json()).error.message,
+    "Blocked reason is required when status is Blocked.",
+  );
+  assert.deepEqual(fake.calls, []);
 });
 
 test("PARITY CREATE: inline recurrenceRule anchors on the created task's due date", async () => {

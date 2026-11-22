@@ -1,3 +1,4 @@
+import { shiftTaskDateOnlyValue } from "./date-only";
 import { isTaskCompletedStatus } from "./status";
 
 function padDatePart(value: number) {
@@ -13,10 +14,7 @@ export function getLocalTodayIsoDate(now = new Date()) {
 }
 
 function shiftIsoDate(value: string, days: number) {
-  const parsed = new Date(`${value}T00:00:00.000Z`);
-  if (Number.isNaN(parsed.getTime())) return value;
-  parsed.setUTCDate(parsed.getUTCDate() + days);
-  return parsed.toISOString().slice(0, 10);
+  return shiftTaskDateOnlyValue(value, days);
 }
 
 export function isTaskOverdue(
