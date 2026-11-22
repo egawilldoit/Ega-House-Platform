@@ -8,74 +8,51 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  Sheet,
-  SheetContent,
   SheetDescription,
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
 
 import { captureInboxIdea } from "./capture-action";
-import { INBOX_CAPTURE_EVENT } from "@/lib/workspace-events";
-
+import {
+  captureKeyContent,
+  clearInboxCaptureDraft,
+  createEmptyCaptureDraft,
+  createIdempotencyKey,
+  loadInboxCaptureDraft,
+  saveInboxCaptureDraft,
+  type InboxCaptureDraft,
+} from "@/lib/inbox-capture/draft-storage";
 export { INBOX_CAPTURE_EVENT } from "@/lib/workspace-events";
+export {
+  createIdempotencyKey,
+  inboxCaptureStorageKey,
+} from "@/lib/inbox-capture/draft-storage";
 
+/** @deprecated Legacy global key retained only for migration cleanup. */
 export const DRAFT_STORAGE_KEY = "ega:inbox-quick-capture-draft";
 
-export type Draft = {
-  title: string;
-  body: string;
-  projectId: string;
-  idempotencyKey: string;
-};
+export type Draft = InboxCaptureDraft;
 
-export function createIdempotencyKey() {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-    return crypto.randomUUID();
-  }
-  return `inbox-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+export function loadDraft(ownerUserId: string | null = null): Draft | null {
+  return loadInboxCaptureDraft(ownerUserId);
 }
 
-export function loadDraft(): Draft | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = window.localStorage.getItem(DRAFT_STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as Partial<Draft>;
-    const draft = parsed;
-    const rawKey = typeof draft.idempotencyKey === "string" ? draft.idempotencyKey.trim() : "";
-    const key = rawKey.length > 0 ? rawKey : createIdempotencyKey();
-    return {
-      title: typeof parsed.title === "string" ? parsed.title : "",
-      body: typeof parsed.body === "string" ? parsed.body : "",
-      projectId: typeof parsed.projectId === "string" ? parsed.projectId : "",
-      idempotencyKey: key,
-    };
-  } catch {
-    return null;
-  }
+export function saveDraft(draft: Draft, ownerUserId: string | null = null) {
+  saveInboxCaptureDraft(ownerUserId, draft);
 }
 
-export function saveDraft(draft: Draft) {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(draft));
-  } catch {
-    // Ignore storage quota/security errors
-  }
-}
-
-export function clearDraftStorage() {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.removeItem(DRAFT_STORAGE_KEY);
-  } catch {
-    // Ignore
-  }
+export function clearDraftStorage(ownerUserId: string | null = null) {
+  clearInboxCaptureDraft(ownerUserId);
 }
 
 export type InboxCapturePanelProps = {
   projects: Array<{ id: string; name: string }>;
+  /**
+   * Verified owner id. Draft persistence is owner-scoped so an account switch
+   * can never reveal another account's unsaved capture.
+   */
+  ownerId?: string | null;
   onSuccess?: () => void;
   onCancel?: () => void;
   hideHeader?: boolean;
@@ -87,6 +64,7 @@ export type InboxCapturePanelProps = {
 
 export function InboxCapturePanel({
   projects,
+  ownerId = null,
   onSuccess,
   onCancel,
   hideHeader = false,
@@ -98,57 +76,75 @@ export function InboxCapturePanel({
   const router = useRouter();
   const [localTitle, setLocalTitle] = useState(() => {
     if (controlledTitle !== undefined) return controlledTitle;
-    return loadDraft()?.title ?? "";
+    return loadDraft(ownerId)?.title ?? "";
   });
   const [localProjectId, setLocalProjectId] = useState(() => {
     if (controlledProjectId !== undefined) return controlledProjectId;
-    return loadDraft()?.projectId ?? "";
+    return loadDraft(ownerId)?.projectId ?? "";
   });
   const [body, setBody] = useState(() => {
-    return loadDraft()?.body ?? "";
+    return loadDraft(ownerId)?.body ?? "";
   });
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
-  const [initialKey] = useState(() => {
-    const draft = loadDraft();
-    if (!draft) return createIdempotencyKey();
-    const rawKey = typeof draft.idempotencyKey === "string" ? draft.idempotencyKey.trim() : "";
-    return rawKey.length > 0 ? rawKey : createIdempotencyKey();
-  });
-  const idempotencyKeyRef = useRef<string>(initialKey);
+  const [initialDraft] = useState(
+    () => loadDraft(ownerId) ?? createEmptyCaptureDraft(),
+  );
+  const idempotencyKeyRef = useRef<string>(initialDraft.idempotencyKey);
+  const keyContentRef = useRef<string>(initialDraft.keyContent);
 
   const title = controlledTitle !== undefined ? controlledTitle : localTitle;
   const projectId = controlledProjectId !== undefined ? controlledProjectId : localProjectId;
 
+  const rememberKeyContent = useCallback(
+    (next: { title: string; body: string; projectId: string }) => {
+      const nextKeyContent = captureKeyContent(next);
+      if (nextKeyContent !== keyContentRef.current) {
+        keyContentRef.current = nextKeyContent;
+        idempotencyKeyRef.current = createIdempotencyKey();
+      }
+    },
+    [],
+  );
+
   const setTitle = useCallback(
     (nextTitle: string) => {
       setLocalTitle(nextTitle);
+      rememberKeyContent({ title: nextTitle, body, projectId });
       onTitleChange?.(nextTitle);
     },
-    [onTitleChange],
+    [body, onTitleChange, projectId, rememberKeyContent],
   );
 
   const setProjectId = useCallback(
     (nextProjectId: string) => {
       setLocalProjectId(nextProjectId);
+      rememberKeyContent({ title, body, projectId: nextProjectId });
       onProjectIdChange?.(nextProjectId);
     },
-    [onProjectIdChange],
+    [body, onProjectIdChange, rememberKeyContent, title],
+  );
+
+  const setBodyText = useCallback(
+    (nextBody: string) => {
+      setBody(nextBody);
+      rememberKeyContent({ title, body: nextBody, projectId });
+    },
+    [projectId, rememberKeyContent, title],
   );
 
   useEffect(() => {
-    const draft = loadDraft();
+    const draft = loadDraft(ownerId);
     if (draft && controlledTitle === undefined) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setTitle(draft.title);
       setBody(draft.body);
       setProjectId(draft.projectId);
-      const rawKey = typeof draft.idempotencyKey === "string" ? draft.idempotencyKey.trim() : "";
-      const key = rawKey.length > 0 ? rawKey : createIdempotencyKey();
-      idempotencyKeyRef.current = key;
+      idempotencyKeyRef.current = draft.idempotencyKey;
+      keyContentRef.current = draft.keyContent;
     }
-  }, [controlledTitle, setProjectId, setTitle]);
+  }, [controlledTitle, ownerId, setProjectId, setTitle]);
 
   useEffect(() => {
     const timer = window.requestAnimationFrame(() => {
@@ -160,12 +156,30 @@ export function InboxCapturePanel({
   useEffect(() => {
     if (!title && !body && !projectId) {
       if (error) {
-        saveDraft({ title, body, projectId, idempotencyKey: idempotencyKeyRef.current });
+        saveDraft(
+          {
+            title,
+            body,
+            projectId,
+            idempotencyKey: idempotencyKeyRef.current,
+            keyContent: keyContentRef.current,
+          },
+          ownerId,
+        );
       }
       return;
     }
-    saveDraft({ title, body, projectId, idempotencyKey: idempotencyKeyRef.current });
-  }, [title, body, projectId, error]);
+    saveDraft(
+      {
+        title,
+        body,
+        projectId,
+        idempotencyKey: idempotencyKeyRef.current,
+        keyContent: keyContentRef.current,
+      },
+      ownerId,
+    );
+  }, [title, body, projectId, error, ownerId]);
 
   const handleSubmit = useCallback(
     async (event: React.FormEvent) => {
@@ -178,11 +192,23 @@ export function InboxCapturePanel({
       setPending(true);
       setError(null);
       setSuccess(null);
+      const currentKeyContent = captureKeyContent({ title, body, projectId });
+      if (currentKeyContent !== keyContentRef.current) {
+        keyContentRef.current = currentKeyContent;
+        idempotencyKeyRef.current = createIdempotencyKey();
+      }
       if (!idempotencyKeyRef.current || !idempotencyKeyRef.current.trim()) {
         idempotencyKeyRef.current = createIdempotencyKey();
       }
       const keyToUse = idempotencyKeyRef.current;
-      saveDraft({ title, body, projectId, idempotencyKey: keyToUse });
+      const draftToSave: Draft = {
+        title,
+        body,
+        projectId,
+        idempotencyKey: keyToUse,
+        keyContent: keyContentRef.current,
+      };
+      saveDraft(draftToSave, ownerId);
 
       try {
         const result = await captureInboxIdea({
@@ -199,7 +225,7 @@ export function InboxCapturePanel({
         setTitle("");
         setBody("");
         setProjectId("");
-        clearDraftStorage();
+        clearDraftStorage(ownerId);
         idempotencyKeyRef.current = createIdempotencyKey();
         router.refresh();
         window.setTimeout(() => {
@@ -213,7 +239,7 @@ export function InboxCapturePanel({
         setPending(false);
       }
     },
-    [title, body, projectId, router, onSuccess, setProjectId, setTitle],
+    [title, body, projectId, router, onSuccess, setProjectId, setTitle, ownerId],
   );
 
   return (
@@ -293,7 +319,7 @@ export function InboxCapturePanel({
               rows={4}
               placeholder="Context, next step, link, or thought fragment..."
               value={body}
-              onChange={(event) => setBody(event.target.value)}
+              onChange={(event) => setBodyText(event.target.value)}
               data-testid="inbox-capture-body-input"
               aria-label="Backlog capture notes"
             />
@@ -335,36 +361,5 @@ export function InboxCapturePanel({
         </form>
       </div>
     </>
-  );
-}
-
-export function InboxCaptureSheet({
-  projects,
-}: {
-  projects: Array<{ id: string; name: string }>;
-}) {
-  const [open, setOpen] = useState(false);
-
-  useEffect(() => {
-    const handleOpen = () => setOpen(true);
-    window.addEventListener(INBOX_CAPTURE_EVENT, handleOpen);
-    return () => window.removeEventListener(INBOX_CAPTURE_EVENT, handleOpen);
-  }, []);
-
-  return (
-    <Sheet open={open} onOpenChange={setOpen}>
-      <SheetContent
-        closeLabel="Close capture panel"
-        className="flex flex-col"
-        aria-label="Backlog quick capture sheet"
-        data-testid="inbox-quick-capture-sheet"
-      >
-        <InboxCapturePanel
-          projects={projects}
-          onSuccess={() => setOpen(false)}
-          onCancel={() => setOpen(false)}
-        />
-      </SheetContent>
-    </Sheet>
   );
 }

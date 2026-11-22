@@ -2,9 +2,11 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { journeys, verifyReport } from "./assert-disposable-report.mjs";
 
+const expectedJourneys = Object.values(journeys).flat().length;
+
 function report() {
   return {
-    errors: [], stats: { expected: 17, unexpected: 0, flaky: 0, skipped: 0 },
+    errors: [], stats: { expected: expectedJourneys, unexpected: 0, flaky: 0, skipped: 0 },
     suites: Object.entries(journeys).map(([file, titles]) => ({ specs: titles.map(title => ({
       title, file, ok: true, tests: [{ projectName: "chromium-disposable", expectedStatus: "passed", status: "expected", results: [{ status: "passed", retry: 0 }] }],
     })) })),
@@ -25,7 +27,7 @@ test("requires every reviewed journey exactly once with no skips, retries or exp
     r => { r.suites[0].specs[0].tests[0].results[0].retry = 1; },
     r => { r.suites[0].specs[0].tests[0].results.push({ status: "passed", retry: 1 }); },
     r => { r.suites[0].specs[0].tests[0].results[0].errors = [{ message: "late error" }]; },
-    r => { r.stats.expected = 16; },
+    r => { r.stats.expected = expectedJourneys - 1; },
     r => { r.stats.skipped = 1; },
     r => { r.stats.flaky = 1; },
     r => { r.errors.push({ message: "interrupted" }); },

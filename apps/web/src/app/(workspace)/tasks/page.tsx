@@ -42,6 +42,10 @@ type TasksPageProps = {
     task?: string;
     /** `full` renders the detail full page instead of a side panel. */
     taskMode?: string;
+    /** Workbench tab: active, inbox, or archived. */
+    tab?: string;
+    /** Legacy saved-view deep link; ignored and falls back to Active. */
+    savedView?: string;
     /** Timeline window anchor and week/month zoom. */
     tlStart?: string;
     tlZoom?: string;

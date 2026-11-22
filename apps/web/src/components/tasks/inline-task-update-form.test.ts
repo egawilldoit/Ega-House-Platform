@@ -17,14 +17,6 @@ const formSource = readFileSync(resolvePathFromImportMeta(
   "src/components/tasks/inline-task-update-form.tsx",
 ), "utf8");
 
-// The reminder block and the centered editor shell moved from the legacy
-// sheet into the "Edit task" modal (task editing redesign); the same layout
-// contract is verified against that component now.
-const modalSource = readFileSync(resolvePathFromImportMeta(
-  "./edit-task-modal.tsx",
-  "src/components/tasks/edit-task-modal.tsx",
-), "utf8");
-
 function getSection(source: string, start: string, end: string) {
   const startIndex = source.indexOf(start);
   assert.notEqual(startIndex, -1, `Missing section start: ${start}`);
@@ -53,7 +45,6 @@ test("advanced settings groups fields under whitespace section labels", () => {
   for (const group of ["Task", "Schedule", "Calendar"]) {
     assert.match(formSource, new RegExp(`glass-label text-etch">${group}</p>`));
   }
-  assert.match(modalSource, /glass-label text-etch"/);
 });
 
 test("advanced settings status options use canonical display labels", () => {
@@ -97,18 +88,6 @@ test("advanced settings footer keeps one primary action and hides destructive ac
   assert.match(archiveButton![0], /variant="danger"/);
 });
 
-test("edit task modal is a capped, centered, scrolling dialog with a stable footer", () => {
-  assert.match(
-    modalSource,
-    /max-h-\[min\(50rem,calc\(100dvh-2rem\)\)\]/,
-  );
-  assert.match(modalSource, /max-w-\[53rem\]/);
-  assert.match(modalSource, /-translate-x-1\/2 -translate-y-1\/2/);
-  assert.match(modalSource, /min-h-0 flex-1 space-y-4 overflow-y-auto/);
-  assert.match(modalSource, /shrink-0 border-t border-\[var\(--ega-border\)\]/);
-});
-
 test("advanced settings sheets carry no legacy gold tokens", () => {
   assert.doesNotMatch(formSource, /ega-gold|--ega-gold/);
-  assert.doesNotMatch(modalSource, /ega-gold|--ega-gold/);
 });

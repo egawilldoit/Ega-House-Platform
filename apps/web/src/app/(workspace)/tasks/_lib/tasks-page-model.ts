@@ -31,6 +31,13 @@ import {
 } from "@/lib/task-saved-views";
 import { groupTaskViewRecords } from "@ega/application/tasks/view";
 import { getTaskDrawerDetail } from "@/lib/services/task-service";
+import { getTaskDrawerPlanning } from "@/lib/services/task-drawer-planning-service";
+import {
+  getIdeaInboxNotes,
+  getIdeaNoteProjectOptions,
+  type IdeaNote,
+  type IdeaNoteProjectOption,
+} from "@/lib/services/idea-note-service";
 import { getSubtaskCountsForTasks, listTaskSubtasks } from "@/lib/services/subtask-service";
 import { listTaskAttachments } from "@/lib/services/attachment-service";
 import { getTaskActivity } from "@/lib/services/task-activity-service";
@@ -86,12 +93,36 @@ export type TasksSearchParams = {
   task?: string;
   /** `?taskMode=full` renders the detail full page instead of a side panel. */
   taskMode?: string;
+  /**
+   * Workbench tab: `active` (default), `inbox`, or `archived`.
+   * A legacy saved-view id in this or `savedView` is ignored rather than
+   * failing the page; the list falls back to the default Active tab.
+   */
+  tab?: string;
+  /** Legacy saved-view deep link; never resolves server-side. */
+  savedView?: string;
   /** Timeline window anchor (YYYY-MM-DD) and week/month zoom. */
   tlStart?: string;
   tlZoom?: string;
 };
 
+export type TasksWorkbenchTab = "active" | "inbox" | "archived";
+
+function normalizeTasksWorkbenchTab(
+  rawTab: string | null | undefined,
+  archiveView: TaskArchiveViewFilter,
+): TasksWorkbenchTab {
+  const normalized = String(rawTab ?? "").trim().toLowerCase();
+  if (normalized === "inbox") return "inbox";
+  if (normalized === "archived") return "archived";
+  if (normalized === "active") return "active";
+  // No canonical tab: honor the legacy `view`/`archive` scope. The removed
+  // "all" scope falls back to Active so an old link never errors.
+  return archiveView === "archived" ? "archived" : "active";
+}
+
 export type ParsedTasksFilters = {
+  activeTab: TasksWorkbenchTab;
   activeStatus: TaskStatus | null;
   activeDueFilter: TaskDueFilter;
   activeSort: TaskSortValue;
@@ -164,9 +195,12 @@ export function parseTasksSearchParams(
   const activeCalendarDateField: TaskCalendarDateField = normalizeTaskCalendarDateField(
     searchParams.dateField,
   );
-  const activeView: TaskArchiveViewFilter = normalizeTaskViewFilter(
+  const legacyArchiveView: TaskArchiveViewFilter = normalizeTaskViewFilter(
     searchParams.archive ?? searchParams.view,
   );
+  const activeTab = normalizeTasksWorkbenchTab(searchParams.tab, legacyArchiveView);
+  const activeView: TaskArchiveViewFilter =
+    activeTab === "archived" ? "archived" : "active";
   const taskUpdateError =
     searchParams.taskUpdateError?.slice(0, 180) ?? searchParams.statusUpdateError?.slice(0, 180) ?? null;
   const taskUpdateSuccess = searchParams.taskUpdateSuccess?.slice(0, 180) ?? null;
@@ -176,6 +210,7 @@ export function parseTasksSearchParams(
     success: searchParams.viewSuccess?.slice(0, 180) ?? null,
   };
   return {
+    activeTab,
     activeStatus,
     activeDueFilter,
     activeSort,
@@ -352,6 +387,34 @@ export async function getTasksPageModel(
     : ({ kind: "unavailable" as const } as const);
   const selectedTask = drawerResult.kind === "found" ? drawerResult.task : null;
   const selectedTaskError = drawerResult.kind === "error";
+  const selectedTaskPlanning = selectedTask
+    ? await getTaskDrawerPlanning(selectedTask.id)
+    : null;
+
+  // Inbox is a pre-task capture surface, not another task scope. Load it only
+  // when that tab is visible so the default list never pays for the read.
+  let inboxIdeas: IdeaNote[] = [];
+  let inboxIdeasError: string | null = null;
+  let inboxProjects: IdeaNoteProjectOption[] = [];
+  if (parsed.activeTab === "inbox") {
+    const [ideasResult, projectOptionsResult] = await Promise.allSettled([
+      getIdeaInboxNotes({ view: "active" }),
+      getIdeaNoteProjectOptions(),
+    ]);
+    if (ideasResult.status === "fulfilled") {
+      inboxIdeas = ideasResult.value;
+    } else {
+      inboxIdeasError = "Unable to load captured ideas right now.";
+    }
+    if (projectOptionsResult.status === "fulfilled") {
+      inboxProjects = projectOptionsResult.value;
+    } else {
+      inboxProjects = projects.map((project) => ({
+        id: project.id,
+        name: project.name,
+      }));
+    }
+  }
   const timeline =
     parsed.activeLayout === "timeline"
       ? await getTaskTimelineData({ range: timelineRange })
@@ -405,6 +468,10 @@ export async function getTasksPageModel(
     selectedTaskCommentMentions: selectedTaskComments.mentionCandidates,
     selectedTaskCommentError: selectedTaskComments.errorMessage,
     selectedTaskIsFavourite,
+    selectedTaskPlanning,
+    inboxIdeas,
+    inboxIdeasError,
+    inboxProjects,
     parsed,
     projects,
     goals,
