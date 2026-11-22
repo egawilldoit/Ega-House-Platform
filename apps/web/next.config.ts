@@ -36,6 +36,8 @@ const nextConfig: NextConfig = {
       { source: "/settings/appearance", destination: "/settings?tab=preferences", permanent: false },
       { source: "/settings/preferences", destination: "/settings?tab=preferences", permanent: false },
       { source: "/settings/areas", destination: "/tasks/projects/areas", permanent: false },
+      { source: "/money/bills", destination: "/money/recurring?type=bill", permanent: false },
+      { source: "/money/subscriptions", destination: "/money/recurring?type=subscription", permanent: false },
     ];
   },
 };

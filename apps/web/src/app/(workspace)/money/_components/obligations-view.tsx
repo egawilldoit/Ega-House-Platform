@@ -45,21 +45,29 @@ export type ObligationsSearchParams = {
   offset?: string;
 };
 
-const COPY: Record<
-  ObligationKind,
-  { title: string; description: string; none: string }
-> = {
+/** One recurring view; `all` is the canonical default rather than a second store. */
+export type ObligationsFilter = "all" | ObligationKind;
+
+type ObligationCopy = { description: string; none: string; noun: string };
+
+const COPY: Record<ObligationsFilter, ObligationCopy> = {
+  all: {
+    description:
+      "Bills and subscriptions are the same obligation occurrences. Only a recorded payment moves cash.",
+    none: "No recurring items recorded yet.",
+    noun: "recurring item",
+  },
   bill: {
-    title: "Bills",
     description:
       "Bills are obligation occurrences, not cash movements. Only a recorded payment moves cash.",
     none: "No bills recorded yet.",
+    noun: "bill",
   },
   subscription: {
-    title: "Subscriptions",
     description:
       "Subscriptions are the same obligation occurrences as bills, filtered by kind. One payment state, never two.",
     none: "No subscriptions recorded yet.",
+    noun: "subscription",
   },
 };
 
@@ -73,8 +81,19 @@ const PAYMENT_METHOD_OPTIONS = [
   "other",
 ] as const;
 
-function occurrencePath(kind: ObligationKind): string {
-  return kind === "bill" ? "/money/bills" : "/money/subscriptions";
+const RECURRING_PATH = "/money/recurring";
+
+function recurringHref(
+  filter: ObligationsFilter,
+  extra: Readonly<Record<string, string | undefined>> = {},
+): string {
+  const search = new URLSearchParams();
+  if (filter !== "all") search.set("type", filter);
+  for (const [key, value] of Object.entries(extra)) {
+    if (value !== undefined) search.set(key, value);
+  }
+  const query = search.toString();
+  return query ? `${RECURRING_PATH}?${query}` : RECURRING_PATH;
 }
 
 function isoDateOffset(offset: string | undefined): number {
@@ -85,21 +104,21 @@ function isoDateOffset(offset: string | undefined): number {
 /**
  * Shared bills/subscriptions projection (MONEY-06).
  *
- * Both routes read the same occurrence rows through the same use cases; only
- * the `kind` filter differs. There is no second paid flag and no separate
- * bill/subscription store. Lifecycle forms are versioned and state the
+ * One recurring view reads the same occurrence rows through the same use
+ * cases; only the `kind` filter differs. There is no second paid flag and no
+ * separate bill/subscription store. Lifecycle forms are versioned and state the
  * effective date; none of them posts cash.
  */
 export async function ObligationsView({
-  kind,
+  filter,
   searchParams,
 }: {
-  kind: ObligationKind;
+  filter: ObligationsFilter;
   searchParams: ObligationsSearchParams;
 }) {
   const user = await getCurrentUser();
-  const path = occurrencePath(kind);
-  if (!user) redirect(`/login?next=${path}`);
+  const path = recurringHref(filter);
+  if (!user) redirect(`/login?next=${encodeURIComponent(path)}`);
 
   const client = await createClient();
   const time = await getWebTimeContext().catch(() => ({ timezone: "UTC" }));
@@ -108,7 +127,8 @@ export async function ObligationsView({
   const actor = createAuthenticatedActor(user.id);
   const repository = new SupabaseObligationRepository(client);
   const offset = isoDateOffset(searchParams.offset);
-  const copy = COPY[kind];
+  const copy = COPY[filter];
+  const kind = filter === "all" ? null : filter;
 
   const [listResult, summaryResult, templateResult] = await Promise.all([
     listObligations(actor, repository, {
@@ -132,22 +152,28 @@ export async function ObligationsView({
 
   return (
     <main className="mx-auto w-full max-w-5xl px-4 py-6 sm:px-6">
-      <WorkspacePageHeader title={copy.title} description={copy.description} />
+      <WorkspacePageHeader title="Recurring" description={copy.description} />
 
       <nav aria-label="Money sections" className="mt-4 flex flex-wrap gap-4 text-[length:var(--text-body)]">
         <a className="underline" href="/money">
           Money ledger
         </a>
-        <a className="underline" aria-current={kind === "bill" ? "page" : undefined} href="/money/bills">
-          Bills
+        <a className="underline" aria-current="page" href={RECURRING_PATH}>
+          Recurring
         </a>
-        <a
-          className="underline"
-          aria-current={kind === "subscription" ? "page" : undefined}
-          href="/money/subscriptions"
-        >
-          Subscriptions
-        </a>
+      </nav>
+
+      <nav aria-label="Recurring type" className="mt-3 flex flex-wrap gap-4 text-[length:var(--text-body)]">
+        {(["all", "bill", "subscription"] as const).map((option) => (
+          <a
+            key={option}
+            className="underline"
+            aria-current={filter === option ? "page" : undefined}
+            href={recurringHref(option)}
+          >
+            {option === "all" ? "All" : option === "bill" ? "Bills" : "Subscriptions"}
+          </a>
+        ))}
       </nav>
 
       {searchParams.notice ? (
@@ -199,12 +225,12 @@ export async function ObligationsView({
 
       <section aria-labelledby="obligation-list-heading" className="mt-6">
         <h2 id="obligation-list-heading" className="text-[length:var(--text-section)] font-semibold tracking-[var(--tracking-tight)]">
-          Recorded {kind === "bill" ? "bills" : "subscriptions"}
+          Recorded {filter === "all" ? "occurrences" : filter === "bill" ? "bills" : "subscriptions"}
         </h2>
         {occurrences === null ? (
           <div role="alert" className="mt-3 rounded-lg border border-ega-border p-4">
             <p>Obligations could not be loaded.</p>
-            <a className="underline" href={`${path}?offset=${offset}`}>
+            <a className="underline" href={recurringHref(filter, { offset: String(offset) })}>
               Retry
             </a>
           </div>
@@ -229,14 +255,22 @@ export async function ObligationsView({
           <nav aria-label="Obligation pages" className="mt-4 flex justify-between">
             <span>
               {offset > 0 ? (
-                <a className="underline" href={`${path}?offset=${Math.max(0, offset - 25)}`}>
+                <a
+                  className="underline"
+                  href={recurringHref(filter, {
+                    offset: String(Math.max(0, offset - 25)),
+                  })}
+                >
                   Previous
                 </a>
               ) : null}
             </span>
             <span>
               {listResult?.ok && listResult.data.pagination.hasMore ? (
-                <a className="underline" href={`${path}?offset=${offset + 25}`}>
+                <a
+                  className="underline"
+                  href={recurringHref(filter, { offset: String(offset + 25) })}
+                >
                   Next
                 </a>
               ) : null}
@@ -247,10 +281,20 @@ export async function ObligationsView({
 
       <section aria-labelledby="obligation-create-heading" className="mt-6 rounded-lg border border-ega-border p-5">
         <h2 id="obligation-create-heading" className="text-[length:var(--text-section)] font-semibold tracking-[var(--tracking-tight)]">
-          Add {kind === "bill" ? "a bill" : "a subscription"}
+          Add a {copy.noun}
         </h2>
         <form action={createObligationFormAction} className="mt-4 flex flex-col gap-3">
-          <input type="hidden" name="kind" value={kind} />
+          {filter === "all" ? (
+            <label className="flex flex-col gap-1 text-[length:var(--text-body)]">
+              Kind
+              <select className="rounded border border-ega-border p-2" name="kind" defaultValue="bill">
+                <option value="bill">Bill</option>
+                <option value="subscription">Subscription</option>
+              </select>
+            </label>
+          ) : (
+            <input type="hidden" name="kind" value={filter} />
+          )}
           <input type="hidden" name="returnTo" value={returnTo} />
           <input type="hidden" name="stateEffectiveDate" value={localToday} />
           <input type="hidden" name="idempotencyKey" value={`web-obligation:${user.id}:${randomUUID()}`} />
@@ -396,7 +440,17 @@ export async function ObligationsView({
           </ul>
         )}
         <form action={createTemplateFormAction} className="mt-4 flex flex-col gap-3">
-          <input type="hidden" name="kind" value={kind} />
+          {filter === "all" ? (
+            <label className="flex flex-col gap-1 text-[length:var(--text-body)]">
+              Kind
+              <select className="rounded border border-ega-border p-2" name="kind" defaultValue="bill">
+                <option value="bill">Bill</option>
+                <option value="subscription">Subscription</option>
+              </select>
+            </label>
+          ) : (
+            <input type="hidden" name="kind" value={filter} />
+          )}
           <input type="hidden" name="returnTo" value={returnTo} />
           <input type="hidden" name="idempotencyKey" value={`web-template:${user.id}:${randomUUID()}`} />
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
