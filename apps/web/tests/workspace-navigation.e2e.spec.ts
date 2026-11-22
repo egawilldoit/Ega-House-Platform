@@ -6,13 +6,17 @@ const protocol = process.env.E2E_AUTH_PROTOCOL ?? "https";
 const platformRootDomain = process.env.E2E_AUTH_PLATFORM_DOMAIN ?? "egawilldoit.online";
 const loginHost = process.env.E2E_AUTH_LOGIN_HOST ?? `www.${platformRootDomain}`;
 
-const WORKSPACE_ROUTES = [
-  { path: "/home", label: "Home" },
+const PRIMARY_WORKSPACE_ROUTES = [
   { path: "/today", label: "Today" },
   { path: "/tasks", label: "Tasks" },
+  { path: "/tasks/projects", label: "Projects" },
+  { path: "/money", label: "Money" },
+  { path: "/review", label: "Review" },
+] as const;
+
+const UTILITY_WORKSPACE_ROUTES = [
   { path: "/goals", label: "Goals" },
   { path: "/timer", label: "Timer" },
-  { path: "/review", label: "Review" },
 ] as const;
 
 function getShellRoot(page: Page) {
@@ -34,13 +38,33 @@ async function getNavLink(page: Page, label: string) {
   throw new Error(`Navigation link not found for label: ${label}`);
 }
 
+/**
+ * Utility destinations (Goals, Timer) are intentionally absent from the
+ * five-item sidebar. They must remain reachable through the command palette
+ * without a document reload so the workspace shell survives.
+ */
+async function openUtilityDestination(page: Page, route: (typeof UTILITY_WORKSPACE_ROUTES)[number]) {
+  await page.getByTestId("workspace-search-trigger").first().click();
+  await page
+    .getByRole("tab", { name: /^Commands/ })
+    .click();
+  const option = page.getByRole("option", { name: route.label, exact: true });
+  await expect(option).toBeVisible({ timeout: 10_000 });
+  const navigationPromise = page.waitForURL(
+    (url) => url.pathname === route.path || url.pathname.startsWith(route.path + "/"),
+    { timeout: 15_000 },
+  );
+  await option.click();
+  await navigationPromise;
+}
+
 test.describe("Workspace navigation with persistent shell", () => {
   test.skip(
     !hasPwaAuthCredentials(),
     "Set E2E_AUTH_EMAIL and E2E_AUTH_PASSWORD to run authenticated workspace navigation tests.",
   );
 
-  test("authenticated navigation preserves original shell DOM element identity including return to Home", async ({
+  test("authenticated navigation preserves shell identity across primary and utility destinations", async ({
     page,
   }) => {
     test.skip(!hasPwaAuthCredentials(), "Missing E2E_AUTH_EMAIL/E2E_AUTH_PASSWORD; skipping authenticated workspace navigation test.");
@@ -71,7 +95,7 @@ test.describe("Workspace navigation with persistent shell", () => {
     expect(typeof originalShellIdentity.testId).toBe("string");
     expect(originalShellIdentity.testId.length).toBeGreaterThan(0);
 
-    for (const route of WORKSPACE_ROUTES) {
+    for (const route of PRIMARY_WORKSPACE_ROUTES) {
       const navLink = await getNavLink(fixtures.page, route.label);
       await expect(navLink).toBeVisible({ timeout: 10_000 });
 
@@ -97,28 +121,22 @@ test.describe("Workspace navigation with persistent shell", () => {
       expect(identityAfter.isSameObject).toBe(true);
     }
 
-    const homeNavLink = await getNavLink(fixtures.page, "Home");
-    await expect(homeNavLink).toBeVisible({ timeout: 10_000 });
-    const homeNavPromise = fixtures.page.waitForURL(
-      (url) => url.pathname === "/home" || url.pathname.startsWith("/home/"),
-      { timeout: 15_000 },
-    );
-    await homeNavLink.click();
-    await homeNavPromise;
+    for (const route of UTILITY_WORKSPACE_ROUTES) {
+      await openUtilityDestination(fixtures.page, route);
+      await expect(shellRoot).toBeVisible({ timeout: 10_000 });
+      const identityAfter = await shellRoot.evaluate((el, expectedTestId) => {
+        const root = el as HTMLElement & { __egaShellTestId?: string };
+        return {
+          testId: root.__egaShellTestId ?? null,
+          sentinel: root.getAttribute("data-ega-shell-root"),
+          isSameObject: root.__egaShellTestId === expectedTestId,
+        };
+      }, originalShellIdentity.testId);
 
-    await expect(shellRoot).toBeVisible({ timeout: 10_000 });
-    const identityAfterHome = await shellRoot.evaluate((el, expectedTestId) => {
-      const root = el as HTMLElement & { __egaShellTestId?: string };
-      return {
-        testId: root.__egaShellTestId ?? null,
-        sentinel: root.getAttribute("data-ega-shell-root"),
-        isSameObject: root.__egaShellTestId === expectedTestId,
-      };
-    }, originalShellIdentity.testId);
-
-    expect(identityAfterHome.sentinel).toBe(originalShellIdentity.sentinel);
-    expect(identityAfterHome.testId).toBe(originalShellIdentity.testId);
-    expect(identityAfterHome.isSameObject).toBe(true);
+      expect(identityAfter.sentinel).toBe(originalShellIdentity.sentinel);
+      expect(identityAfter.testId).toBe(originalShellIdentity.testId);
+      expect(identityAfter.isSameObject).toBe(true);
+    }
   });
 
   test("document navigation request count with original shell identity preserved", async ({ page }) => {
@@ -156,19 +174,34 @@ test.describe("Workspace navigation with persistent shell", () => {
 
     const initialDocumentLoadCount = documentLoadCount;
 
-    const routes = ["/today", "/tasks", "/goals"];
-    for (const route of routes) {
-      const label = route === "/home" ? "Home" : route.slice(1).charAt(0).toUpperCase() + route.slice(2);
-      const navLink = await getNavLink(fixtures.page, label);
+    for (const route of PRIMARY_WORKSPACE_ROUTES) {
+      const navLink = await getNavLink(fixtures.page, route.label);
       await expect(navLink).toBeVisible({ timeout: 10_000 });
 
       const navigationPromise = fixtures.page.waitForURL(
-        (url) => url.pathname === route || url.pathname.startsWith(route + "/"),
+        (url) => url.pathname === route.path || url.pathname.startsWith(route.path + "/"),
         { timeout: 10_000 },
       );
       await navLink.click();
       await navigationPromise;
 
+      await expect(shellRoot).toBeVisible({ timeout: 10_000 });
+      const identityAfter = await shellRoot.evaluate((el, expectedTestId) => {
+        const root = el as HTMLElement & { __egaShellTestId?: string };
+        return {
+          testId: root.__egaShellTestId ?? null,
+          sentinel: root.getAttribute("data-ega-shell-root"),
+          isSameObject: root.__egaShellTestId === expectedTestId,
+        };
+      }, originalShellIdentity.testId);
+
+      expect(identityAfter.sentinel).toBe(originalShellIdentity.sentinel);
+      expect(identityAfter.testId).toBe(originalShellIdentity.testId);
+      expect(identityAfter.isSameObject).toBe(true);
+    }
+
+    for (const route of UTILITY_WORKSPACE_ROUTES) {
+      await openUtilityDestination(fixtures.page, route);
       await expect(shellRoot).toBeVisible({ timeout: 10_000 });
       const identityAfter = await shellRoot.evaluate((el, expectedTestId) => {
         const root = el as HTMLElement & { __egaShellTestId?: string };
@@ -519,17 +552,32 @@ test.describe("Workspace navigation with persistent shell", () => {
     fixtures.page.on("load", onLoad);
     const beforeLoadCount = documentLoadCount;
 
-    const routes = ["/today", "/tasks", "/goals", "/timer", "/review", "/home"];
-    for (const route of routes) {
-      const label = route === "/home" ? "Home" : route.slice(1).charAt(0).toUpperCase() + route.slice(2);
-      const navLink = await getNavLink(fixtures.page, label);
+    for (const route of PRIMARY_WORKSPACE_ROUTES) {
+      const navLink = await getNavLink(fixtures.page, route.label);
       await expect(navLink).toBeVisible({ timeout: 10_000 });
       await navLink.click();
       await fixtures.page.waitForURL(
-        (url) => url.pathname === route || url.pathname.startsWith(route + "/"),
+        (url) => url.pathname === route.path || url.pathname.startsWith(route.path + "/"),
         { timeout: 10_000 },
       );
 
+      await expect(shellRoot).toBeVisible({ timeout: 10_000 });
+      const identityAfter = await shellRoot.evaluate((el, expectedTestId) => {
+        const root = el as HTMLElement & { __egaShellTestId?: string };
+        return {
+          testId: root.__egaShellTestId ?? null,
+          sentinel: root.getAttribute("data-ega-shell-root"),
+          isSameObject: root.__egaShellTestId === expectedTestId,
+        };
+      }, originalShellIdentity.testId);
+
+      expect(identityAfter.sentinel).toBe(originalShellIdentity.sentinel);
+      expect(identityAfter.testId).toBe(originalShellIdentity.testId);
+      expect(identityAfter.isSameObject).toBe(true);
+    }
+
+    for (const route of UTILITY_WORKSPACE_ROUTES) {
+      await openUtilityDestination(fixtures.page, route);
       await expect(shellRoot).toBeVisible({ timeout: 10_000 });
       const identityAfter = await shellRoot.evaluate((el, expectedTestId) => {
         const root = el as HTMLElement & { __egaShellTestId?: string };

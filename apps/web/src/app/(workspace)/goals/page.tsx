@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { CanonicalLink } from "@/components/layout/canonical-link";
 import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
 import { getGoalsPageModel } from "./_lib/goals-page-model";
 import { GoalsPageView } from "./_components/GoalsPageView";
@@ -25,9 +26,17 @@ export default async function GoalsPage({ searchParams }: GoalsPageProps) {
   return (
     <>
       <WorkspacePageHeader
-      title="Goals"
-      description="Objectives with health, progress, next step, and linked tasks."
-    />
+        title="Goals"
+        description="Objectives with health, progress, next step, and linked tasks."
+        actions={
+          <CanonicalLink
+            href="/tasks/projects"
+            className="btn-instrument btn-instrument-muted flex h-8 items-center px-3 text-sm"
+          >
+            Projects
+          </CanonicalLink>
+        }
+      />
       <GoalsPageView model={model} />
     </>
   );

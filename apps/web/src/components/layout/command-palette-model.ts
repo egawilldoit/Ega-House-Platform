@@ -3,15 +3,17 @@ import type { WorkspaceSearchScope } from "@/lib/workspace-search";
 import {
   COMMAND_ROUTES,
   SYSTEM_ROUTES,
+  UTILITY_ROUTES,
   type ShellRouteMeta,
 } from "@/components/layout/shell-route-meta";
 
-// Retired destinations keep a redirect in next.config.ts and must not reappear
-// as palette commands. Every retained page stays discoverable even though the
-// sidebar intentionally shows only the five primary destinations.
-const RETIRED_PALETTE_ROUTES = new Set(["/apps", "/shutdown", "/goals", "/timer", "/work-analytics", "/archive", "/startup", "/friction"]);
+// Routes with a config redirect must not reappear as palette commands. The
+// retained utility surfaces (Goals, Timer) are intentional exceptions below:
+// they are contextual pages, not retired redirects.
+const RETIRED_PALETTE_ROUTES = new Set(["/apps", "/shutdown", "/work-analytics", "/archive", "/startup", "/friction"]);
 const PALETTE_ROUTES: readonly ShellRouteMeta[] = [
   ...COMMAND_ROUTES,
+  ...UTILITY_ROUTES,
   ...SYSTEM_ROUTES.filter((route) => !RETIRED_PALETTE_ROUTES.has(route.href)),
 ];
 
@@ -211,7 +213,9 @@ export function buildWorkspaceSections(results: WorkspaceSearchResults): Command
         group: "goals",
         label: goal.title,
         hint: null,
-        href: "/goals",
+        // Use the same deep link as project milestones and Review insights so
+        // the selected goal opens in the cross-project Goals surface.
+        href: `/goals?view=all&goal=${goal.id}#goal-${goal.id}`,
       })),
     });
   }

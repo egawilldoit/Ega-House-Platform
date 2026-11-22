@@ -73,7 +73,8 @@ import {
   ProjectFilesPanelSkeleton,
 } from "./_components/project-files-panel";
 import { ProjectOverview } from "./_components/project-overview";
-import { ProjectTabNav, normalizeProjectTab } from "./_components/project-tab-nav";
+import { ProjectTabNav } from "./_components/project-tab-nav";
+import { normalizeProjectTab } from "./_components/project-tabs";
 import { ProjectTaskHashLink } from "./_components/project-task-hash-link";
 import { ProjectTaskList } from "./_components/project-task-list";
 

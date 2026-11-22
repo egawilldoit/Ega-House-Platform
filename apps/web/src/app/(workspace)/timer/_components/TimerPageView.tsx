@@ -329,6 +329,7 @@ export function TimerPageView({ model }: { model: TimerPageModel }) {
       </DashboardSection>
 
       <DashboardSection
+        id="recent-sessions"
         title="Recent sessions"
         description="Review recent sessions or correct their timing."
       >

@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { CanonicalLink } from "@/components/layout/canonical-link";
 import { Diamond } from "lucide-react";
 
 import type { ProjectGoalRecord } from "@ega/application";
@@ -53,12 +53,12 @@ export function ProjectGoalsMilestones({ goals }: ProjectGoalsMilestonesProps) {
                   <Diamond className="h-3.5 w-3.5" fill="currentColor" />
                 </span>
                 <span className="row-main min-w-0">
-                  <Link
+                  <CanonicalLink
                     href={`/goals?view=all&goal=${goal.id}#goal-${goal.id}`}
                     className="row-title block truncate hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ega-focus-outline)]"
                   >
                     {goal.title}
-                  </Link>
+                  </CanonicalLink>
                   <span className="row-meta line-clamp-2">
                     {nextStep ? `Next: ${nextStep}` : "No next step set"}
                   </span>

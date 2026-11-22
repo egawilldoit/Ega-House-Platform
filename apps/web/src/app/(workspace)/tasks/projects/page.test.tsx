@@ -62,6 +62,23 @@ test("projects page still uses form for archive/unarchive actions (data submissi
   );
 });
 
+test("projects page exposes the cross-project goals utility without owning goals", () => {
+  const source = readFileSync(PROJECT_PAGE_PATH, "utf-8");
+
+  assert.match(
+    source,
+    /href="\/goals\?view=all"/,
+    "Projects must link to the cross-project goals view",
+  );
+  assert.match(source, /CanonicalLink/, "The goals link must resolve on the canonical host");
+  assert.match(source, /Goals across all projects/, "The link needs an explicit scope");
+  assert.doesNotMatch(
+    source,
+    /getGoalsReadModel|SupabaseGoalsRepository/,
+    "Projects must not duplicate the goals read model",
+  );
+});
+
 const ACTIONS_PATH = resolve(
   import.meta.dirname,
   "./actions.ts",
