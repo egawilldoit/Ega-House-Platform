@@ -3,6 +3,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { loadCreateOptionsAction } from "@/app/(workspace)/create-options-actions";
 import { QUICK_TASK_EVENT, INBOX_CAPTURE_EVENT } from "@/lib/workspace-events";
 import { UnifiedCreateSheet, UNIFIED_CREATE_EVENT } from "./unified-create-sheet";
 
@@ -10,6 +11,14 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: vi.fn(), push: vi.fn(), replace: vi.fn() }),
   usePathname: () => "/home",
   useSearchParams: () => new URLSearchParams(),
+}));
+
+vi.mock("@/app/(workspace)/create-options-actions", () => ({
+  loadCreateOptionsAction: vi.fn(async () => ({
+    projects: [{ id: "proj-lazy", name: "Lazy Project" }],
+    goals: [{ id: "goal-lazy", title: "Lazy Goal", project_id: "proj-lazy" }],
+    errorMessage: null,
+  })),
 }));
 
 vi.mock("@/app/(workspace)/tasks/actions", () => ({
@@ -99,6 +108,21 @@ describe("UnifiedCreateSheet", () => {
     await act(async () => changeInput(title, "x".repeat(256) + " high 45m"));
     expect(title.getAttribute("aria-invalid")).toBe("false");
     expect(document.getElementById("quick-task-title-count")?.textContent).toBe("256/256");
+  });
+
+  it("loads create options on first open when the shell provides none", async () => {
+    await act(async () => {
+      root.render(<UnifiedCreateSheet />);
+    });
+    expect(vi.mocked(loadCreateOptionsAction)).not.toHaveBeenCalled();
+
+    await dispatch(QUICK_TASK_EVENT);
+
+    expect(vi.mocked(loadCreateOptionsAction)).toHaveBeenCalledTimes(1);
+    const projectSelect = document.getElementById("quick-task-project") as HTMLSelectElement | null;
+    expect(projectSelect).not.toBeNull();
+    expect(projectSelect?.querySelectorAll("option").length).toBe(1);
+    expect(document.body.textContent).not.toContain("Project required");
   });
 
   it("opens in Backlog mode upon INBOX_CAPTURE_EVENT", async () => {

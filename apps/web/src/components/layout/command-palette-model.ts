@@ -1,10 +1,29 @@
 import type { WorkspaceSearchResults } from "@/lib/services/workspace-search-service";
 import type { WorkspaceSearchScope } from "@/lib/workspace-search";
-import { COMMAND_ROUTES } from "@/components/layout/shell-route-meta";
+import {
+  COMMAND_ROUTES,
+  SYSTEM_ROUTES,
+  type ShellRouteMeta,
+} from "@/components/layout/shell-route-meta";
+
+// Retired destinations keep a redirect in next.config.ts and must not reappear
+// as palette commands. Every retained page stays discoverable even though the
+// sidebar intentionally shows only the five primary destinations.
+const RETIRED_PALETTE_ROUTES = new Set(["/apps", "/shutdown"]);
+const RETAINED_PRIMARY_ROUTES: readonly ShellRouteMeta[] = [
+  { href: "/goals", label: "Goals", group: "primary", description: "Direction and progress" },
+  { href: "/timer", label: "Timer", group: "primary", description: "Focus session" },
+  { href: "/work-analytics", label: "Analytics", group: "primary", description: "Operational evidence" },
+];
+const PALETTE_ROUTES: readonly ShellRouteMeta[] = [
+  ...COMMAND_ROUTES,
+  ...RETAINED_PRIMARY_ROUTES,
+  ...SYSTEM_ROUTES.filter((route) => !RETIRED_PALETTE_ROUTES.has(route.href)),
+];
 
 type WorkspaceCommand = { id: string; label: string; group: "navigate" | "create"; href: `/${string}` | null; event: "capture" | "quick-task" | null; hint: string | null };
 const WORKSPACE_COMMANDS: readonly WorkspaceCommand[] = [
-  ...COMMAND_ROUTES.map((route) => ({ id: `nav-${route.label.toLowerCase()}`, label: route.label, group: "navigate" as const, href: route.href, event: null, hint: null })),
+  ...PALETTE_ROUTES.map((route) => ({ id: `nav-${route.label.toLowerCase()}`, label: route.label, group: "navigate" as const, href: route.href, event: null, hint: null })),
   { id: "create-backlog", label: "Add to Backlog", group: "create", href: null, event: "capture", hint: "Capture" },
   { id: "create-task", label: "New task", group: "create", href: null, event: "quick-task", hint: "Task" },
   { id: "create-project", label: "New Project", group: "create", href: "/tasks/projects/new", event: null, hint: "Project" },

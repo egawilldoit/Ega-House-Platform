@@ -129,13 +129,14 @@ function PlannerErrorState({ actionError }: { actionError: string | null }) {
 async function loadOperatorProposal(input: {
   operatorProposalId: string | null;
   planRequested: boolean;
+  localDate: string;
 }) {
   try {
     if (input.operatorProposalId) {
       return await getOperatorProposalData({ proposalId: input.operatorProposalId });
     }
     if (input.planRequested) {
-      return await getActiveOperatorProposalData();
+      return await getActiveOperatorProposalData({ localDate: input.localDate });
     }
   } catch {
     return { data: null, errorMessage: "The approval plan is unavailable." };
@@ -206,7 +207,7 @@ export default async function TodayPage({
       skipped: startupSkipped,
       retryIds: startupRetryIds,
     }),
-    loadOperatorProposal({ operatorProposalId, planRequested }),
+    loadOperatorProposal({ operatorProposalId, planRequested, localDate: snapshot.date }),
     finishDayRequested
       ? getWebDailyCheckin({ localDate: snapshot.date, timezone: snapshot.timezone }).catch(
           () => ({ checkin: null, errorMessage: "Check-in is unavailable right now." }),

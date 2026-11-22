@@ -137,9 +137,13 @@ export async function dismissOperatorProposalData(input: { supabase?: SupabaseSe
 /**
  * The one bounded read that lets Today re-open an approval plan the operator
  * already prepared. Only `generated` and `approved` are active; applied,
- * dismissed, and stale proposals stay out of the Today surface.
+ * dismissed, and stale proposals stay out of the Today surface. Both queries
+ * are scoped to the requesting snapshot's canonical local date so a plan left
+ * over from a previous day cannot be applied into today's tasks.
  */
-export async function getActiveOperatorProposalData(input?: {
+export async function getActiveOperatorProposalData(input: {
+  /** Canonical local date of the Today snapshot requesting the plan surface. */
+  localDate: string;
   supabase?: SupabaseServerClient;
 }): Promise<{ data: OperatorProposalRecord | null; errorMessage: string | null }> {
   const supabase = input?.supabase ?? (await createClient());
@@ -153,8 +157,8 @@ export async function getActiveOperatorProposalData(input?: {
   const repo = new SupabaseOperatorProposalRepository(supabase as never);
 
   const [generated, approved] = await Promise.all([
-    repo.listProposals(actor, { status: "generated", limit: 1 }),
-    repo.listProposals(actor, { status: "approved", limit: 1 }),
+    repo.listProposals(actor, { localDate: input.localDate, status: "generated", limit: 1 }),
+    repo.listProposals(actor, { localDate: input.localDate, status: "approved", limit: 1 }),
   ]);
 
   if (!generated.ok && !approved.ok) {
