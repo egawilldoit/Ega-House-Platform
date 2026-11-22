@@ -144,7 +144,7 @@ describe("MONEY-06 obligation web actions", () => {
     const location = await captureRedirect(() =>
       createObligationFormAction(
         form({
-          returnTo: "/money/bills",
+          returnTo: "/money/recurring?type=bill",
           kind: "bill",
           description: "Rent",
           amount: "3500.00",
@@ -162,7 +162,7 @@ describe("MONEY-06 obligation web actions", () => {
     const location = await captureRedirect(() =>
       createObligationFormAction(
         form({
-          returnTo: "/money/bills",
+          returnTo: "/money/recurring?type=bill",
           kind: "bill",
           description: "Rent",
           amount: "3500.555",
@@ -181,7 +181,7 @@ describe("MONEY-06 obligation web actions", () => {
     const location = await captureRedirect(() =>
       createObligationFormAction(
         form({
-          returnTo: "/money/bills",
+          returnTo: "/money/recurring?type=bill",
           kind: "bill",
           description: "Rent",
           amount: "3500.00",
@@ -198,7 +198,7 @@ describe("MONEY-06 obligation web actions", () => {
       ),
     );
 
-    expect(location).toContain("/money/bills?notice=");
+    expect(location).toContain("/money/recurring?type=bill&notice=");
     expect(location).toContain("No+cash+movement");
     const create = repositoryCalls.find((call) => call.method === "create");
     const values = (create?.input as { values: Record<string, unknown> }).values;
@@ -216,7 +216,7 @@ describe("MONEY-06 obligation web actions", () => {
     const location = await captureRedirect(() =>
       transitionObligationFormAction(
         form({
-          returnTo: "/money/bills",
+          returnTo: "/money/recurring?type=bill",
           obligationId: "22222222-2222-4222-8222-222222222222",
           version: "1",
           to: "paid",

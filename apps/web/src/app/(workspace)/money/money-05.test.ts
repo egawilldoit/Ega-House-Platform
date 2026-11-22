@@ -12,43 +12,50 @@ const budgetFormSource = readFileSync(
   resolve(import.meta.dirname, "./_components/budget-plan-form.tsx"),
   "utf8",
 );
-const coffeeControlsSource = readFileSync(
-  resolve(import.meta.dirname, "./_components/coffee-visit-controls.tsx"),
+const budgetPanelSource = readFileSync(
+  resolve(import.meta.dirname, "./_components/money-budget-plan-panel.tsx"),
+  "utf8",
+);
+const overviewSource = readFileSync(
+  resolve(import.meta.dirname, "./_components/money-overview-panels.tsx"),
   "utf8",
 );
 
-test("Money page exposes editable period budget, coffee and mapping controls", () => {
+test("Money page exposes the editable period budget plan from shared use cases", () => {
   assert.match(pageSource, /getMoneyBudgetPlan\(/);
-  assert.match(pageSource, /getMoneyCoffeeWindowForPlan\(/);
   assert.match(pageSource, /getMoneyPeriodSpending\(/);
   assert.match(pageSource, /new SupabaseMoneyBudgetRepository\(client\)/);
-  assert.match(pageSource, /new SupabaseMoneyCoffeeRepository\(client\)/);
-  assert.match(pageSource, /BudgetPlanForm/);
-  assert.match(pageSource, /expense\.category === "coffee" \? <CoffeeVisitControls/);
-  assert.match(pageSource, /readOnly=\{moneyState\.period\.lifecycle !== "tracking"\}/);
-  assert.match(pageSource, /MONEY_HANDOFF_CATEGORY_MAPPING/);
-  assert.match(pageSource, /describeExpenseCategory\(/);
-  assert.match(pageSource, /MONEY_ADVISORY_CAP_LABEL/);
-  assert.match(pageSource, /Counted coffee this week/);
-  assert.match(pageSource, /Plan consumption/);
-  assert.match(pageSource, /Coffee consumption uses counted-visit amounts/);
-  assert.match(pageSource, /Category coffee \(separate\)/);
-  assert.match(pageSource, /Uncounted category coffee/);
+  assert.match(pageSource, /MoneyBudgetPlanPanel/);
+  assert.match(budgetPanelSource, /readOnly=\{period\.lifecycle !== "tracking"\}/);
+  assert.match(budgetPanelSource, /MONEY_HANDOFF_CATEGORY_MAPPING/);
+  assert.match(budgetPanelSource, /describeExpenseCategory\(/);
+  assert.match(overviewSource, /MONEY_ADVISORY_CAP_LABEL/);
+  assert.match(budgetPanelSource, /Plan consumption/);
   assert.doesNotMatch(pageSource, /owner_user_id\s*:/);
 });
 
-test("Money actions use shared use cases with verified identity and no caller owner", () => {
-  for (const call of [
-    /saveMoneyBudgetPlan\(/,
-    /recordMoneyCoffeeVisit\(/,
-    /classifyMoneyExpense\(/,
-  ]) {
-    assert.match(actionsSource, call);
+test("counted-visit coffee UI and web-only visit helpers are removed", () => {
+  for (const source of [pageSource, actionsSource, budgetPanelSource, overviewSource]) {
+    assert.doesNotMatch(source, /CoffeeVisitControls/);
+    assert.doesNotMatch(source, /getMoneyCoffeeWindowForPlan/);
+    assert.doesNotMatch(source, /getMoneyCoffeeVisitUsage/);
+    assert.doesNotMatch(source, /recordCoffeeVisitAction/);
+    assert.doesNotMatch(source, /classifyExpenseCategoryAction/);
+    assert.doesNotMatch(source, /Counted coffee this week/);
+    assert.doesNotMatch(source, /countedVisitSpendMinor/);
   }
+  // Category coffee remains an ordinary recorded expense projection.
+  assert.match(overviewSource, /Coffee this month/);
+  assert.match(overviewSource, /summary\.coffee\.totalMinor/);
+});
+
+test("Money actions use shared use cases with verified identity and no caller owner", () => {
+  assert.match(actionsSource, /saveMoneyBudgetPlan\(/);
   assert.match(actionsSource, /getCurrentUser\(\)/);
   assert.match(actionsSource, /createAuthenticatedActor\(user\.id\)/);
   assert.match(actionsSource, /revalidatePath\("\/money"\)/);
-  assert.match(actionsSource, /coffee-expense-\$\{expense\.data\.id\}/);
+  assert.doesNotMatch(actionsSource, /recordMoneyCoffeeVisit\(/);
+  assert.doesNotMatch(actionsSource, /classifyMoneyExpense\(/);
   assert.doesNotMatch(actionsSource, /owner_user_id\s*:/);
 });
 
@@ -61,12 +68,4 @@ test("budget form posts one versioned plan and distinguishes empty from zero", (
   assert.match(budgetFormSource, /coffeeWeeklySpendLimitMinor/);
   assert.match(budgetFormSource, /coffeeWeeklyVisitLimit/);
   assert.match(budgetFormSource, /Empty means not set; 0 is a deliberate zero/);
-});
-
-test("coffee controls expose count-visit and classify-as-groceries without a new cash effect", () => {
-  assert.match(coffeeControlsSource, /Count visit/);
-  assert.match(coffeeControlsSource, /Classify as groceries/);
-  assert.match(coffeeControlsSource, /recordVisit/);
-  assert.match(coffeeControlsSource, /classifyAsGroceries/);
-  assert.doesNotMatch(coffeeControlsSource, /createExpense/);
 });

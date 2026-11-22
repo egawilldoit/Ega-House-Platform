@@ -28,13 +28,25 @@ import { getCurrentUser } from "@/lib/services/auth-service";
  * posts a cash movement — only the (MONEY-07) atomic payment path does.
  */
 
-const MONEY_PATHS = ["/money/bills", "/money/subscriptions"] as const;
+const RECURRING_PATH = "/money/recurring";
+const RECURRING_TYPES = ["bill", "subscription"] as const;
 
+/** Accept only the canonical recurring route, preserving an optional type filter. */
 function returnPath(raw: FormDataEntryValue | null): string {
   const value = typeof raw === "string" ? raw : "";
-  return (MONEY_PATHS as readonly string[]).includes(value)
-    ? value
-    : "/money/bills";
+  const [path, query = ""] = value.split("?");
+  if (path !== RECURRING_PATH) return RECURRING_PATH;
+  const type = new URLSearchParams(query).get("type");
+  return (RECURRING_TYPES as readonly string[]).includes(type ?? "")
+    ? `${RECURRING_PATH}?type=${type}`
+    : RECURRING_PATH;
+}
+
+function withParams(path: string, params: Record<string, string>): string {
+  const [base, query = ""] = path.split("?");
+  const search = new URLSearchParams(query);
+  for (const [key, value] of Object.entries(params)) search.set(key, value);
+  return `${base}?${search.toString()}`;
 }
 
 function text(formData: FormData, field: string): string {
@@ -53,20 +65,19 @@ function succeed(
   options: Readonly<{ offset?: string }> = {},
 ): never {
   revalidatePath("/money");
-  revalidatePath("/money/bills");
-  revalidatePath("/money/subscriptions");
-  const params = new URLSearchParams({ notice });
-  if (options.offset) params.set("offset", options.offset);
-  redirect(`${path}?${params.toString()}`);
+  revalidatePath(RECURRING_PATH);
+  const params: Record<string, string> = { notice };
+  if (options.offset) params.offset = options.offset;
+  redirect(withParams(path, params));
 }
 
 function fail(path: string, message: string): never {
-  redirect(`${path}?${new URLSearchParams({ error: message }).toString()}`);
+  redirect(withParams(path, { error: message }));
 }
 
 async function repositoryAndActor() {
   const user = await getCurrentUser();
-  if (!user) redirect("/login?next=/money/bills");
+  if (!user) redirect("/login?next=/money/recurring");
   const client = await createClient();
   return {
     actor: createAuthenticatedActor(user.id),

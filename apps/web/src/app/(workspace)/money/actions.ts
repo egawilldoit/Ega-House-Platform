@@ -3,7 +3,6 @@
 import { revalidatePath } from "next/cache";
 
 import {
-  classifyMoneyExpense,
   closeMoneyDay,
   createAuthenticatedActor,
   createExpense,
@@ -11,7 +10,6 @@ import {
   createMovement,
   deleteExpense,
   getExpense,
-  recordMoneyCoffeeVisit,
   rebaseMoneyDayStartBaseline,
   rolloverMoneyPeriod,
   saveMoneyBudgetPlan,
@@ -25,7 +23,6 @@ import type { MoneyOpeningInput } from "@ega/domain/money";
 import {
   SupabaseExpenseRepository,
   SupabaseMoneyBudgetRepository,
-  SupabaseMoneyCoffeeRepository,
   SupabaseMoneyPeriodRepository,
   SupabaseMoneyRepository,
   SupabaseMoneyRolloverRepository,
@@ -662,7 +659,7 @@ export async function updateMovementAction(
 }
 
 /* ------------------------------------------------------------------ */
-/* MONEY-05: period budget, counted visits and explicit classification */
+/* MONEY-05: versioned period budget plan */
 /* ------------------------------------------------------------------ */
 
 export type SaveBudgetPlanActionInput = {
@@ -719,103 +716,6 @@ export async function saveBudgetPlanAction(
   }
   revalidatePath("/money");
   return { ok: true, plan: result.data };
-}
-
-export type RecordCoffeeVisitActionResult =
-  | { ok: true; replayed: boolean }
-  | { ok: false; code: ExpenseMutationErrorCode; error: string };
-
-/**
- * Count one ordinary coffee purchase as one visit. The deterministic visit key
- * is the canonical expense id, so a retry replays the same visit instead of
- * inflating the count; the expense row remains the only cash effect.
- */
-export async function recordCoffeeVisitAction(
-  expenseId: string,
-): Promise<RecordCoffeeVisitActionResult> {
-  const user = await getCurrentUser();
-  if (!user) {
-    return { ok: false, code: "UNAUTHENTICATED", error: "Sign in to count visits." };
-  }
-  const client = await createClient();
-  const actor = createAuthenticatedActor(user.id);
-  const expense = await getExpense(actor, new SupabaseExpenseRepository(client), expenseId);
-  if (!expense.ok || !expense.data) {
-    return {
-      ok: false,
-      code: expense.ok ? "NOT_FOUND" : mapApplicationCode(expense.code),
-      error: expense.ok ? "Expense was not found." : expense.errorMessage,
-    };
-  }
-  let timezone = "UTC";
-  try {
-    timezone = (await getWebTimeContext()).timezone;
-  } catch {
-    timezone = "UTC";
-  }
-  const result = await recordMoneyCoffeeVisit(
-    actor,
-    {
-      expenses: new SupabaseExpenseRepository(client),
-      coffee: new SupabaseMoneyCoffeeRepository(client),
-    },
-    {
-      visitKey: `coffee-expense-${expense.data.id}`,
-      // Booking date is the resolved owner-local day even for date-only rows.
-      localDate: expense.data.bookingDate,
-      timezone,
-      expenseIds: [expense.data.id],
-      note: null,
-    },
-  );
-  if (!result.ok) {
-    return {
-      ok: false,
-      code: mapApplicationCode(result.code),
-      error: result.errorMessage,
-    };
-  }
-  revalidatePath("/money");
-  return { ok: true, replayed: result.data.replayed };
-}
-
-export type ClassifyExpenseActionResult =
-  | { ok: true; countedCoffeeUsageChanged: boolean }
-  | { ok: false; code: ExpenseMutationErrorCode; error: string };
-
-/**
- * Explicit classification control (for example "Coffee, classify as groceries
- * for testing"). The description/note is preserved unless the caller supplies
- * a replacement, groceries spending increases, and counted coffee usage stays
- * unchanged because no visit is created.
- */
-export async function classifyExpenseCategoryAction(
-  expenseId: string,
-  version: number,
-  category: ExpenseCategory,
-): Promise<ClassifyExpenseActionResult> {
-  const user = await getCurrentUser();
-  if (!user) {
-    return { ok: false, code: "UNAUTHENTICATED", error: "Sign in to edit expenses." };
-  }
-  const client = await createClient();
-  const result = await classifyMoneyExpense(
-    createAuthenticatedActor(user.id),
-    {
-      expenses: new SupabaseExpenseRepository(client),
-      coffee: new SupabaseMoneyCoffeeRepository(client),
-    },
-    { expenseId, version, category },
-  );
-  if (!result.ok) {
-    return {
-      ok: false,
-      code: mapApplicationCode(result.code),
-      error: result.errorMessage,
-    };
-  }
-  revalidatePath("/money");
-  return { ok: true, countedCoffeeUsageChanged: result.data.countedCoffeeUsageChanged };
 }
 
 // ---------------------------------------------------------------------------
