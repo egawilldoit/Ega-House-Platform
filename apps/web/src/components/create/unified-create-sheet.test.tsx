@@ -105,7 +105,7 @@ describe("UnifiedCreateSheet", () => {
     await act(async () => changeInput(title, "x".repeat(257)));
     expect(title.getAttribute("aria-invalid")).toBe("true");
     expect(document.getElementById("quick-task-title-error")?.textContent).toBe("Title must be 256 characters or fewer.");
-    await act(async () => changeInput(title, "x".repeat(256) + " high 45m"));
+    await act(async () => changeInput(title, "x".repeat(256)));
     expect(title.getAttribute("aria-invalid")).toBe("false");
     expect(document.getElementById("quick-task-title-count")?.textContent).toBe("256/256");
   });

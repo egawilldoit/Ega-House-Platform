@@ -16,10 +16,6 @@ export const journeys = {
   "notification-settings.e2e.spec.ts": [
     "notification settings PATCH preserves concurrent fields, rejects conflicts and isolates owners",
   ],
-  "kanban-board.e2e.spec.ts": [
-    "drag To Do → In Progress persists after reload at desktop and phone",
-    "keyboard ordering with the drag handle persists",
-  ],
   "pwa-morning-startup.e2e.spec.ts": [
     "owner starts the day with known outcomes, recovers a timer and saves its outcome",
     "two timer clients reconcile a competing start and safely retry an old stop",
@@ -63,6 +59,6 @@ export function verifyReport(report) {
 if (process.argv[1]?.endsWith("assert-disposable-report.mjs")) {
   let verified = false;
   try { verified = verifyReport(JSON.parse(readFileSync(process.argv[2] ?? "apps/web/test-results/disposable-results.json", "utf8"))); } catch { /* Missing reports fail closed. */ }
-  console.log(verified ? "AUTHENTICATED_JOURNEYS_VERIFIED: 17 passed once" : "AUTHENTICATED_JOURNEYS_UNVERIFIED: incomplete or failing report");
+  console.log(verified ? `AUTHENTICATED_JOURNEYS_VERIFIED: ${Object.values(journeys).flat().length} passed once` : "AUTHENTICATED_JOURNEYS_UNVERIFIED: incomplete or failing report");
   if (!verified) process.exitCode = 1;
 }

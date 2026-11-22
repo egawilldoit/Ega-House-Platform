@@ -6,11 +6,20 @@ test("created task persists and owner B cannot read, update or delete it", async
   await signInPwaOwner(page, owners.ownerA, "/tasks");
   const title = "E2E owner A private task";
   await page.getByTestId("tasks-new-task").click();
-  await page.getByLabel("Command", { exact: true }).fill(title);
-  await page.getByRole("button", { name: "Create task", exact: true }).click();
-  await expect(page.getByText(title, { exact: true })).toBeVisible();
+  const createDialog = page.getByRole("dialog", { name: "Create", exact: true });
+  await createDialog.getByLabel("Task title", { exact: true }).fill(title);
+  await createDialog.getByRole("button", { name: "Create task", exact: true }).click();
+  // Creation revalidates /tasks, so the list can briefly render a duplicate row
+  // while the router refresh settles. Assert exactly one canonical task link:
+  // this retries through that transient state yet still fails if the task is
+  // rendered twice once the workbench is stable.
+  const createdTaskLink = page.getByRole("link", {
+    name: `Open ${title} details`,
+    exact: true,
+  });
+  await expect(createdTaskLink).toHaveCount(1);
   await page.reload();
-  await expect(page.getByText(title, { exact: true })).toBeVisible();
+  await expect(createdTaskLink).toHaveCount(1);
 
   const a = await ownerClient(owners.ownerA);
   const b = await ownerClient(owners.ownerB);

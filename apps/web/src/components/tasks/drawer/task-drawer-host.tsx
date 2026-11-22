@@ -26,8 +26,10 @@ import type {
   SubtaskDto,
 } from "@ega/contracts";
 import { TaskAttachmentsSection } from "./task-attachments-section";
+import { TaskDrawerPlanningSection } from "./task-drawer-planning-section";
 import { useTaskDrawerParam } from "./use-task-drawer-param";
 import { useWorkspacePreferences } from "@/components/layout/workspace-preferences-provider";
+import type { TaskDrawerPlanning } from "@/lib/services/task-drawer-planning-service";
 
 const KNOWN_STATUSES: TaskStatusIconName[] = ["todo", "in_progress", "done", "blocked"];
 const KNOWN_PRIORITIES: TaskPriorityIconName[] = ["low", "medium", "high", "urgent"];
@@ -169,6 +171,13 @@ type TaskDrawerHostProps = {
   /** Add/remove "blocked by" edges for the selected task. */
   addDependencyAction: TaskFieldAction;
   removeDependencyAction: TaskFieldAction;
+  /** Project/schedule/recurrence/reminder projection for the planning section. */
+  planning?: TaskDrawerPlanning | null;
+  projectOptions?: Array<{ id: string; name: string }>;
+  /** Full-form patch used by plan scheduling and recurrence (redirects back). */
+  updateInlineAction?: TaskFieldAction;
+  createReminderAction?: TaskFieldAction;
+  cancelReminderAction?: TaskFieldAction;
 };
 
 /**
@@ -201,6 +210,11 @@ export function TaskDrawerHost({
   updateSuccess = null,
   addDependencyAction,
   removeDependencyAction,
+  planning = null,
+  projectOptions = [],
+  updateInlineAction,
+  createReminderAction,
+  cancelReminderAction,
 }: TaskDrawerHostProps) {
   const { taskOpenMode } = useWorkspacePreferences();
   const { taskId, mode, close, setMode } = useTaskDrawerParam(taskOpenMode);
@@ -497,6 +511,24 @@ export function TaskDrawerHost({
           </>
         ) : null}
       </dl>
+
+      {planning && updateInlineAction ? (
+        <TaskDrawerPlanningSection
+          key={`planning-${task.id}`}
+          taskId={task.id}
+          status={task.status}
+          priority={task.priority}
+          dueDate={task.due_date}
+          estimateMinutes={task.estimate_minutes}
+          blockedReason={task.blocked_reason}
+          planning={planning}
+          projectOptions={projectOptions}
+          returnTo={returnTo}
+          updateInlineAction={updateInlineAction}
+          createReminderAction={createReminderAction}
+          cancelReminderAction={cancelReminderAction}
+        />
+      ) : null}
 
       {subtaskActions ? (
         <TaskSubtasks

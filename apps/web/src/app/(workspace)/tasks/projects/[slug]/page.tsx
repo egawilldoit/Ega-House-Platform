@@ -21,10 +21,9 @@ import { buildTaskFilterReturnPath } from "@/components/tasks/task-filter-url";
 import { TasksWorkspaceShell } from "@/components/tasks/tasks-workspace-shell";
 import {
   addTaskDependencyAction,
-  deleteTaskAction,
-  pinTaskAction,
+  cancelTaskReminderAction,
+  createTaskReminderAction,
   removeTaskDependencyAction,
-  unpinTaskAction,
   updateTaskFieldAction,
   updateTaskFieldDraftAction,
   updateTaskInlineAction,
@@ -65,10 +64,10 @@ import {
   getTaskRemindersForTasks,
   type TaskRecord,
 } from "@/lib/services/task-service";
+import { getTaskDrawerPlanning } from "@/lib/services/task-drawer-planning-service";
 import { isTaskPriority, isTaskStatus } from "@/lib/task-domain";
 import { getTodayIsoDateForTimezone, getWeekWindowViaTimeContext } from "@/lib/review-week";
 
-import { ProjectBoard } from "./_components/project-board";
 import {
   ProjectFilesPanel,
   ProjectFilesPanelSkeleton,
@@ -363,6 +362,9 @@ export default async function ProjectDetailPage({
 
   const selectedTaskResult = selectedTaskId ? await getTaskDrawerDetail(selectedTaskId) : null;
   const selectedTask = selectedTaskResult?.kind === "found" ? selectedTaskResult.task : null;
+  const selectedTaskPlanning = selectedTask
+    ? await getTaskDrawerPlanning(selectedTask.id)
+    : null;
   const selectedTaskSubtasks = selectedTaskId
     ? (await listTaskSubtasks(selectedTaskId)).data ?? []
     : [];
@@ -401,12 +403,6 @@ export default async function ProjectDetailPage({
   );
   const focusQueue = sortFocusQueueTasks(filteredTasks);
   const taskTitles = new Map(allTasks.map((task) => [task.id, task.title]));
-  const hasActiveTaskFilters =
-    activeStatus !== null ||
-    activePriority !== null ||
-    activeDueFilter !== DEFAULT_TASK_DUE_FILTER ||
-    activeSort !== DEFAULT_TASK_SORT;
-
   // Canonical estimate-vs-actual aggregate over every project Task (archived
   // work keeps its historical time). Only estimated Tasks contribute to the
   // comparison; the card states coverage separately.
@@ -508,40 +504,6 @@ export default async function ProjectDetailPage({
           </section>
         ) : null}
 
-        {activeTab === "board" ? (
-          <section
-            role="tabpanel"
-            id="project-panel-board"
-            aria-labelledby="project-tab-board"
-            tabIndex={-1}
-          >
-            <ProjectBoard
-              tasks={filteredTasks}
-              activeStatus={activeStatus}
-              returnTo={returnTo}
-              taskTotalDurations={taskTotalDurations}
-              projectOptions={[{ id: project.id, name: project.name }]}
-              goalOptions={goals.map((goal) => ({
-                id: goal.id,
-                title: goal.title,
-                projectId: goal.projectId,
-              }))}
-              actions={{
-                updateAction: updateTaskInlineAction,
-                pinAction: pinTaskAction,
-                unpinAction: unpinTaskAction,
-                deleteAction: deleteTaskAction,
-              }}
-              errorForTask={(taskId) =>
-                taskUpdateTaskId === taskId ? taskUpdateError : null
-              }
-              updateSuccess={taskUpdateSuccess}
-              updateError={taskUpdateTaskId ? null : taskUpdateError}
-              hasActiveFilters={hasActiveTaskFilters}
-              clearFiltersHref={`${projectPath}?tab=board`}
-            />
-          </section>
-        ) : null}
 
         {activeTab === "files" ? (
           <section
@@ -618,6 +580,11 @@ export default async function ProjectDetailPage({
           updateSuccess={taskUpdateTaskId === selectedTaskId ? taskUpdateSuccess : null}
           addDependencyAction={addTaskDependencyAction}
           removeDependencyAction={removeTaskDependencyAction}
+          planning={selectedTaskPlanning}
+          projectOptions={selectedTaskPlanning?.projectOptions ?? []}
+          updateInlineAction={updateTaskInlineAction}
+          createReminderAction={createTaskReminderAction}
+          cancelReminderAction={cancelTaskReminderAction}
         />
       ) : null}
     </TasksWorkspaceShell>

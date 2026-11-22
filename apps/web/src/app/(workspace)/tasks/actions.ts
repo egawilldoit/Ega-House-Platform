@@ -1,7 +1,7 @@
 "use server";
 
 import { TASK_TITLE_MAX, TASK_TITLE_LENGTH_ERROR } from "@/lib/task-domain";
-import type { TablesInsert } from "@/lib/supabase/database.types";
+
 import { after } from "next/server";
 import { normalizeManualWorkedTimeInput } from "@/lib/manual-worked-time";
 import { normalizeTaskDueDateInput } from "@/lib/task-due-date";
@@ -21,10 +21,7 @@ import {
   cancelTaskReminder,
   createTaskEmailReminder,
   createTaskWithOptionalWorkedTime,
-  createTasks,
   deleteTaskSafely,
-  getTaskInsertScopeError,
-  getTaskScopeSnapshot,
   normalizeTaskBlockedReasonInput,
   rescheduleTaskDateForOwner,
   rescheduleTaskScheduledWindowForOwner,
@@ -39,10 +36,6 @@ import {
   unpinTaskInFocusQueue,
 } from "@/lib/services/focus-queue-service";
 import { updateTaskFieldForOwner, updateTaskTimelineSchedule } from "@/lib/services/task-service";
-import {
-  isTaskTableCellEditableField,
-  type TaskTableCellEditableField,
-} from "@/lib/task-table-columns";
 import {
   addTaskDependency,
   removeTaskDependency,
@@ -103,57 +96,11 @@ export type CreateTaskFormState = {
   };
 };
 
-export type CreateTasksBulkFormState = {
-  error: string | null;
-  success: string | null;
-  createdCount: number;
-  skippedLines: Array<{ value: string; reason: string }>;
-  values: {
-    titles: string;
-    projectId: string;
-    goalId: string;
-    description: string;
-    blockedReason: string;
-    status: string;
-    priority: string;
-    dueDate: string;
-    estimateMinutes: string;
-    returnTo: string;
-  };
-};
-
-type BulkTaskComposerRowInput = {
-  lineNumber?: number;
-  title?: string;
-  projectId?: string;
-  goalId?: string;
-  description?: string;
-  blockedReason?: string;
-  status?: string;
-  priority?: string;
-  dueDate?: string;
-  estimateMinutes?: string;
-};
-
 function createErrorState(
   error: string,
   values: CreateTaskFormState["values"],
 ): CreateTaskFormState {
   return { error, success: null, values, ...(error === TASK_TITLE_LENGTH_ERROR || error === "Task title is required." ? { titleError: error } : {}) };
-}
-
-function createBulkErrorState(
-  error: string,
-  values: CreateTasksBulkFormState["values"],
-  skippedLines: CreateTasksBulkFormState["skippedLines"] = [],
-): CreateTasksBulkFormState {
-  return {
-    error,
-    success: null,
-    createdCount: 0,
-    skippedLines,
-    values,
-  };
 }
 
 const TASK_SURFACE_PREFIXES = ["/tasks", "/today", "/dashboard"] as const;
@@ -219,36 +166,6 @@ function drainCalendarSyncQueueAfterResponse(shouldDrain: boolean) {
       // Cron remains the reliable retry path if this opportunistic drain fails.
     }
   });
-}
-
-function parseBulkRowsPayload(rawRows: string): BulkTaskComposerRowInput[] {
-  if (!rawRows.trim()) {
-    return [];
-  }
-
-  try {
-    const parsed = JSON.parse(rawRows);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
-
-function toTaskInsertRow(row: BulkTaskComposerRowInput) {
-  const status = String(row.status ?? "").trim();
-  const blockedReason = normalizeTaskBlockedReasonInput(row.blockedReason);
-
-  return {
-    title: String(row.title ?? "").trim(),
-    project_id: String(row.projectId ?? "").trim(),
-    goal_id: String(row.goalId ?? "").trim() || null,
-    description: String(row.description ?? "").trim() || null,
-    blocked_reason: status === "blocked" ? blockedReason : null,
-    status,
-    priority: String(row.priority ?? "").trim(),
-    due_date: String(row.dueDate ?? "").trim() || null,
-    estimate_minutes: normalizeTaskEstimateInput(row.estimateMinutes).value,
-  } satisfies TablesInsert<"tasks">;
 }
 
 export async function createTaskAction(
@@ -442,152 +359,6 @@ export async function createTaskAction(
       calendarReminderMinutes: rawCalendarReminderMinutes,
       workedTimeStartedAt: "",
       workedTimeEndedAt: "",
-      returnTo,
-    },
-  };
-}
-
-export async function createTasksBulkAction(
-  _previous: CreateTasksBulkFormState,
-  formData: FormData,
-): Promise<CreateTasksBulkFormState> {
-  const titles = String(formData.get("titles") ?? "");
-  const rows = parseBulkRowsPayload(String(formData.get("rows") ?? ""));
-  const returnTo = getTasksReturnPath(formData.get("returnTo"));
-
-  const values = {
-    titles,
-    projectId: "",
-    goalId: "",
-    description: "",
-    blockedReason: "",
-    status: "todo",
-    priority: "medium",
-    dueDate: "",
-    estimateMinutes: "",
-    returnTo,
-  };
-
-  if (rows.length === 0) {
-    return createBulkErrorState("Add at least one task card before creating tasks.", values);
-  }
-
-  const taskScopeResult = await getTaskScopeSnapshot();
-  if (taskScopeResult.errorMessage || !taskScopeResult.data) {
-    return createBulkErrorState(
-      taskScopeResult.errorMessage ?? "Unable to validate task scope right now.",
-      values,
-    );
-  }
-
-  const validRows: TablesInsert<"tasks">[] = [];
-  const skippedLines: Array<{ value: string; reason: string }> = [];
-
-  for (const row of rows) {
-    const lineLabel = row.lineNumber ? `Line ${row.lineNumber}` : "Row";
-    const taskRow = toTaskInsertRow(row);
-    const dueDateResult = normalizeTaskDueDateInput(row.dueDate);
-    const estimateResult = normalizeTaskEstimateInput(row.estimateMinutes);
-
-    if (!taskRow.title) {
-      skippedLines.push({ value: lineLabel, reason: "Task title is required." });
-      continue;
-    }
-
-    if (taskRow.title.length > TASK_TITLE_MAX) {
-      skippedLines.push({ value: taskRow.title, reason: TASK_TITLE_LENGTH_ERROR });
-      continue;
-    }
-
-    if (!taskRow.project_id) {
-      skippedLines.push({ value: taskRow.title, reason: "Project is required." });
-      continue;
-    }
-
-    if (!isTaskStatus(taskRow.status)) {
-      skippedLines.push({
-        value: taskRow.title,
-        reason: `Status must be one of: ${TASK_STATUS_VALUES.join(", ")}.`,
-      });
-      continue;
-    }
-
-    if (!isTaskPriority(taskRow.priority)) {
-      skippedLines.push({
-        value: taskRow.title,
-        reason: `Priority must be one of: ${TASK_PRIORITY_VALUES.join(", ")}.`,
-      });
-      continue;
-    }
-
-    if (taskRow.status === "blocked" && !taskRow.blocked_reason) {
-      skippedLines.push({
-        value: taskRow.title,
-        reason: "Blocked reason is required when status is Blocked.",
-      });
-      continue;
-    }
-
-    if (dueDateResult.error) {
-      skippedLines.push({
-        value: taskRow.title || lineLabel,
-        reason: dueDateResult.error,
-      });
-      continue;
-    }
-
-    if (estimateResult.error) {
-      skippedLines.push({
-        value: taskRow.title || lineLabel,
-        reason: estimateResult.error,
-      });
-      continue;
-    }
-
-    taskRow.due_date = dueDateResult.value;
-    taskRow.estimate_minutes = estimateResult.value;
-
-    const scopeError = getTaskInsertScopeError(taskRow, taskScopeResult.data);
-
-    if (scopeError) {
-      skippedLines.push({ value: taskRow.title, reason: scopeError });
-      continue;
-    }
-
-    validRows.push(taskRow);
-  }
-
-  if (validRows.length === 0) {
-    return createBulkErrorState(
-      "No valid task rows are ready to create.",
-      values,
-      skippedLines,
-    );
-  }
-
-  const { errorMessage } = await createTasks(validRows);
-
-  if (errorMessage) {
-    return createBulkErrorState(errorMessage, values, skippedLines);
-  }
-
-  revalidateWorkspaceFor("task", { returnTo });
-
-  return {
-    error: null,
-    success: `${validRows.length} task${validRows.length === 1 ? "" : "s"} created.`,
-    createdCount: validRows.length,
-    skippedLines,
-    values: {
-      titles: "",
-      projectId: "",
-      goalId: "",
-      description: "",
-      blockedReason: "",
-      status: "todo",
-      priority: "medium",
-      dueDate: "",
-      estimateMinutes: "",
       returnTo,
     },
   };
@@ -820,76 +591,6 @@ export type UpdateTaskTimelineScheduleState = {
  * date validation, `due >= start`, owner scope and the version check; the
  * domain/DB dependency rules are untouched by date edits.
  */
-export type TaskTableCellUpdateResult = {
-  errorMessage: string | null;
-  savedValue: string | null;
-  updatedAt: string | null;
-};
-
-export type TaskTableCellUpdateInput = {
-  taskId: string;
-  field: TaskTableCellEditableField | string;
-  value: string;
-  /** The row revision the table rendered; a changed row is a conflict. */
-  expectedUpdatedAt: string;
-  returnTo?: string;
-};
-
-/**
- * Persist one table-cell edit without navigating away from the table.
- *
- * The cell owns its draft until the server accepts the change, and the row's
- * rendered `updated_at` is a required precondition so a stale table can never
- * overwrite another editor's work.
- */
-export async function updateTaskTableCellAction(
-  input: TaskTableCellUpdateInput,
-): Promise<TaskTableCellUpdateResult> {
-  const payload = input && typeof input === "object" ? input : null;
-  const taskId = typeof payload?.taskId === "string" ? payload.taskId.trim() : "";
-  const field = typeof payload?.field === "string" ? payload.field : "";
-  const value = typeof payload?.value === "string" ? payload.value : null;
-  const expectedUpdatedAt =
-    typeof payload?.expectedUpdatedAt === "string"
-      ? payload.expectedUpdatedAt.trim()
-      : "";
-
-  if (
-    !taskId ||
-    !isTaskTableCellEditableField(field) ||
-    value === null ||
-    !expectedUpdatedAt ||
-    value.length > 2_000
-  ) {
-    return {
-      errorMessage: "Task update request is invalid.",
-      savedValue: null,
-      updatedAt: null,
-    };
-  }
-
-  const returnPath = getTasksReturnPath(payload?.returnTo);
-  const accountTimezoneResult = await resolveAccountTimezone();
-  const result = await updateTaskFieldForOwner(
-    { taskId, field, value, expectedUpdatedAt },
-    {
-      accountTimezone: accountTimezoneResult.timezone ?? undefined,
-      fallbackAnchorDate: accountTimezoneResult.localDate ?? undefined,
-    },
-  );
-
-  if (result.errorMessage) {
-    return { errorMessage: result.errorMessage, savedValue: null, updatedAt: null };
-  }
-
-  revalidateWorkspaceFor("task", { returnTo: returnPath });
-  return {
-    errorMessage: null,
-    savedValue: result.savedValue ?? value,
-    updatedAt: result.updatedAt ?? null,
-  };
-}
-
 export async function updateTaskTimelineScheduleAction(
   _previous: UpdateTaskTimelineScheduleState,
   formData: FormData,
@@ -1309,32 +1010,6 @@ export async function undoTaskOperationAction(
   }
 
   return results.some((result) => result.outcome === "conflict") ? "conflict" : "failure";
-}
-
-// ---------------------------------------------------------------------------
-// Board moves (EGA-785)
-//
-// A move returns state instead of redirecting so the board can roll the
-// optimistic card back, keep the drop target in view, and announce the real
-// server outcome. Status, timers, completion and recurrence still flow through
-// `updateTaskInline`; the board only supplies the target rank.
-// ---------------------------------------------------------------------------
-
-export async function moveTaskOnBoardAction(
-  input: import("@/lib/services/task-board-service").MoveTaskOnBoardInput & {
-    returnTo?: string;
-  },
-): Promise<import("@/lib/services/task-board-service").BoardMoveResult> {
-  const { moveTaskOnBoardForOwner } = await import("@/lib/services/task-board-service");
-  const result = await moveTaskOnBoardForOwner(input);
-
-  if (result.ok) {
-    revalidateWorkspaceFor("task", {
-      returnTo: getTasksReturnPath(input.returnTo),
-    });
-  }
-
-  return result;
 }
 
 // ---------------------------------------------------------------------------

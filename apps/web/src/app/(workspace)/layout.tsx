@@ -110,7 +110,7 @@ export default async function WorkspaceLayout({ children }: { children: ReactNod
         initialResult={initialActiveTimer}
       >
         <WorkspaceKeyboardShortcuts ownerId={identity.id} />
-        <GlobalQuickActionControllers projects={[]} goals={[]} />
+        <GlobalQuickActionControllers projects={[]} goals={[]} ownerId={identity.id} />
 
         <WorkspaceShell
           favorites={[]}
