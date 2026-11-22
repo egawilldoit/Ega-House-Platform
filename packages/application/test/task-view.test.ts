@@ -13,6 +13,7 @@ import {
   applyTaskView,
   filterTaskViewRecords,
   groupTaskViewRecords,
+  scopeTaskViewToAvailableOptions,
   sortTaskViewRecords,
   type TaskViewRecord,
 } from "../src/tasks/view";
@@ -403,4 +404,39 @@ test("EGA-791: grouping can be requested by every supported value", () => {
     const groups = groupTaskViewRecords(records, groupBy as TaskViewGroupBy, { today: TODAY });
     assert.ok(groups.length > 0, groupBy);
   }
+});
+
+test("owner-option scoping drops project and goal values that are not visible", () => {
+  const scoped = scopeTaskViewToAvailableOptions(
+    view([
+      { field: "project", operator: "is_any_of", values: ["project-1", "project-2"] },
+      { field: "goal", operator: "is_any_of", values: ["goal-1", "goal-2"] },
+      { field: "status", operator: "is", values: ["todo"] },
+    ]),
+    { projectIds: ["project-1"], goalIds: ["goal-1"] },
+  );
+
+  assert.deepEqual(
+    scoped.filters.map((filter) => ({ field: filter.field, values: filter.values })),
+    [
+      { field: "status", values: ["todo"] },
+      { field: "project", values: ["project-1"] },
+      { field: "goal", values: ["goal-1"] },
+    ],
+  );
+});
+
+test("owner-option scoping removes a filter whose every value is invisible", () => {
+  const scoped = scopeTaskViewToAvailableOptions(
+    view([
+      { field: "project", operator: "is", values: ["other-owner-project"] },
+      { field: "due_bucket", operator: "is", values: ["overdue"] },
+    ]),
+    { projectIds: ["project-1"], goalIds: [] },
+  );
+
+  assert.deepEqual(
+    scoped.filters.map((filter) => filter.field),
+    ["due_bucket"],
+  );
 });

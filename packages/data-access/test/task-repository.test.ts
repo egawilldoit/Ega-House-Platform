@@ -213,3 +213,50 @@ test("repository status mutations never set completed_at in the update payload",
     );
   }
 });
+
+// EGA owner isolation: every task read and mutation must address the row
+// through the verified actor's owner_user_id, so a request-scoped client can
+// never select or change another owner's task even if the id is supplied.
+test("every task read and mutation is owner scoped to the verified actor", async () => {
+  const fake = new FakeSupabase();
+  fake.push("tasks", { data: taskRow(), error: null });
+  fake.push("task_reminders", { data: [], error: null });
+  fake.push("task_recurrences", { data: [], error: null });
+  fake.push("tasks", { data: taskRow(), error: null });
+  fake.push("task_reminders", { data: [], error: null });
+  fake.push("task_recurrences", { data: [], error: null });
+  fake.push("tasks", { data: taskRow(), error: null });
+  fake.push("task_reminders", { data: [], error: null });
+  fake.push("task_recurrences", { data: [], error: null });
+
+  const repo = repository(fake);
+  assert.equal((await repo.getTask(ACTOR, "task-1")).ok, true);
+  assert.equal((await repo.updateTask(ACTOR, { taskId: "task-1", title: "Renamed" })).ok, true);
+  assert.equal(
+    (
+      await repo.setTaskArchived(ACTOR, {
+        taskId: "task-1",
+        archivedAt: "2026-08-10T12:00:00.000Z",
+      })
+    ).ok,
+    true,
+  );
+
+  for (const call of fake.calls.filter((entry) => entry.table === "tasks")) {
+    assert.ok(
+      call.steps.some(
+        (step) =>
+          step.method === "eq" &&
+          step.args[0] === "owner_user_id" &&
+          step.args[1] === ACTOR.userId,
+      ),
+      `task query must filter owner_user_id=${ACTOR.userId}: ${JSON.stringify(call.steps)}`,
+    );
+  }
+
+  const archiveUpdate = fake.calls
+    .filter((entry) => entry.table === "tasks")
+    .flatMap((entry) => entry.steps)
+    .find((step) => step.method === "update" && (step.args[0] as Record<string, unknown>).archived_at);
+  assert.equal((archiveUpdate?.args[0] as Record<string, unknown>).archived_by, ACTOR.userId);
+});

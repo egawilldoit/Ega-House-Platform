@@ -4,7 +4,6 @@ import {
   isTaskSortValue,
   canExactlyCountTaskViewFilters,
   isTaskViewIdentifier,
-  normalizeTaskViewDefinition,
   parseTaskViewSearchParams,
   TASK_VIEW_MAX_SEARCH_LENGTH,
   TASK_VIEW_SORT_KEYS,
@@ -23,6 +22,7 @@ import type { AuthenticatedActor } from "../auth/actor";
 import { applicationFailure, applicationSuccess, type ApplicationResult } from "../shared/result";
 import type { TaskQuery, TasksRepository } from "./ports";
 import { TASK_LIST_MAX_LIMIT, buildMobileTaskListView, toMobileTaskListItem } from "./list-view";
+import { scopeTaskViewToAvailableOptions } from "./view";
 
 export type ParsedMobileTaskListQuery = Readonly<{
   status: TaskQuery["status"];
@@ -238,24 +238,10 @@ export async function getTasksReadModel(
   // Unknown project/goal filter values are dropped before they reach SQL, the
   // same echo-back rule the legacy scalar filters use.
   const scopedView = requested.view
-    ? (normalizeTaskViewDefinition({
-        ...requested.view,
-        filters: requested.view.filters.flatMap((filter) => {
-          if (filter.field === "project") {
-            const values = filter.values.filter((value) =>
-              projectsResult.value.some((project) => project.id === value),
-            );
-            return values.length > 0 ? [{ ...filter, values }] : [];
-          }
-          if (filter.field === "goal") {
-            const values = filter.values.filter((value) =>
-              visibleGoals.some((goal) => goal.id === value),
-            );
-            return values.length > 0 ? [{ ...filter, values }] : [];
-          }
-          return [filter];
-        }),
-      }) ?? requested.view)
+    ? scopeTaskViewToAvailableOptions(requested.view, {
+        projectIds: projectsResult.value.map((project) => project.id),
+        goalIds: visibleGoals.map((goal) => goal.id),
+      })
     : requested.view;
 
   const localDate = options?.localDate?.trim() || "";
