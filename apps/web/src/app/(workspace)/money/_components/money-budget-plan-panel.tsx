@@ -1,4 +1,4 @@
-import type { ApplicationResult, MoneyPeriodSpending } from "@ega/application";
+import type { ApplicationResult, MoneyCoffeeUsage, MoneyPeriodSpending } from "@ega/application";
 import type { MoneyBudgetPlanDto, MoneyPeriodDto } from "@ega/contracts/money";
 import type { ExpenseCategory } from "@ega/domain/expenses";
 import {
@@ -24,11 +24,13 @@ export function MoneyBudgetPlanPanel({
   period,
   budget,
   spending,
+  coffeeUsage,
   action,
 }: {
   period: MoneyPeriodDto | null;
   budget: ApplicationResult<MoneyBudgetPlanDto | null> | null;
   spending: MoneyPeriodSpending | null;
+  coffeeUsage: ApplicationResult<MoneyCoffeeUsage> | null;
   action: BudgetAction;
 }) {
   if (!period) {
@@ -74,10 +76,20 @@ export function MoneyBudgetPlanPanel({
             {(Object.entries(budget.data.allocations) as Array<[ExpenseCategory, number]>)
               .sort((a, b) => b[1] - a[1])
               .map(([category, allocation]) => {
+                const isCoffee = category === "coffee";
+                const coffeeUsageAvailable = coffeeUsage !== null && coffeeUsage.ok;
                 const categoryTotal = spending?.totalsByCategory[category];
                 const completePeriodSummary = spending !== null && !spending.truncated;
-                const spent = categoryTotal ?? (completePeriodSummary ? 0 : null);
-                const truncated = spending?.truncated ?? false;
+                const spent = isCoffee
+                  ? coffeeUsageAvailable
+                    ? coffeeUsage.data.countedVisitSpendMinor
+                    : null
+                  : categoryTotal ?? (completePeriodSummary ? 0 : null);
+                const truncated = isCoffee
+                  ? coffeeUsageAvailable
+                    ? coffeeUsage.data.truncated
+                    : (spending?.truncated ?? false)
+                  : (spending?.truncated ?? false);
                 return (
                   <li key={category} className="flex flex-wrap items-baseline gap-x-3 text-[length:var(--text-body)]">
                     <span className="font-medium">{describeExpenseCategory(category).label}</span>

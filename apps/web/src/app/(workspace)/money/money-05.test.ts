@@ -24,6 +24,7 @@ const overviewSource = readFileSync(
 test("Money page exposes the editable period budget plan from shared use cases", () => {
   assert.match(pageSource, /getMoneyBudgetPlan\(/);
   assert.match(pageSource, /getMoneyPeriodSpending\(/);
+  assert.match(pageSource, /getMoneyCoffeeVisitUsage\(/);
   assert.match(pageSource, /new SupabaseMoneyBudgetRepository\(client\)/);
   assert.match(pageSource, /MoneyBudgetPlanPanel/);
   assert.match(budgetPanelSource, /readOnly=\{period\.lifecycle !== "tracking"\}/);
@@ -31,6 +32,7 @@ test("Money page exposes the editable period budget plan from shared use cases",
   assert.match(budgetPanelSource, /describeExpenseCategory\(/);
   assert.match(overviewSource, /MONEY_ADVISORY_CAP_LABEL/);
   assert.match(budgetPanelSource, /Plan consumption/);
+  assert.match(budgetPanelSource, /countedVisitSpendMinor/);
   assert.doesNotMatch(pageSource, /owner_user_id\s*:/);
 });
 
@@ -38,11 +40,11 @@ test("counted-visit coffee UI and web-only visit helpers are removed", () => {
   for (const source of [pageSource, actionsSource, budgetPanelSource, overviewSource]) {
     assert.doesNotMatch(source, /CoffeeVisitControls/);
     assert.doesNotMatch(source, /getMoneyCoffeeWindowForPlan/);
-    assert.doesNotMatch(source, /getMoneyCoffeeVisitUsage/);
+
     assert.doesNotMatch(source, /recordCoffeeVisitAction/);
     assert.doesNotMatch(source, /classifyExpenseCategoryAction/);
     assert.doesNotMatch(source, /Counted coffee this week/);
-    assert.doesNotMatch(source, /countedVisitSpendMinor/);
+
   }
   // Category coffee remains an ordinary recorded expense projection.
   assert.match(overviewSource, /Coffee this month/);

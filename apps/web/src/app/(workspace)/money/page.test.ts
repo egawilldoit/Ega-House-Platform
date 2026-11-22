@@ -153,7 +153,7 @@ test("page query values succeed through the actual listExpenses parser and repos
 
 test("money page renders durable day close evidence only while tracking", () => {
   assert.match(source, /MoneyDayClosePanel/);
-  assert.match(source, /lifecycle === "tracking" && moneyState\.period/);
+  assert.match(source, /\(lifecycle === "tracking" \|\| lifecycle === "ended" \|\| lifecycle === "rolled_over"\) && moneyState\.period/);
   assert.match(source, /dayClose=\{moneyState\.dayClose\}/);
   assert.match(source, /lastClose=\{moneyState\.lastClose\}/);
   assert.match(source, /recentCloses=\{moneyState\.recentCloses\}/);

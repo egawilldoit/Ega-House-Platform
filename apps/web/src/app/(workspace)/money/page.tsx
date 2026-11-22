@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import {
   createAuthenticatedActor,
   getMoneyBudgetPlan,
+  getMoneyCoffeeVisitUsage,
   getMoneyMovementTotals,
   getMoneyPeriodSpending,
   getCurrentMoneyReserves,
@@ -21,6 +22,7 @@ import {
 import {
   SupabaseExpenseRepository,
   SupabaseMoneyBudgetRepository,
+  SupabaseMoneyCoffeeRepository,
   SupabaseMoneyPeriodRepository,
   SupabaseMoneyRepository,
   SupabaseMoneyRolloverRepository,
@@ -89,6 +91,7 @@ export default async function MoneyPage({ searchParams }: Props) {
   let moneyState: MoneyState | null = null;
   let budgetResult: Awaited<ReturnType<typeof getMoneyBudgetPlan>> | null = null;
   let periodSpending: MoneyPeriodSpending | null = null;
+  let coffeeUsageResult: Awaited<ReturnType<typeof getMoneyCoffeeVisitUsage>> | null = null;
   let movements: MoneyLedgerRow[] | null = null;
   let movementTotals: MoneyMovementTotals | null = null;
   let reserveResult: Awaited<ReturnType<typeof getCurrentMoneyReserves>> | null = null;
@@ -138,6 +141,14 @@ export default async function MoneyPage({ searchParams }: Props) {
         },
       ).catch(() => null);
       periodSpending = spendingResult?.ok ? spendingResult.data : null;
+      // Counted-visit coffee consumption is a distinct reading from category
+      // coffee totals; load it for the allocation row only.
+      const coffeeUsage = await getMoneyCoffeeVisitUsage(
+        actor,
+        new SupabaseMoneyCoffeeRepository(client),
+        { from: period.startDate, to: period.endDate },
+      ).catch(() => null);
+      coffeeUsageResult = coffeeUsage;
     }
 
     // MONEY-04 movement ledger: the same canonical rows and totals as HTTP/MCP.
@@ -223,6 +234,7 @@ export default async function MoneyPage({ searchParams }: Props) {
     moneyState = null;
     budgetResult = null;
     periodSpending = null;
+    coffeeUsageResult = null;
     movements = null;
     movementTotals = null;
     reserveResult = null;
@@ -296,7 +308,7 @@ export default async function MoneyPage({ searchParams }: Props) {
       ) : null}
       {/* Lifecycle staging: a tracking period permits a day close, an ended
           period requires rollover. Only the applicable panel is mounted. */}
-      {lifecycle === "tracking" && moneyState.period ? (
+      {(lifecycle === "tracking" || lifecycle === "ended" || lifecycle === "rolled_over") && moneyState.period ? (
         <MoneyDayClosePanel
           key={`close:${moneyState.period.id}:${moneyState.period.version}`}
           period={moneyState.period}
@@ -335,6 +347,7 @@ export default async function MoneyPage({ searchParams }: Props) {
       period={moneyState?.period ?? null}
       budget={budgetResult}
       spending={periodSpending}
+      coffeeUsage={coffeeUsageResult}
       action={saveBudgetPlanAction}
     />
 
