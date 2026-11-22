@@ -24,31 +24,27 @@ test("navigation items include the full route set when the query is empty", () =
     "Projects",
     "Money",
     "Review",
-    "Goals",
-    "Timer",
-    "Analytics",
     "Backlog",
-    "Archive",
-    "Notifications",
-    "Startup",
-    "Agents",
-    "Help",
     "Settings",
   ]);
 });
 
 test("keeps retained secondary destinations searchable", () => {
-  const labels = filterNavigationItems("archive").map((item) => item.label);
+  const labels = filterNavigationItems("backlog").map((item) => item.label);
 
-  assert.deepEqual(labels, ["Archive"]);
+  assert.deepEqual(labels, ["Backlog"]);
   assert.equal(filterNavigationItems("apps").length, 0);
   assert.equal(filterNavigationItems("shutdown").length, 0);
+  // Retired notification, agent and help pages stay out of the palette.
+  assert.equal(filterNavigationItems("notifications").length, 0);
+  assert.equal(filterNavigationItems("agents").length, 0);
+  assert.equal(filterNavigationItems("help").length, 0);
 });
 
 test("filters navigation items case-insensitively and drops non-matches", () => {
   const items = filterNavigationItems("TA");
 
-  assert.deepEqual(items.map((item) => item.label), ["Tasks", "Startup"]);
+  assert.deepEqual(items.map((item) => item.label), ["Tasks"]);
 });
 
 test("groups search hits into sections with deep-link hrefs", () => {

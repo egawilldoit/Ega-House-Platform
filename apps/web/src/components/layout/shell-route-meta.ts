@@ -27,33 +27,18 @@ export const SYSTEM_ROUTES = [
     group: "system",
     description: "Restore archived work",
   },
-  { href: "/notifications", label: "Notifications", group: "system", description: "Reminders" },
   { href: "/startup", label: "Startup", group: "system", description: "Start the day" },
   { href: "/shutdown", label: "Shutdown", group: "system", description: "Close the day" },
   { href: "/apps", label: "Apps", group: "system", description: "Connected surfaces" },
   {
-    href: "/agents",
-    label: "Agents",
-    group: "system",
-    description: "Agent identities and credentials",
-  },
-  { href: "/help", label: "Help", group: "system", description: "Support and shortcuts" },
-  {
-    href: "/settings/account",
+    href: "/settings",
     label: "Settings",
     group: "system",
-    description: "Account controls",
+    description: "Account, preferences and integrations",
   },
 ] as const satisfies readonly ShellRouteMeta[];
 
-const ALL_ROUTES: readonly ShellRouteMeta[] = [
-  ...COMMAND_ROUTES,
-  ...SYSTEM_ROUTES,
-  // Settings sub-pages are reachable from the in-page section navigation; they
-  // still need metadata so the top-bar context does not fall back to Workspace.
-  { href: "/settings/appearance", label: "Appearance", group: "system", description: "Theme and density" },
-  { href: "/settings/preferences", label: "Preferences", group: "system", description: "Launch and task defaults" },
-];
+const ALL_ROUTES: readonly ShellRouteMeta[] = [...COMMAND_ROUTES, ...SYSTEM_ROUTES];
 
 const FALLBACK_ROUTE: ShellRouteMeta = {
   href: "/today",
@@ -64,7 +49,7 @@ const FALLBACK_ROUTE: ShellRouteMeta = {
 
 export function getShellRouteMeta(pathname: string): ShellRouteMeta {
   if (pathname === "/settings" || pathname.startsWith("/settings/")) {
-    return ALL_ROUTES.find((route) => route.href === "/settings/account") ?? FALLBACK_ROUTE;
+    return ALL_ROUTES.find((route) => route.href === "/settings") ?? FALLBACK_ROUTE;
   }
 
   return (

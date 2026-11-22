@@ -34,21 +34,13 @@ test("ProgressBar rounds its numeric value and tolerates a zero max", () => {
 });
 
 test("work progress, linked-task completion and time allocation are named distinctly", () => {
-  const goals = read("app/(workspace)/goals/_components/GoalsPageView.tsx");
   const projects = read("app/(workspace)/tasks/projects/page.tsx");
-  const timer = read("app/(workspace)/timer/_components/TimerPageView.tsx");
 
   // Work progress: home surface retired; Today owns the daily plan now.
 
-  // Goal/project percentages are linked-task completion, and say so.
-  assert.match(goals, /linked task completion/);
+  // Project percentages are linked-task completion, and say so.
   assert.match(projects, /linked task completion/);
-  assert.doesNotMatch(goals, /label="Goal progress"/);
   assert.doesNotMatch(projects, /label="Project progress"/);
-
-  // Time allocation duplicates numbers already present as text, so it is
-  // decorative rather than a second, unnamed progressbar.
-  assert.match(timer, /progress-track" aria-hidden="true"/);
 });
 
 test("the live timer tick cannot animate the page", () => {
@@ -92,15 +84,9 @@ test("every authenticated data route has a loading boundary", () => {
   for (const route of [
     "today",
     "tasks",
-    "goals",
-    "timer",
     "review",
-    "work-analytics",
     "backlog",
-    "notifications",
-    "startup",
     "settings",
-    "friction",
   ]) {
     assert.ok(
       read(`app/(workspace)/${route}/loading.tsx`).length > 0,

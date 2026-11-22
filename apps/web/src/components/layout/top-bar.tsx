@@ -2,10 +2,10 @@
 
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { Bell } from "lucide-react";
 
 import type { ShellIdentity, WorkspaceShellMetrics } from "@/lib/workspace-shell";
 import { useCanonicalUrl } from "@/lib/use-canonical-url";
+import { NotificationBell } from "@/components/notifications/notification-bell";
 import { ThemeControl } from "./theme-control";
 
 type TopBarProps = {
@@ -21,14 +21,12 @@ type TopBarProps = {
  * controls on the right. Search lives in the sidebar, and attention signals
  * live on their canonical navigation rows rather than as competing badges.
  *
- * The notification link carries a stable `data-has-unread` state so styling
+ * The notification control carries a stable `data-has-unread` state so styling
  * never depends on dynamic accessible text.
  */
 export function TopBar({ metrics, identity, mobileNavigation, topBarExtra }: TopBarProps) {
   const canonicalUrl = useCanonicalUrl();
   const unreadCount = metrics.unreadNotificationCount;
-  const notificationLabel =
-    unreadCount > 0 ? `Notifications (${unreadCount} unread)` : "Notifications";
 
   return (
     <header className="app-topbar ega-topbar workspace-topbar">
@@ -37,19 +35,10 @@ export function TopBar({ metrics, identity, mobileNavigation, topBarExtra }: Top
       <div className="app-topbar-actions">
         {topBarExtra}
         <ThemeControl />
-        <Link
-          href={canonicalUrl.resolve("/notifications")}
-          className="topbar-icon-button topbar-notification"
-          aria-label={notificationLabel}
-          title={notificationLabel}
-          data-has-unread={unreadCount > 0 ? "true" : "false"}
-        >
-          <Bell aria-hidden="true" />
-          {unreadCount > 0 ? <span className="notification-dot" aria-hidden="true" /> : null}
-        </Link>
+        <NotificationBell initialUnreadCount={unreadCount} />
 
         <Link
-          href={canonicalUrl.resolve("/settings/account")}
+          href={canonicalUrl.resolve("/settings")}
           className="topbar-account"
           aria-label={`Account settings for ${identity.email || identity.name}`}
           suppressHydrationWarning

@@ -8,9 +8,9 @@ const authenticatedRoutes = [
   "/dashboard",
   "/today",
   "/tasks",
-  "/settings/appearance",
-  "/settings/preferences",
-  "/agents",
+  "/settings",
+  "/settings?tab=preferences",
+  "/settings?tab=integrations",
 ] as const;
 
 test.describe("visual and a11y — desktop and 390px", () => {
@@ -576,8 +576,8 @@ test.describe("workspace shell contract", () => {
           <header class="app-topbar workspace-topbar">
             <div class="app-topbar-context"></div>
             <div class="app-topbar-actions">
-              <a href="/notifications" class="topbar-icon-button topbar-notification" data-has-unread="false" aria-label="Notifications"><svg></svg></a>
-              <a href="/notifications" class="topbar-icon-button topbar-notification" data-has-unread="true" aria-label="Notifications (1 unread)"><svg></svg><span class="notification-dot"></span></a>
+              <button type="button" class="topbar-icon-button topbar-notification" data-has-unread="false" aria-label="Notifications"><svg></svg></button>
+              <button type="button" class="topbar-icon-button topbar-notification" data-has-unread="true" aria-label="Notifications (1 unread)"><svg></svg><span class="notification-dot"></span></button>
             </div>
           </header>
           <div class="app-page">

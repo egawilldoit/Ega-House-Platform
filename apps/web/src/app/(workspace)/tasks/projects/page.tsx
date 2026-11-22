@@ -356,7 +356,7 @@ export default async function TasksProjectsPage({ searchParams }: TasksProjectsP
       actions={
         <div className="flex flex-wrap items-center gap-2">
           <Link
-            href="/settings/areas"
+            href="/tasks/projects/areas"
             className={cn(buttonVariants({ variant: "secondary" }), "flex h-8 items-center px-3")}
           >
             Manage areas

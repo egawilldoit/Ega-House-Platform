@@ -144,7 +144,7 @@ describe("WorkspaceThemeController", () => {
 describe("WorkspacePreferencesProvider", () => {
   function Probe() {
     const preferences = useWorkspacePreferences();
-    return <span data-testid="probe">{`${preferences.theme}:${preferences.accent}`}</span>;
+    return <span data-testid="probe">{`${preferences.theme}:${preferences.reducedMotion}`}</span>;
   }
 
   it("exposes the server-owned preferences to client boundaries", async () => {
@@ -154,8 +154,6 @@ describe("WorkspacePreferencesProvider", () => {
           value={{
             ...DEFAULT_USER_PREFERENCES,
             theme: "dark",
-            accent: "blue",
-            density: "compact",
             reducedMotion: true,
             launchPage: "today",
             taskLayout: "kanban",
@@ -167,7 +165,7 @@ describe("WorkspacePreferencesProvider", () => {
       );
     });
 
-    expect(container.querySelector("[data-testid=probe]")?.textContent).toBe("dark:blue");
+    expect(container.querySelector("[data-testid=probe]")?.textContent).toBe("dark:true");
     expect(document.documentElement.dataset.theme).toBe("dark");
   });
 
@@ -176,7 +174,7 @@ describe("WorkspacePreferencesProvider", () => {
       root.render(<Probe />);
     });
 
-    expect(container.querySelector("[data-testid=probe]")?.textContent).toBe("system:neutral");
+    expect(container.querySelector("[data-testid=probe]")?.textContent).toBe("system:false");
   });
 
   it("server-renders the provided preferences for hydration", () => {
@@ -185,8 +183,6 @@ describe("WorkspacePreferencesProvider", () => {
         value={{
           ...DEFAULT_USER_PREFERENCES,
           theme: "light",
-          accent: "green",
-          density: "comfortable",
           reducedMotion: false,
           launchPage: "tasks",
           taskLayout: "list",
@@ -197,6 +193,6 @@ describe("WorkspacePreferencesProvider", () => {
       </WorkspacePreferencesProvider>,
     );
 
-    assert.match(markup, /light:green/);
+    assert.match(markup, /light:false/);
   });
 });

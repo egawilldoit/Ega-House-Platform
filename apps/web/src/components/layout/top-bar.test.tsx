@@ -32,8 +32,7 @@ test("renders an unread notification affordance with a stable state hook", () =>
     />,
   );
 
-  assert.match(markup, /href="\/notifications"/);
-  assert.match(markup, /Notifications \(2 unread\)/);
+  assert.match(markup, /aria-label="Notifications \(2 unread\)"/);
   assert.match(markup, /data-has-unread="true"/);
   assert.match(markup, /notification-dot/);
 });
@@ -61,7 +60,7 @@ test("renders provider-owned global actions without adding page overlay markup",
 test("keeps the top bar restrained: account identity, no editorial pills", () => {
   const markup = renderToStaticMarkup(<TopBar metrics={metrics} identity={identity} />);
 
-  assert.match(markup, /href="\/settings\/account"/);
+  assert.match(markup, /href="\/settings"/);
   assert.match(markup, /ega@egahouse\.com/);
   assert.match(markup, /topbar-avatar/);
   // Removed editorial clutter stays removed.

@@ -17,7 +17,7 @@ const updateThemePreferenceAction = vi.hoisted(() =>
   }),
 );
 
-vi.mock("@/app/(workspace)/settings/appearance/actions", () => ({
+vi.mock("@/app/(workspace)/settings/_actions/appearance-actions", () => ({
   updateThemePreferenceAction,
 }));
 
@@ -66,8 +66,6 @@ const BASE_PREFERENCES: UserPreferences = {
   jobSearchReference: null,
   categoryCaps: {},
   theme: "system",
-  accent: "neutral",
-  density: "comfortable",
   reducedMotion: false,
   launchPage: "home",
   taskLayout: "list",

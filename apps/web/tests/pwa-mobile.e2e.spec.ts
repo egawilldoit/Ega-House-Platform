@@ -20,23 +20,15 @@ const MIDDLEWARE_PROTECTED_PATHS = [
 ] as const;
 
 const SERVICE_GATED_PATHS = [
-  "/notifications",
-  "/work-analytics",
-  "/friction",
-  "/settings/account",
+  "/settings",
   "/apps",
-  "/help",
 ] as const;
 
 const PUBLIC_PATHS = ["/", "/login", "/signup"] as const;
 
 const BASELINE_OVERFLOW_PX: Record<string, number> = {
-  "/notifications": 0,
-  "/work-analytics": 0,
-  "/friction": 0,
-  "/settings/account": 0,
+  "/settings": 0,
   "/apps": 0,
-  "/help": 0,
   "/": 0,
   "/login": 0,
   "/signup": 0,
@@ -123,7 +115,7 @@ test.describe("PWA mobile — authenticated route baseline", () => {
     const viewportWidth = test.info().project.use.viewport?.width ?? 1280;
     const topbarBell = page
       .locator(".workspace-topbar")
-      .getByRole("link", { name: /^Notifications/ });
+      .getByRole("button", { name: /^Notifications/ });
     try {
       for (const unread of [0, 1]) {
         await fixtures.setUnreadNotifications(unread);

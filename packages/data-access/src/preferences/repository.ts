@@ -9,23 +9,21 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { sanitizeSupabaseError } from "../supabase/errors";
 
 const PREFERENCES_SELECT =
-  "theme, accent, density, reduced_motion, launch_page, task_layout, task_open_mode, personal_operations, job_search_reference, category_caps";
+  "theme, reduced_motion, launch_page, task_layout, task_open_mode, personal_operations, job_search_reference, category_caps";
 // Pre-0089 deployment: the reference column does not exist yet. Reads retry
 // without it and normalize the reference to null; writes still fail closed
 // until the migration is applied. Pre-0091 deployments likewise lack
 // category_caps; caps normalize to {} (no caps) on such reads.
 const PREFERENCES_SELECT_WITHOUT_CAPS =
-  "theme, accent, density, reduced_motion, launch_page, task_layout, task_open_mode, personal_operations, job_search_reference";
+  "theme, reduced_motion, launch_page, task_layout, task_open_mode, personal_operations, job_search_reference";
 const PREFERENCES_SELECT_WITHOUT_CAPS_REFERENCE =
-  "theme, accent, density, reduced_motion, launch_page, task_layout, task_open_mode, personal_operations";
+  "theme, reduced_motion, launch_page, task_layout, task_open_mode, personal_operations";
 
 type UserPreferencesRow = {
   personal_operations?: unknown;
   job_search_reference?: unknown;
   category_caps?: unknown;
   theme: string | null;
-  accent: string | null;
-  density: string | null;
   reduced_motion: boolean | null;
   launch_page: string | null;
   task_layout: string | null;
@@ -76,8 +74,6 @@ function toPreferences(row: UserPreferencesRow): UserPreferences {
     jobSearchReference: row.job_search_reference,
     categoryCaps: row.category_caps,
     theme: row.theme ?? undefined,
-    accent: row.accent ?? undefined,
-    density: row.density ?? undefined,
     reducedMotion: typeof row.reduced_motion === "boolean" ? row.reduced_motion : undefined,
     launchPage: row.launch_page ?? undefined,
     taskLayout: row.task_layout ?? undefined,
@@ -114,7 +110,7 @@ export class SupabaseUserPreferencesRepository implements UserPreferencesReposit
     if (error && isMissingScheduleColumn(error)) {
       ({ data, error } = await this.supabase
         .from("user_preferences")
-        .select("theme, accent, density, reduced_motion, launch_page, task_layout, task_open_mode")
+        .select("theme, reduced_motion, launch_page, task_layout, task_open_mode")
         .eq("user_id", actor.userId)
         .maybeSingle());
     }
