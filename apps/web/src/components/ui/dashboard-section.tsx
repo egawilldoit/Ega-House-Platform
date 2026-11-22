@@ -8,6 +8,7 @@ type DashboardSectionProps = {
   actions?: ReactNode;
   children: ReactNode;
   className?: string;
+  id?: string;
 };
 
 /**
@@ -22,9 +23,10 @@ export function DashboardSection({
   actions,
   children,
   className,
+  id,
 }: DashboardSectionProps) {
   return (
-    <section className={cn("flex flex-col gap-4", className)}>
+    <section id={id} className={cn("flex flex-col gap-4", id && "scroll-mt-24", className)}>
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="min-w-0">
           <h2 className="text-[length:var(--text-section)] font-semibold tracking-[var(--tracking-tight)] text-[color:var(--ega-text)]">

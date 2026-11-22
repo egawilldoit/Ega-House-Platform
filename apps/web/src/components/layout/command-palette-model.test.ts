@@ -24,9 +24,18 @@ test("navigation items include the full route set when the query is empty", () =
     "Projects",
     "Money",
     "Review",
+    "Goals",
+    "Timer",
     "Backlog",
     "Settings",
   ]);
+});
+
+test("keeps retained utility destinations searchable without promoting them to the sidebar", () => {
+  assert.deepEqual(filterNavigationItems("goals").map((item) => item.label), ["Goals"]);
+  assert.equal(filterNavigationItems("goals")[0].href, "/goals");
+  assert.deepEqual(filterNavigationItems("timer").map((item) => item.label), ["Timer"]);
+  assert.equal(filterNavigationItems("timer")[0].href, "/timer");
 });
 
 test("keeps retained secondary destinations searchable", () => {
@@ -64,7 +73,7 @@ test("groups search hits into sections with deep-link hrefs", () => {
   assert.equal(sections[0].items[0].href, "/tasks?task=t1");
   assert.equal(sections[0].items[0].hint, "Web");
   assert.equal(sections[1].items[0].href, "/tasks/projects/landing");
-  assert.equal(sections[2].items[0].href, "/goals");
+  assert.equal(sections[2].items[0].href, "/goals?view=all&goal=g1#goal-g1");
 });
 
 test("projects without a slug fall back to the projects index", () => {

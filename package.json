@@ -37,6 +37,7 @@
     "mcp:inspect": "npx --yes @modelcontextprotocol/inspector@2.4.0 --config tools/mcp/inspector.json",
     "mobile:test": "npm run test --workspace @ega/mobile",
     "mobile:typecheck": "npm run typecheck --workspace @ega/mobile",
+    "nav:cost": "node scripts/navigation-cost/measure.mjs",
     "preflight:hermes-skills": "node scripts/agent/preflight-hermes-skills.mjs",
     "server:test": "npm run test --workspace @ega/server",
     "server:typecheck": "npm run typecheck --workspace @ega/server",

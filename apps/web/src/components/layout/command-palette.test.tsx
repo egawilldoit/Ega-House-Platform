@@ -74,10 +74,19 @@ describe("CommandPalette", () => {
     });
 
     const options = document.body.querySelectorAll('[role="option"]');
-    // Seven retained destinations plus three creation commands.
-    expect(options.length).toBe(10);
+    // Nine retained destinations (five primary + two utility + Backlog +
+    // Settings) plus three creation commands.
+    expect(options.length).toBe(12);
     expect(options[0].textContent).toContain("Today");
     expect(options[0].getAttribute("aria-selected")).toBe("true");
+    // Goals and Timer remain globally discoverable as utility destinations,
+    // but the sidebar still renders only the five primary destinations.
+    expect(
+      Array.from(options).some((option) => option.getAttribute("aria-label") === "Goals"),
+    ).toBe(true);
+    expect(
+      Array.from(options).some((option) => option.getAttribute("aria-label") === "Timer"),
+    ).toBe(true);
 
     await act(async () => {
       input()?.dispatchEvent(

@@ -182,6 +182,9 @@ describe("floating timer provider and chip", () => {
     expect(document.body.textContent).toContain("EGA House");
     expect(document.body.textContent).toContain("Focus timer running");
     expect(document.querySelector('[data-testid="floating-timer-chip"]')).not.toBeNull();
+    expect(
+      document.querySelector('a[href="/timer#recent-sessions"]')?.getAttribute("aria-label"),
+    ).toBe("Open timer history");
     expect(mocks.readActiveTimerSnapshotAction).not.toHaveBeenCalled();
     expect(document.body.textContent).not.toContain("Pop out");
   });

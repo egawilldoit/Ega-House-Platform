@@ -1,0 +1,445 @@
+{
+  "generatedAt": "2026-11-22T18:21:32.926Z",
+  "label": "after-product-nav",
+  "commit": "b0e30aca25ed169dc9254f3fa6d120c536eaa270",
+  "baseUrl": "http://127.0.0.1:3100",
+  "runtime": {
+    "measured": true
+  },
+  "routes": [
+    {
+      "route": "/today",
+      "serverRestRequests": 22,
+      "serverRestRequestsSamples": [
+        20,
+        24,
+        22
+      ],
+      "serverAuthRequests": 4,
+      "serverAuthRequestsSamples": [
+        3,
+        5,
+        4
+      ],
+      "serverTables": {
+        "notifications": 1,
+        "user_time_context": 1,
+        "user_preferences": 4,
+        "task_sessions": 5,
+        "tasks": 7,
+        "projects": 2,
+        "goals": 2,
+        "week_reviews": 1,
+        "areas": 1
+      },
+      "navigationMs": [
+        2070,
+        3109,
+        2155
+      ],
+      "medianNavigationMs": 2155,
+      "firstLoadJsKib": 1245
+    },
+    {
+      "route": "/tasks",
+      "serverRestRequests": 17,
+      "serverRestRequestsSamples": [
+        21,
+        17,
+        17
+      ],
+      "serverAuthRequests": 2,
+      "serverAuthRequestsSamples": [
+        3,
+        2,
+        2
+      ],
+      "serverTables": {
+        "notifications": 1,
+        "user_preferences": 3,
+        "task_sessions": 2,
+        "user_time_context": 1,
+        "tasks": 3,
+        "projects": 3,
+        "task_saved_views": 1,
+        "goals": 3,
+        "task_reminders": 1,
+        "task_recurrences": 1,
+        "task_subtasks": 1,
+        "areas": 1
+      },
+      "navigationMs": [
+        3060,
+        3020,
+        2838
+      ],
+      "medianNavigationMs": 3020,
+      "firstLoadJsKib": 1244.2
+    },
+    {
+      "route": "/tasks/projects",
+      "serverRestRequests": 8,
+      "serverRestRequestsSamples": [
+        8,
+        11,
+        8
+      ],
+      "serverAuthRequests": 2,
+      "serverAuthRequestsSamples": [
+        2,
+        3,
+        2
+      ],
+      "serverTables": {
+        "notifications": 1,
+        "task_sessions": 1,
+        "projects": 3,
+        "areas": 2,
+        "user_preferences": 2,
+        "tasks": 1,
+        "goals": 1
+      },
+      "navigationMs": [
+        2093,
+        2370,
+        1697
+      ],
+      "medianNavigationMs": 2093,
+      "firstLoadJsKib": 1134.6
+    },
+    {
+      "route": "/money",
+      "serverRestRequests": 14,
+      "serverRestRequestsSamples": [
+        14,
+        14,
+        14
+      ],
+      "serverAuthRequests": 2,
+      "serverAuthRequestsSamples": [
+        2,
+        2,
+        2
+      ],
+      "serverTables": {
+        "notifications": 1,
+        "user_preferences": 2,
+        "task_sessions": 1,
+        "user_time_context": 1,
+        "personal_expenses": 7,
+        "money_periods": 2
+      },
+      "navigationMs": [
+        2309,
+        1673,
+        1791
+      ],
+      "medianNavigationMs": 1791,
+      "firstLoadJsKib": 1202.4
+    },
+    {
+      "route": "/review",
+      "serverRestRequests": 26,
+      "serverRestRequestsSamples": [
+        26,
+        26,
+        26
+      ],
+      "serverAuthRequests": 2,
+      "serverAuthRequestsSamples": [
+        2,
+        2,
+        2
+      ],
+      "serverTables": {
+        "notifications": 1,
+        "user_preferences": 2,
+        "user_time_context": 1,
+        "task_sessions": 6,
+        "daily_checkins": 1,
+        "goals": 3,
+        "tasks": 8,
+        "week_reviews": 3,
+        "personal_expenses": 1
+      },
+      "navigationMs": [
+        1921,
+        2902,
+        2329
+      ],
+      "medianNavigationMs": 2329,
+      "firstLoadJsKib": 1135.3
+    },
+    {
+      "route": "/goals?view=all",
+      "serverRestRequests": 8,
+      "serverRestRequestsSamples": [
+        8,
+        7,
+        9
+      ],
+      "serverAuthRequests": 2,
+      "serverAuthRequestsSamples": [
+        2,
+        2,
+        2
+      ],
+      "serverTables": {
+        "notifications": 1,
+        "task_sessions": 1,
+        "goals": 2,
+        "tasks": 1,
+        "projects": 1,
+        "user_preferences": 3
+      },
+      "navigationMs": [
+        1941,
+        1772,
+        2513
+      ],
+      "medianNavigationMs": 1941,
+      "firstLoadJsKib": 1133.4
+    },
+    {
+      "route": "/timer",
+      "serverRestRequests": 10,
+      "serverRestRequestsSamples": [
+        10,
+        10,
+        10
+      ],
+      "serverAuthRequests": 2,
+      "serverAuthRequestsSamples": [
+        2,
+        2,
+        2
+      ],
+      "serverTables": {
+        "notifications": 1,
+        "task_sessions": 5,
+        "user_time_context": 1,
+        "user_preferences": 2,
+        "tasks": 1
+      },
+      "navigationMs": [
+        1555,
+        1524,
+        1339
+      ],
+      "medianNavigationMs": 1524,
+      "firstLoadJsKib": 1150.5
+    }
+  ],
+  "firstLoadJs": {
+    "available": true,
+    "source": ".next/diagnostics/route-bundle-stats.json",
+    "routes": {
+      "/today": {
+        "bytes": 1274844,
+        "kib": 1245,
+        "chunkCount": 22,
+        "files": [
+          ".next/static/chunks/2bugfgnp-4-mt.js",
+          ".next/static/chunks/3t9klxn7i_2jk.js",
+          ".next/static/chunks/3rdmjqav1e0xz.js",
+          ".next/static/chunks/3u26d24zxar4v.js",
+          ".next/static/chunks/414-up8iikjkh.js",
+          ".next/static/chunks/22l-0o5l_u0-7.js",
+          ".next/static/chunks/285cosv9af1vf.js",
+          ".next/static/chunks/0bwogb5qge674.js",
+          ".next/static/chunks/1mh9f8l-foz38.js",
+          ".next/static/chunks/1savziy-zri3z.js",
+          ".next/static/chunks/3_4vjtb_62z65.js",
+          ".next/static/chunks/39y8xeve0cidf.js",
+          ".next/static/chunks/1rr79jj_scjc1.js",
+          ".next/static/chunks/0a7nh786qbken.js",
+          ".next/static/chunks/1vtvv3_fkscvl.js",
+          ".next/static/chunks/0rykep33j217q.js",
+          ".next/static/chunks/2p3f-k276mbf9.js",
+          ".next/static/chunks/12iea7ea7aajt.js",
+          ".next/static/chunks/2npnkh0f7lx58.js",
+          ".next/static/chunks/14udx092b7ul3.js",
+          ".next/static/chunks/1gvtffnnom63j.js",
+          ".next/static/chunks/turbopack-2h-u0he6dowwt.js"
+        ]
+      },
+      "/tasks": {
+        "bytes": 1274017,
+        "kib": 1244.2,
+        "chunkCount": 22,
+        "files": [
+          ".next/static/chunks/2bugfgnp-4-mt.js",
+          ".next/static/chunks/3t9klxn7i_2jk.js",
+          ".next/static/chunks/3rdmjqav1e0xz.js",
+          ".next/static/chunks/3u26d24zxar4v.js",
+          ".next/static/chunks/414-up8iikjkh.js",
+          ".next/static/chunks/22l-0o5l_u0-7.js",
+          ".next/static/chunks/285cosv9af1vf.js",
+          ".next/static/chunks/0bwogb5qge674.js",
+          ".next/static/chunks/1mh9f8l-foz38.js",
+          ".next/static/chunks/1savziy-zri3z.js",
+          ".next/static/chunks/3_4vjtb_62z65.js",
+          ".next/static/chunks/07nysi-ekyl_0.js",
+          ".next/static/chunks/191bveubuessg.js",
+          ".next/static/chunks/0a7nh786qbken.js",
+          ".next/static/chunks/1vtvv3_fkscvl.js",
+          ".next/static/chunks/0rykep33j217q.js",
+          ".next/static/chunks/2p3f-k276mbf9.js",
+          ".next/static/chunks/12iea7ea7aajt.js",
+          ".next/static/chunks/2npnkh0f7lx58.js",
+          ".next/static/chunks/14udx092b7ul3.js",
+          ".next/static/chunks/1gvtffnnom63j.js",
+          ".next/static/chunks/turbopack-2h-u0he6dowwt.js"
+        ]
+      },
+      "/tasks/projects": {
+        "bytes": 1161864,
+        "kib": 1134.6,
+        "chunkCount": 22,
+        "files": [
+          ".next/static/chunks/2bugfgnp-4-mt.js",
+          ".next/static/chunks/3t9klxn7i_2jk.js",
+          ".next/static/chunks/3rdmjqav1e0xz.js",
+          ".next/static/chunks/3u26d24zxar4v.js",
+          ".next/static/chunks/414-up8iikjkh.js",
+          ".next/static/chunks/22l-0o5l_u0-7.js",
+          ".next/static/chunks/285cosv9af1vf.js",
+          ".next/static/chunks/0bwogb5qge674.js",
+          ".next/static/chunks/1mh9f8l-foz38.js",
+          ".next/static/chunks/1savziy-zri3z.js",
+          ".next/static/chunks/3_4vjtb_62z65.js",
+          ".next/static/chunks/07nysi-ekyl_0.js",
+          ".next/static/chunks/44fpnk0xrwa54.js",
+          ".next/static/chunks/2rxvexhisb3rz.js",
+          ".next/static/chunks/1vtvv3_fkscvl.js",
+          ".next/static/chunks/0rykep33j217q.js",
+          ".next/static/chunks/2p3f-k276mbf9.js",
+          ".next/static/chunks/12iea7ea7aajt.js",
+          ".next/static/chunks/2npnkh0f7lx58.js",
+          ".next/static/chunks/14udx092b7ul3.js",
+          ".next/static/chunks/1gvtffnnom63j.js",
+          ".next/static/chunks/turbopack-2h-u0he6dowwt.js"
+        ]
+      },
+      "/money": {
+        "bytes": 1231251,
+        "kib": 1202.4,
+        "chunkCount": 21,
+        "files": [
+          ".next/static/chunks/2bugfgnp-4-mt.js",
+          ".next/static/chunks/3t9klxn7i_2jk.js",
+          ".next/static/chunks/3rdmjqav1e0xz.js",
+          ".next/static/chunks/3u26d24zxar4v.js",
+          ".next/static/chunks/414-up8iikjkh.js",
+          ".next/static/chunks/22l-0o5l_u0-7.js",
+          ".next/static/chunks/285cosv9af1vf.js",
+          ".next/static/chunks/0bwogb5qge674.js",
+          ".next/static/chunks/1mh9f8l-foz38.js",
+          ".next/static/chunks/1savziy-zri3z.js",
+          ".next/static/chunks/3_4vjtb_62z65.js",
+          ".next/static/chunks/2hyr3n6w1veos.js",
+          ".next/static/chunks/3wc_3-udxeghg.js",
+          ".next/static/chunks/1vtvv3_fkscvl.js",
+          ".next/static/chunks/0rykep33j217q.js",
+          ".next/static/chunks/2p3f-k276mbf9.js",
+          ".next/static/chunks/12iea7ea7aajt.js",
+          ".next/static/chunks/2npnkh0f7lx58.js",
+          ".next/static/chunks/14udx092b7ul3.js",
+          ".next/static/chunks/1gvtffnnom63j.js",
+          ".next/static/chunks/turbopack-2h-u0he6dowwt.js"
+        ]
+      },
+      "/review": {
+        "bytes": 1162555,
+        "kib": 1135.3,
+        "chunkCount": 21,
+        "files": [
+          ".next/static/chunks/2bugfgnp-4-mt.js",
+          ".next/static/chunks/3t9klxn7i_2jk.js",
+          ".next/static/chunks/3rdmjqav1e0xz.js",
+          ".next/static/chunks/3u26d24zxar4v.js",
+          ".next/static/chunks/414-up8iikjkh.js",
+          ".next/static/chunks/22l-0o5l_u0-7.js",
+          ".next/static/chunks/285cosv9af1vf.js",
+          ".next/static/chunks/0bwogb5qge674.js",
+          ".next/static/chunks/1mh9f8l-foz38.js",
+          ".next/static/chunks/1savziy-zri3z.js",
+          ".next/static/chunks/3_4vjtb_62z65.js",
+          ".next/static/chunks/1zn67uuj7snfq.js",
+          ".next/static/chunks/36-pq-1a5_2zu.js",
+          ".next/static/chunks/1vtvv3_fkscvl.js",
+          ".next/static/chunks/0rykep33j217q.js",
+          ".next/static/chunks/2p3f-k276mbf9.js",
+          ".next/static/chunks/12iea7ea7aajt.js",
+          ".next/static/chunks/2npnkh0f7lx58.js",
+          ".next/static/chunks/14udx092b7ul3.js",
+          ".next/static/chunks/1gvtffnnom63j.js",
+          ".next/static/chunks/turbopack-2h-u0he6dowwt.js"
+        ]
+      },
+      "/goals": {
+        "bytes": 1160586,
+        "kib": 1133.4,
+        "chunkCount": 21,
+        "files": [
+          ".next/static/chunks/2bugfgnp-4-mt.js",
+          ".next/static/chunks/3t9klxn7i_2jk.js",
+          ".next/static/chunks/3rdmjqav1e0xz.js",
+          ".next/static/chunks/3u26d24zxar4v.js",
+          ".next/static/chunks/414-up8iikjkh.js",
+          ".next/static/chunks/22l-0o5l_u0-7.js",
+          ".next/static/chunks/285cosv9af1vf.js",
+          ".next/static/chunks/0bwogb5qge674.js",
+          ".next/static/chunks/1mh9f8l-foz38.js",
+          ".next/static/chunks/1savziy-zri3z.js",
+          ".next/static/chunks/3_4vjtb_62z65.js",
+          ".next/static/chunks/1aaeag69l3nek.js",
+          ".next/static/chunks/1iguyu1sz41fg.js",
+          ".next/static/chunks/1vtvv3_fkscvl.js",
+          ".next/static/chunks/0rykep33j217q.js",
+          ".next/static/chunks/2p3f-k276mbf9.js",
+          ".next/static/chunks/12iea7ea7aajt.js",
+          ".next/static/chunks/2npnkh0f7lx58.js",
+          ".next/static/chunks/14udx092b7ul3.js",
+          ".next/static/chunks/1gvtffnnom63j.js",
+          ".next/static/chunks/turbopack-2h-u0he6dowwt.js"
+        ]
+      },
+      "/timer": {
+        "bytes": 1178088,
+        "kib": 1150.5,
+        "chunkCount": 21,
+        "files": [
+          ".next/static/chunks/2bugfgnp-4-mt.js",
+          ".next/static/chunks/3t9klxn7i_2jk.js",
+          ".next/static/chunks/3rdmjqav1e0xz.js",
+          ".next/static/chunks/3u26d24zxar4v.js",
+          ".next/static/chunks/414-up8iikjkh.js",
+          ".next/static/chunks/22l-0o5l_u0-7.js",
+          ".next/static/chunks/285cosv9af1vf.js",
+          ".next/static/chunks/0bwogb5qge674.js",
+          ".next/static/chunks/1mh9f8l-foz38.js",
+          ".next/static/chunks/1savziy-zri3z.js",
+          ".next/static/chunks/3_4vjtb_62z65.js",
+          ".next/static/chunks/2fvvbaz9qo1hz.js",
+          ".next/static/chunks/0x9s2e8yv91fv.js",
+          ".next/static/chunks/1vtvv3_fkscvl.js",
+          ".next/static/chunks/0rykep33j217q.js",
+          ".next/static/chunks/2p3f-k276mbf9.js",
+          ".next/static/chunks/12iea7ea7aajt.js",
+          ".next/static/chunks/2npnkh0f7lx58.js",
+          ".next/static/chunks/14udx092b7ul3.js",
+          ".next/static/chunks/1gvtffnnom63j.js",
+          ".next/static/chunks/turbopack-2h-u0he6dowwt.js"
+        ]
+      }
+    }
+  },
+  "notes": [
+    "serverRestRequests counts HTTP requests the Next server makes to PostgREST through a loopback counting proxy.",
+    "serverAuthRequests counts server requests to Supabase Auth (session/claims/user lookups).",
+    "navigationMs is Playwright page.goto wall time until the first h1 is visible (domcontentloaded + 500 ms settle; realtime subscriptions prevent networkidle).",
+    "firstLoadJsKib is the route's first-load JS emitted by the Next build (Turbopack route bundle stats, with an app-build-manifest fallback)."
+  ],
+  "dirty": true
+}
