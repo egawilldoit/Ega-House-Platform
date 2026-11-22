@@ -16,7 +16,6 @@ import {
   isTaskPriority,
   isTaskStatus,
 } from "@/lib/task-domain";
-import { getSupabaseServiceClient } from "@/lib/supabase/service";
 import {
   cancelTaskReminder,
   createTaskEmailReminder,
@@ -159,7 +158,6 @@ function drainCalendarSyncQueueAfterResponse(shouldDrain: boolean) {
   after(async () => {
     try {
       await processPendingCalendarSyncJobs({
-        supabase: getSupabaseServiceClient(),
         limit: 5,
       });
     } catch {
