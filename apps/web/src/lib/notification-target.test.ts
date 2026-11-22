@@ -23,14 +23,14 @@ test("maps existing singleton and timer targets to their real routes", () => {
   assert.equal(getNotificationTargetHref({ type: "today", id: null }), "/today");
 });
 
-test("keeps notifications without a supported target in the notification center", () => {
-  assert.equal(getNotificationTargetHref(null), "/notifications");
-  assert.equal(getNotificationTargetHref({ type: "task", id: "   " }), "/notifications");
-  assert.equal(getNotificationTargetHref({ type: "task", id: null }), "/notifications");
-  assert.equal(getNotificationTargetHref({ type: "routine", id: "r1" }), "/notifications");
-  assert.equal(getNotificationTargetHref({ type: "money", id: "m1" }), "/notifications");
+test("leaves notifications without a dedicated screen inside the bell popover", () => {
+  assert.equal(getNotificationTargetHref(null), null);
+  assert.equal(getNotificationTargetHref({ type: "task", id: "   " }), null);
+  assert.equal(getNotificationTargetHref({ type: "task", id: null }), null);
+  assert.equal(getNotificationTargetHref({ type: "routine", id: "r1" }), null);
+  assert.equal(getNotificationTargetHref({ type: "money", id: "m1" }), null);
   assert.equal(
     getNotificationTargetHref({ type: "goal" as never, id: "g1" }),
-    "/notifications",
+    null,
   );
 });

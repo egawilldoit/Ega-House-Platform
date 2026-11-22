@@ -5,8 +5,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 export default function SettingsLoadingPage() {
   return (
     <WorkspaceSkeletonShell>
-<div className="flex max-w-3xl flex-col gap-6">
-        {Array.from({ length: 3 }).map((_, index) => (
+<div className="flex w-full min-w-0 flex-col gap-6">
+        {Array.from({ length: 4 }).map((_, index) => (
           <Card key={index}>
             <CardContent className="flex flex-col gap-3">
               <Skeleton className="h-5 w-44" />

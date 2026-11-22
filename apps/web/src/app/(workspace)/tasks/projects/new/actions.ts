@@ -68,7 +68,7 @@ export async function createProjectAction(
     }
 
     revalidatePath("/tasks/projects");
-    revalidatePath("/settings/areas");
+    revalidatePath("/tasks/projects/areas");
     redirect("/tasks/projects");
   }
 
@@ -99,6 +99,6 @@ export async function createProjectAction(
   const projectPath = `/tasks/projects/${result.data.slug}`;
   revalidateWorkspaceFor("task", { returnTo: projectPath });
   revalidatePath("/goals");
-  revalidatePath("/settings/areas");
+  revalidatePath("/tasks/projects/areas");
   redirect(projectPath);
 }

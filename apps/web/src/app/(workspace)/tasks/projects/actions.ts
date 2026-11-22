@@ -141,7 +141,7 @@ export async function assignProjectAreaAction(formData: FormData) {
   revalidatePath("/tasks/projects");
   revalidatePath(returnPathname);
   revalidatePath("/tasks");
-  revalidatePath("/settings/areas");
+  revalidatePath("/tasks/projects/areas");
   revalidatePath("/work-analytics");
   redirect(`${returnPath}#project-${projectId}`);
 }

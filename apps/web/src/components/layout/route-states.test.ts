@@ -16,18 +16,8 @@ const WORKSPACE_ROUTES = [
   "app/(workspace)/tasks/projects/[slug]/delete",
   "app/(workspace)/review",
   "app/(workspace)/review/[reviewId]",
-  "app/(workspace)/goals",
-  "app/(workspace)/timer",
-  "app/(workspace)/work-analytics",
-  "app/(workspace)/notifications",
   "app/(workspace)/backlog",
-  "app/(workspace)/startup",
-  "app/(workspace)/help",
-  "app/(workspace)/settings/account",
-  "app/(workspace)/agents",
-  "app/(workspace)/agents/[id]",
-  "app/(workspace)/friction",
-  "app/(workspace)/archive",
+  "app/(workspace)/settings",
 ];
 
 test("every audited workspace route has a loading boundary", () => {

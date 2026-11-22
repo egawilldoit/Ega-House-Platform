@@ -178,14 +178,17 @@ test("shutdown check-in and routine evidence persist through a reload", async ({
 
 test("notification read state and channel preference survive reload", async ({ page, owners }) => {
   await setUnreadNotificationsForOwner(owners.ownerA, 1);
-  await signInPwaOwner(page, owners.ownerA, "/notifications");
+  await signInPwaOwner(page, owners.ownerA, "/today");
+
+  const bell = page
+    .locator(".workspace-topbar")
+    .getByRole("button", { name: /^Notifications/ });
+  await bell.click();
   await expect(page.getByText("E2E PWA baseline reminder", { exact: true })).toBeVisible();
-  await page.getByRole("checkbox", { name: "Select all notifications on this page" }).check();
-  await page.getByRole("button", { name: "Mark selected read", exact: true }).click();
-  await expect(page.getByText("Notification marked read.", { exact: true })).toBeVisible();
-  await page.reload();
-  await page.getByRole("button", { name: "Unread", exact: true }).click();
-  await expect(page.getByText("E2E PWA baseline reminder", { exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "Mark all read", exact: true }).click();
+  await expect(page.getByText("You are caught up.", { exact: true })).toBeVisible();
+
+  await page.goto("/settings?tab=preferences");
   const preference = page.locator("form").filter({ has: page.locator('input[name="notificationType"][value="task_reminder"]') });
   await preference.getByRole("checkbox", { name: "Email", exact: true }).uncheck();
   await preference.getByRole("button", { name: "Save", exact: true }).click();

@@ -81,8 +81,6 @@ export default async function RootLayout({
       suppressHydrationWarning
       data-theme={getUserThemeAttribute(preferences.theme)}
       data-theme-preference={preferences.theme}
-      data-accent={preferences.accent}
-      data-density={preferences.density}
       data-reduce-motion={preferences.reducedMotion ? "true" : "false"}
       className={`h-full antialiased ${instrumentSans.variable} ${sora.variable} ${jetbrainsMono.variable}`}
       style={{ overflowX: "hidden" }}

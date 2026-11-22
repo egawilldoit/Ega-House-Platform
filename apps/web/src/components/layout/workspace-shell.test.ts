@@ -57,12 +57,9 @@ describe("light workspace shell", () => {
       ["Review", "/review"],
       ["Backlog", "/backlog"],
       ["Archive", "/archive"],
-      ["Notifications", "/notifications"],
       ["Startup", "/startup"],
       ["Apps", "/apps"],
-      ["Agents", "/agents"],
-      ["Help", "/help"],
-      ["Settings", "/settings/account"],
+      ["Settings", "/settings"],
     ]) {
       expect(routeMeta).toContain(`label: "${label}"`);
       expect(routeMeta).toContain(`href: "${href}"`);

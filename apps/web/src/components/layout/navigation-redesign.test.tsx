@@ -80,8 +80,8 @@ describe("EGA-654 navigation structure", () => {
     expect(topBar).not.toContain("TopBarSignalCluster");
     expect(topBar).not.toContain("ega-topbar-upgrade-pill");
     expect(topBar).not.toContain("workspace-shortcut-control");
-    expect(topBar).toContain("/notifications");
-    expect(topBar).toContain("Account settings");
+    expect(topBar).toContain("NotificationBell");
+    expect(topBar).toContain("/settings");
 
     // One search implementation, owned by the sidebar trigger.
     expect(sidebar).toContain("<WorkspaceSearchTrigger />");

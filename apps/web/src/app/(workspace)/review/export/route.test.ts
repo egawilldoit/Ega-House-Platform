@@ -1,12 +1,20 @@
+import type { Mock } from "vitest";
 import { describe, expect, it, vi } from "vitest";
 
-function makeChain(result: unknown) {
-  const chain: Record<string, any> = {};
-  for (const method of ["select", "eq", "gte", "lt", "order"]) {
+type QueryChain = {
+  [Method in "select" | "eq" | "gte" | "lt" | "order"]: Mock<(...args: unknown[]) => QueryChain>;
+} & {
+  then: (resolve: (value: unknown) => unknown, reject?: (reason: unknown) => unknown) => Promise<unknown>;
+};
+
+const QUERY_METHODS = ["select", "eq", "gte", "lt", "order"] as const;
+
+function makeChain(result: unknown): QueryChain {
+  const chain = {} as QueryChain;
+  for (const method of QUERY_METHODS) {
     chain[method] = vi.fn(() => chain);
   }
-  chain.then = (resolve: (value: unknown) => unknown, reject?: (reason: unknown) => unknown) =>
-    Promise.resolve(result).then(resolve, reject);
+  chain.then = (resolve, reject) => Promise.resolve(result).then(resolve, reject);
   return chain;
 }
 
@@ -50,7 +58,7 @@ describe("GET /review/export", () => {
   });
 
   it("scopes all relevant queries by owner_user_id and preserves selected week CSV", async () => {
-    const chains: Record<string, any[]> = {
+    const chains: Record<string, QueryChain[]> = {
       week_reviews: [],
       tasks: [],
       task_sessions: [],
@@ -117,7 +125,7 @@ describe("GET /review/export", () => {
   });
 
   it("exports all reviews with default filename when no weekOf is provided", async () => {
-    const chains: Record<string, any[]> = {
+    const chains: Record<string, QueryChain[]> = {
       week_reviews: [],
       tasks: [],
       task_sessions: [],
@@ -166,7 +174,7 @@ describe("GET /review/export", () => {
   });
 
   it("uses weekOf from query to name file as review-<weekOf>.csv", async () => {
-    const chains: Record<string, any[]> = {
+    const chains: Record<string, QueryChain[]> = {
       week_reviews: [],
       tasks: [],
       task_sessions: [],

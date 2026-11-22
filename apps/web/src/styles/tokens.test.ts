@@ -121,22 +121,16 @@ describe("EGA House workspace tokens — single authority", () => {
     expect(violations, `self-referential lines: ${violations.join("; ")}`).toEqual([]);
   });
 
-  it("defines the accent and density preference variants without a second authority", () => {
+  it("retires optional accent and density preference variants", () => {
     const tokens = read("src/styles/tokens.css");
 
-    for (const accent of ["blue", "green", "violet", "amber"]) {
-      expect(tokens).toContain(`html[data-accent="${accent}"]:has([data-workspace-theme="workspace"])`);
-      expect(tokens).toContain(
-        `html[data-theme="dark"][data-accent="${accent}"]:has([data-workspace-theme="workspace"])`,
-      );
-    }
-
-    expect(tokens).toContain('html[data-density="compact"]:has([data-workspace-theme="workspace"])');
+    // One accessible ink palette and one comfortable density remain.
+    expect(tokens).not.toContain("data-accent=");
+    expect(tokens).not.toContain("data-density=");
+    expect(tokens).toContain("--ega-accent:");
     expect(tokens).toContain("--row-padding-block:");
     expect(tokens).toContain("--data-table-cell-padding:");
     expect(tokens).toContain("--nav-item-min-height:");
-    // Compact never removes the pointer-coarse touch minimum.
-    expect(tokens).toContain("@media (pointer: coarse)");
   });
 
   it("defines the explicit reduced-motion override for the app preference", () => {
