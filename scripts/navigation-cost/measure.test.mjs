@@ -29,8 +29,12 @@ test("sums route and workspace layout JavaScript without double counting", async
       path.join(buildDir, "app-build-manifest.json"),
       JSON.stringify({
         pages: {
-          "/(workspace)/layout": ["static/chunks/shared.js", "static/chunks/layout.js"],
-          "/(workspace)/today/page": ["static/chunks/shared.js", "static/chunks/today.js", "static/chunks/today.css"],
+          "/layout": ["static/chunks/shared.js"],
+          "/(workspace)/layout": ["static/chunks/layout.js"],
+          "/(workspace)/today/page": [
+            "static/chunks/today.js",
+            "static/chunks/today.css",
+          ],
         },
       }),
     );

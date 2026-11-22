@@ -114,6 +114,19 @@ export function normalizeManifestRoute(key) {
   return withoutPage.startsWith("/") ? withoutPage : `/${withoutPage}`;
 }
 
+/**
+ * True when a manifest `/layout` entry is an ancestor of the measured route.
+ * Root layouts normalize to an empty prefix and apply to every measured route;
+ * nested layouts only apply to their own route subtree.
+ */
+function isAncestorLayout(entryKey, routePath) {
+  if (!entryKey.endsWith("/layout")) return false;
+  if (routePath === "/login" || routePath === "/signup") return false;
+  const withoutGroups = entryKey.replace(/\/\([^/]+\)/g, "");
+  const prefix = withoutGroups.replace(/\/layout$/, "");
+  return prefix === "" || routePath === prefix || routePath.startsWith(`${prefix}/`);
+}
+
 function dynamicRouteMatches(pattern, actual) {
   const patternParts = pattern.split("/");
   const actualParts = actual.split("/");
@@ -175,11 +188,7 @@ async function collectFirstLoadJs(buildDir, routesToMeasure) {
     const chunks = new Set();
     for (const entry of entries) {
       const sameRoute = entry.route === routePath || entry.route === routePath.replace(/\/$/, "");
-      const parentLayout =
-        entry.key.endsWith("/layout") &&
-        entry.key.startsWith("/(workspace)") &&
-        routePath !== "/login" &&
-        routePath !== "/signup";
+      const parentLayout = isAncestorLayout(entry.key, routePath);
       if (sameRoute || parentLayout) {
         for (const chunk of pages[entry.key] ?? []) {
           if (chunk.endsWith(".js")) chunks.add(chunk);

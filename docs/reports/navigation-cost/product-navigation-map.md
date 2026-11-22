@@ -64,7 +64,7 @@ covers the unauthenticated path. It was not run locally in this pass.
 ## Measurement
 
 Navigation cost is measured by `scripts/navigation-cost/measure.mjs`; see
-[`docs/reports/navigation-cost/README.md`](navigation-cost/README.md) for the
+[`docs/reports/navigation-cost/README.md`](./README.md) for the
 procedure and metric definitions. The JSON reports next to that README are the
 recorded baseline and after measurements. No improvement is claimed in this
 change: server request counts are unchanged and First Load JS rises slightly
