@@ -5,36 +5,44 @@ import test from "node:test";
 
 import {
   COMMAND_ROUTES,
+  SIDEBAR_ROUTES,
   UTILITY_ROUTES,
   getShellRouteMeta,
 } from "./shell-route-meta";
 
-test("keeps the primary workspace destinations in the sidebar registry", () => {
+test("keeps exactly the five primary workspace destinations in the command registry", () => {
   assert.deepEqual(
     COMMAND_ROUTES.map((route) => route.href),
-    ["/today", "/tasks", "/tasks/projects", "/money", "/timer", "/review"],
+    ["/today", "/tasks", "/tasks/projects", "/money", "/review"],
   );
   for (const route of COMMAND_ROUTES) {
     assert.equal(route.group, "primary");
   }
 });
 
-test("keeps Goals available as a contextual destination", () => {
+test("keeps Goals and Timer in the utility group", () => {
   assert.deepEqual(
     UTILITY_ROUTES.map((route) => route.href),
-    ["/goals"],
+    ["/goals", "/timer"],
   );
   for (const route of UTILITY_ROUTES) {
     assert.equal(route.group, "utility");
     assert.equal(
       new Set<string>(COMMAND_ROUTES.map((primary) => primary.href)).has(route.href),
       false,
-      `${route.href} must not re-enter the primary sidebar set`,
+      `${route.href} must not re-enter the primary command group`,
     );
   }
 });
 
-test("resolves Goals and Timer metadata and keeps both deep links", () => {
+test("includes Timer once in the shared sidebar navigation", () => {
+  assert.deepEqual(
+    SIDEBAR_ROUTES.map((route) => route.href),
+    ["/today", "/tasks", "/tasks/projects", "/money", "/review", "/timer"],
+  );
+});
+
+test("resolves utility page metadata and keeps both pages real deep links", () => {
   assert.equal(getShellRouteMeta("/goals").label, "Goals");
   assert.equal(getShellRouteMeta("/goals/deep-link").label, "Goals");
   assert.equal(getShellRouteMeta("/timer").label, "Timer");

@@ -79,7 +79,7 @@ export function WorkspaceNavigationDrawer({
     if (!open) return;
 
     // Keep this query aligned with the sidebar breakpoint in workspace.css.
-    const mobileViewport = window.matchMedia("(max-width: 760px)");
+    const mobileViewport = window.matchMedia?.("(max-width: 760px)");
     function onViewportChange(event: MediaQueryListEvent) {
       if (!event.matches) closeDrawer({ restoreFocus: false });
     }
@@ -135,10 +135,10 @@ export function WorkspaceNavigationDrawer({
       }
     }
 
-    mobileViewport.addEventListener("change", onViewportChange);
+    mobileViewport?.addEventListener("change", onViewportChange);
     document.addEventListener("keydown", onKeyDown);
     return () => {
-      mobileViewport.removeEventListener("change", onViewportChange);
+      mobileViewport?.removeEventListener("change", onViewportChange);
       document.removeEventListener("keydown", onKeyDown);
       document.body.style.overflow = previousBodyOverflow;
       document.documentElement.style.overflow = previousRootOverflow;

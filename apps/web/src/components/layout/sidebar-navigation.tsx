@@ -26,7 +26,7 @@ import { Tooltip } from "@/components/ui/tooltip";
 import { useCanonicalUrl } from "@/lib/use-canonical-url";
 import { getSidebarTaskSignalBadge, SidebarSignalBadge } from "./shell-signals";
 import { SidebarLogout } from "./sidebar-logout";
-import { COMMAND_ROUTES, type ShellRouteMeta } from "./shell-route-meta";
+import { SIDEBAR_ROUTES, type ShellRouteMeta } from "./shell-route-meta";
 
 export type SidebarProject = {
   id: string;
@@ -154,7 +154,7 @@ export function SidebarNavigation({
     >
       <section className="sidebar-section workspace-nav-section" aria-label="Primary">
         <div className="workspace-nav-list">
-          {COMMAND_ROUTES.map((route) => {
+          {SIDEBAR_ROUTES.map((route) => {
             const badge =
               route.href === "/tasks"
                 ? taskBadge

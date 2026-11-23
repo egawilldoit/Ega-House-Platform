@@ -162,7 +162,7 @@ describe("light workspace shell", () => {
     expect(shell).toContain('data-collapsed={collapsed ? "true" : "false"}');
     expect(navigation).toContain("aria-label={route.label}");
     // PR-02 retired per-project rows; destinations come from the single route registry.
-    expect(navigation).toContain("COMMAND_ROUTES.map");
+    expect(navigation).toContain("SIDEBAR_ROUTES.map");
     expect(navigation).not.toContain("getProjectAccessibleLabel");
     expect(logout).toContain('aria-label={isPending ? "Signing out" : "Logout"}');
     expect(logout).toContain("workspace-nav-label");

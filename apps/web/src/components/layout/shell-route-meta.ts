@@ -6,22 +6,26 @@ export type ShellRouteMeta = {
   description: string;
 };
 
-/** Destinations shared by the desktop sidebar and mobile navigation drawer. */
+/** The primary workspace destinations. */
 export const COMMAND_ROUTES = [
   { href: "/today", label: "Today", group: "primary", description: "Daily execution" },
   { href: "/tasks", label: "Tasks", group: "primary", description: "Work inventory" },
   { href: "/tasks/projects", label: "Projects", group: "primary", description: "Workspaces" },
   { href: "/money", label: "Money", group: "primary", description: "Personal expense ledger" },
-  {
-    href: "/timer",
-    label: "Timer",
-    group: "primary",
-    description: "Focus sessions and history",
-  },
   { href: "/review", label: "Review", group: "primary", description: "Weekly feedback loop" },
 ] as const satisfies readonly ShellRouteMeta[];
 
-/** Contextual destinations remain searchable in the command palette. */
+const TIMER_ROUTE = {
+  href: "/timer",
+  label: "Timer",
+  group: "utility",
+  description: "Focus sessions and history",
+} as const satisfies ShellRouteMeta;
+
+/** Shared by the desktop sidebar and mobile navigation drawer. */
+export const SIDEBAR_ROUTES = [...COMMAND_ROUTES, TIMER_ROUTE] as const;
+
+/** Contextual destinations that are also searchable in the command palette. */
 export const UTILITY_ROUTES = [
   {
     href: "/goals",
@@ -29,6 +33,7 @@ export const UTILITY_ROUTES = [
     group: "utility",
     description: "Cross-project objectives and health",
   },
+  TIMER_ROUTE,
 ] as const satisfies readonly ShellRouteMeta[];
 
 export const SYSTEM_ROUTES = [
