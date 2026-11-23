@@ -1537,6 +1537,14 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      calendar_sync_complete_legacy_job: {
+        Args: { p_job_id: string; p_claim_token: string; p_status: string; p_task_status: string; p_event_id: string | null; p_failure_reason: string | null; p_update_task: boolean; p_now: string }
+        Returns: boolean
+      }
+      calendar_sync_promote_legacy_job: {
+        Args: { p_job_id: string; p_claim_token: string; p_now: string }
+        Returns: boolean
+      }
       create_project_from_template: {
         Args: {
           p_operation_id: string

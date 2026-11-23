@@ -1159,7 +1159,8 @@ async function processJob(
     | RefreshedCalendarCredentials
     | undefined;
 
-  if (!task) {    if (job.operation === "delete" || job.eventId) {
+  if (!task) {
+    if (job.eventExists && job.eventId) {
       const deleted = job.eventId
         ? await deps.provider.deleteEvent(connection, job.eventId)
         : ({ ok: true, value: { alreadyRemoved: true }, refreshedCredentials: undefined } as const);
@@ -1234,7 +1235,7 @@ async function processJob(
   });
 
   if (built.plan.kind === "excluded") {
-    if (!job.eventId) {
+    if (!job.eventExists || !job.eventId) {
       await completeJobOutcome(actor, deps, {
         job,
         connection,
@@ -1303,6 +1304,14 @@ async function processJob(
   const payload = { ...built.payload, eventId: job.eventId ?? built.payload.eventId };
 
   if (job.operation === "delete") {
+    if (!job.eventExists || !job.eventId) {
+      await completeJobOutcome(actor, deps, {
+        job, connection, outcome: "excluded", eventId: null, payloadHash: null,
+        generation: job.generation, exclusionReason: job.exclusionReason,
+        nowIso, taskSyncStatus: "skipped",
+      });
+      return {};
+    }
     const deleted = await deps.provider.deleteEvent(connection, payload.eventId);
     if (!deleted.ok) {
       if (deleted.error.kind === "authorization") {
@@ -1388,29 +1397,12 @@ async function processJob(
       if (!(await claimStillCurrent(actor, deps, job))) {
         return { refreshedCredentials: writeResult.refreshedCredentials };
       }
-      const mapping = await deps.repository.upsertMapping(actor, {
-        ownerUserId: task.ownerUserId,
-        taskId: task.id,
-        destination: job.destination,
-        eventId,
-        generation,
-        metadataVerified: true,
-        payloadHash: built.payloadHash,
-        nowIso,
+      await completeJobOutcome(actor, deps, {
+        job, connection, outcome: "created", eventId,
+        payloadHash: built.payloadHash, generation, exclusionReason: null,
+        nowIso, taskSyncStatus: "synced",
       });
-      if (mapping.ok) {
-        await completeJobOutcome(actor, deps, {
-          job,
-          connection,
-          outcome: "created",
-          eventId,
-          payloadHash: built.payloadHash,
-          generation,
-          exclusionReason: null,
-          nowIso,
-          taskSyncStatus: "synced",
-        });
-      }
+      return { refreshedCredentials: writeResult.refreshedCredentials };
     }
   } else if (!writeResult.ok && writeResult.error.kind === "conflict") {
     // A 409 on insert means the deterministic id already exists. Adopt it only
@@ -1472,23 +1464,6 @@ async function processJob(
   if (!(await claimStillCurrent(actor, deps, job))) {
     return { refreshedCredentials };
   }
-  const mappingResult = await deps.repository.upsertMapping(actor, {
-    ownerUserId: task.ownerUserId,
-    taskId: task.id,
-    destination: job.destination,
-    eventId,
-    generation: job.generation,
-    metadataVerified: true,
-    payloadHash: built.payloadHash,
-    nowIso,
-  });
-
-  if (!mappingResult.ok) {
-    // Leave the job processing so its lease expires and retrieval retries the
-    // same deterministic event id. Never report success without a mapping.
-    return { refreshedCredentials };
-  }
-
   await completeJobOutcome(actor, deps, {
     job,
     connection,

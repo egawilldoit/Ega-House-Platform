@@ -38,6 +38,7 @@ function createCalendarSyncSupabaseMock(options?: { settingsLoadError?: boolean 
     token_expires_at: "2999-01-01T00:00:00.000Z",
     connected_at: "2026-05-10T08:00:00.000Z",
     disconnected_at: null,
+    updated_at: "2026-05-10T08:00:00.000Z",
   };
 
   function queryRows(table: string, filters: Record<string, unknown>) {
@@ -111,7 +112,7 @@ function createCalendarSyncSupabaseMock(options?: { settingsLoadError?: boolean 
         if (action === "update" && rows[0]) {
           Object.assign(rows[0], payload);
         }
-        return { data: selected ? rows[0] ?? null : null, error: null };
+        return { data: selected && rows[0] ? { ...rows[0] } : null, error: null };
       },
       then(resolve: (value: { data: null; error: null }) => void) {
         if (action === "update") {
@@ -139,6 +140,20 @@ function createCalendarSyncSupabaseMock(options?: { settingsLoadError?: boolean 
       },
     },
     async rpc(name: string, args: Record<string, unknown>) {
+      if (name === "calendar_sync_promote_legacy_job") {
+        const job = jobs.find((row) => row.id === args.p_job_id && row.claim_token === args.p_claim_token && row.status === "processing");
+        if (!job) return { data: false, error: null };
+        Object.assign(job, { queue_version: 2, status: "pending", claim_token: null });
+        return { data: true, error: null };
+      }
+      if (name === "calendar_sync_complete_legacy_job") {
+        const job = jobs.find((row) => row.id === args.p_job_id && row.claim_token === args.p_claim_token && row.status === "processing");
+        if (!job) return { data: false, error: null };
+        Object.assign(job, { status: args.p_status, attempts: Number(job.attempts) + 1, last_error: args.p_failure_reason, claim_token: null });
+        const task = tasks.find((row) => row.id === job.task_id && row.owner_user_id === job.owner_user_id);
+        if (task) Object.assign(task, { calendar_sync_status: args.p_task_status, calendar_event_id: args.p_event_id, calendar_sync_failure_reason: args.p_failure_reason });
+        return { data: true, error: null };
+      }
       if (name !== "calendar_sync_upsert_mapping") {
         throw new Error(`unexpected rpc: ${name}`);
       }
@@ -199,33 +214,29 @@ test("enqueueCalendarSyncJob marks task pending and inserts an outbox row", asyn
   assert.equal(mock.jobs[0]?.operation, "upsert");
 });
 
-test("processPendingCalendarSyncJobs creates Google event and marks job succeeded", async () => {
+test("first scheduled publish is queued for durable recovery", async () => {
   const mock = createCalendarSyncSupabaseMock();
-  await enqueueCalendarSyncJob(
-    { taskId: "task-1", operation: "upsert" },
-    { supabase: mock.supabase as never },
-  );
+  await enqueueCalendarSyncJob({ taskId: "task-1" }, { supabase: mock.supabase as never });
+  assert.equal(mock.jobs[0]?.queue_version, 2);
+  assert.equal(mock.jobs[0]?.event_exists, false);
+  assert.ok(mock.jobs[0]?.calendar_event_id);
+});
 
+test("a claimed legacy first publish is promoted without a Google write", async () => {
+  const mock = createCalendarSyncSupabaseMock();
+  await enqueueCalendarSyncJob({ taskId: "task-1" }, { supabase: mock.supabase as never });
+  mock.jobs[0]!.queue_version = 1;
   const result = await processPendingCalendarSyncJobs({
-    supabase: mock.supabase as never,
-    nowIso: "2026-05-10T09:00:00.000Z",
+    supabase: mock.supabase as never, nowIso: "2026-05-10T09:00:00.000Z",
     client: {
-      async createEvent() {
-        return { eventId: "google-event-1", errorMessage: null };
-      },
-      async patchEvent() {
-        throw new Error("patch should not be called");
-      },
-      async deleteEvent() {
-        throw new Error("delete should not be called");
-      },
+      async createEvent() { throw new Error("unexpected create"); },
+      async patchEvent() { throw new Error("unexpected patch"); },
+      async deleteEvent() { throw new Error("unexpected delete"); },
     },
   });
-
-  assert.deepEqual(result, { ok: true, processed: 1, failed: 0 });
-  assert.equal(mock.jobs[0]?.status, "succeeded");
-  assert.equal(mock.tasks[0]?.calendar_event_id, "google-event-1");
-  assert.equal(mock.tasks[0]?.calendar_sync_status, "synced");
+  assert.deepEqual(result, { ok: true, processed: 0, failed: 0 });
+  assert.equal(mock.jobs[0]?.queue_version, 2);
+  assert.equal(mock.jobs[0]?.status, "pending");
 });
 
 test("processPendingCalendarSyncJobs fails without clearing event id when credentials fail to load", async () => {
@@ -235,6 +246,7 @@ test("processPendingCalendarSyncJobs fails without clearing event id when creden
     { taskId: "task-1", operation: "upsert" },
     { supabase: mock.supabase as never },
   );
+  Object.assign(mock.jobs[0]!, { queue_version: 1, event_exists: true, calendar_event_id: "event-a" });
 
   const result = await processPendingCalendarSyncJobs({
     supabase: mock.supabase as never,
@@ -312,12 +324,43 @@ test("processPendingCalendarSyncJobs persists refreshed token for orphan delete 
   assert.equal(mock.settings.token_expires_at, "2026-05-10T10:00:00.000Z");
 });
 
+test("a reconnect during token refresh keeps the new connection credentials", async () => {
+  const mock = createCalendarSyncSupabaseMock();
+  await enqueueCalendarSyncJob(
+    { taskId: "task-1", operation: "upsert" },
+    { supabase: mock.supabase as never },
+  );
+  Object.assign(mock.jobs[0]!, { queue_version: 1, event_exists: true, calendar_event_id: "event-a" });
+  await processPendingCalendarSyncJobs({
+    supabase: mock.supabase as never,
+    nowIso: "2026-05-10T09:00:00.000Z",
+    client: {
+      async patchEvent() {
+        Object.assign(mock.settings, {
+          google_account_email: "new@example.com",
+          access_token_encrypted: "new-access",
+          refresh_token_encrypted: "new-refresh",
+          updated_at: "2026-05-10T08:59:00.000Z",
+        });
+        return { eventId: "event-a", errorMessage: null,
+          refreshedAccessToken: "stale-access", tokenExpiresAt: null };
+      },
+      async createEvent() { throw new Error("unexpected create"); },
+      async deleteEvent() { throw new Error("unexpected delete"); },
+    },
+  });
+  assert.equal(mock.settings.google_account_email, "new@example.com");
+  assert.equal(mock.settings.access_token_encrypted, "new-access");
+  assert.equal(mock.settings.refresh_token_encrypted, "new-refresh");
+});
+
 test("processPendingCalendarSyncJobs pauses a job queued for a different Google account", async () => {
   const mock = createCalendarSyncSupabaseMock();
   await enqueueCalendarSyncJob(
     { taskId: "task-1", operation: "upsert" },
     { supabase: mock.supabase as never },
   );
+  Object.assign(mock.jobs[0]!, { queue_version: 1, event_exists: true, calendar_event_id: "event-a" });
   assert.equal(mock.jobs[0]?.destination_key, "owner@example.com|primary");
 
   // The owner reconnects with another Google account before the queued job
@@ -469,64 +512,7 @@ test("an account switch with no mapping history does not enqueue the old event i
   assert.equal(job?.destination_key, "new@example.com|primary-b");
   assert.notEqual(job?.calendar_event_id, "account-a-event");
   assert.equal(job?.event_exists, false);
-  assert.equal(job?.queue_version, 1);
-});
-
-test("the worker creates a fresh event after a switch and repeats safely on the same destination", async () => {
-  const mock = createCalendarSyncSupabaseMock();
-  mock.tasks[0].calendar_event_id = "account-a-event";
-  mock.settings.google_account_email = "new@example.com";
-  mock.settings.calendar_id = "primary-b";
-  await enqueueCalendarSyncJob(
-    { taskId: "task-1", operation: "upsert" },
-    { supabase: mock.supabase as never },
-  );
-
-  const writes: string[] = [];
-  const client = {
-    async createEvent(input: { eventId?: string | null }) {
-      writes.push(`create:${String(input.eventId ?? null)}`);
-      return { eventId: "account-b-event", errorMessage: null };
-    },
-    async patchEvent(input: { eventId: string }) {
-      writes.push(`patch:${input.eventId}`);
-      return { eventId: input.eventId, errorMessage: null };
-    },
-    async deleteEvent(input: { eventId: string }) {
-      writes.push(`delete:${input.eventId}`);
-      return { ok: true, errorMessage: null };
-    },
-  };
-
-  const first = await processPendingCalendarSyncJobs({
-    supabase: mock.supabase as never,
-    nowIso: "2026-05-10T09:00:00.000Z",
-    client: client as never,
-  });
-  assert.deepEqual(first, { ok: true, processed: 1, failed: 0 });
-  assert.deepEqual(writes, ["create:null"]);
-  assert.equal(mock.tasks[0].calendar_event_id, "account-b-event");
-  assert.equal(mock.mappings[0]?.event_id, "account-b-event");
-  assert.equal(mock.mappings[0]?.destination_key, "new@example.com|primary-b");
-
-  // The successful v1 write is now durably scoped. A repeat enqueue routes to
-  // v2 with the same event id and the legacy worker makes no duplicate write.
-  await enqueueCalendarSyncJob(
-    { taskId: "task-1", operation: "upsert" },
-    { supabase: mock.supabase as never, nowIso: "2026-05-10T10:00:00.000Z" },
-  );
-  const repeatJob = mock.jobs[1];
-  assert.equal(repeatJob?.queue_version, 2);
-  assert.equal(repeatJob?.calendar_event_id, "account-b-event");
-  assert.equal(repeatJob?.event_exists, true);
-
-  const second = await processPendingCalendarSyncJobs({
-    supabase: mock.supabase as never,
-    nowIso: "2026-05-10T10:05:00.000Z",
-    client: client as never,
-  });
-  assert.deepEqual(second, { ok: true, processed: 0, failed: 0 });
-  assert.deepEqual(writes, ["create:null"]);
+  assert.equal(job?.queue_version, 2);
 });
 
 test("a delete with no mapping history never targets the previous account's event id", async () => {
@@ -567,7 +553,7 @@ test("a delete with no mapping history never targets the previous account's even
     } as never,
   });
 
-  assert.deepEqual(result, { ok: true, processed: 1, failed: 0 });
+  assert.deepEqual(result, { ok: true, processed: 0, failed: 0 });
   assert.deepEqual(writes, []);
 });
 

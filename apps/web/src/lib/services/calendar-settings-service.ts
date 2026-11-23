@@ -40,6 +40,7 @@ type CalendarSettingsSafeRow = {
 };
 
 type CalendarSettingsSecretRow = CalendarSettingsSafeRow & {
+  updated_at: string;
   google_account_subject: string | null;
   access_token_encrypted: string | null;
   refresh_token_encrypted: string | null;
@@ -203,7 +204,7 @@ export async function getCalendarIntegrationSecretSnapshot(options?: {
   const { data, error } = await supabase
     .from("calendar_integration_settings")
     .select(
-      `${CALENDAR_SETTINGS_SAFE_SELECT}, google_account_subject, access_token_encrypted, refresh_token_encrypted, token_expires_at`,
+      `${CALENDAR_SETTINGS_SAFE_SELECT}, google_account_subject, access_token_encrypted, refresh_token_encrypted, token_expires_at, updated_at`,
     )
     .eq("owner_user_id", authResult.userId)
     .eq("provider", GOOGLE_CALENDAR_PROVIDER)
@@ -236,7 +237,7 @@ export async function getCalendarIntegrationSecretSnapshotForOwner(
   const { data, error } = await supabase
     .from("calendar_integration_settings")
     .select(
-      `${CALENDAR_SETTINGS_SAFE_SELECT}, google_account_subject, access_token_encrypted, refresh_token_encrypted, token_expires_at`,
+      `${CALENDAR_SETTINGS_SAFE_SELECT}, google_account_subject, access_token_encrypted, refresh_token_encrypted, token_expires_at, updated_at`,
     )
     .eq("owner_user_id", normalizedOwnerUserId)
     .eq("provider", GOOGLE_CALENDAR_PROVIDER)

@@ -164,3 +164,17 @@ export async function runWebCalendarRecovery(origin: string) {
     { runLimit: 5, destinationLimit: 5 },
   );
 }
+
+/** Opportunistically drain the signed-in owner's scheduled Calendar jobs. */
+export async function runOwnerCalendarRecovery() {
+  const supabase = await createClient();
+  const actor = await resolveActor(supabase);
+  if (!actor) return;
+  const origin = process.env.APP_URL?.trim() || process.env.NEXT_PUBLIC_APP_URL?.trim();
+  if (!origin) return;
+  return processCalendarRecovery(
+    actor,
+    buildDependencies(supabase, { origin, scope: "owner" }),
+    { runLimit: 1, destinationLimit: 1 },
+  );
+}

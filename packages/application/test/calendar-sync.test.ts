@@ -199,6 +199,7 @@ class FakeRepository implements CalendarSyncRepository {
   mappings = new Map<string, CalendarMappingRecord>();
   jobs = new Map<string, CalendarJobRecord>();
   failNextOrphanDeleteCommit = false;
+  failNextCompletion = false;
   private jobCounter = 0;
 
   addTask(row: CalendarTaskScanRecord) {
@@ -586,6 +587,19 @@ class FakeRepository implements CalendarSyncRepository {
       return { ok: true as const, value: false };
     }
 
+    if (this.failNextCompletion) {
+      this.failNextCompletion = false;
+      return { ok: false as const, error: { code: "conflict" as const } };
+    }
+    if ((input.completion.outcome === "created" || input.completion.outcome === "updated") && input.completion.eventId) {
+      const mapping = await this.upsertMapping(_actor, {
+        ownerUserId: job.ownerUserId, taskId: job.taskId, destination: job.destination,
+        eventId: input.completion.eventId, generation: input.completion.generation,
+        metadataVerified: true, payloadHash: input.completion.payloadHash,
+        nowIso: "2026-05-10T09:00:00.000Z",
+      });
+      if (!mapping.ok) return { ok: false as const, error: mapping.error };
+    }
     const removal = input.completion.mappingRemoval ?? null;
     if (removal) {
       const key = this.mappingKey(job.taskId, job.destination.destinationKey);
@@ -1675,6 +1689,53 @@ test("a saved event id is adopted when its metadata proves the current destinati
     "new@example.com|primary",
   );
   assert.equal(provider.events.get(ownedEventId)?.privateProperties.task_id, "task-1");
+});
+
+test("a missing task cannot delete an unowned planned event", async () => {
+  const repository = new FakeRepository();
+  const provider = new FakeProvider();
+  provider.events.set("foreign-event", {
+    id: "foreign-event", status: "confirmed", summary: "Foreign",
+    start: { dateTime: "2026-05-10T09:00:00.000Z" },
+    end: { dateTime: "2026-05-10T10:00:00.000Z" }, privateProperties: {}, raw: {},
+  });
+  repository.jobs.set("scheduled", {
+    id: "scheduled", ownerUserId: actor.userId, taskId: "task-1", runId: null,
+    destination, operation: "delete", status: "pending", attempts: 0,
+    eventId: "foreign-event", generation: 1, eventExists: false, payloadHash: null,
+    claimToken: null, permanentFailure: false, exclusionReason: null,
+    lastError: null, scheduledAt: "2026-05-10T08:00:00.000Z",
+    taskUpdatedAt: "2026-05-10T08:00:00.000Z",
+  });
+  await processCalendarRecovery(actor, buildDeps(repository, provider));
+  assert.equal(provider.deleteCalls, 0);
+  assert.equal(provider.events.get("foreign-event")?.summary, "Foreign");
+});
+
+test("recovery retries a provider success after atomic settlement fails", async () => {
+  const repository = new FakeRepository();
+  const provider = new FakeProvider();
+  repository.addTask(task());
+  repository.jobs.set("scheduled", {
+    id: "scheduled", ownerUserId: actor.userId, taskId: "task-1", runId: null,
+    destination, operation: "upsert", status: "pending", attempts: 0,
+    eventId: null, generation: 1, eventExists: false, payloadHash: null,
+    claimToken: null, permanentFailure: false, exclusionReason: null,
+    lastError: null, scheduledAt: "2026-05-10T08:00:00.000Z",
+    taskUpdatedAt: "2026-05-10T08:00:00.000Z",
+  });
+  repository.failNextCompletion = true;
+  await processCalendarRecovery(actor, buildDeps(repository, provider));
+  assert.equal(provider.events.size, 1);
+  assert.equal(repository.mappings.size, 0);
+  const first = repository.jobs.get("scheduled")!;
+  assert.equal(first.status, "processing");
+  repository.jobs.set(first.id, { ...first, status: "pending", claimToken: null });
+  await processCalendarRecovery(actor, buildDeps(repository, provider));
+  assert.equal(provider.events.size, 1);
+  assert.equal(repository.mappings.size, 1);
+  assert.equal(repository.jobs.get("scheduled")?.status, "succeeded");
+  assert.equal(provider.createCalls, 2);
 });
 
 test("recovery leaves another destination's queued job pending after an account switch", async () => {

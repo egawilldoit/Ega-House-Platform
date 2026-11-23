@@ -715,6 +715,13 @@
       "when": 1787880000072,
       "tag": "0109_calendar_sync_v2",
       "breakpoints": true
+    },
+    {
+      "idx": 123,
+      "version": "7",
+      "when": 1787880000073,
+      "tag": "0110_calendar_atomic_mapping_settlement",
+      "breakpoints": true
     }
   ]
 }
