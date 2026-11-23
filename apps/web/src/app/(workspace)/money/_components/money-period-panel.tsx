@@ -360,7 +360,7 @@ export function MoneyPeriodPanel({
               from unknown cash.
             </p>
             <div>
-              <PendingSubmitButton pendingLabel="Saving…">Save period</PendingSubmitButton>
+              <PendingSubmitButton type="submit" pendingLabel="Saving…">Save period</PendingSubmitButton>
             </div>
           </form>
         </div>
@@ -455,7 +455,7 @@ export function MoneyPeriodPanel({
               ledger row and appends reviewable provenance.
             </p>
             <div>
-              <PendingSubmitButton pendingLabel="Saving…">
+              <PendingSubmitButton type="submit" pendingLabel="Saving…">
                 Save settings
               </PendingSubmitButton>
             </div>

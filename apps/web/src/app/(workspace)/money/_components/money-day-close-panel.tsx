@@ -341,7 +341,7 @@ export function MoneyDayClosePanel({
           {error ? <p role="alert" className="text-[color:var(--ega-danger)]">{error}</p> : null}
           {success ? <p role="status">{success}</p> : null}
           <div>
-            <PendingSubmitButton pendingLabel="Closing…" disabled={pending}>
+            <PendingSubmitButton type="submit" pendingLabel="Closing…" disabled={pending}>
               {pending ? "Closing…" : `Close ${period.activeDate}`}
             </PendingSubmitButton>
           </div>

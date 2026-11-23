@@ -298,6 +298,7 @@ export function BudgetPlanForm({
         ) : (
           <>
             <PendingSubmitButton
+              type="submit"
               pendingLabel="Saving…"
               disabled={submitting || externallyChanged}
             >

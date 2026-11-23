@@ -212,6 +212,31 @@ async function main() {
     }
     assert(rewindDenied, "the active date never reopens a retained close");
 
+    // A transaction-local setting is caller-controlled, so it must never be
+    // accepted as proof of finalization. Ending without the final-day close or
+    // the internal rollover reference is refused even when the caller sets it.
+    let directEndDenied = false;
+    try {
+      await user(A, async (tx) => {
+        await tx.unsafe(
+          "SELECT set_config('ega.money_rollover_source', $1::text, true)",
+          [periodId],
+        );
+        await tx.unsafe(
+          `UPDATE public.money_periods
+           SET lifecycle='ended', version=version+1, updated_at=now()
+           WHERE id=$1 AND owner_user_id=$2`,
+          [periodId, A],
+        );
+      });
+    } catch (error) {
+      directEndDenied = error.code === "23514" || error.code === "42501";
+    }
+    assert(
+      directEndDenied,
+      "a caller-set transaction marker cannot fabricate period finalization",
+    );
+
     // --- Skip Nov 21/22 and record Nov 23 -----------------------------------
     const advanced = await user(A, (tx) =>
       updateActiveDate(tx, periodId, afterClose.version, "2026-11-23"),

@@ -1604,6 +1604,13 @@ export const moneyPeriods = pgTable(
     openingMovementId: uuid("opening_movement_id"),
     successorPeriodId: uuid("successor_period_id"),
     rolledOverAt: timestamp("rolled_over_at", { withTimezone: true }),
+    /**
+     * Internal proof written only by the definer rollover transaction. It is
+     * deliberately absent from the authenticated column UPDATE grant so a
+     * direct client cannot end a period without the final-day close or the
+     * explicit finalization path.
+     */
+    finalizationReference: uuid("finalization_reference"),
     provenance: jsonb("provenance").default(sql`'{}'::jsonb`).notNull(),
     settings: jsonb("settings").default(sql`'{}'::jsonb`).notNull(),
     version: integer("version").default(1).notNull(),
@@ -1774,6 +1781,10 @@ export const moneyPeriodRollovers = pgTable(
     reconciliationAcceptedNote: varchar("reconciliation_accepted_note", {
       length: 500,
     }),
+    unverifiedDaysNote: text("unverified_days_note"),
+    unverifiedDaysCount: integer("unverified_days_count")
+      .default(0)
+      .notNull(),
     reconciliation: jsonb("reconciliation").default(sql`'{}'::jsonb`).notNull(),
     generatedOccurrenceCount: integer("generated_occurrence_count")
       .default(0)
@@ -1832,6 +1843,14 @@ export const moneyPeriodRollovers = pgTable(
     check(
       "money_period_rollovers_unpaid_treatment_check",
       sql`${table.unpaidTreatment} is null or ${table.unpaidTreatment} in ('keep_pending','carry_forward','cancel')`,
+    ),
+    check(
+      "money_period_rollovers_unverified_days_count_check",
+      sql`${table.unverifiedDaysCount} >= 0`,
+    ),
+    check(
+      "money_period_rollovers_unverified_days_note_check",
+      sql`${table.unverifiedDaysNote} is null or char_length(${table.unverifiedDaysNote}) between 3 and 500`,
     ),
     check(
       "money_period_rollovers_reconciliation_check",

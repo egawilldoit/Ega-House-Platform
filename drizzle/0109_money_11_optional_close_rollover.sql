@@ -7,20 +7,26 @@
 --    ever inserted by a date move.
 -- 2. A tracking period may be finalized by the explicit rollover transaction.
 --    `tracking -> rolled_over` remains impossible for a direct table update:
---    the atomic rollover sets a transaction-local marker and a successor link,
---    and this guard re-checks both. A tracking -> ended transition still needs
---    the final-day close, so an ended period keeps its existing meaning.
+--    the atomic rollover sets a non-granted finalization reference and a
+--    successor link, and this guard re-checks both. A tracking -> ended
+--    transition still needs either the final-day close or that same explicit
+--    finalization reference, so an ended period keeps its existing meaning.
 -- 3. Rollover finalization reviews the whole inclusive source period. Leading
 --    days with no close and every other unclosed date are reported exactly and
 --    must be acknowledged with a retained note; they are never fabricated as
 --    close rows. A fully closed source keeps its previous behavior.
 -- 4. The acknowledgement is stored on the rollover receipt (note + exact
---    reviewed count) so the owner's decision remains auditable.
+--    reviewed count) so the owner's decision remains auditable. The reference
+--    column is deliberately outside the authenticated UPDATE grant, so it
+--    cannot be forged by a direct client update.
 --
--- This migration only replaces guards/functions and adds two nullable/defaulted
--- receipt columns. It never edits an applied migration, never inserts close
--- evidence and never rewrites existing rollover or close rows.
+-- This migration only replaces guards/functions and adds nullable/defaulted
+-- columns. It never edits an applied migration, never inserts close evidence
+-- and never rewrites existing rollover or close rows.
 
+ALTER TABLE public.money_periods
+  ADD COLUMN IF NOT EXISTS "finalization_reference" uuid;
+--> statement-breakpoint
 ALTER TABLE public.money_period_rollovers
   ADD COLUMN IF NOT EXISTS "unverified_days_note" text;
 --> statement-breakpoint
@@ -45,6 +51,16 @@ ALTER TABLE public.money_period_rollovers
   );
 --> statement-breakpoint
 
+-- The existing policy-revision trigger watched only UPDATE, so the first saved
+-- savings/emergency target never established the policy version a close needs.
+-- Review the initial plan through the same canonical revision function.
+DROP TRIGGER IF EXISTS "money_budget_target_revision_insert" ON "public"."money_budget_plans";
+CREATE TRIGGER "money_budget_target_revision_insert"
+  AFTER INSERT ON "public"."money_budget_plans"
+  FOR EACH ROW
+  EXECUTE FUNCTION public.record_money_budget_target_revision();
+--> statement-breakpoint
+
 -- Calendar progression is independent of the optional close (MONEY-001 ID-07).
 CREATE OR REPLACE FUNCTION public.enforce_money_period_close_transition()
 RETURNS trigger
@@ -52,11 +68,23 @@ LANGUAGE plpgsql SECURITY DEFINER SET search_path = ''
 AS $guard$
 DECLARE
   v_last_close date;
-  v_rollover_marker text;
   v_close public.money_day_closes;
 BEGIN
+  -- The finalization reference is internal proof written only by the definer
+  -- rollover transaction. Authenticated callers have no UPDATE grant for it.
+  -- It may be set when finalization starts but can never be replaced or cleared.
+  IF NEW.finalization_reference IS DISTINCT FROM OLD.finalization_reference THEN
+    IF OLD.finalization_reference IS NOT NULL
+       OR NEW.finalization_reference IS NULL
+       OR NEW.lifecycle NOT IN ('ended', 'rolled_over') THEN
+      RAISE EXCEPTION 'A period finalization reference is append-only and requires explicit finalization.'
+        USING ERRCODE = '23514';
+    END IF;
+  END IF;
+
   IF NEW.active_date IS NOT DISTINCT FROM OLD.active_date
-     AND NEW.lifecycle IS NOT DISTINCT FROM OLD.lifecycle THEN
+     AND NEW.lifecycle IS NOT DISTINCT FROM OLD.lifecycle
+     AND NEW.finalization_reference IS NOT DISTINCT FROM OLD.finalization_reference THEN
     RETURN NEW;
   END IF;
 
@@ -80,11 +108,11 @@ BEGIN
 
   IF NEW.lifecycle IS DISTINCT FROM OLD.lifecycle THEN
     IF OLD.lifecycle = 'tracking' AND NEW.lifecycle = 'ended' THEN
-      v_rollover_marker := current_setting('ega.money_rollover_source', true);
-      IF v_rollover_marker IS NOT DISTINCT FROM OLD.id::text THEN
-        -- The explicit rollover transaction ends its source in the same
-        -- transaction that creates the single successor. This intermediate
-        -- state is never visible outside that transaction.
+      -- The explicit rollover transaction ends its source with a non-granted
+      -- finalization reference before creating the single successor. This
+      -- intermediate state is never visible outside that transaction. Routine
+      -- finalization still requires the durable final-day close evidence.
+      IF NEW.finalization_reference IS NOT NULL THEN
         RETURN NEW;
       END IF;
       SELECT * INTO v_close FROM public.money_day_closes
@@ -100,9 +128,8 @@ BEGIN
       END IF;
     ELSIF NEW.lifecycle = 'rolled_over'
           AND OLD.lifecycle IN ('tracking', 'ended') THEN
-      v_rollover_marker := current_setting('ega.money_rollover_source', true);
       IF NEW.successor_period_id IS NULL
-         OR v_rollover_marker IS DISTINCT FROM OLD.id::text THEN
+         OR NEW.finalization_reference IS NULL THEN
         RAISE EXCEPTION 'Finalizing a period requires the explicit rollover operation.'
           USING ERRCODE = '23514';
       END IF;
@@ -792,11 +819,11 @@ BEGIN
   -- The explicit finalization owns this transaction. End the reviewed source
   -- before inserting the successor so the owner's one-tracking-period invariant
   -- holds inside the transaction; the final update below links and marks it
-  -- rolled_over. The transaction-local marker is the guard's proof that this is
-  -- the explicit rollover path, not a routine close or a direct table update.
-  PERFORM set_config('ega.money_rollover_source', v_source.id::text, true);
+  -- rolled_over. `finalization_reference` is internal proof written only by this
+  -- definer function and cannot be set through the authenticated column grant.
   UPDATE public.money_periods
   SET lifecycle = 'ended',
+      finalization_reference = v_successor_id,
       version = version + 1,
       updated_at = p_created_at
   WHERE id = v_source.id AND owner_user_id = v_owner
@@ -988,6 +1015,7 @@ BEGIN
   SET lifecycle = 'rolled_over',
       successor_period_id = v_successor_id,
       rolled_over_at = p_created_at,
+      finalization_reference = COALESCE(finalization_reference, v_successor_id),
       version = version + 1,
       updated_at = p_created_at
   WHERE id = v_source.id AND owner_user_id = v_owner

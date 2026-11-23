@@ -34,7 +34,9 @@ test("optional close, reviewed finalization and an accurate primary view", async
   await periodPanel.getByLabel("Opening (MAD)").fill("1000.00");
   await periodPanel.getByLabel("Cutoff date").fill("2026-11-01");
   await periodPanel.getByRole("button", { name: "Save period", exact: true }).click();
-  await expect(periodPanel.getByText("2026-11-01–2026-11-30", { exact: false })).toBeVisible();
+  await expect(
+    periodPanel.getByText("2026-11-01–2026-11-30", { exact: false }).first(),
+  ).toBeVisible();
 
   // Complete the explicit day-start baseline, then set known protections.
   await periodPanel.getByRole("button", { name: "Complete day-start setup", exact: true }).click();
@@ -53,6 +55,11 @@ test("optional close, reviewed finalization and an accurate primary view", async
   await expect(closePanel.getByText("Day close is optional", { exact: false })).toBeVisible();
   await closePanel.getByRole("button", { name: "Close 2026-11-20", exact: true }).click();
   await expect(closePanel.getByText(/Closed 2026-11-20|Retained close/).first()).toBeVisible();
+  // The close's server refresh must land before the settings form is used;
+  // otherwise it would submit the pre-close version and correctly conflict.
+  await expect(periodPanel.getByLabel("Active date", { exact: true })).toHaveValue(
+    "2026-11-21",
+  );
 
   const owner = await ownerClient(owners.ownerA);
   const closeBefore = await owner
@@ -66,7 +73,9 @@ test("optional close, reviewed finalization and an accurate primary view", async
   // --- Move the active date to Nov 23 without closing Nov 21/22.
   await periodPanel.getByLabel("Active date", { exact: true }).fill("2026-11-23");
   await periodPanel.getByRole("button", { name: "Save settings", exact: true }).click();
-  await expect(page.getByText("active 2026-11-23", { exact: false })).toBeVisible();
+  await expect(
+    page.getByText("active 2026-11-23", { exact: false }).first(),
+  ).toBeVisible();
   await expect(page.getByText("21 unverified/unclosed days", { exact: false }).first()).toBeVisible();
 
   // --- Record the Nov 23 expense through the one quick entry.
@@ -207,9 +216,22 @@ test("optional close, reviewed finalization and an accurate primary view", async
   await rolloverPanel
     .getByLabel("Accept closing, restatement or savings differences (retained as provenance)")
     .fill("Savings target versus transfers reviewed");
-  await rolloverPanel.getByRole("button", { name: "Roll over to 2026-12-01", exact: true }).click();
+  const rolloverButton = rolloverPanel.getByRole("button", {
+    name: "Roll over to 2026-12-01",
+    exact: true,
+  });
+  await expect(rolloverButton).toBeEnabled();
+  await rolloverButton.click();
   await expect(page.getByText("Period history", { exact: false })).toBeVisible();
 
+  await expect.poll(async () => {
+    const result = await owner
+      .from("money_period_rollovers")
+      .select("id")
+      .eq("source_period_id", periodId);
+    expect(result.error).toBeNull();
+    return result.data?.length ?? 0;
+  }).toBe(1);
   const receipts = await owner
     .from("money_period_rollovers")
     .select(
@@ -279,11 +301,13 @@ test("one quick entry and one history remain usable on a phone-sized viewport", 
   await page.setViewportSize({ width: 390, height: 844 });
   await openMoney(page);
 
-  // Accessible validation failure before a real write.
+  // Accessible validation failure before a real write. Scope to the form so the
+  // Next.js route announcer is not mistaken for the form error.
+  const quickForm = page.getByRole("form", { name: "Quick financial entry" });
   await page.locator("#quick-amount").fill("not-money");
   await page.getByRole("button", { name: "Record movement", exact: true }).click();
-  await expect(page.getByRole("alert")).toContainText(/amount/i);
-  await expect(page.getByRole("alert")).toBeFocused();
+  await expect(quickForm.getByRole("alert")).toContainText(/amount/i);
+  await expect(quickForm.getByRole("alert")).toBeFocused();
 
   for (const [kind, amount, merchant] of [
     ["income", "20.00", "E2E mobile income"],

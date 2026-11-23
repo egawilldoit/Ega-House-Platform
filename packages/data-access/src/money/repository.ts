@@ -256,7 +256,16 @@ const CLOSE_COLUMNS =
   "id, period_id, close_date, status, note, operation_id, close_fingerprint, expected_period_version, period_version_after, active_date_after, lifecycle_after, is_final_day, algorithm_version, policy_version_id, policy_version, baseline_version, included_movement_ids, snapshot, created_at";
 
 function toMinor(value: unknown): number | null {
-  return typeof value === "number" && Number.isSafeInteger(value) ? value : null;
+  // PostgREST can serialize integer JSON values as either numbers or numeric
+  // strings depending on the driver/path. Accept both, but never a fraction,
+  // blank, boolean or non-finite value.
+  const parsed =
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && value.trim() !== ""
+        ? Number(value)
+        : Number.NaN;
+  return Number.isSafeInteger(parsed) ? parsed : null;
 }
 
 function toCategoryTotals(value: unknown): Partial<Record<ExpenseCategory, number>> {
@@ -738,7 +747,12 @@ export class SupabaseMoneyPeriodRepository implements MoneyPeriodRepository {
     }
     const recordedCashMinor = toMinor(row.recordedCashMinor);
     const unpaidCommitmentsMinor = toMinor(row.unpaidCommitmentsMinor);
-    const savingsFundedMinor = toMinor(row.savingsFundedMinor);
+    // The RPC names this field `fundedSavingsMinor`; the domain/repository
+    // port calls the same amount `savingsFundedMinor`. Accept the legacy key
+    // too so a pre-upgrade read never turns a known balance into unavailable.
+    const savingsFundedMinor = toMinor(
+      row.fundedSavingsMinor ?? row.savingsFundedMinor,
+    );
     const emergencyUsedMinor = toMinor(row.emergencyUsedMinor);
     if (
       recordedCashMinor === null

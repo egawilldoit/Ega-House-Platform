@@ -4,6 +4,7 @@ import {
   assessMoneyRollover,
   buildCarryForwardOpening,
   buildVerifiedRolloverOpening,
+  canonicalMoneyRolloverPayload,
   defaultMoneyRolloverRange,
   generateMoneyPeriodWeekWindows,
   moneyRolloverSourceFailure,
@@ -567,6 +568,23 @@ export async function getMoneyRolloverPreview(
   return applicationSuccess(previewOf(prepared.value));
 }
 
+/**
+ * Stable rollover request identity. The canonical payload omits a null
+ * unverified-days note, so receipts written before MONEY-001-A keep replaying
+ * with the same operation id instead of being mistaken for a different request.
+ */
+export function moneyRolloverRequestFingerprint(
+  operation: string,
+  values: MoneyRolloverValues,
+): string {
+  return sha256Hex(
+    JSON.stringify({
+      operation,
+      payload: JSON.parse(canonicalMoneyRolloverPayload(values)),
+    }),
+  );
+}
+
 /** Roll over exactly once. Retries replay the original result, never a duplicate. */
 export async function rolloverMoneyPeriod(
   actor: AuthenticatedActor,
@@ -596,8 +614,9 @@ export async function rolloverMoneyPeriod(
   if (!parsed.ok) return applicationFailure(parsed.message, "validation");
 
   const operation = operationId.trim();
-  const requestFingerprint = sha256Hex(
-    JSON.stringify({ operation, payload: parsed.value }),
+  const requestFingerprint = moneyRolloverRequestFingerprint(
+    operation,
+    parsed.value,
   );
 
   // Replay before any decision check: an identical retry must return the

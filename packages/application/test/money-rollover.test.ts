@@ -6,8 +6,10 @@ import {
   getMoneyRolloverPreview,
   getMoneyRolloverPreviewForPeriod,
   listMoneyRolloverBridges,
+  moneyRolloverRequestFingerprint,
   rolloverMoneyPeriod,
 } from "../src/money/rollover";
+import { sha256Hex } from "../src/shared/hash";
 import type {
   MoneyRolloverRecord,
   MoneyRolloverRepository,
@@ -15,6 +17,7 @@ import type {
   MoneyRolloverWriteInput,
 } from "../src/money/rollover-ports";
 import type { MoneyPeriod } from "@ega/domain/money";
+import { parseMoneyRolloverInput } from "@ega/domain/money-rollover";
 
 const actor = createAuthenticatedActor("11111111-1111-4111-8111-111111111111");
 
@@ -122,6 +125,29 @@ function baseInput(overrides: Record<string, unknown> = {}) {
     ...overrides,
   };
 }
+
+test("an existing rollover operation keeps its pre-MONEY-001-A fingerprint", () => {
+  const parsed = parseMoneyRolloverInput(baseInput());
+  assert.equal(parsed.ok, true);
+  if (!parsed.ok) return;
+  const operation = "750e8400-e29b-41d4-a716-446655440000";
+  // Shape of the payload before acceptUnverifiedDaysNote was added.
+  const legacyPayload = {
+    sourcePeriodId: parsed.value.sourcePeriodId,
+    expectedVersion: parsed.value.expectedVersion,
+    startDate: parsed.value.startDate,
+    endDate: parsed.value.endDate,
+    opening: parsed.value.opening,
+    unpaidItems: null,
+    settingsOverrides: null,
+    allowUncoveredDays: false,
+    acceptClosingDifferenceNote: null,
+  };
+  assert.equal(
+    moneyRolloverRequestFingerprint(operation, parsed.value),
+    sha256Hex(JSON.stringify({ operation, payload: legacyPayload })),
+  );
+});
 
 function context(overrides: Partial<MoneyRolloverSourceContext> = {}): MoneyRolloverSourceContext {
   return {

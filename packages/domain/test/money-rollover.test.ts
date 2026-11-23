@@ -134,7 +134,7 @@ test("unverified-day acknowledgment is a bounded retained note", () => {
     startDate: "2026-12-01",
     endDate: "2026-12-19",
     allowUncoveredDays: false,
-    opening: { mode: "carry_forward" },
+    opening: { mode: "carry_forward" as const },
   };
   assert.equal(
     parseMoneyRolloverInput({ ...base, acceptUnverifiedDaysNote: "no" }).ok,

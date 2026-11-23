@@ -295,12 +295,13 @@ test("reserve inputs map one canonical database read", async () => {
   ]);
   const result = await repository(fake).getReserveInputs(ACTOR, PERIOD_ID, "2026-11-11");
   assert.equal(result.ok, true);
-  if (result.ok && result.value.available) {
-    assert.equal(result.value.recordedCashMinor, 49_900);
-    assert.equal(result.value.unpaidCommitmentsMinor, 3_000);
-    assert.equal(result.value.savingsFundedMinor, 5_000);
-    assert.equal(result.value.emergencyUsedMinor, 1_000);
+  if (!result.ok || !result.value.available) {
+    throw new Error("available reserve inputs were incorrectly reported as incomplete");
   }
+  assert.equal(result.value.recordedCashMinor, 49_900);
+  assert.equal(result.value.unpaidCommitmentsMinor, 3_000);
+  assert.equal(result.value.savingsFundedMinor, 5_000);
+  assert.equal(result.value.emergencyUsedMinor, 1_000);
   assert.equal(fake.rpcCalls[0]!.name, "money_reserve_inputs");
   assert.deepEqual(fake.rpcCalls[0]!.params, {
     p_period_id: PERIOD_ID,
