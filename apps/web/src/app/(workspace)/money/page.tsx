@@ -300,7 +300,7 @@ export default async function MoneyPage({ searchParams }: Props) {
         offset={offset}
         kind={kind}
         kindOptions={MONEY_HISTORY_KIND_OPTIONS}
-        periodId={selectedPeriodId}
+        periodId={selectedPeriodId ?? moneyState?.period?.id ?? null}
         timezone={timezone}
         selectedPeriodLabel={selectedPeriodLabel}
         historyScopeLabel={
