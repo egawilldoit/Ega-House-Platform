@@ -188,6 +188,7 @@ class FakeRepository implements CalendarSyncRepository {
   items = new Map<string, (CalendarRunItemDraft & { runId: string })[]>();
   mappings = new Map<string, CalendarMappingRecord>();
   jobs = new Map<string, CalendarJobRecord>();
+  failNextOrphanDeleteCommit = false;
   private jobCounter = 0;
 
   addTask(row: CalendarTaskScanRecord) {
@@ -403,7 +404,17 @@ class FakeRepository implements CalendarSyncRepository {
   async commitScanPage(
     _actor: AuthenticatedActor,
     commit: CalendarScanCommit,
-  ): Promise<{ ok: true; value: boolean }> {
+  ): Promise<
+    | { ok: true; value: boolean }
+    | { ok: false; error: { code: "unknown" } }
+  > {
+    if (
+      this.failNextOrphanDeleteCommit &&
+      commit.jobs.some((job) => job.operation === "delete")
+    ) {
+      this.failNextOrphanDeleteCommit = false;
+      return { ok: false, error: { code: "unknown" } };
+    }
     const existing = this.runItems(commit.runId).filter(
       (item) => !commit.items.some((next) => next.taskId === item.taskId),
     );
@@ -461,7 +472,16 @@ class FakeRepository implements CalendarSyncRepository {
     return {
       ok: true,
       value: [...this.mappings.values()].filter(
-        (mapping) => mapping.status === "active" && !this.tasks.has(mapping.taskId),
+        (mapping) =>
+          mapping.status === "active" &&
+          !this.tasks.has(mapping.taskId) &&
+          ![...this.jobs.values()].some(
+            (job) =>
+              job.taskId === mapping.taskId &&
+              job.destination.destinationKey ===
+                mapping.destination.destinationKey &&
+              ["pending", "processing"].includes(job.status),
+          ),
       ),
     };
   }
@@ -547,6 +567,7 @@ class FakeRepository implements CalendarSyncRepository {
         generation: number;
         payloadHash: string | null;
         exclusionReason: CalendarRunItemDraft["exclusionReason"];
+        mappingRemoval?: { eventId: string; generation: number } | null;
       };
     },
   ) {
@@ -554,6 +575,25 @@ class FakeRepository implements CalendarSyncRepository {
     if (!job || job.claimToken !== input.claimToken) {
       return { ok: true as const, value: false };
     }
+
+    const removal = input.completion.mappingRemoval ?? null;
+    if (removal) {
+      const key = this.mappingKey(job.taskId, job.destination.destinationKey);
+      const mapping = this.mappings.get(key);
+      if (
+        mapping &&
+        mapping.status === "active" &&
+        mapping.eventId === removal.eventId &&
+        mapping.generation === removal.generation
+      ) {
+        this.mappings.set(key, {
+          ...mapping,
+          status: "removed",
+          metadataVerified: true,
+        });
+      }
+    }
+
     this.jobs.set(job.id, {
       ...job,
       status: "succeeded",
@@ -563,6 +603,22 @@ class FakeRepository implements CalendarSyncRepository {
       payloadHash: input.completion.payloadHash,
       claimToken: null,
     });
+
+    if (job.runId) {
+      const items = this.runItems(job.runId).map((item) =>
+        item.taskId === job.taskId
+          ? {
+              ...item,
+              outcome: input.completion.outcome,
+              exclusionReason: input.completion.exclusionReason,
+              eventId: input.completion.eventId,
+              payloadHash: input.completion.payloadHash,
+            }
+          : item,
+      );
+      this.items.set(job.runId, items);
+    }
+
     return { ok: true as const, value: true };
   }
 
@@ -622,21 +678,6 @@ class FakeRepository implements CalendarSyncRepository {
     };
     this.mappings.set(key, mapping);
     return { ok: true as const, value: mapping };
-  }
-
-  async markMappingRemoved(
-    _actor: AuthenticatedActor,
-    input: { mapping: CalendarMappingRecord; nowIso: string },
-  ) {
-    const key = this.mappingKey(
-      input.mapping.taskId,
-      input.mapping.destination.destinationKey,
-    );
-    const mapping = this.mappings.get(key);
-    if (mapping && (!input.mapping.eventId || mapping.eventId === input.mapping.eventId)) {
-      this.mappings.set(key, { ...mapping, status: "removed", updatedAt: input.nowIso });
-    }
-    return { ok: true as const, value: undefined };
   }
 
   async updateTaskSyncState(
@@ -856,6 +897,158 @@ test("manual sync removes a completed task event and keeps zero active events", 
   assert.equal(provider.deleteCalls, 1);
   assert.equal(provider.events.size, 0);
   assert.equal(result.data.run?.counts.removed, 1);
+});
+
+test("archived task removal retires the mapping, then republishes one new generation", async () => {
+  const repository = new FakeRepository();
+  const provider = new FakeProvider();
+  repository.addTask(task());
+  const deps = buildDeps(repository, provider);
+
+  await startCalendarSync(actor, deps);
+  const original = [...provider.events.values()][0];
+  assert.ok(original);
+  const archivedAt = "2026-05-10T11:00:00.000Z";
+  repository.addTask(
+    task({
+      status: "done",
+      completedAt: archivedAt,
+      updatedAt: archivedAt,
+    }),
+  );
+
+  const removed = await startCalendarSync(actor, deps);
+  assert.equal(removed.ok, true);
+  if (!removed.ok) return;
+  assert.equal(provider.deleteCalls, 1);
+  assert.equal(provider.events.size, 0);
+  assert.equal(removed.data.run?.counts.removed, 1);
+  assert.equal(
+    [...repository.mappings.values()][0]?.status,
+    "removed",
+    "the archive delete must retire the mapping only after Google confirms removal",
+  );
+
+  const stillArchived = await startCalendarSync(actor, deps);
+  assert.equal(stillArchived.ok, true);
+  if (!stillArchived.ok) return;
+  assert.equal(
+    provider.deleteCalls,
+    1,
+    "an archived task with no active mapping must not queue another delete",
+  );
+  assert.equal(stillArchived.data.run?.counts.excluded, 1);
+
+  repository.addTask(task({ updatedAt: "2026-05-10T12:00:00.000Z" }));
+  const republished = await startCalendarSync(actor, deps);
+  assert.equal(republished.ok, true);
+  assert.equal(provider.events.size, 1);
+  const replacement = [...provider.events.values()][0];
+  assert.notEqual(replacement.id, original.id);
+  assert.equal(replacement.privateProperties.generation, "2");
+  assert.equal([...repository.mappings.values()][0]?.status, "active");
+  assert.equal([...repository.mappings.values()][0]?.generation, 2);
+});
+
+test("failed orphan enqueue keeps the mapping active and a retry removes the event", async () => {
+  const repository = new FakeRepository();
+  const provider = new FakeProvider();
+  repository.addTask(task());
+  const deps = buildDeps(repository, provider);
+
+  await startCalendarSync(actor, deps);
+  assert.equal(provider.events.size, 1);
+  repository.tasks.delete("task-1");
+  repository.failNextOrphanDeleteCommit = true;
+
+  const interrupted = await startCalendarSync(actor, deps);
+  assert.equal(interrupted.ok, true);
+  assert.equal(provider.events.size, 1, "the Google event must still exist");
+  assert.equal(
+    [...repository.mappings.values()][0]?.status,
+    "active",
+    "a failed orphan enqueue must not retire the mapping before the delete job is durable",
+  );
+  assert.equal(
+    [...repository.jobs.values()].filter((job) => job.operation === "delete").length,
+    0,
+  );
+
+  const retried = await startCalendarSync(actor, deps);
+  assert.equal(retried.ok, true);
+  if (!retried.ok) return;
+  assert.equal(provider.deleteCalls, 1);
+  assert.equal(provider.events.size, 0);
+  assert.equal([...repository.mappings.values()][0]?.status, "removed");
+  assert.equal(retried.data.run?.counts.removed, 1);
+});
+
+test("a stale delete completion cannot retire a newer mapping generation", async () => {
+  const repository = new FakeRepository();
+  const provider = new FakeProvider();
+  repository.addTask(task());
+  const deps = buildDeps(repository, provider);
+
+  await startCalendarSync(actor, deps);
+  const original = [...provider.events.values()][0];
+  assert.ok(original);
+
+  // A republish completed after the delete was queued: the mapping now points
+  // at generation 2 while the queued delete still targets generation 1.
+  const republishedEventId = "event-generation-2";
+  provider.events.delete(original.id);
+  provider.events.set(republishedEventId, {
+    id: republishedEventId,
+    status: "confirmed",
+    summary: "Republished",
+    start: { dateTime: "2026-05-10T09:00:00.000Z" },
+    end: { dateTime: "2026-05-10T10:00:00.000Z" },
+    privateProperties: {
+      source: "ega-house",
+      task_id: "task-1",
+      owner_user_id: actor.userId,
+      destination_key: destination.destinationKey,
+      generation: "2",
+    },
+    raw: {},
+  });
+  const key = `${actor.userId}|task-1|${destination.destinationKey}`;
+  const previous = repository.mappings.get(key);
+  assert.ok(previous);
+  repository.mappings.set(key, {
+    ...previous,
+    eventId: republishedEventId,
+    generation: 2,
+    status: "active",
+  });
+  repository.jobs.set("stale-delete", {
+    id: "stale-delete",
+    ownerUserId: actor.userId,
+    taskId: "task-1",
+    runId: null,
+    destination,
+    operation: "delete",
+    status: "pending",
+    attempts: 0,
+    eventId: original.id,
+    generation: 1,
+    eventExists: true,
+    payloadHash: null,
+    claimToken: null,
+    permanentFailure: false,
+    exclusionReason: null,
+    lastError: null,
+    scheduledAt: "2026-05-10T08:00:00.000Z",
+    taskUpdatedAt: "2026-05-10T08:00:00.000Z",
+  });
+
+  const result = await processCalendarRecovery(actor, deps);
+  assert.equal(result.ok, true);
+  assert.equal(provider.events.has(original.id), false);
+  assert.equal(provider.events.has(republishedEventId), true);
+  assert.equal(repository.mappings.get(key)?.status, "active");
+  assert.equal(repository.mappings.get(key)?.generation, 2);
+  assert.equal(repository.jobs.get("stale-delete")?.status, "succeeded");
 });
 
 test("manual sync excludes deadline-only tasks with a visible reason", async () => {

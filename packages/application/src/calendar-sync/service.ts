@@ -390,7 +390,6 @@ type PlannedScanItem = Readonly<{
 }>;
 
 async function planTaskForScan(input: {
-  actor: AuthenticatedActor;
   deps: CalendarSyncDependencies;
   task: CalendarTaskScanRecord;
   destination: CalendarSyncDestination;
@@ -542,14 +541,12 @@ async function planTaskForScan(input: {
     }
 
     // The managed event is absent from the complete tagged-event listing.
-    // A verified mapping is proof of external deletion; a legacy mapping gets
-    // one bounded update attempt, which repairs or advances the generation.
+    // A verified mapping is proof of external deletion. Keep that mapping
+    // active until the replacement publication finalizes; the upsert itself
+    // advances the mapping generation, so a crash before the job is durable
+    // cannot hide an event that still exists. A legacy mapping gets one
+    // bounded update attempt, which repairs or advances the generation.
     if (mapping.metadataVerified) {
-      await input.deps.repository.markMappingRemoved(input.actor, {
-        mapping,
-        nowIso: task.updatedAt,
-      });
-
       const eventId = deterministicCalendarEventId({
         ownerUserId,
         taskId: task.id,
@@ -685,7 +682,6 @@ async function scanRun(
         latest: null,
       };
       const planned = await planTaskForScan({
-        actor,
         deps,
         task,
         destination: run.destination,
@@ -763,10 +759,11 @@ async function scanRun(
     const jobs: CalendarScanJobDraft[] = [];
     const items: CalendarRunItemDraft[] = [];
     for (const orphan of orphans.value) {
-      await deps.repository.markMappingRemoved(actor, {
-        mapping: orphan,
-        nowIso: input.nowIso,
-      });
+      // The mapping stays active until Google confirms the delete and the job
+      // completion settles atomically. If this page never commits, the next
+      // pass sees the same orphan instead of a removed mapping hiding a live
+      // Google event. The listing only excludes mappings that already have
+      // active queued work, so this loop still terminates.
       items.push({
         taskId: orphan.taskId,
         outcome: "pending",
@@ -832,6 +829,7 @@ async function completeJobOutcome(
     payloadHash: string | null;
     generation: number;
     exclusionReason: CalendarScanJobDraft["exclusionReason"];
+    mappingRemoval?: { eventId: string; generation: number } | null;
     nowIso: string;
     taskSyncStatus: "synced" | "failed" | "skipped";
     lastError?: string | null;
@@ -846,6 +844,7 @@ async function completeJobOutcome(
       generation: input.generation,
       payloadHash: input.payloadHash,
       exclusionReason: input.exclusionReason,
+      mappingRemoval: input.mappingRemoval ?? null,
       lastError: input.lastError ?? null,
       taskSyncStatus: input.taskSyncStatus,
       taskFailureReason: input.lastError ?? null,
@@ -854,8 +853,9 @@ async function completeJobOutcome(
   });
 
   if (!completed.ok || !completed.value) {
-    // Another worker reclaimed this lease. Do not mutate mappings or run counts
-    // from an expired claim.
+    // Another worker reclaimed this lease. Do not mutate mappings, run items or
+    // task state from an expired claim; the settlement is atomic in the
+    // repository and leaves the mapping active for the newer claim.
     return false;
   }
 
@@ -869,18 +869,6 @@ async function completeJobOutcome(
       eventId: input.eventId,
       status: input.taskSyncStatus,
       failureReason: input.lastError ?? null,
-      nowIso: input.nowIso,
-    });
-  }
-
-  if (input.job.runId) {
-    await deps.repository.updateRunItem(actor, {
-      runId: input.job.runId,
-      taskId: input.job.taskId,
-      outcome: input.outcome,
-      exclusionReason: input.exclusionReason,
-      eventId: input.eventId,
-      payloadHash: input.payloadHash,
       nowIso: input.nowIso,
     });
   }
@@ -1058,6 +1046,9 @@ async function processJob(
         payloadHash: null,
         generation: job.generation,
         exclusionReason: job.exclusionReason,
+        mappingRemoval: job.eventId
+          ? { eventId: job.eventId, generation: job.generation }
+          : null,
         nowIso,
         taskSyncStatus: "skipped",
       });
@@ -1141,6 +1132,9 @@ async function processJob(
       payloadHash: null,
       generation: job.generation,
       exclusionReason: built.plan.exclusionReason,
+      mappingRemoval: job.eventId
+        ? { eventId: job.eventId, generation: job.generation }
+        : null,
       nowIso,
       taskSyncStatus: "skipped",
     });
@@ -1184,25 +1178,6 @@ async function processJob(
     }
 
     refreshedCredentials = deleted.refreshedCredentials;
-    if (!(await claimStillCurrent(actor, deps, job))) {
-      return { refreshedCredentials };
-    }
-    await deps.repository.markMappingRemoved(actor, {
-      mapping: {
-        id: "",
-        ownerUserId: job.ownerUserId,
-        taskId: job.taskId,
-        destination: job.destination,
-        eventId: payload.eventId,
-        generation: job.generation,
-        status: "active",
-        metadataVerified: true,
-        payloadHash: null,
-        lastSyncedAt: null,
-        updatedAt: nowIso,
-      },
-      nowIso,
-    });
     await completeJobOutcome(actor, deps, {
       job,
       connection,
@@ -1211,6 +1186,7 @@ async function processJob(
       payloadHash: null,
       generation: job.generation,
       exclusionReason: job.exclusionReason,
+      mappingRemoval: { eventId: payload.eventId, generation: job.generation },
       nowIso,
       taskSyncStatus: "skipped",
     });
@@ -1224,28 +1200,12 @@ async function processJob(
   if (!writeResult.ok && writeResult.error.kind === "not_found" && job.eventId) {
     // The managed event was deleted externally. Advance the generation only
     // after the deletion is confirmed, then create exactly one replacement.
-    // The old mapping is retired first so the new mapping can never be marked
-    // removed by the stale generation cleanup that follows.
+    // The mapping stays on the old generation until the upsert below retires
+    // it, so a crash before the replacement is published cannot retire a
+    // mapping that a newer generation still owns.
     if (!(await claimStillCurrent(actor, deps, job))) {
       return { refreshedCredentials };
     }
-
-    await deps.repository.markMappingRemoved(actor, {
-      mapping: {
-        id: "",
-        ownerUserId: job.ownerUserId,
-        taskId: job.taskId,
-        destination: job.destination,
-        eventId: payload.eventId,
-        generation: job.generation,
-        status: "active",
-        metadataVerified: false,
-        payloadHash: null,
-        lastSyncedAt: null,
-        updatedAt: nowIso,
-      },
-      nowIso,
-    });
 
     const generation = job.generation + 1;
     const eventId = deterministicCalendarEventId({

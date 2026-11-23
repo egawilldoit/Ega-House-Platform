@@ -782,28 +782,22 @@ export class SupabaseCalendarSyncRepository implements CalendarSyncRepository {
       nowIso: string;
     },
   ): Promise<RepositoryResult<boolean>> {
-    const result = await this.supabase
-      .from("calendar_sync_jobs")
-      .update({
-        status: "succeeded",
-        outcome: input.completion.outcome,
-        calendar_event_id: input.completion.eventId,
-        generation: input.completion.generation,
-        event_exists: Boolean(input.completion.eventId),
-        payload_hash: input.completion.payloadHash,
-        exclusion_reason: input.completion.exclusionReason,
-        last_error: input.completion.lastError ?? null,
-        permanent_failure: Boolean(input.completion.permanentFailure),
-        claim_token: null,
-        lease_expires_at: null,
-        locked_at: null,
-        updated_at: input.nowIso,
-      } as never)
-      .eq("id", input.job.id)
-      .eq("status", "processing")
-      .eq("claim_token", input.claimToken)
-      .select("id")
-      .maybeSingle();
+    const removal = input.completion.mappingRemoval ?? null;
+    const result = await this.supabase.rpc("calendar_sync_complete_job", {
+      p_job_id: input.job.id,
+      p_claim_token: input.claimToken,
+      p_outcome: input.completion.outcome,
+      p_event_id: input.completion.eventId,
+      p_generation: input.completion.generation,
+      p_payload_hash: input.completion.payloadHash,
+      p_exclusion_reason: input.completion.exclusionReason,
+      p_last_error: input.completion.lastError ?? null,
+      p_permanent_failure: Boolean(input.completion.permanentFailure),
+      p_remove_mapping: Boolean(removal),
+      p_removed_event_id: removal?.eventId ?? null,
+      p_removed_generation: removal?.generation ?? null,
+      p_now: input.nowIso,
+    });
     if (result.error) return failure(result.error);
     return { ok: true, value: Boolean(result.data) };
   }
@@ -895,24 +889,6 @@ export class SupabaseCalendarSyncRepository implements CalendarSyncRepository {
     const row = asRows(result.data)[0];
     if (!row) return failure({ message: "Calendar mapping was not persisted." });
     return { ok: true, value: mapMapping(row) };
-  }
-
-  async markMappingRemoved(
-    _actor: AuthenticatedActor,
-    input: { mapping: CalendarMappingRecord; nowIso: string },
-  ): Promise<RepositoryResult<void>> {
-    let query = this.supabase
-      .from("calendar_event_mappings")
-      .update({ status: "removed", updated_at: input.nowIso } as never)
-      .eq("owner_user_id", input.mapping.ownerUserId)
-      .eq("task_id", input.mapping.taskId)
-      .eq("destination_key", input.mapping.destination.destinationKey);
-    if (input.mapping.eventId) {
-      query = query.eq("event_id", input.mapping.eventId);
-    }
-    const result = await query;
-    if (result.error) return failure(result.error);
-    return { ok: true, value: undefined };
   }
 
   async updateTaskSyncState(

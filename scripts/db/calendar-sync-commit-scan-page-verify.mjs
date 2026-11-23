@@ -29,6 +29,15 @@
  *   RELEASE - a released or retryably failed claim folds into a newer pending
  *           edit the same way, without recording the older failure against
  *           newer work; an unsuperseded retry keeps its backoff and attempts.
+ *   ORPHAN - a mapping is retired only after its queued delete is durable and
+ *           Google confirms removal. A failed enqueue leaves the mapping active
+ *           and persists no job or run item.
+ *   SETTLE - `calendar_sync_complete_job` settles the job, confirmed mapping
+ *           removal and run item in one claim-guarded transaction. A stale token
+ *           or a failed item write rolls all three back, and a late old-generation
+ *           delete cannot retire a mapping republished at a newer generation.
+ *   REPUBLISH - the current-generation delete retires the newer mapping once.
+ *   ORPHAN-SETTLE - the confirmed orphan delete retires mapping, job and item.
  *
  * Usage:
  *   node --import tsx scripts/db/calendar-sync-commit-scan-page-verify.mjs \
@@ -77,6 +86,20 @@ const NOW_RECOVER = "2026-11-23T10:10:00+00:00";
 const NOW_EDIT_RELEASE = "2026-11-23T10:11:00+00:00";
 const NOW_RELEASE = "2026-11-23T10:12:00+00:00";
 const RETRY_AT = "2026-11-23T10:13:00+00:00";
+const OWNER_REMOVAL = "21212121-2121-4121-8121-212121212121";
+const RUN_REMOVAL = "22222222-2222-4222-8222-222222222222";
+const TASK_REMOVAL = "23232323-2323-4323-8323-232323232323";
+const TASK_ORPHAN = "24242424-2424-4424-8424-242424242424";
+const DESTINATION_REMOVAL = "proof-removal|primary";
+const ORPHAN_SCAN_CLAIM = "25252525-2525-4525-8525-252525252525";
+const ORPHAN_SCAN_WRONG_CLAIM = "26262626-2626-4626-8626-262626262626";
+const ORPHAN_JOB_CLAIM = "27272727-2727-4727-8727-272727272727";
+const REMOVAL_JOB_CLAIM = "28282828-2828-4828-8828-282828282828";
+const REMOVAL_WRONG_CLAIM = "29292929-2929-4929-8929-292929292929";
+const REMOVAL_REPUBLISH_CLAIM = "31313131-3131-4131-8131-313131313131";
+const TASK_REMOVAL_REPUBLISH_JOB = "32323232-3232-4232-8232-323232323232";
+const TASK_REMOVAL_JOB = "33333333-3333-4333-8333-333333333333";
+const NOW_REMOVAL = "2026-11-23T11:00:00+00:00";
 
 function parseArgs() {
   const args = {};
@@ -329,6 +352,70 @@ function releaseJobsQuery(sql, jobIds, claimToken, nowIso, settlement = {}) {
       ${settlement.scheduledAt ?? null}::timestamptz
     )
   `;
+}
+
+function completeJobQuery(sql, input) {
+  return sql`
+    SELECT public.calendar_sync_complete_job(
+      ${input.jobId}::uuid,
+      ${input.claimToken}::uuid,
+      ${input.outcome}::varchar,
+      ${input.eventId ?? null}::text,
+      ${input.generation}::integer,
+      ${input.payloadHash ?? null}::text,
+      ${input.exclusionReason ?? null}::text,
+      ${input.lastError ?? null}::text,
+      ${Boolean(input.permanentFailure)}::boolean,
+      ${Boolean(input.removeMapping)}::boolean,
+      ${input.removedEventId ?? null}::text,
+      ${input.removedGeneration ?? null}::integer,
+      ${input.nowIso}::timestamptz
+    ) AS completed
+  `;
+}
+
+function orphanMappingsQuery(sql, ownerUserId, destinationKey) {
+  return sql`
+    SELECT task_id, event_id, generation, status
+    FROM public.calendar_sync_list_orphan_mappings(
+      ${ownerUserId}::uuid,
+      ${destinationKey}::text,
+      ${10}::integer
+    )
+  `;
+}
+
+function removalCommit(overrides = {}) {
+  return normalizeCommit({
+    runId: RUN_REMOVAL,
+    claimToken: ORPHAN_SCAN_CLAIM,
+    nextCursor: null,
+    scanComplete: true,
+    items: [
+      {
+        taskId: TASK_ORPHAN,
+        outcome: "pending",
+        exclusionReason: null,
+        eventId: null,
+        payloadHash: null,
+        errorMessage: null,
+      },
+    ],
+    jobs: [
+      {
+        taskId: TASK_ORPHAN,
+        operation: "delete",
+        eventId: "orphan-event",
+        generation: 1,
+        eventExists: true,
+        payloadHash: null,
+        exclusionReason: null,
+        taskUpdatedAt: NOW_REMOVAL,
+      },
+    ],
+    nowIso: NOW_REMOVAL,
+    ...overrides,
+  });
 }
 
 function editDrafts(input) {
@@ -961,6 +1048,398 @@ async function main() {
     log(
       "RELEASE",
       "release and retryable failure fold into newer edits and preserve backoff without duplicates",
+    );
+
+    // ---------------------------------------------------------------------
+    // Fix 5: a mapping is retired only after Google confirms removal, and the
+    // mapping/job/run-item settlement is one claim-guarded transaction.
+    // ---------------------------------------------------------------------
+    await sql.unsafe(
+      `INSERT INTO auth.users (id, email)
+       VALUES ($1, 'proof-removal@example.test')
+       ON CONFLICT (id) DO NOTHING`,
+      [OWNER_REMOVAL],
+    );
+    await sql.unsafe(
+      `INSERT INTO public.calendar_sync_runs (
+         id, owner_user_id, destination_key, google_account_subject,
+         google_account_email, calendar_id, status
+       )
+       VALUES ($1, $2, $3, 'proof-removal', 'proof-removal@example.test',
+               'primary', 'active')`,
+      [RUN_REMOVAL, OWNER_REMOVAL, DESTINATION_REMOVAL],
+    );
+    await sql.unsafe(
+      `INSERT INTO public.calendar_event_mappings (
+         owner_user_id, task_id, destination_key, google_account_subject,
+         google_account_email, calendar_id, event_id, generation, status,
+         metadata_verified, updated_at
+       )
+       VALUES
+         ($1, $2, $3, 'proof-removal', 'proof-removal@example.test', 'primary',
+          'event-generation-2', 2, 'active', true, $4::timestamptz),
+         ($1, $5, $3, 'proof-removal', 'proof-removal@example.test', 'primary',
+          'orphan-event', 1, 'active', true, $4::timestamptz)`,
+      [OWNER_REMOVAL, TASK_REMOVAL, DESTINATION_REMOVAL, NOW_REMOVAL, TASK_ORPHAN],
+    );
+    await sql.unsafe(
+      `INSERT INTO public.calendar_sync_run_items (
+         run_id, owner_user_id, task_id, outcome, updated_at
+       )
+       VALUES ($1, $2, $3, 'pending', $4::timestamptz)`,
+      [RUN_REMOVAL, OWNER_REMOVAL, TASK_REMOVAL, NOW_REMOVAL],
+    );
+    await sql.unsafe(
+      `INSERT INTO public.calendar_sync_jobs (
+         id, owner_user_id, task_id, calendar_event_id, operation, status,
+         attempts, updated_at, queue_version, run_id, destination_key,
+         google_account_subject, google_account_email, calendar_id, generation,
+         event_exists, claim_token, lease_expires_at, scheduled_at,
+         payload_hash, permanent_failure
+       )
+       VALUES ($1, $2, $3, 'event-generation-1', 'delete', 'processing', 1,
+               $4::timestamptz, 2, $5, $6, 'proof-removal',
+               'proof-removal@example.test', 'primary', 1, true, $7,
+               '2026-11-23T11:05:00+00:00', $4::timestamptz, NULL, false)`,
+      [
+        TASK_REMOVAL_JOB,
+        OWNER_REMOVAL,
+        TASK_REMOVAL,
+        NOW_REMOVAL,
+        RUN_REMOVAL,
+        DESTINATION_REMOVAL,
+        REMOVAL_JOB_CLAIM,
+      ],
+    );
+
+    const [removalScanClaim] = await sql`
+      SELECT public.calendar_sync_claim_run_scan(
+        ${RUN_REMOVAL}::uuid,
+        ${ORPHAN_SCAN_CLAIM}::uuid,
+        ${NOW_REMOVAL}::timestamptz,
+        ${300}::integer
+      ) AS claimed
+    `;
+    assert(removalScanClaim.claimed === true, "the removal run must be scannable");
+
+    // A mapping with an active processing job is already represented in the
+    // queue. Listing it again would enqueue duplicate orphan work.
+    const orphansBefore = await orphanMappingsQuery(
+      sql,
+      OWNER_REMOVAL,
+      DESTINATION_REMOVAL,
+    );
+    assert(orphansBefore.length === 1, "only the jobless orphan mapping must be listed");
+    assert(orphansBefore[0].task_id === TASK_ORPHAN, "the listed mapping must be the orphan");
+
+    // Crash before the delete job is durable: the claim token no longer matches,
+    // so the commit fails and neither the mapping nor a partial job is changed.
+    const [failedRemovalCommit] = await commitQuery(
+      sql,
+      removalCommit({ claimToken: ORPHAN_SCAN_WRONG_CLAIM }),
+    );
+    assert(
+      failedRemovalCommit.committed === false,
+      "a stale scan claim must not commit the orphan delete",
+    );
+    const [orphanAfterFailure] = await sql`
+      SELECT status, event_id FROM public.calendar_event_mappings
+      WHERE owner_user_id = ${OWNER_REMOVAL}::uuid
+        AND task_id = ${TASK_ORPHAN}::uuid
+        AND destination_key = ${DESTINATION_REMOVAL}::text
+    `;
+    assert(
+      orphanAfterFailure.status === "active",
+      "a failed orphan enqueue must keep the mapping active",
+    );
+    assert(
+      orphanAfterFailure.event_id === "orphan-event",
+      "a failed orphan enqueue must keep the mapped Google event",
+    );
+    const [orphanJobsAfterFailure] = await sql`
+      SELECT count(*)::integer AS count FROM public.calendar_sync_jobs
+      WHERE owner_user_id = ${OWNER_REMOVAL}::uuid
+        AND task_id = ${TASK_ORPHAN}::uuid
+    `;
+    assert(orphanJobsAfterFailure.count === 0, "a failed enqueue must persist no job");
+    const [orphanItemsAfterFailure] = await sql`
+      SELECT count(*)::integer AS count FROM public.calendar_sync_run_items
+      WHERE run_id = ${RUN_REMOVAL}::uuid AND task_id = ${TASK_ORPHAN}::uuid
+    `;
+    assert(orphanItemsAfterFailure.count === 0, "a failed enqueue must persist no item");
+
+    // The same page with the active claim commits the delete job while the
+    // mapping stays active until that job's completion confirms removal.
+    const [removalCommitted] = await commitQuery(sql, removalCommit());
+    assert(removalCommitted.committed === true, "the active claim must commit the orphan page");
+    const [orphanAfterEnqueue] = await sql`
+      SELECT status FROM public.calendar_event_mappings
+      WHERE owner_user_id = ${OWNER_REMOVAL}::uuid
+        AND task_id = ${TASK_ORPHAN}::uuid
+        AND destination_key = ${DESTINATION_REMOVAL}::text
+    `;
+    assert(
+      orphanAfterEnqueue.status === "active",
+      "queuing a delete must not retire the mapping before Google confirms it",
+    );
+    const [queuedOrphanJob] = await sql`
+      SELECT id, calendar_event_id, operation, status FROM public.calendar_sync_jobs
+      WHERE owner_user_id = ${OWNER_REMOVAL}::uuid
+        AND task_id = ${TASK_ORPHAN}::uuid
+    `;
+    assert(queuedOrphanJob.status === "pending", "the orphan delete must be durable");
+    assert(queuedOrphanJob.operation === "delete", "the orphan job must delete");
+    assert(
+      queuedOrphanJob.calendar_event_id === "orphan-event",
+      "the orphan job must target the mapped event",
+    );
+    const orphansAfterEnqueue = await orphanMappingsQuery(
+      sql,
+      OWNER_REMOVAL,
+      DESTINATION_REMOVAL,
+    );
+    assert(
+      orphansAfterEnqueue.length === 0,
+      "queued orphan work must not be listed again",
+    );
+    log("ORPHAN", "failed enqueue preserved the mapping; committed enqueue queued one delete");
+
+    const claimedOrphanJobs = await sql`
+      SELECT id, task_id, calendar_event_id, status, claim_token
+      FROM public.calendar_sync_claim_jobs(
+        ${OWNER_REMOVAL}::uuid,
+        ${DESTINATION_REMOVAL}::text,
+        ${RUN_REMOVAL}::uuid,
+        ${ORPHAN_JOB_CLAIM}::uuid,
+        ${10}::integer,
+        ${NOW_REMOVAL}::timestamptz,
+        ${300}::integer
+      )
+    `;
+    assert(claimedOrphanJobs.length === 1, "only the orphan delete must be claimable");
+    const claimedOrphan = claimedOrphanJobs[0];
+    assert(claimedOrphan.task_id === TASK_ORPHAN, "the claimed job must be the orphan");
+    assert(claimedOrphan.status === "processing", "the orphan job must be processing");
+    assert(
+      claimedOrphan.claim_token === ORPHAN_JOB_CLAIM,
+      "the orphan claim must carry its token",
+    );
+
+    // A stale token cannot settle anything: job, mapping and item stay as they
+    // were, so the retry after a provider success can safely settle again.
+    const [staleSettlement] = await completeJobQuery(sql, {
+      jobId: TASK_REMOVAL_JOB,
+      claimToken: REMOVAL_WRONG_CLAIM,
+      outcome: "removed",
+      eventId: null,
+      generation: 1,
+      payloadHash: null,
+      exclusionReason: null,
+      removeMapping: true,
+      removedEventId: "event-generation-1",
+      removedGeneration: 1,
+      nowIso: NOW_REMOVAL,
+    });
+    assert(staleSettlement.completed === false, "a stale claim must not settle the job");
+    const [mappingAfterStale] = await sql`
+      SELECT event_id, generation, status FROM public.calendar_event_mappings
+      WHERE owner_user_id = ${OWNER_REMOVAL}::uuid
+        AND task_id = ${TASK_REMOVAL}::uuid
+        AND destination_key = ${DESTINATION_REMOVAL}::text
+    `;
+    assert(mappingAfterStale.status === "active", "a stale claim must not retire the mapping");
+    assert(mappingAfterStale.generation === 2, "a stale claim must not change the mapping generation");
+    const [jobAfterStale] = await sql`
+      SELECT status, claim_token FROM public.calendar_sync_jobs
+      WHERE id = ${TASK_REMOVAL_JOB}::uuid
+    `;
+    assert(jobAfterStale.status === "processing", "a stale claim must leave the job processing");
+    assert(
+      jobAfterStale.claim_token === REMOVAL_JOB_CLAIM,
+      "a stale claim must leave the active token intact",
+    );
+    const [itemAfterStale] = await sql`
+      SELECT outcome FROM public.calendar_sync_run_items
+      WHERE run_id = ${RUN_REMOVAL}::uuid AND task_id = ${TASK_REMOVAL}::uuid
+    `;
+    assert(itemAfterStale.outcome === "pending", "a stale claim must leave the item pending");
+
+    // Prove the settlement is one transaction: if the run-item update fails,
+    // the mapping removal and job success must roll back together.
+    await sql.unsafe(`
+      CREATE OR REPLACE FUNCTION public.calendar_sync_proof_fail_settlement()
+      RETURNS trigger
+      LANGUAGE plpgsql
+      AS $proof$
+      BEGIN
+        RAISE EXCEPTION 'proof settlement failure';
+      END
+      $proof$;
+    `);
+    await sql.unsafe(`
+      CREATE TRIGGER calendar_sync_proof_fail_settlement
+      BEFORE UPDATE ON public.calendar_sync_run_items
+      FOR EACH ROW
+      EXECUTE FUNCTION public.calendar_sync_proof_fail_settlement();
+    `);
+    const settlementFailure = await captureCode(() =>
+      completeJobQuery(sql, {
+        jobId: TASK_REMOVAL_JOB,
+        claimToken: REMOVAL_JOB_CLAIM,
+        outcome: "removed",
+        eventId: null,
+        generation: 1,
+        payloadHash: null,
+        exclusionReason: null,
+        removeMapping: true,
+        removedEventId: "event-generation-1",
+        removedGeneration: 1,
+        nowIso: NOW_REMOVAL,
+      }),
+    );
+    assert(settlementFailure !== null, "the run-item failure must abort settlement");
+    await sql.unsafe(
+      `DROP TRIGGER calendar_sync_proof_fail_settlement ON public.calendar_sync_run_items;`,
+    );
+    await sql.unsafe(`DROP FUNCTION public.calendar_sync_proof_fail_settlement();`);
+    const [mappingAfterRollback] = await sql`
+      SELECT status, generation FROM public.calendar_event_mappings
+      WHERE owner_user_id = ${OWNER_REMOVAL}::uuid
+        AND task_id = ${TASK_REMOVAL}::uuid
+        AND destination_key = ${DESTINATION_REMOVAL}::text
+    `;
+    assert(mappingAfterRollback.status === "active", "a failed settlement must roll back mapping removal");
+    assert(mappingAfterRollback.generation === 2, "a failed settlement must keep the newer mapping");
+    const [jobAfterRollback] = await sql`
+      SELECT status, claim_token FROM public.calendar_sync_jobs
+      WHERE id = ${TASK_REMOVAL_JOB}::uuid
+    `;
+    assert(jobAfterRollback.status === "processing", "a failed settlement must leave the job processing");
+    assert(
+      jobAfterRollback.claim_token === REMOVAL_JOB_CLAIM,
+      "a failed settlement must leave the claim retryable",
+    );
+
+    // Late completion of the generation-1 delete must never retire the
+    // generation-2 mapping published by a remove-then-republish.
+    const [lateRemoval] = await completeJobQuery(sql, {
+      jobId: TASK_REMOVAL_JOB,
+      claimToken: REMOVAL_JOB_CLAIM,
+      outcome: "removed",
+      eventId: null,
+      generation: 1,
+      payloadHash: null,
+      exclusionReason: null,
+      removeMapping: true,
+      removedEventId: "event-generation-1",
+      removedGeneration: 1,
+      nowIso: NOW_REMOVAL,
+    });
+    assert(lateRemoval.completed === true, "the active claim must settle the old delete");
+    const [mappingAfterLateRemoval] = await sql`
+      SELECT event_id, generation, status FROM public.calendar_event_mappings
+      WHERE owner_user_id = ${OWNER_REMOVAL}::uuid
+        AND task_id = ${TASK_REMOVAL}::uuid
+        AND destination_key = ${DESTINATION_REMOVAL}::text
+    `;
+    assert(
+      mappingAfterLateRemoval.status === "active",
+      "a late generation-1 delete must not retire the generation-2 mapping",
+    );
+    assert(
+      mappingAfterLateRemoval.event_id === "event-generation-2",
+      "the republished event must remain mapped",
+    );
+    assert(mappingAfterLateRemoval.generation === 2, "the republished generation must remain");
+    log("SETTLE", "stale claims and failed settlements left mapping, job and item untouched");
+
+    await sql.unsafe(
+      `INSERT INTO public.calendar_sync_jobs (
+         id, owner_user_id, task_id, calendar_event_id, operation, status,
+         attempts, updated_at, queue_version, run_id, destination_key,
+         google_account_subject, google_account_email, calendar_id, generation,
+         event_exists, claim_token, lease_expires_at, scheduled_at,
+         payload_hash, permanent_failure
+       )
+       VALUES ($1, $2, $3, 'event-generation-2', 'delete', 'processing', 1,
+               $4::timestamptz, 2, $5, $6, 'proof-removal',
+               'proof-removal@example.test', 'primary', 2, true, $7,
+               '2026-11-23T11:05:00+00:00', $4::timestamptz, NULL, false)`,
+      [
+        TASK_REMOVAL_REPUBLISH_JOB,
+        OWNER_REMOVAL,
+        TASK_REMOVAL,
+        NOW_REMOVAL,
+        RUN_REMOVAL,
+        DESTINATION_REMOVAL,
+        REMOVAL_REPUBLISH_CLAIM,
+      ],
+    );
+    const [currentRemoval] = await completeJobQuery(sql, {
+      jobId: TASK_REMOVAL_REPUBLISH_JOB,
+      claimToken: REMOVAL_REPUBLISH_CLAIM,
+      outcome: "removed",
+      eventId: null,
+      generation: 2,
+      payloadHash: null,
+      exclusionReason: null,
+      removeMapping: true,
+      removedEventId: "event-generation-2",
+      removedGeneration: 2,
+      nowIso: NOW_REMOVAL,
+    });
+    assert(currentRemoval.completed === true, "the current-generation delete must settle");
+    const [mappingAfterCurrentRemoval] = await sql`
+      SELECT status FROM public.calendar_event_mappings
+      WHERE owner_user_id = ${OWNER_REMOVAL}::uuid
+        AND task_id = ${TASK_REMOVAL}::uuid
+        AND destination_key = ${DESTINATION_REMOVAL}::text
+    `;
+    assert(
+      mappingAfterCurrentRemoval.status === "removed",
+      "the matching generation must be retired",
+    );
+    log(
+      "REPUBLISH",
+      "an old delete could not retire the newer mapping; the current delete retired it",
+    );
+
+    const [orphanRemoval] = await completeJobQuery(sql, {
+      jobId: claimedOrphan.id,
+      claimToken: ORPHAN_JOB_CLAIM,
+      outcome: "removed",
+      eventId: null,
+      generation: 1,
+      payloadHash: null,
+      exclusionReason: null,
+      removeMapping: true,
+      removedEventId: "orphan-event",
+      removedGeneration: 1,
+      nowIso: NOW_REMOVAL,
+    });
+    assert(orphanRemoval.completed === true, "the confirmed orphan delete must settle");
+    const [orphanFinal] = await sql`
+      SELECT status FROM public.calendar_event_mappings
+      WHERE owner_user_id = ${OWNER_REMOVAL}::uuid
+        AND task_id = ${TASK_ORPHAN}::uuid
+        AND destination_key = ${DESTINATION_REMOVAL}::text
+    `;
+    assert(orphanFinal.status === "removed", "a confirmed orphan delete must retire the mapping");
+    const [orphanFinalJob] = await sql`
+      SELECT status, claim_token FROM public.calendar_sync_jobs
+      WHERE id = ${claimedOrphan.id}::uuid
+    `;
+    assert(orphanFinalJob.status === "succeeded", "the orphan job must be finalized");
+    assert(orphanFinalJob.claim_token === null, "the settled orphan claim must clear");
+    const [orphanFinalItem] = await sql`
+      SELECT outcome, event_id FROM public.calendar_sync_run_items
+      WHERE run_id = ${RUN_REMOVAL}::uuid AND task_id = ${TASK_ORPHAN}::uuid
+    `;
+    assert(orphanFinalItem.outcome === "removed", "the orphan run item must settle as removed");
+    assert(orphanFinalItem.event_id === null, "the removed item must not keep an event id");
+    log(
+      "ORPHAN-SETTLE",
+      "Google-confirmed delete retired the mapping, job and run item atomically",
     );
 
     console.log("CALENDAR-SYNC-COMMIT-SCAN-PAGE-VERIFY PASS");

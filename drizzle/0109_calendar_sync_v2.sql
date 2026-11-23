@@ -670,9 +670,116 @@ AS $orphans$
       WHERE task.id = mapping.task_id
         AND task.owner_user_id = mapping.owner_user_id
     )
+    -- A mapping is retired only after its delete job settles. Until then the
+    -- queued work is the durable marker, so this listing does not enqueue a
+    -- duplicate or loop forever on the same still-active mapping.
+    AND NOT EXISTS (
+      SELECT 1
+      FROM public.calendar_sync_jobs AS job
+      WHERE job.owner_user_id = mapping.owner_user_id
+        AND job.task_id = mapping.task_id
+        AND job.destination_key = mapping.destination_key
+        AND job.queue_version = 2
+        AND job.status IN ('pending', 'processing')
+    )
   ORDER BY mapping.updated_at
   LIMIT greatest(p_limit, 1);
 $orphans$;
+--> statement-breakpoint
+
+-- Finalize a successfully processed job under its active claim token. The job,
+-- the provider-confirmed mapping removal (scoped to the exact event id and
+-- generation) and the run item outcome settle in one transaction. A stale claim
+-- token returns false without touching any of them, so a retry after a provider
+-- success and a failed local settlement can safely delete the already-removed
+-- event again and retry the same settlement. A newer mapping generation is
+-- never retired by an older delete that finishes late.
+CREATE OR REPLACE FUNCTION public.calendar_sync_complete_job(
+  p_job_id uuid,
+  p_claim_token uuid,
+  p_outcome varchar,
+  p_event_id text,
+  p_generation integer,
+  p_payload_hash text,
+  p_exclusion_reason text,
+  p_last_error text,
+  p_permanent_failure boolean,
+  p_remove_mapping boolean,
+  p_removed_event_id text,
+  p_removed_generation integer,
+  p_now timestamptz
+) RETURNS boolean
+LANGUAGE plpgsql
+SECURITY INVOKER
+SET search_path = ''
+AS $complete_job$
+DECLARE
+  v_job public.calendar_sync_jobs;
+BEGIN
+  IF p_claim_token IS NULL THEN
+    RETURN false;
+  END IF;
+
+  SELECT job.* INTO v_job
+  FROM public.calendar_sync_jobs AS job
+  WHERE job.id = p_job_id
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RETURN false;
+  END IF;
+  IF v_job.status <> 'processing'
+    OR v_job.claim_token IS DISTINCT FROM p_claim_token THEN
+    RETURN false;
+  END IF;
+
+  IF p_remove_mapping
+    AND p_removed_event_id IS NOT NULL
+    AND p_removed_generation IS NOT NULL THEN
+    UPDATE public.calendar_event_mappings AS mapping
+    SET status = 'removed',
+        metadata_verified = true,
+        updated_at = p_now
+    WHERE mapping.owner_user_id = v_job.owner_user_id
+      AND mapping.task_id = v_job.task_id
+      AND mapping.destination_key = v_job.destination_key
+      AND mapping.status = 'active'
+      AND mapping.event_id = p_removed_event_id
+      AND mapping.generation = p_removed_generation;
+  END IF;
+
+  UPDATE public.calendar_sync_jobs
+  SET status = 'succeeded',
+      outcome = p_outcome,
+      calendar_event_id = p_event_id,
+      generation = p_generation,
+      event_exists = (p_event_id IS NOT NULL),
+      payload_hash = p_payload_hash,
+      exclusion_reason = p_exclusion_reason,
+      last_error = p_last_error,
+      permanent_failure = p_permanent_failure,
+      claim_token = NULL,
+      lease_expires_at = NULL,
+      locked_at = NULL,
+      updated_at = p_now
+  WHERE id = v_job.id;
+
+  IF v_job.run_id IS NOT NULL THEN
+    UPDATE public.calendar_sync_run_items
+    SET outcome = p_outcome,
+        exclusion_reason = p_exclusion_reason,
+        event_id = p_event_id,
+        payload_hash = p_payload_hash,
+        error_message = p_last_error,
+        job_id = v_job.id,
+        updated_at = p_now
+    WHERE run_id = v_job.run_id
+      AND task_id = v_job.task_id;
+  END IF;
+
+  RETURN true;
+END
+$complete_job$;
 --> statement-breakpoint
 
 CREATE OR REPLACE FUNCTION public.calendar_sync_run_counts(
@@ -799,6 +906,7 @@ REVOKE ALL ON FUNCTION public.calendar_sync_claim_run_scan(uuid, uuid, timestamp
 REVOKE ALL ON FUNCTION public.calendar_sync_commit_scan_page(uuid, uuid, timestamptz, uuid, boolean, jsonb, jsonb, timestamptz) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.calendar_sync_claim_jobs(uuid, text, uuid, uuid, integer, timestamptz, integer) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.calendar_sync_release_claimed_jobs(uuid[], uuid, timestamptz, boolean, text, varchar, text, timestamptz) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.calendar_sync_complete_job(uuid, uuid, varchar, text, integer, text, text, text, boolean, boolean, text, integer, timestamptz) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.calendar_sync_list_orphan_mappings(uuid, text, integer) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.calendar_sync_run_counts(uuid) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.calendar_sync_run_exclusions(uuid) FROM PUBLIC, anon;
@@ -808,6 +916,7 @@ GRANT EXECUTE ON FUNCTION public.calendar_sync_claim_run_scan(uuid, uuid, timest
 GRANT EXECUTE ON FUNCTION public.calendar_sync_commit_scan_page(uuid, uuid, timestamptz, uuid, boolean, jsonb, jsonb, timestamptz) TO authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.calendar_sync_claim_jobs(uuid, text, uuid, uuid, integer, timestamptz, integer) TO authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.calendar_sync_release_claimed_jobs(uuid[], uuid, timestamptz, boolean, text, varchar, text, timestamptz) TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.calendar_sync_complete_job(uuid, uuid, varchar, text, integer, text, text, text, boolean, boolean, text, integer, timestamptz) TO authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.calendar_sync_list_orphan_mappings(uuid, text, integer) TO authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.calendar_sync_run_counts(uuid) TO authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.calendar_sync_run_exclusions(uuid) TO authenticated, service_role;

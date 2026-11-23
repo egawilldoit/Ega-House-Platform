@@ -187,6 +187,17 @@ export type CalendarRunFailure = Readonly<{
   message: string;
 }>;
 
+/**
+ * The provider-confirmed event and generation that a completion may retire.
+ * The repository applies this only when the mapping still identifies that
+ * exact event and generation, so a stale removal can never retire a newer
+ * mapping published after it.
+ */
+export type CalendarMappingRemoval = Readonly<{
+  eventId: string;
+  generation: number;
+}>;
+
 export type CalendarJobCompletion = Readonly<{
   outcome: Extract<
     CalendarSyncItemOutcome,
@@ -196,6 +207,7 @@ export type CalendarJobCompletion = Readonly<{
   generation: number;
   payloadHash: string | null;
   exclusionReason: CalendarSyncExclusionReason | null;
+  mappingRemoval?: CalendarMappingRemoval | null;
   lastError?: string | null;
   permanentFailure?: boolean;
   taskSyncStatus: "synced" | "failed" | "skipped";
@@ -478,13 +490,6 @@ export interface CalendarSyncRepository {
       nowIso: string;
     }>,
   ): Promise<RepositoryResult<CalendarMappingRecord>>;
-  markMappingRemoved(
-    actor: AuthenticatedActor,
-    input: Readonly<{
-      mapping: CalendarMappingRecord;
-      nowIso: string;
-    }>,
-  ): Promise<RepositoryResult<void>>;
   updateTaskSyncState(
     actor: AuthenticatedActor,
     input: Readonly<{

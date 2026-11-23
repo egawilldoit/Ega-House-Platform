@@ -66,11 +66,11 @@ class FakeCalendarSupabase {
   rpcCalls: Array<{ name: string; args: Record<string, unknown> }> = [];
   updateCalls: Array<Record<string, unknown>> = [];
 
-  constructor(private readonly rpcRows: unknown[] = []) {}
+  constructor(private readonly rpcResult: unknown = []) {}
 
   async rpc(name: string, args: Record<string, unknown>) {
     this.rpcCalls.push({ name, args });
-    return { data: this.rpcRows, error: null };
+    return { data: this.rpcResult, error: null };
   }
 
   from() {
@@ -192,4 +192,74 @@ test("permanent failJob does not need the pending slot or the queue function", a
   assert.equal(fake.updateCalls.length, 1);
   assert.equal(fake.updateCalls[0]?.status, "failed");
   assert.equal(fake.updateCalls[0]?.permanent_failure, true);
+});
+
+test("completeJob settles the job, confirmed mapping removal and run item atomically", async () => {
+  const fake = new FakeCalendarSupabase(true);
+  const repository = new SupabaseCalendarSyncRepository(
+    fake as unknown as SupabaseClient,
+  );
+
+  const result = await repository.completeJob(ACTOR, {
+    job: JOB,
+    claimToken: CLAIM_TOKEN,
+    completion: {
+      outcome: "removed",
+      eventId: null,
+      generation: JOB.generation,
+      payloadHash: null,
+      exclusionReason: null,
+      mappingRemoval: { eventId: "event-a", generation: JOB.generation },
+      lastError: null,
+      taskSyncStatus: "skipped",
+    },
+    nowIso: NOW,
+  });
+
+  assert.deepEqual(result, { ok: true, value: true });
+  assert.equal(fake.rpcCalls.length, 1);
+  assert.deepEqual(fake.rpcCalls[0], {
+    name: "calendar_sync_complete_job",
+    args: {
+      p_job_id: JOB_ID,
+      p_claim_token: CLAIM_TOKEN,
+      p_outcome: "removed",
+      p_event_id: null,
+      p_generation: JOB.generation,
+      p_payload_hash: null,
+      p_exclusion_reason: null,
+      p_last_error: null,
+      p_permanent_failure: false,
+      p_remove_mapping: true,
+      p_removed_event_id: "event-a",
+      p_removed_generation: JOB.generation,
+      p_now: NOW,
+    },
+  });
+});
+
+test("completeJob reports no settlement when a stale claim cannot finalize", async () => {
+  const fake = new FakeCalendarSupabase(false);
+  const repository = new SupabaseCalendarSyncRepository(
+    fake as unknown as SupabaseClient,
+  );
+
+  const result = await repository.completeJob(ACTOR, {
+    job: JOB,
+    claimToken: CLAIM_TOKEN,
+    completion: {
+      outcome: "removed",
+      eventId: null,
+      generation: JOB.generation,
+      payloadHash: null,
+      exclusionReason: null,
+      mappingRemoval: { eventId: "event-a", generation: JOB.generation },
+      taskSyncStatus: "skipped",
+    },
+    nowIso: NOW,
+  });
+
+  assert.deepEqual(result, { ok: true, value: false });
+  assert.equal(fake.rpcCalls.length, 1);
+  assert.equal(fake.rpcCalls[0]?.name, "calendar_sync_complete_job");
 });
