@@ -4,6 +4,7 @@ import {
   canonicalMoneyOpeningPayload,
   classifyDateInPeriod,
   isMoneyPeriodId,
+  moneyActiveDateMoveFailure,
   parseCreateMoneyPeriodInput,
   parseUpdateMoneySettingsInput,
   validateOpeningAgainstPeriod,
@@ -139,6 +140,12 @@ export type MoneyState = Readonly<{
   lastClose: MoneyDayCloseView | null;
   recentCloses: readonly MoneyDayClose[];
   dayClosesUnavailable: boolean;
+  /** Unclosed dates before the active day that were skipped (or led the period). */
+  unverifiedDates: readonly string[];
+  unverifiedDayCount: number;
+  /** Last date in the unverified range; null when there is no tracked gap. */
+  unverifiedThroughDate: string | null;
+  closedDayCount: number;
   dateResolution: MoneyStateDateResolution;
   history: readonly MoneyStatePeriodSummary[];
   historyUnavailable: boolean;
@@ -499,6 +506,9 @@ export async function getMoneyState(
   let lastClose: MoneyDayCloseView | null = null;
   let recentCloses: readonly MoneyDayClose[] = [];
   let dayClosesUnavailable = false;
+  let unverifiedDates: readonly string[] = [];
+  let unverifiedThroughDate: string | null = null;
+  let closedDayCount = 0;
   if (selected) {
     const closes = await loadMoneyDayCloseViews(
       actor,
@@ -511,6 +521,9 @@ export async function getMoneyState(
       dayClose = closes.data.dayClose;
       lastClose = closes.data.lastClose;
       recentCloses = closes.data.recentCloses;
+      unverifiedDates = closes.data.unverifiedDates;
+      unverifiedThroughDate = closes.data.unverifiedThroughDate;
+      closedDayCount = closes.data.closedDayCount;
     } else {
       dayClosesUnavailable = true;
     }
@@ -544,6 +557,10 @@ export async function getMoneyState(
     lastClose,
     recentCloses,
     dayClosesUnavailable,
+    unverifiedDates,
+    unverifiedDayCount: unverifiedDates.length,
+    unverifiedThroughDate,
+    closedDayCount,
     dateResolution: {
       localToday,
       timezone,
@@ -715,23 +732,45 @@ export async function updateMoneySettings(
     );
   }
   if (values.activeDate !== undefined) {
-    if (values.activeDate < period.startDate || values.activeDate > period.endDate) {
-      return applicationFailure(
-        `The active date must be between ${period.startDate} and ${period.endDate}. Changing it never changes the period boundaries or closes a day.`,
-        "validation",
-      );
-    }
-    // Once durable close evidence exists, the active date is close-driven. A
-    // settings update cannot skip an unclosed day, advance twice or rewind a
-    // closed date; those transitions would bypass the retained close.
-    if (values.activeDate !== period.activeDate && repository.listDayCloses) {
-      const closes = await repository.listDayCloses(actor, period.id, 1);
-      if (!closes.ok) {
-        return fromRepository(closes, "Unable to inspect the retained day closes right now.");
+    if (values.activeDate !== period.activeDate) {
+      // Day close is optional (MONEY-001 ID-07). The active date may skip
+      // unclosed days or rewind to an earlier unclosed day; only retained close
+      // evidence is authoritative, so a woken date cannot move to or behind a
+      // closed date. No close row is created by this move.
+      let latestClosedDate: string | null = null;
+      if (repository.listDayCloses) {
+        const closes = await repository.listDayCloses(actor, period.id, 1);
+        if (!closes.ok) {
+          return fromRepository(
+            closes,
+            "Unable to inspect the retained day closes right now.",
+          );
+        }
+        latestClosedDate = closes.value[0]?.closeDate ?? null;
       }
-      if (closes.value.length > 0) {
+      const moveFailure = moneyActiveDateMoveFailure(
+        period,
+        values.activeDate,
+        latestClosedDate,
+      );
+      if (moveFailure === "behind_retained_close") {
         return applicationFailure(
-          "The active date moves only by closing the active day. Close the day to advance; a closed date is corrected through the versioned movement path.",
+          `The active date cannot move to or behind the retained close ${latestClosedDate}. Day close is optional, but attested history is never reopened. Choose a later unclosed date or correct the closed day through the versioned movement path.`,
+          "validation",
+        );
+      }
+      if (moveFailure === "out_of_period") {
+        return applicationFailure(
+          `The active date must be between ${period.startDate} and ${period.endDate}. Changing it never changes the period boundaries or closes a day.`,
+          "validation",
+        );
+      }
+      if (moveFailure === "invalid_date") {
+        return applicationFailure("Use a valid calendar date.", "validation");
+      }
+      if (moveFailure === "period_not_tracking") {
+        return applicationFailure(
+          `This period is ${period.lifecycle.replaceAll("_", " ")}. Only a tracking period accepts routine settings changes.`,
           "validation",
         );
       }

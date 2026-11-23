@@ -449,9 +449,10 @@ export function MoneyPeriodPanel({
               </p>
             ) : null}
             <p className="text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
-              Changing the active date does not change the period boundaries, close a
-              day or reset transactions. A correction keeps one opening ledger row and
-              appends reviewable provenance.
+              Changing the active date does not change the period boundaries, close a day or reset
+              transactions. You may move to a later valid date or an earlier unclosed date without
+              closing skipped days; a closed date is never reopened. A correction keeps one opening
+              ledger row and appends reviewable provenance.
             </p>
             <div>
               <PendingSubmitButton pendingLabel="Saving…">

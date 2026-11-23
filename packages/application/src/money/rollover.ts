@@ -54,11 +54,12 @@ import type {
  * model: the successor opening is the canonical `opening` movement and
  * generated occurrences use the MONEY-06 template rules.
  *
- * Integration dependency (MONEY-09): the source must already be finished by the
- * durable day close (`lifecycle = 'ended'`, `activeDate = endDate`). Stored close
- * snapshots are read from `money_day_closes` and compared with live restated
- * totals; a changed or unavailable comparison is an explicit decision, never a
- * passed check.
+ * MONEY-001 ID-09 finalization: both a tracking period with reviewed unclosed
+ * days and an ended period are legal sources. Stored close snapshots are read
+ * from `money_day_closes` and compared with live restated totals; a changed or
+ * unavailable comparison is an explicit decision, never a passed check. A
+ * source with unverified days must carry an explicit retained acknowledgment
+ * before the atomic write; rollover never invents close rows.
  */
 
 export type MoneyRolloverSurface = "web" | "mcp";
@@ -93,6 +94,11 @@ export type MoneyRolloverPreview = Readonly<{
   reconciliation: MoneyRolloverReconciliation;
   /** Stored close evidence and the live restatement comparison it powered. */
   closeSnapshots: MoneyRolloverSourceContext["closeSnapshots"];
+  /** Exact unverified/unclosed dates the owner must review before rollover. */
+  unverifiedDates?: readonly string[];
+  unverifiedDayCount?: number;
+  unverifiedDaysAcknowledged?: boolean;
+  requiresUnverifiedDaysAcknowledgment?: boolean;
   pendingOccurrences: MoneyRolloverSourceContext["pendingOccurrences"];
   pendingOccurrencesTruncated: boolean;
   /** Corrections from a rolled-over predecessor that affected this period. */
@@ -424,6 +430,7 @@ async function prepareRollover(
     unpaidChoice: values.unpaidItems,
     openingMode: values.opening.mode,
     closeSnapshots: source.closeSnapshots,
+    unverifiedDaysAccepted: values.acceptUnverifiedDaysNote !== null,
   });
 
   const templatesResult = await dependencies.obligations.listTemplates(actor, {
@@ -476,6 +483,13 @@ async function prepareRollover(
 function previewOf(prepared: Prepared): MoneyRolloverPreview {
   const { source, values, targets, opening, reconciliation, obligations, carried } =
     prepared;
+  const closeSnapshots = source.closeSnapshots;
+  const unverifiedDates = closeSnapshots.available
+    ? closeSnapshots.missingCloseDates
+    : [];
+  const unverifiedDayCount = closeSnapshots.available
+    ? (closeSnapshots.unverifiedDayCount ?? unverifiedDates.length)
+    : 0;
   return {
     source: {
       periodId: source.period.id,
@@ -496,6 +510,11 @@ function previewOf(prepared: Prepared): MoneyRolloverPreview {
     ),
     reconciliation,
     closeSnapshots: source.closeSnapshots,
+    unverifiedDates,
+    unverifiedDayCount,
+    unverifiedDaysAcknowledged: values.acceptUnverifiedDaysNote !== null,
+    requiresUnverifiedDaysAcknowledgment:
+      unverifiedDayCount > 0 && values.acceptUnverifiedDaysNote === null,
     pendingOccurrences: source.pendingOccurrences,
     pendingOccurrencesTruncated: source.pendingOccurrencesTruncated,
     priorCorrectionBridges: source.priorCorrectionBridges,
@@ -642,6 +661,7 @@ export async function rolloverMoneyPeriod(
 
   const surface = options.surface ?? "web";
   const createdAt = now.toISOString();
+  const closedSnapshot = prepared.value.source.closeSnapshots;
   const writeInput: MoneyRolloverWriteInput = {
     values,
     targets,
@@ -654,6 +674,10 @@ export async function rolloverMoneyPeriod(
     openingCreateFingerprint: sha256Hex(canonicalMoneyOpeningPayload(opening)),
     reconciliation,
     reconciliationAcceptedNote: values.acceptClosingDifferenceNote,
+    unverifiedDaysNote: values.acceptUnverifiedDaysNote,
+    unverifiedDaysCount: closedSnapshot.available
+      ? (closedSnapshot.unverifiedDayCount ?? closedSnapshot.missingCloseDates.length)
+      : 0,
     obligations,
     carriedOccurrences: carried,
     createdAt,
@@ -756,6 +780,7 @@ export async function getMoneyRolloverPreviewForPeriod(
       settingsOverrides: null,
       allowUncoveredDays: false,
       acceptClosingDifferenceNote: null,
+      acceptUnverifiedDaysNote: null,
     },
     options,
   );

@@ -132,6 +132,7 @@ function movement(id: string, amountMinor: number, bookingDate: string): MoneyLe
     bookingDate,
     occurredAt: null,
     periodId: PERIOD_ID,
+    idempotencyKey: `key-${id}`,
     version: 1,
     deletedAt: null,
     createdAt: `${bookingDate}T12:00:00.000Z`,

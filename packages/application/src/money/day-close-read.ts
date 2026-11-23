@@ -1,11 +1,13 @@
 import {
   moneyDayCloseChangedFields,
+  MONEY_PERIOD_MAX_DAYS,
   type MoneyDayClose,
   type MoneyDayCloseComparison,
   type MoneyDayCloseRestatedTotals,
   type MoneyOpening,
   type MoneyPeriod,
 } from "@ega/domain/money";
+import { addDaysToIsoDate } from "@ega/domain/time-context";
 
 import type { AuthenticatedActor } from "../auth/actor";
 import {
@@ -114,6 +116,10 @@ export async function loadMoneyDayCloseViews(
       dayClose: MoneyDayCloseView | null;
       lastClose: MoneyDayCloseView | null;
       recentCloses: readonly MoneyDayClose[];
+      /** Unclosed dates through the tracked coverage end (active day excluded). */
+      unverifiedDates: readonly string[];
+      unverifiedThroughDate: string | null;
+      closedDayCount: number;
     }>
   >
 > {
@@ -122,13 +128,16 @@ export async function loadMoneyDayCloseViews(
       dayClose: null,
       lastClose: null,
       recentCloses: [],
+      unverifiedDates: [],
+      unverifiedThroughDate: null,
+      closedDayCount: 0,
     });
   }
-  // The selected date is fetched exactly (owner + period + date). The recent
-  // list is only the history strip and must never decide which close evidence a
-  // historical date shows.
+  // The selected date is fetched exactly (owner + period + date). The period list
+  // is bounded by the maximum period length; it powers both the history strip
+  // and the honest count of skipped-unclosed days. A close is never inferred.
   const [result, exact] = await Promise.all([
-    repository.listDayCloses(actor, period.id, 12),
+    repository.listDayCloses(actor, period.id, MONEY_PERIOD_MAX_DAYS),
     repository.getDayCloseForDate(actor, period.id, resolvedDate),
   ]);
   if (!result.ok) {
@@ -146,6 +155,28 @@ export async function loadMoneyDayCloseViews(
   const closes = result.value;
   const forDate = exact.value;
   const latest = closes[0] ?? null;
+  // A tracking period's future dates are not yet tracked, so the current day
+  // itself is in progress rather than skipped. An ended or rolled-over period
+  // reviews every date through its end.
+  const coverageEnd =
+    period.lifecycle === "tracking"
+      ? addDaysToIsoDate(period.activeDate, -1)
+      : period.endDate;
+  const closedDates = new Set(closes.map((close) => close.closeDate));
+  const unverifiedDates: string[] = [];
+  if (coverageEnd >= period.startDate) {
+    const boundedEnd = coverageEnd > period.endDate ? period.endDate : coverageEnd;
+    let cursor = period.startDate;
+    for (let index = 0; index < MONEY_PERIOD_MAX_DAYS && cursor <= boundedEnd; index += 1) {
+      if (!closedDates.has(cursor)) unverifiedDates.push(cursor);
+      cursor = addDaysToIsoDate(cursor, 1);
+    }
+  }
+  const coverage = {
+    unverifiedDates,
+    unverifiedThroughDate: unverifiedDates.length > 0 ? coverageEnd : null,
+    closedDayCount: closes.length,
+  };
 
   if (forDate && latest && forDate.id === latest.id) {
     const view = await getMoneyDayCloseView(actor, { periods: repository }, period, opening, forDate);
@@ -153,7 +184,8 @@ export async function loadMoneyDayCloseViews(
     return applicationSuccess({
       dayClose: view.data,
       lastClose: view.data,
-      recentCloses: closes,
+      recentCloses: closes.slice(0, 12),
+      ...coverage,
     });
   }
 
@@ -167,6 +199,7 @@ export async function loadMoneyDayCloseViews(
   return applicationSuccess({
     dayClose: dayClose?.data ?? null,
     lastClose: lastClose?.data ?? null,
-    recentCloses: closes,
+    recentCloses: closes.slice(0, 12),
+    ...coverage,
   });
 }

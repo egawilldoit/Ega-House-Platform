@@ -43,6 +43,9 @@ type Props = {
   lastClose: MoneyDayCloseStateDto | null;
   recentCloses: readonly MoneyDayCloseDto[];
   dayClosesUnavailable: boolean;
+  /** Unclosed dates before the active day; never inferred as closed. */
+  unverifiedDates: readonly string[];
+  unverifiedDayCount: number;
   action: (formData: FormData) => Promise<MoneyFormActionResult>;
 };
 
@@ -96,6 +99,8 @@ export function MoneyDayClosePanel({
   lastClose,
   recentCloses,
   dayClosesUnavailable,
+  unverifiedDates,
+  unverifiedDayCount,
   action,
 }: Props) {
   const router = useRouter();
@@ -181,6 +186,27 @@ export function MoneyDayClosePanel({
         the retained cash/reference/reserve snapshot, then advances the active date exactly one day.
         It never changes savings, budgets or carryover.
       </p>
+      <p className="mt-1 text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
+        Day close is optional. You can record a later valid date, or move the active date, without
+        closing earlier days. Skipped days stay unverified and gain no fabricated close row.
+      </p>
+
+      {unverifiedDayCount > 0 ? (
+        <div role="status" className="mt-3 rounded border border-ega-border p-3">
+          <p className="text-[length:var(--text-meta)]">
+            {unverifiedDayCount} unverified/unclosed day{unverifiedDayCount === 1 ? "" : "s"} before
+            the active date. These dates are not treated as zero or as closed.
+          </p>
+          <details className="mt-1">
+            <summary className="cursor-pointer text-[length:var(--text-meta)] underline">
+              Show the unverified dates
+            </summary>
+            <p className="mt-1 break-words text-[length:var(--text-meta)] tabular-nums">
+              {unverifiedDates.join(", ")}
+            </p>
+          </details>
+        </div>
+      ) : null}
 
       {tracking ? (
         <form onSubmit={handleSubmit} className="mt-4 flex flex-col gap-3">

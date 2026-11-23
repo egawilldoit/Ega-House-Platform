@@ -954,6 +954,7 @@ function toRecord(row: MovementRow): MoneyLedgerRow {
     bookingDate: String(row.booking_date),
     occurredAt: row.occurred_at == null ? null : String(row.occurred_at),
     periodId: row.period_id == null ? null : String(row.period_id),
+    idempotencyKey: String(row.idempotency_key),
     version: Number(row.version),
     deletedAt: row.deleted_at == null ? null : String(row.deleted_at),
     createdAt: String(row.created_at),

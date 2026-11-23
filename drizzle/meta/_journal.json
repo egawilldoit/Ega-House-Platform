@@ -722,6 +722,13 @@
       "when": 1787880000073,
       "tag": "0110_calendar_atomic_mapping_settlement",
       "breakpoints": true
+    },
+    {
+      "idx": 124,
+      "version": "7",
+      "when": 1787880000074,
+      "tag": "0109_money_11_optional_close_rollover",
+      "breakpoints": true
     }
   ]
 }

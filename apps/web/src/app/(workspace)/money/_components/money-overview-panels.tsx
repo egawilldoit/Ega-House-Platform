@@ -2,7 +2,6 @@ import type {
   ApplicationResult,
   ExpenseSummaryResult,
   MoneyReserveProjection,
-  MoneyState,
 } from "@ega/application";
 import type { ExpenseCategory } from "@ega/domain/expenses";
 import {
@@ -42,28 +41,6 @@ export function MoneyReservesPanel({
           ] as const).map(([label, value]) => <div key={label}><dt>{label}</dt><dd className="font-semibold">{formatMad(value)}</dd></div>)}
         </dl>
       ) : <p role="status" className="mt-3 text-[color:var(--ega-text-secondary)]">Unavailable — reserve inputs are incomplete or could not be loaded.</p>}
-    </section>
-  );
-}
-
-/** The shared day-start daily reference, labelled historical for an ended period. */
-export function MoneyDailyReferencePanel({ moneyState }: { moneyState: MoneyState }) {
-  const reference = moneyState.dayStartBaseline?.dailyReference;
-  return (
-    <section aria-labelledby="daily-reference-heading" className="mt-6 rounded-lg border border-ega-border p-5">
-      <h2 id="daily-reference-heading" className="text-[length:var(--text-section)] font-semibold">Day-start daily reference</h2>
-      <p className="mt-1 text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">Method: {reference?.available ? reference.algorithm : "shared day-start daily reference"}</p>
-      {reference?.available ? (
-        <dl className="mt-3 grid gap-2 sm:grid-cols-2">
-          <div><dt>{reference.historical ? "Historical daily reference" : "Daily reference"}</dt><dd className="font-semibold">{formatMad(reference.referenceMinor)}</dd></div>
-          <div><dt>{reference.historical ? "Historical daily remaining" : "Daily remaining"}</dt><dd className="font-semibold">{formatMad(reference.dailyRemainingMinor)}</dd></div>
-          <div><dt>Daily included spending</dt><dd className="font-semibold">{formatMad(reference.dailyIncludedExpenseMinor)}</dd></div>
-          <div><dt>Days left in period</dt><dd className="font-semibold">{reference.daysRemaining}</dd></div>
-          {reference.historical ? <p className="text-[color:var(--ega-text-secondary)]">Ended period — historical result only; no new-day spend allowance.</p> : null}
-        </dl>
-      ) : (
-        <p role="status" className="mt-3 text-[color:var(--ega-text-secondary)]">Unavailable — baseline or complete daily expense data is missing.</p>
-      )}
     </section>
   );
 }

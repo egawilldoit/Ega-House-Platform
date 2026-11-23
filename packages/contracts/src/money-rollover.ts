@@ -44,6 +44,12 @@ export type MoneyRolloverRequest = Readonly<{
   allowUncoveredDays?: boolean;
   /** Required to accept a modeled-versus-verified closing difference or a savings target versus transfers difference. */
   acceptClosingDifferenceNote?: string | null;
+  /**
+   * Retained acknowledgment for every reviewed unverified/unclosed source day.
+   * Required when the source has any unclosed date; rollover never invents a
+   * close row. The exact reviewed count is re-checked by the atomic write.
+   */
+  acceptUnverifiedDaysNote?: string | null;
 }>;
 
 export type MoneyRolloverWriteRequest = MoneyRolloverRequest &
@@ -94,9 +100,15 @@ export type MoneyRolloverCloseSnapshotDto =
   | Readonly<{
       available: true;
       closeCount: number;
+      /** Previously closed dates, ascending. */
+      closedDates?: readonly string[];
+      /** Every inclusive day in the source period. */
+      periodDayCount?: number;
       requiredCloseCount: number;
       trackedFromDate: string | null;
+      /** Every unclosed/unverified date in the source period. */
       missingCloseDates: readonly string[];
+      unverifiedDayCount?: number;
       completeCloseEvidence: boolean;
       lastClosedDate: string | null;
       comparableToRestatedTotals: true;
@@ -174,6 +186,11 @@ export type MoneyRolloverPreviewResponse = Readonly<{
   settings: Readonly<Record<string, unknown>>;
   reconciliation: MoneyRolloverReconciliationDto;
   closeSnapshots: MoneyRolloverCloseSnapshotDto;
+  /** Exact unverified/unclosed dates reviewed before finalization. */
+  unverifiedDates?: readonly string[];
+  unverifiedDayCount?: number;
+  unverifiedDaysAcknowledged?: boolean;
+  requiresUnverifiedDaysAcknowledgment?: boolean;
   pendingOccurrences: readonly MoneyRolloverPendingOccurrenceDto[];
   pendingOccurrencesTruncated: boolean;
   priorCorrectionBridges: readonly MoneyRolloverBridgeDto[];
@@ -210,6 +227,8 @@ export type MoneyRolloverRecordDto = Readonly<{
   closingCutoffDate: string;
   unpaidTreatment: MoneyRolloverUnpaidTreatment | null;
   reconciliationAcceptedNote: string | null;
+  unverifiedDaysNote: string | null;
+  unverifiedDaysCount: number;
   generatedOccurrenceCount: number;
   carriedOccurrenceCount: number;
   cancelledOccurrenceCount: number;

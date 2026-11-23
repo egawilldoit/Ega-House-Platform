@@ -177,6 +177,8 @@ export type MoneyLedgerRow = Readonly<{
   bookingDate: string;
   occurredAt: string | null;
   periodId: string | null;
+  /** Stable retry identity; exposed so one history can reuse the expense editor. */
+  idempotencyKey: string;
   version: number;
   deletedAt: string | null;
   createdAt: string;
@@ -462,6 +464,35 @@ export type MoneyDayCloseTransitionFailure =
   | "invalid_period"
   | "date_not_active"
   | "date_after_active";
+
+export type MoneyActiveDateMoveFailure =
+  | "period_not_tracking"
+  | "invalid_date"
+  | "out_of_period"
+  | "behind_retained_close";
+
+/**
+ * Calendar advancement is independent of the optional day close (MONEY-001
+ * ID-07). Inside a tracking period the active date may move to any valid later
+ * or earlier date without producing a close. The one retained boundary is
+ * close evidence: the active date can never move to or behind a closed date,
+ * because that would silently reopen attested history.
+ */
+export function moneyActiveDateMoveFailure(
+  period: Pick<MoneyPeriod, "startDate" | "endDate" | "lifecycle">,
+  targetDate: string,
+  latestClosedDate: string | null,
+): MoneyActiveDateMoveFailure | null {
+  if (period.lifecycle !== "tracking") return "period_not_tracking";
+  if (!isIsoDate(targetDate)) return "invalid_date";
+  if (targetDate < period.startDate || targetDate > period.endDate) {
+    return "out_of_period";
+  }
+  if (latestClosedDate !== null && targetDate <= latestClosedDate) {
+    return "behind_retained_close";
+  }
+  return null;
+}
 
 /** The next period state after closing exactly the currently tracked day. */
 export function moneyDayCloseTransition(

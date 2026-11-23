@@ -207,7 +207,6 @@ function makeRepository(options: { periods?: MoneyPeriod[] } = {}) {
     const {
       ownerUserId: _owner,
       createFingerprint: _fp,
-      idempotencyKey: _key,
       ...rest
     } = row;
     return rest;

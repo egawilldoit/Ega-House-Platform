@@ -184,10 +184,10 @@ describe("Money MCP tools", () => {
     const h = handlers();
     const rejected = await h.rolloverMoneyPeriod(authInfo(WRITER_PRINCIPAL), input);
     expect(structured(rejected).error).toEqual({ code: "INVALID_ARGUMENT", message: "Accept the savings target difference" });
-    const accepted = await h.rolloverMoneyPeriod(authInfo(WRITER_PRINCIPAL), { ...input, operationId: "operation-2", acceptClosingDifferenceNote: "Reviewed savings shortfall" });
+    const accepted = await h.rolloverMoneyPeriod(authInfo(WRITER_PRINCIPAL), { ...input, operationId: "operation-2", acceptClosingDifferenceNote: "Reviewed savings shortfall", acceptUnverifiedDaysNote: "Reviewed unverified days" });
     expect(structured(accepted)).toMatchObject({ ok: true, record: { id: "rollover-1" }, operationId: "operation-2" });
-    expect(mocks.rolloverMoneyPeriod.mock.calls[0][2]).toMatchObject({ sourcePeriodId: PERIOD.id, acceptClosingDifferenceNote: null });
-    expect(mocks.rolloverMoneyPeriod.mock.calls[1][2]).toMatchObject({ sourcePeriodId: PERIOD.id, acceptClosingDifferenceNote: "Reviewed savings shortfall" });
+    expect(mocks.rolloverMoneyPeriod.mock.calls[0][2]).toMatchObject({ sourcePeriodId: PERIOD.id, acceptClosingDifferenceNote: null, acceptUnverifiedDaysNote: null });
+    expect(mocks.rolloverMoneyPeriod.mock.calls[1][2]).toMatchObject({ sourcePeriodId: PERIOD.id, acceptClosingDifferenceNote: "Reviewed savings shortfall", acceptUnverifiedDaysNote: "Reviewed unverified days" });
   });
 
   it("rebases day start only for finance writers and returns the canonical baseline", async () => {

@@ -510,7 +510,7 @@ test("changing the active date keeps boundaries and transactions and increments 
   assert.equal(ledger.find((row) => row.kind === "expense")?.amountMinor, 1100);
 });
 
-test("a retained close makes the active date close-driven", async () => {
+test("a retained close bounds a rewind without making the active date close-driven", async () => {
   const { repository } = makeRepository();
   const created = await createMoneyPeriod(ACTOR, repository, CREATE_BODY, {
     now: NOW,
@@ -524,11 +524,17 @@ test("a retained close makes the active date close-driven", async () => {
     async listDayCloses() {
       return {
         ok: true as const,
-        value: [{ id: "close-1" } as MoneyDayClose],
+        value: [
+          {
+            id: "close-1",
+            closeDate: "2026-11-10",
+          } as MoneyDayClose,
+        ],
       };
     },
   };
 
+  // Skipping unclosed days is a normal calendar move after a close.
   const skipped = await updateMoneySettings(
     ACTOR,
     withClose,
@@ -536,17 +542,41 @@ test("a retained close makes the active date close-driven", async () => {
     { version: created.data.period.version, activeDate: "2026-11-12" },
     { now: NOW, timezone: "Africa/Casablanca" },
   );
-  assert.equal(skipped.ok, false);
-  if (!skipped.ok) {
-    assert.equal(skipped.code, "validation");
-    assert.match(skipped.errorMessage, /closing the active day/);
+  assert.equal(skipped.ok, true);
+  if (skipped.ok) assert.equal(skipped.data.activeDate, "2026-11-12");
+
+  // Moving to the closed date itself would reopen attested history.
+  const closedDate = await updateMoneySettings(
+    ACTOR,
+    withClose,
+    created.data.period.id,
+    { version: skipped.ok ? skipped.data.version : created.data.period.version, activeDate: "2026-11-10" },
+    { now: NOW, timezone: "Africa/Casablanca" },
+  );
+  assert.equal(closedDate.ok, false);
+  if (!closedDate.ok) {
+    assert.equal(closedDate.code, "validation");
+    assert.match(closedDate.errorMessage, /retained close/);
   }
+
+  // An earlier unclosed day after the retained close is still reachable.
+  const earlier = await updateMoneySettings(
+    ACTOR,
+    withClose,
+    created.data.period.id,
+    { version: skipped.ok ? skipped.data.version : created.data.period.version, activeDate: "2026-11-11" },
+    { now: NOW, timezone: "Africa/Casablanca" },
+  );
+  assert.equal(earlier.ok, true);
 
   const unchanged = await updateMoneySettings(
     ACTOR,
     withClose,
     created.data.period.id,
-    { version: created.data.period.version, activeDate: created.data.period.activeDate },
+    {
+      version: earlier.ok ? earlier.data.version : created.data.period.version,
+      activeDate: "2026-11-11",
+    },
     { now: NOW, timezone: "Africa/Casablanca" },
   );
   assert.equal(unchanged.ok, true);

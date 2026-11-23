@@ -392,6 +392,7 @@ export type McpWriteToolHandlers = {
       settingsOverrides?: Record<string, unknown> | null;
       allowUncoveredDays?: boolean;
       acceptClosingDifferenceNote?: string | null;
+      acceptUnverifiedDaysNote?: string | null;
     },
     context?: McpProtocolContext,
   ) => Promise<CallToolResult>;
@@ -851,6 +852,7 @@ const moneyRolloverInputSchema = z
     settingsOverrides: z.record(z.string(), z.unknown()).nullable().optional(),
     allowUncoveredDays: z.boolean().optional(),
     acceptClosingDifferenceNote: z.string().min(3).max(500).nullable().optional(),
+    acceptUnverifiedDaysNote: z.string().min(3).max(500).nullable().optional(),
   })
   .strict();
 
@@ -2242,9 +2244,9 @@ const WRITE_TOOL_REGISTRATIONS: readonly WriteToolRegistration[] = [
       server.registerTool(
         "ega_money_rollover_period",
         {
-          title: "Roll over a finished Money period",
+          title: "Roll over a reviewed Money period",
           description:
-            "Explicitly roll one ended period into exactly one successor. Creates one successor period and one opening movement atomically, copies the source's latest effective policy settings (then applies explicit `settingsOverrides`), regenerates recurring obligation occurrences from the canonical templates with new period identities, and links the source as rolled_over. `opening.mode=carry_forward` carries the modeled closing cash and is labeled modeled; `verified_source` requires amountMinor, cutoffDate and evidence and is labeled reconciled. A nonzero modeled-versus-verified difference, a restated day-close snapshot, a savings target versus transfers difference, or a paid-payment/counted-visit mismatch needs `acceptClosingDifferenceNote`. Unpaid source occurrences need an explicit `unpaidItems` treatment: keep_pending, carry_forward (one-off bills only) or cancel, with a reason. Paid rows are never copied as expenses. The same operationId replays its original successor; a stale `expectedVersion` conflicts. Corrections after rollover bridge derived successor cash atomically through the ledger trigger, including backdated inserts and legacy rows without a period id; a verified opening receives a disclosed variance instead. Requires the explicit personal_ops.write grant.",
+            "Explicitly finalize one tracking or ended period into exactly one successor after review. Creates one successor period and one opening movement atomically, copies the source's latest effective policy settings (then applies explicit `settingsOverrides`), regenerates recurring obligation occurrences from the canonical templates with new period identities, and links the source as rolled_over. A tracking source may contain reviewed unverified/unclosed days; they never gain fabricated close rows and require the retained `acceptUnverifiedDaysNote`; the server re-derives and records the exact reviewed count. `opening.mode=carry_forward` carries the modeled closing cash and is labeled modeled; `verified_source` requires amountMinor, cutoffDate and evidence and is labeled reconciled. A nonzero modeled-versus-verified difference, a restated day-close snapshot, a savings target versus transfers difference, or a paid-payment/counted-visit mismatch needs `acceptClosingDifferenceNote`. Unpaid source occurrences need an explicit `unpaidItems` treatment: keep_pending, carry_forward (one-off bills only) or cancel, with a reason. Paid rows are never copied as expenses. The same operationId replays its original successor; a stale `expectedVersion` conflicts. Corrections after rollover bridge derived successor cash atomically through the ledger trigger, including backdated inserts and legacy rows without a period id; a verified opening receives a disclosed variance instead. Requires the explicit personal_ops.write grant.",
           inputSchema: moneyRolloverInputSchema,
           outputSchema: genericWriteOutputSchema,
           annotations: WRITE_ANNOTATIONS,

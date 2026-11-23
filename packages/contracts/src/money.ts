@@ -149,6 +149,11 @@ export type MoneyStateDto = Readonly<{
   lastClose: MoneyDayCloseStateDto | null;
   recentCloses: readonly MoneyDayCloseDto[];
   dayClosesUnavailable: boolean;
+  /** Unclosed dates the owner skipped before the active day (never invented). */
+  unverifiedDates: readonly string[];
+  unverifiedDayCount: number;
+  unverifiedThroughDate: string | null;
+  closedDayCount: number;
   dateResolution: MoneyStateDateResolutionDto;
   history: readonly MoneyStatePeriodSummaryDto[];
   historyUnavailable: boolean;
@@ -271,6 +276,8 @@ export type MoneyMovementDto = Readonly<{
   bookingDate: string;
   occurredAt: string | null;
   periodId: string | null;
+  /** Stable retry identity; lets one history reuse the expense editor. */
+  idempotencyKey: string;
   version: number;
   deletedAt: string | null;
   createdAt: string;

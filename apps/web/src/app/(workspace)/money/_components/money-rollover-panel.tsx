@@ -45,6 +45,7 @@ function MoneyRolloverForm({
   const [verifiedCutoff, setVerifiedCutoff] = useState("");
   const [verifiedEvidence, setVerifiedEvidence] = useState("");
   const [differenceNote, setDifferenceNote] = useState("");
+  const [unverifiedNote, setUnverifiedNote] = useState("");
   // One stable operation id per rendered form; a retry of the same confirmed
   // request replays instead of creating a second successor.
   const [operationId] = useState(() =>
@@ -73,6 +74,8 @@ function MoneyRolloverForm({
   const pending = preview.pendingOccurrences;
   const difference = preview.reconciliation.differenceMinor;
   const datesChanged = startDate !== preview.targets.startDate || endDate !== preview.targets.endDate;
+  const unverifiedCount = preview.unverifiedDayCount ?? 0;
+  const unverifiedDates = preview.unverifiedDates ?? [];
 
   async function submit(formData: FormData) {
     setError(null);
@@ -89,9 +92,10 @@ function MoneyRolloverForm({
         Period rollover
       </h2>
       <p className="mt-2 text-[color:var(--ega-text-secondary)]">
-        {preview.source.startDate}–{preview.source.endDate} is finished. Rollover
-        creates a successor and keeps the old period selectable.
-        Unused daily allowance is not carried forward.
+        {preview.source.startDate}–{preview.source.endDate} is under finalization review
+        ({preview.source.lifecycle.replaceAll("_", " ")}). Rollover creates one successor and
+        keeps the old period selectable. Reviewed unclosed days are acknowledged, never closed
+        automatically. Unused daily allowance is not carried forward.
       </p>
 
       <dl className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -141,7 +145,34 @@ function MoneyRolloverForm({
               : "Unavailable"}
           </dd>
         </div>
+        <div>
+          <dt className="text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
+            Unverified days
+          </dt>
+          <dd className="font-medium" data-testid="rollover-unverified-count">
+            {unverifiedCount > 0
+              ? `${unverifiedCount} reviewed${preview.unverifiedDaysAcknowledged ? " · acknowledged" : " · acknowledgment required"}`
+              : "None"}
+          </dd>
+        </div>
       </dl>
+
+      {unverifiedCount > 0 ? (
+        <div className="mt-3 rounded border border-ega-border p-3">
+          <p className="text-[length:var(--text-meta)]">
+            Finalization reviews every unclosed date in the inclusive source period. These dates
+            stay unverified; no close row is invented for them.
+          </p>
+          <details className="mt-1">
+            <summary className="cursor-pointer text-[length:var(--text-meta)] underline">
+              Show the {unverifiedCount} unverified date{unverifiedCount === 1 ? "" : "s"}
+            </summary>
+            <p className="mt-1 break-words text-[length:var(--text-meta)] tabular-nums">
+              {unverifiedDates.join(", ")}
+            </p>
+          </details>
+        </div>
+      ) : null}
 
       {preview.reconciliation.differences.length > 0 ? (
         <ul className="mt-3 flex flex-col gap-1 text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
@@ -294,6 +325,25 @@ function MoneyRolloverForm({
               </label>
               <Input id="rollover-verified-evidence" name="verifiedEvidence" value={verifiedEvidence} onChange={(event) => setVerifiedEvidence(event.target.value)} placeholder="Statement or counted-cash reference" />
             </div>
+          </div>
+        ) : null}
+
+        {unverifiedCount > 0 ? (
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="rollover-unverified-note" className="form-label">
+              Acknowledge unverified/unclosed days (retained as provenance)
+            </label>
+            <Input
+              id="rollover-unverified-note"
+              name="acceptUnverifiedDaysNote"
+              value={unverifiedNote}
+              onChange={(event) => setUnverifiedNote(event.target.value)}
+              placeholder={`Required to finalize ${unverifiedCount} reviewed unverified day${unverifiedCount === 1 ? "" : "s"}`}
+            />
+            <p className="text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
+              This note and the exact reviewed count are stored on the rollover receipt. The
+              server refuses rollover while the acknowledgment is missing.
+            </p>
           </div>
         ) : null}
 

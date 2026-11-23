@@ -16,6 +16,7 @@ const B = "22222222-2222-4222-8222-222222222222";
 const C = "33333333-3333-4333-8333-333333333333";
 const D = "44444444-4444-4444-8444-444444444444";
 const E = "55555555-5555-4555-8555-555555555555";
+const F = "66666666-6666-4666-8666-666666666666";
 const RESOURCE = "https://ega.example.com/api/mcp";
 
 const tags = JSON.parse(
@@ -95,7 +96,7 @@ async function main() {
       "INSERT INTO auth.users VALUES ($1, 'a@example.test'), ($2, 'b@example.test'), ($3, 'c@example.test'), ($4, 'd@example.test')",
       [A, B, C, D],
     );
-    await sql.unsafe("INSERT INTO auth.users VALUES ($1, 'e@example.test')", [E]);
+    await sql.unsafe("INSERT INTO auth.users VALUES ($1, 'e@example.test'), ($2, 'f@example.test')", [E, F]);
     await sql.unsafe("UPDATE auth.users SET email='ab.mortaki@gmail.com' WHERE id=$1", [A]);
     await sql.unsafe(
       "CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$ SELECT NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid $$",
@@ -310,6 +311,8 @@ async function main() {
       overrides.unpaidTreatment ?? "carry_forward",
       overrides.unpaidReason ?? "still owed",
       overrides.acceptedNote ?? null,
+      overrides.unverifiedNote ?? null,
+      overrides.unverifiedCount ?? 0,
       { modeledClosingCashMinor: 70800, pendingOccurrenceCount: 1 },
       overrides.occurrences ?? occurrences,
       overrides.carried ?? carried,
@@ -320,8 +323,8 @@ async function main() {
         `SELECT public.money_rollover_period(
           $1::uuid,$2::integer,$3::date,$4::date,$5::date,$6::text,$7::text,$8::boolean,
           $9::integer,$10::date,$11::text,$12::text,$13::text,$14::jsonb,$15::jsonb,$16::text,
-          $17::text,$18::text,$19::text,$20::text,$21::text,$22::jsonb,$23::jsonb,$24::jsonb,
-          $25::timestamptz
+          $17::text,$18::text,$19::text,$20::text,$21::text,$22::text,$23::integer,$24::jsonb,
+          $25::jsonb,$26::jsonb,$27::timestamptz
         ) AS result`,
         args,
       );
@@ -1045,10 +1048,11 @@ async function main() {
     );
     console.log("[SECURITY] the writer grant path is allowed, not merely unproven");
 
-    // --- Default midmonth tracking: leading untracked days are allowed ------
+    // --- Default midmonth tracking: leading days are unverified, acknowledged
     // The canonical create form defaults the range to the month boundaries and
     // the active date to today. Closing from that active date through the end
-    // is complete evidence: the leading days were never tracked.
+    // leaves the leading days unverified: they are listed exactly and must be
+    // explicitly acknowledged, but never fabricated as close rows.
     const midmonthCreated = await user(B, (tx) =>
       tx.unsafe(`SELECT (p).id AS id
         FROM (SELECT public.money_create_period(
@@ -1093,15 +1097,71 @@ async function main() {
     assert(
       midmonthSummary[0].summary.available === true &&
         midmonthSummary[0].summary.closeCount === 14 &&
-        midmonthSummary[0].summary.requiredCloseCount === 14 &&
+        midmonthSummary[0].summary.periodDayCount === 28 &&
+        midmonthSummary[0].summary.requiredCloseCount === 28 &&
         midmonthSummary[0].summary.trackedFromDate === "2027-02-15" &&
-        midmonthSummary[0].summary.missingCloseDates.length === 0 &&
-        midmonthSummary[0].summary.completeCloseEvidence === true,
-      "leading untracked days are not mistaken for a close-evidence gap",
+        midmonthSummary[0].summary.closedDates.length === 14 &&
+        midmonthSummary[0].summary.missingCloseDates.length === 14 &&
+        midmonthSummary[0].summary.unverifiedDayCount === 14 &&
+        midmonthSummary[0].summary.missingCloseDates[0] === "2027-02-01" &&
+        midmonthSummary[0].summary.missingCloseDates[13] === "2027-02-14" &&
+        midmonthSummary[0].summary.completeCloseEvidence === false,
+      "leading untracked days are reported as unverified dates, not hidden",
     );
     const midmonthVersion = await sql.unsafe(
       "SELECT version FROM public.money_periods WHERE id=$1",
       [midmonthId],
+    );
+    let midmonthMissingNoteDenied = false;
+    try {
+      await user(B, (tx) =>
+        callRollover(tx, [
+          midmonthId,
+          midmonthVersion[0].version,
+          "2027-03-01",
+          "2027-03-31",
+          "2027-03-01",
+          "Africa/Casablanca",
+          "initialized",
+          false,
+          5000,
+          "2027-02-28",
+          null,
+          "Carried forward",
+          hex("d"),
+          {
+            opening: {
+              source: "carry_forward",
+              recordedAt: "2027-03-01T09:00:00.000Z",
+              cutoffDate: "2027-02-28",
+              evidence: null,
+              note: "Carried forward",
+              corrections: [],
+            },
+            createdFrom: "web",
+          },
+          {},
+          "m10-op-midmonth-no-note",
+          hex("e"),
+          "carry_forward",
+          null,
+          null,
+          "Savings shortfall reviewed",
+          null,
+          0,
+          { modeledClosingCashMinor: 5000, pendingOccurrenceCount: 0 },
+          [],
+          [],
+          "2027-03-01T09:00:00.000Z",
+        ]),
+      );
+    } catch (error) {
+      midmonthMissingNoteDenied =
+        error.code === "23514" && /Unverified source days/.test(error.message);
+    }
+    assert(
+      midmonthMissingNoteDenied,
+      "unverified days require the explicit retained acknowledgment note",
     );
     const midmonthRollover = await user(B, (tx) =>
       callRollover(tx, [
@@ -1136,6 +1196,8 @@ async function main() {
         null,
         null,
         "Savings shortfall reviewed",
+        "Reviewed leading Feb 1-14 as unverified; no close rows invented",
+        14,
         { modeledClosingCashMinor: 5000, pendingOccurrenceCount: 0 },
         [],
         [],
@@ -1144,15 +1206,28 @@ async function main() {
     );
     assert(
       midmonthRollover[0].result.rollover?.successor_period_id,
-      "a default midmonth period rolls over from its first tracked day",
+      "a default midmonth period rolls over after acknowledging leading days",
     );
-    console.log("[CLOSE] default midmonth tracking rolls over without requiring untracked leading days");
+    assert(
+      midmonthRollover[0].result.rollover?.unverified_days_count === 14 &&
+        /Reviewed leading/.test(midmonthRollover[0].result.rollover?.unverified_days_note ?? ""),
+      "the reviewed unverified-day count and note are retained on the receipt",
+    );
+    const midmonthClosesAfter = await sql.unsafe(
+      "SELECT count(*)::int n FROM public.money_day_closes WHERE owner_user_id=$1 AND period_id=$2",
+      [B, midmonthId],
+    );
+    assert(
+      midmonthClosesAfter[0].n === 14,
+      "rollover acknowledges unverified days without fabricating close evidence",
+    );
+    console.log("[CLOSE] midmonth tracking rolls over after the unverified days are explicitly acknowledged");
 
     // --- A real gap inside the tracked range is still detected ---------------
     // Production close only advances one day, so an interior gap is a tampered
     // evidence state. Seed it directly for owner D and prove the read model and
     // atomic write both refuse it instead of treating it as complete.
-    const gapCreated = await user(D, (tx) =>
+    const gapCreated = await user(F, (tx) =>
       tx.unsafe(`SELECT (p).id AS id
         FROM (SELECT public.money_create_period(
           '2027-03-01'::date,'2027-03-05'::date,'Africa/Casablanca'::text,
@@ -1172,7 +1247,7 @@ async function main() {
          VALUES ($1,$2,$3::date,'closed','CLOSED',$4::uuid,$5,1,2,
            $6::date + CASE WHEN $8::boolean THEN 0 ELSE 1 END,$7,$8,'gap-proof-v1',1,'{}'::uuid[],'{}'::jsonb,now())`,
         [
-          D,
+          F,
           gapId,
           date,
           `c0de1000-0000-4000-8000-0000000000${String(index).padStart(2, "0")}`,
@@ -1189,13 +1264,13 @@ async function main() {
       );
       await tx.unsafe(
         "UPDATE public.money_periods SET lifecycle='ended', active_date=end_date, version=version+1, updated_at=now() WHERE id=$1 AND owner_user_id=$2",
-        [gapId, D],
+        [gapId, F],
       );
       await tx.unsafe(
         "ALTER TABLE public.money_periods ENABLE TRIGGER money_periods_close_transition_guard",
       );
     });
-    const gapSummary = await user(D, (tx) =>
+    const gapSummary = await user(F, (tx) =>
       tx.unsafe(
         "SELECT public.money_rollover_close_snapshot_summary($1::uuid) AS summary",
         [gapId],
@@ -1208,54 +1283,79 @@ async function main() {
     assert(
       gapSummary[0].summary.available === true &&
         gapSummary[0].summary.closeCount === 4 &&
+        gapSummary[0].summary.periodDayCount === 5 &&
         gapSummary[0].summary.requiredCloseCount === 5 &&
         gapSummary[0].summary.trackedFromDate === "2027-03-01" &&
         JSON.stringify(gapSummary[0].summary.missingCloseDates) ===
           JSON.stringify(["2027-03-03"]) &&
+        gapSummary[0].summary.unverifiedDayCount === 1 &&
         gapSummary[0].summary.completeCloseEvidence === false,
-      "an interior missing day is reported as an explicit gap",
+      "an interior missing day is reported as an exact unverified date",
     );
     let gapDenied = false;
     let gapDetail = "";
+    const gapArgs = (operationId, note, count) => [
+      gapId,
+      gapVersion[0].version,
+      "2027-03-06",
+      "2027-03-10",
+      "2027-03-06",
+      "Africa/Casablanca",
+      "initialized",
+      false,
+      1000,
+      "2027-03-05",
+      null,
+      "Carried forward",
+      hex("1"),
+      { opening: { source: "carry_forward", recordedAt: "2027-03-06T09:00:00.000Z", cutoffDate: "2027-03-05", evidence: null, note: "Carried forward", corrections: [] }, createdFrom: "web" },
+      {},
+      operationId,
+      hex("2"),
+      "carry_forward",
+      null,
+      null,
+      "Restated synthetic close evidence accepted",
+      note,
+      count,
+      {},
+      [],
+      [],
+      "2027-03-06T09:00:00.000Z",
+    ];
     try {
-      await user(D, (tx) =>
-        callRollover(tx, [
-          gapId,
-          gapVersion[0].version,
-          "2027-03-06",
-          "2027-03-10",
-          "2027-03-06",
-          "Africa/Casablanca",
-          "initialized",
-          false,
-          1000,
-          "2027-03-05",
-          null,
-          "Carried forward",
-          hex("1"),
-          { opening: { source: "carry_forward", recordedAt: "2027-03-06T09:00:00.000Z", cutoffDate: "2027-03-05", evidence: null, note: "Carried forward", corrections: [] }, createdFrom: "web" },
-          {},
-          "m10-op-gap",
-          hex("2"),
-          "carry_forward",
-          null,
-          null,
-          null,
-          {},
-          [],
-          [],
-          "2027-03-06T09:00:00.000Z",
-        ]),
-      );
+      await user(F, (tx) => callRollover(tx, gapArgs("m10-op-gap", null, 0)));
     } catch (error) {
       gapDenied = error.code === "23514";
       gapDetail = error.detail ?? "";
     }
     assert(
       gapDenied && /2027-03-03/.test(gapDetail),
-      "rollover refuses a tracked-range gap and names the missing date",
+      "rollover refuses an unacknowledged gap and names the missing date",
     );
-    console.log("[CLOSE] a real gap inside the tracked range is detected and blocks rollover");
+    let gapCountDenied = false;
+    try {
+      await user(F, (tx) =>
+        callRollover(tx, gapArgs("m10-op-gap-count", "Reviewed the missing day", 2)),
+      );
+    } catch (error) {
+      gapCountDenied = error.code === "40001";
+    }
+    assert(gapCountDenied, "a stale unverified-day count conflicts instead of being trusted");
+    const gapRollover = await user(F, (tx) =>
+      callRollover(tx, gapArgs("m10-op-gap-ok", "Reviewed the missing day", 1)),
+    );
+    assert(
+      gapRollover[0].result.rollover?.successor_period_id &&
+        gapRollover[0].result.rollover?.unverified_days_count === 1,
+      "an acknowledged gap rolls over without inventing a close",
+    );
+    const gapClosesAfter = await sql.unsafe(
+      "SELECT count(*)::int n FROM public.money_day_closes WHERE owner_user_id=$1 AND period_id=$2",
+      [F, gapId],
+    );
+    assert(gapClosesAfter[0].n === 4, "acknowledgment never fabricates the missing close row");
+    console.log("[CLOSE] a real gap is disclosed exactly and acknowledged without fabricated closes");
 
     // --- A paid-obligation mismatch gates the write independently -----------
     // The payment is soft-deleted before the final close, so the close snapshot
@@ -1331,7 +1431,8 @@ async function main() {
     );
     assert(
       paidSummary[0].summary.available === true &&
-        paidSummary[0].summary.completeCloseEvidence === true &&
+        paidSummary[0].summary.completeCloseEvidence === false &&
+        paidSummary[0].summary.unverifiedDayCount === 29 &&
         paidSummary[0].summary.restatedDifferenceCount === 0 &&
         paidSummary[0].summary.paidObligationMismatchCount === 1 &&
         paidSummary[0].summary.countedVisitMismatchCount === 0 &&
@@ -1361,6 +1462,8 @@ async function main() {
       null,
       null,
       null,
+      "Reviewed June 1-29 as unverified",
+      29,
       {},
       [],
       [],
@@ -1472,7 +1575,9 @@ async function main() {
     );
     assert(
       visitSummary[0].summary.available === true &&
-        visitSummary[0].summary.completeCloseEvidence === true &&
+        visitSummary[0].summary.completeCloseEvidence === false &&
+        visitSummary[0].summary.unverifiedDayCount === 1 &&
+        visitSummary[0].summary.missingCloseDates[0] === "2026-10-01" &&
         visitSummary[0].summary.restatedDifferenceCount === 0 &&
         visitSummary[0].summary.paidObligationMismatchCount === 0 &&
         visitSummary[0].summary.countedVisitMismatchCount === 1 &&
@@ -1502,6 +1607,8 @@ async function main() {
       null,
       null,
       null,
+      "Reviewed October 1 as unverified",
+      1,
       {},
       [],
       [],
@@ -1573,7 +1680,7 @@ async function main() {
       "UTC", "initialized", false, 9000, "2027-06-01", null, "Carried forward", hex("a"),
       { opening: { source: "carry_forward", recordedAt: "2027-06-02T09:00:00.000Z",
         cutoffDate: "2027-06-01", evidence: null, note: "Carried forward", corrections: [] }, createdFrom: "web" },
-      {}, "m10-op-race", hex("b"), "carry_forward", null, null, null,
+      {}, "m10-op-race", hex("b"), "carry_forward", null, null, null, null, 0,
       { modeledClosingCashMinor: 9000, pendingOccurrenceCount: 0 }, [], [], "2027-06-02T09:00:00.000Z"];
     let releaseRollover;
     let rolloverReady;

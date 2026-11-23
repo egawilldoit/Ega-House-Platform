@@ -41,7 +41,7 @@ const OBLIGATION_TABLE = "money_obligations";
 const PERIOD_TABLE = "money_periods";
 
 const ROLLOVER_COLUMNS =
-  "id, source_period_id, successor_period_id, operation_id, request_fingerprint, opening_mode, opening_amount_minor, closing_cash_minor, closing_cutoff_date, unpaid_treatment, reconciliation_accepted_note, generated_occurrence_count, carried_occurrence_count, cancelled_occurrence_count, created_at";
+  "id, source_period_id, successor_period_id, operation_id, request_fingerprint, opening_mode, opening_amount_minor, closing_cash_minor, closing_cutoff_date, unpaid_treatment, reconciliation_accepted_note, unverified_days_note, unverified_days_count, generated_occurrence_count, carried_occurrence_count, cancelled_occurrence_count, created_at";
 
 const BRIDGE_COLUMNS =
   "id, source_period_id, destination_period_id, movement_id, correction_version, amount_minor, direction, booking_date, applied, variance_reason, created_at";
@@ -94,6 +94,8 @@ type RolloverRow = {
   closing_cutoff_date: string;
   unpaid_treatment: "keep_pending" | "carry_forward" | "cancel" | null;
   reconciliation_accepted_note: string | null;
+  unverified_days_note: string | null;
+  unverified_days_count: number;
   generated_occurrence_count: number;
   carried_occurrence_count: number;
   cancelled_occurrence_count: number;
@@ -117,25 +119,36 @@ function toCloseSnapshotAssessment(
     };
   }
   const missingCloseDates = row.missingCloseDates;
+  const closedDates = row.closedDates;
   if (
     typeof row.closeCount !== "number" ||
     !Number.isInteger(row.closeCount) ||
     row.closeCount < 0 ||
+    !Array.isArray(closedDates) ||
+    !closedDates.every(
+      (date) => typeof date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(date),
+    ) ||
+    new Set(closedDates).size !== closedDates.length ||
+    closedDates.length !== row.closeCount ||
+    typeof row.periodDayCount !== "number" ||
+    !Number.isInteger(row.periodDayCount) ||
+    row.periodDayCount < 1 ||
     typeof row.requiredCloseCount !== "number" ||
     !Number.isInteger(row.requiredCloseCount) ||
-    row.requiredCloseCount < 1 ||
+    row.requiredCloseCount !== row.periodDayCount ||
     (row.trackedFromDate !== null && typeof row.trackedFromDate !== "string") ||
     !Array.isArray(missingCloseDates) ||
     !missingCloseDates.every(
       (date) => typeof date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(date),
     ) ||
     new Set(missingCloseDates).size !== missingCloseDates.length ||
+    typeof row.unverifiedDayCount !== "number" ||
+    !Number.isInteger(row.unverifiedDayCount) ||
+    row.unverifiedDayCount !== missingCloseDates.length ||
     typeof row.completeCloseEvidence !== "boolean" ||
-    row.completeCloseEvidence !==
-      (missingCloseDates.length === 0 &&
-        row.closeCount === row.requiredCloseCount) ||
-    // Every close is inside [first close, end], so the tracked days without a
-    // close must exactly account for the required-minus-retained difference.
+    row.completeCloseEvidence !== (missingCloseDates.length === 0) ||
+    // Every close is inside the period, so retained plus unverified dates must
+    // account for exactly the whole period.
     row.requiredCloseCount - missingCloseDates.length !== row.closeCount ||
     row.comparableToRestatedTotals !== true ||
     typeof row.restatedDifferenceCount !== "number" ||
@@ -178,10 +191,13 @@ function toCloseSnapshotAssessment(
   return {
     available: true,
     closeCount: row.closeCount,
+    closedDates: closedDates.map(String),
+    periodDayCount: row.periodDayCount,
     requiredCloseCount: row.requiredCloseCount,
     trackedFromDate:
       typeof row.trackedFromDate === "string" ? row.trackedFromDate : null,
     missingCloseDates: missingCloseDates.map(String),
+    unverifiedDayCount: row.unverifiedDayCount,
     completeCloseEvidence: row.completeCloseEvidence,
     lastClosedDate:
       typeof row.lastClosedDate === "string" ? row.lastClosedDate : null,
@@ -237,6 +253,8 @@ function toRecord(row: RolloverRow, successor: MoneyPeriod | null): MoneyRollove
     closingCutoffDate: String(row.closing_cutoff_date),
     unpaidTreatment: row.unpaid_treatment,
     reconciliationAcceptedNote: row.reconciliation_accepted_note,
+    unverifiedDaysNote: row.unverified_days_note,
+    unverifiedDaysCount: Number(row.unverified_days_count),
     generatedOccurrenceCount: Number(row.generated_occurrence_count),
     carriedOccurrenceCount: Number(row.carried_occurrence_count),
     cancelledOccurrenceCount: Number(row.cancelled_occurrence_count),
@@ -546,6 +564,8 @@ export class SupabaseMoneyRolloverRepository implements MoneyRolloverRepository 
       p_unpaid_treatment: input.values.unpaidItems?.treatment ?? null,
       p_unpaid_reason: input.values.unpaidItems?.reason ?? null,
       p_reconciliation_accepted_note: input.reconciliationAcceptedNote,
+      p_unverified_days_note: input.unverifiedDaysNote,
+      p_unverified_days_count: input.unverifiedDaysCount,
       p_reconciliation: input.reconciliation,
       p_occurrences: input.obligations.map((item) => ({
         values: item.values,

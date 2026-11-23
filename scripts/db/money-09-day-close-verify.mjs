@@ -274,35 +274,53 @@ async function main() {
     assert(foreignClose[0].result.status === "not_found", "another owner cannot close this period");
     console.log("[HISTORY] original close is immutable; live totals restate beside it; owner RLS isolates evidence");
 
-    // Once close evidence exists, active-date/lifecycle transitions are
-    // close-driven. Direct table updates and the settings RPC cannot skip an
-    // unclosed day, advance twice or rewind a closed date.
+    // MONEY-001-A: day close is optional. A tracking active date may skip
+    // unclosed days or move forward without a close; it may never move to or
+    // behind retained close evidence, and a period still cannot end without its
+    // final close.
     const guard = async (label, fn, code = "23514") => {
       const denied = await fn().then(() => false, e => e.code === code);
       assert(denied, label);
     };
-    await guard("direct update cannot skip an unclosed day after a close", () => user(A, tx => tx.unsafe(
-      "UPDATE public.money_periods SET active_date='2026-11-11', version=version+1 WHERE id=$1", [period])));
-    await guard("direct update cannot rewind a closed date", () => user(A, tx => tx.unsafe(
+    await guard("direct update cannot rewind to a closed date", () => user(A, tx => tx.unsafe(
       "UPDATE public.money_periods SET active_date='2026-11-09', version=version+1 WHERE id=$1", [period])));
+    await guard("direct update cannot rewind behind the retained close", () => user(A, tx => tx.unsafe(
+      "UPDATE public.money_periods SET active_date='2026-11-08', version=version+1 WHERE id=$1", [period])));
     await guard("direct update cannot end a period without its final close", () => user(A, tx => tx.unsafe(
       "UPDATE public.money_periods SET lifecycle='ended', version=version+1 WHERE id=$1", [period])));
-    await guard("period settings cannot skip an unclosed day after a close", () => user(A, tx => tx.unsafe(
-      `SELECT * FROM public.money_update_period($1,$2,'2026-11-11'::date,NULL::jsonb,NULL::integer,NULL::text,NULL::text,NULL::jsonb,NULL::text,now()::timestamptz)`,
-      [period, current.version])));
+    // Skipping Nov 10 to Nov 11 is now a normal calendar move, not a close.
+    const advanced = await user(A, tx => tx.unsafe(
+      "UPDATE public.money_periods SET active_date='2026-11-11', version=version+1 WHERE id=$1 RETURNING active_date,version", [period]));
+    assert(advanced.length === 1 && day(advanced[0].active_date) === "2026-11-11"
+      && advanced[0].version === current.version + 1,
+      "a tracking active date may skip an unclosed day without a close");
+    const closesAfterSkip = await sql.unsafe(
+      "SELECT count(*)::int n FROM public.money_day_closes WHERE owner_user_id=$1 AND period_id=$2",
+      [A, period]);
+    assert(closesAfterSkip[0].n === 1, "a calendar move never fabricates a close row");
+    // The settings path uses the same policy; it cannot reopen attested history.
+    await guard("period settings cannot rewind a closed date", () => user(A, tx => tx.unsafe(
+      `SELECT * FROM public.money_update_period($1,$2,'2026-11-09'::date,NULL::jsonb,NULL::integer,NULL::text,NULL::text,NULL::jsonb,NULL::text,now()::timestamptz)`,
+      [period, advanced[0].version])), "23514");
+    const settingsAdvanced = await user(A, tx => tx.unsafe(
+      `SELECT * FROM public.money_update_period($1,$2,'2026-11-12'::date,NULL::jsonb,NULL::integer,NULL::text,NULL::text,NULL::jsonb,NULL::text,now()::timestamptz)`,
+      [period, advanced[0].version]));
+    assert(settingsAdvanced.length === 1 && day(settingsAdvanced[0].active_date) === "2026-11-12",
+      "period settings advance the active date without a close");
     await guard("direct baseline inserts are not a write path", () => user(A, tx => tx.unsafe(
       `INSERT INTO public.money_day_start_baselines(owner_user_id,period_id,date,version,algorithm_version,availability,unavailable_reason)
-       VALUES($1,$2,'2026-11-10',99,'v1','unavailable','forged')`, [A, period])), "42501");
+       VALUES($1,$2,'2026-11-13',99,'v1','unavailable','forged')`, [A, period])), "42501");
     await guard("direct policy inserts are not a write path", () => user(A, tx => tx.unsafe(
       `INSERT INTO public.money_policy_versions(owner_user_id,period_id,version,effective_date,policy)
-       VALUES($1,$2,99,'2026-11-10','{}'::jsonb)`, [A, period])), "42501");
+       VALUES($1,$2,99,'2026-11-13','{}'::jsonb)`, [A, period])), "42501");
     const sameDateUpdate = await user(A, tx => tx.unsafe(
       "UPDATE public.money_periods SET settings=settings, version=version+1 WHERE id=$1 RETURNING id", [period]));
     assert(sameDateUpdate.length === 1, "same-date settings updates remain allowed after a close");
     const afterGuard = (await sql.unsafe("SELECT active_date,version FROM public.money_periods WHERE id=$1", [period]))[0];
-    assert(day(afterGuard.active_date) === "2026-11-10" && afterGuard.version === current.version + 1,
-      "only the allowed same-date settings update changed the period");
-    console.log("[GUARD] close evidence makes transitions close-driven; forged evidence inserts are denied");
+    assert(day(afterGuard.active_date) === "2026-11-12"
+      && afterGuard.version === current.version + 3,
+      "only explicit active-date moves and the same-date settings update versioned the period");
+    console.log("[GUARD] optional date moves skip closes; retained closes cannot be reopened; forged evidence inserts are denied");
 
     // Final tracked day: retain the end date, end the period and require rollover.
     const finalPeriodRows = await user(B, tx => tx.unsafe(`SELECT (p).id AS id, (p).version AS version
@@ -592,7 +610,7 @@ async function main() {
     assert(day(rewound.active_date) === "2026-10-05", "pre-close setup can still rewind without close evidence");
     console.log("[SETUP] pre-first-close positioning is explicit setup; close requests still cannot skip");
 
-    console.log("MONEY-09 day-close proof passed (through 0106).");
+    console.log("MONEY-09 day-close proof passed (journal tail through MONEY-001-A).");
   } catch (error) {
     console.error(error);
     exit(1);

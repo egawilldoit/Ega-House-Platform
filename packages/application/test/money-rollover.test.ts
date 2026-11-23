@@ -60,6 +60,8 @@ function recordFor(input: MoneyRolloverWriteInput): MoneyRolloverRecord {
     closingCutoffDate: input.reconciliation.cutoffDate,
     unpaidTreatment: input.values.unpaidItems?.treatment ?? null,
     reconciliationAcceptedNote: input.reconciliationAcceptedNote,
+    unverifiedDaysNote: input.unverifiedDaysNote,
+    unverifiedDaysCount: input.unverifiedDaysCount,
     generatedOccurrenceCount: input.obligations.length,
     carriedOccurrenceCount: input.carriedOccurrences.length,
     cancelledOccurrenceCount: 0,
@@ -116,6 +118,7 @@ function baseInput(overrides: Record<string, unknown> = {}) {
     settingsOverrides: null,
     allowUncoveredDays: false,
     acceptClosingDifferenceNote: null,
+    acceptUnverifiedDaysNote: null,
     ...overrides,
   };
 }
@@ -225,7 +228,7 @@ test("a stale source version is a conflict, not a silent overwrite", async () =>
   assert.equal(!result.ok && result.code, "conflict");
 });
 
-test("a tracking period cannot be rolled over before the final close", async () => {
+test("a tracking period is a legal rollover source after review", async () => {
   const fake = fakeRepository(context({ period: endedPeriod({ lifecycle: "tracking" }) }));
   const result = await rolloverMoneyPeriod(
     actor,
@@ -233,8 +236,58 @@ test("a tracking period cannot be rolled over before the final close", async () 
     baseInput(),
     "750e8400-e29b-41d4-a716-446655440002",
   );
-  assert.equal(result.ok, false);
-  assert.match(!result.ok ? result.errorMessage : "", /Close the final day/);
+  assert.equal(result.ok, true);
+  assert.equal(fake.writes.length, 1);
+  assert.equal(fake.writes[0].unverifiedDaysCount, 0);
+  assert.equal(fake.writes[0].unverifiedDaysNote, null);
+});
+
+test("unverified days require a retained acknowledgment before the write", async () => {
+  const snapshots = {
+    available: true as const,
+    closeCount: 1,
+    periodDayCount: 3,
+    requiredCloseCount: 3,
+    trackedFromDate: "2026-11-30",
+    closedDates: ["2026-11-30"],
+    missingCloseDates: ["2026-11-01", "2026-11-02"],    unverifiedDayCount: 2,
+    completeCloseEvidence: false,
+    lastClosedDate: "2026-11-30",
+    comparableToRestatedTotals: true as const,
+    restatedDifferenceCount: 0,
+    restatedDifferences: [],
+    paidObligationCount: 0,
+    paidObligationMismatchCount: 0,
+    countedVisitCount: 0,
+    countedVisitMismatchCount: 0,
+    savingsTargetMinor: null,
+    savingsTransferredMinor: 0,
+  };
+  const rejected = fakeRepository(context({ closeSnapshots: snapshots }));
+  const denied = await rolloverMoneyPeriod(
+    actor,
+    { repository: rejected.repository, obligations: noTemplates },
+    baseInput(),
+    "750e8400-e29b-41d4-a716-446655440012",
+  );
+  assert.equal(denied.ok, false);
+  assert.match(!denied.ok ? denied.errorMessage : "", /Acknowledge the 2 reviewed/);
+  assert.equal(rejected.writes.length, 0);
+
+  const accepted = fakeRepository(context({ closeSnapshots: snapshots }));
+  const written = await rolloverMoneyPeriod(
+    actor,
+    { repository: accepted.repository, obligations: noTemplates },
+    baseInput({ acceptUnverifiedDaysNote: "Reviewed Nov 1-2 as unverified" }),
+    "750e8400-e29b-41d4-a716-446655440013",
+  );
+  assert.equal(written.ok, true);
+  assert.equal(accepted.writes.length, 1);
+  assert.equal(accepted.writes[0].unverifiedDaysCount, 2);
+  assert.equal(
+    accepted.writes[0].unverifiedDaysNote,
+    "Reviewed Nov 1-2 as unverified",
+  );
 });
 
 test("unknown closing cash is never carried forward as zero", async () => {
@@ -548,29 +601,28 @@ test("a restated close never hides paid-obligation and visit mismatches", async 
   assert.equal(preview.ok && preview.data.ready, false);
 });
 
-test("incomplete close evidence blocks rollover even when the final day closed", async () => {
-  const fake = fakeRepository(
-    context({
-      closeSnapshots: {
-        available: true,
-        closeCount: 18,
-        requiredCloseCount: 19,
-        trackedFromDate: "2026-11-13",
-        missingCloseDates: ["2026-11-20"],
-        completeCloseEvidence: false,
-        lastClosedDate: "2026-11-30",
-        comparableToRestatedTotals: true,
-        restatedDifferenceCount: 0,
-        restatedDifferences: [],
-        paidObligationCount: 0,
-        paidObligationMismatchCount: 0,
-        countedVisitCount: 0,
-        countedVisitMismatchCount: 0,
-        savingsTargetMinor: null,
-        savingsTransferredMinor: 0,
-      },
-    }),
-  );
+test("incomplete close evidence becomes an explicit unverified-day choice", async () => {
+  const snapshots = {
+    available: true as const,
+    closeCount: 18,
+    periodDayCount: 19,
+    requiredCloseCount: 19,
+    trackedFromDate: "2026-11-13",
+    missingCloseDates: ["2026-11-20"],
+    unverifiedDayCount: 1,
+    completeCloseEvidence: false,
+    lastClosedDate: "2026-11-30",
+    comparableToRestatedTotals: true as const,
+    restatedDifferenceCount: 0,
+    restatedDifferences: [],
+    paidObligationCount: 0,
+    paidObligationMismatchCount: 0,
+    countedVisitCount: 0,
+    countedVisitMismatchCount: 0,
+    savingsTargetMinor: null,
+    savingsTransferredMinor: 0,
+  };
+  const fake = fakeRepository(context({ closeSnapshots: snapshots }));
   const preview = await getMoneyRolloverPreviewForPeriod(
     actor,
     { repository: fake.repository, obligations: noTemplates },
@@ -578,9 +630,16 @@ test("incomplete close evidence blocks rollover even when the final day closed",
   );
   assert.equal(preview.ok, true);
   assert.equal(preview.ok && preview.data.ready, false);
+  assert.equal(preview.ok && preview.data.unverifiedDayCount, 1);
+  assert.deepEqual(preview.ok && preview.data.unverifiedDates, ["2026-11-20"]);
+  assert.equal(
+    preview.ok && preview.data.requiresUnverifiedDaysAcknowledgment,
+    true,
+  );
+  assert.equal(preview.ok ? preview.data.blockers.length : -1, 0);
   assert.match(
-    preview.ok ? preview.data.blockers.join(" ") : "",
-    /gap inside the tracked range/,
+    preview.ok ? preview.data.choices.join(" ") : "",
+    /Acknowledge the 1 reviewed unverified/,
   );
   assert.match(
     preview.ok
@@ -595,7 +654,19 @@ test("incomplete close evidence blocks rollover even when the final day closed",
       preview.data.reconciliation.differences.find(
         (entry) => entry.code === "incomplete_close_evidence",
       )?.status,
-    "unavailable",
+    "choice_required",
+  );
+
+  const acknowledged = await getMoneyRolloverPreview(
+    actor,
+    { repository: fake.repository, obligations: noTemplates },
+    baseInput({ acceptUnverifiedDaysNote: "Reviewed the unclosed day" }),
+  );
+  assert.equal(acknowledged.ok, true);
+  assert.equal(acknowledged.ok && acknowledged.data.ready, true);
+  assert.equal(
+    acknowledged.ok && acknowledged.data.unverifiedDaysAcknowledged,
+    true,
   );
 });
 

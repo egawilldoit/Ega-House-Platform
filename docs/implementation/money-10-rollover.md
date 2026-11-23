@@ -31,20 +31,15 @@ Status: implementation candidate on `t3/money-10-mcp-delivery`, rebased onto
 
 ## MONEY-09 integration (implemented here)
 
-1. **Finished source state.** Rollover requires
-   `money_periods.lifecycle = 'ended'` and `active_date = end_date`. Close
-   evidence is complete when every day from the first retained close (the
-   inferred tracking start) through the source end has exactly one close. A period
-   created on a month boundary but tracked from a later active date therefore
-   rolls over normally: its untracked leading calendar days are not evidence
-   gaps. An actual missing day inside the tracked range blocks the preview and
-   the atomic write, and the blocker names the first missing date. Because the
-   first retained close is the only tracking-start evidence used here, loss of
-   that first close cannot be distinguished from an intentional later start.
-   Repair of missing retained evidence requires an operational recovery; the
-   product has no backfill action. The durable
-   day close is the only normal producer of the finished state; a tracking
-   source fails the preview before the panel is rendered.
+1. **Finished source state.** MONEY-001-A supersedes the original
+   `lifecycle = 'ended'` / `active_date = end_date` precondition. A still-tracking
+   period is a legal finalization source: the explicit rollover reviews every
+   inclusive date, lists retained closes and every unverified/unclosed date
+   (including leading dates), and requires a retained acknowledgment note with
+   the exact reviewed count. No close row is fabricated. A fully closed source
+   keeps the original behavior. A rolled-over period remains ineligible. The
+   atomic write repeats the review and count check so a stale preview cannot
+   bypass the acknowledgment.
 2. **Close snapshots.** `MoneyRolloverSourceContext.closeSnapshots` is read from
    `money_day_closes` by `money_rollover_close_snapshot_summary`. Every retained
    close is compared with the same canonical aggregates used by the MONEY-09
@@ -68,8 +63,11 @@ Status: implementation candidate on `t3/money-10-mcp-delivery`, rebased onto
    serialize with rollover. Concurrent obligation writes can deadlock; the
    database aborts one transaction and the affected operation can be retried.
 4. **Preview surface.** `money-day-close-panel.tsx` and
-   `money-rollover-panel.tsx` remain separate components; the Money page renders
-   close evidence for the selected period and rollover only for an ended source.
+   `money-rollover-panel.tsx` remain separate secondary components; the Money
+   page renders close evidence for the selected period and rollover for a
+   tracking or ended source. MONEY-001-A added the retained unverified-days
+   acknowledgment and moved both tools below the primary summary / quick entry /
+   unified history.
    The successor copies the source's latest effective `money_policy_versions`
    settings (never the mutable `money_periods.settings` copy) and layers explicit
    overrides. Unpaid occurrences are read through bounded pages with an explicit

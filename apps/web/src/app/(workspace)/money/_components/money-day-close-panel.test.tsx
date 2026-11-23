@@ -140,6 +140,8 @@ describe("MoneyDayClosePanel", () => {
           lastClose={null}
           recentCloses={[]}
           dayClosesUnavailable={false}
+          unverifiedDates={[]}
+          unverifiedDayCount={0}
           action={action}
         />,
       );
@@ -202,6 +204,8 @@ describe("MoneyDayClosePanel", () => {
           }}
           recentCloses={[CLOSE]}
           dayClosesUnavailable={false}
+          unverifiedDates={[]}
+          unverifiedDayCount={0}
           action={vi.fn()}
         />,
       );
@@ -210,6 +214,26 @@ describe("MoneyDayClosePanel", () => {
     expect(container.textContent).toContain("Day spending (original)");
     expect(container.textContent).toContain("Day spending (restated)");
     expect(container.textContent).toContain("Active date advanced to 2026-11-30");
+  });
+
+  it("states that close is optional and lists skipped unverified days", async () => {
+    await act(async () => {
+      root.render(
+        <MoneyDayClosePanel
+          period={PERIOD}
+          dayClose={null}
+          lastClose={null}
+          recentCloses={[]}
+          dayClosesUnavailable={false}
+          unverifiedDates={["2026-11-21", "2026-11-22"]}
+          unverifiedDayCount={2}
+          action={vi.fn()}
+        />,
+      );
+    });
+    expect(container.textContent).toContain("Day close is optional");
+    expect(container.textContent).toContain("2 unverified/unclosed days");
+    expect(container.textContent).toContain("2026-11-21, 2026-11-22");
   });
 
   it("does not offer a routine close for an ended period", async () => {
@@ -221,6 +245,8 @@ describe("MoneyDayClosePanel", () => {
           lastClose={null}
           recentCloses={[]}
           dayClosesUnavailable={false}
+          unverifiedDates={[]}
+          unverifiedDayCount={0}
           action={vi.fn()}
         />,
       );

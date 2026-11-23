@@ -100,6 +100,9 @@ export type MoneyRolloverRecord = Readonly<{
   closingCutoffDate: string;
   unpaidTreatment: MoneyRolloverUnpaidTreatment | null;
   reconciliationAcceptedNote: string | null;
+  /** Retained acknowledgment for the reviewed unverified source days. */
+  unverifiedDaysNote: string | null;
+  unverifiedDaysCount: number;
   generatedOccurrenceCount: number;
   carriedOccurrenceCount: number;
   cancelledOccurrenceCount: number;
@@ -133,6 +136,10 @@ export type MoneyRolloverWriteInput = Readonly<{
   openingCreateFingerprint: string;
   reconciliation: MoneyRolloverReconciliation;
   reconciliationAcceptedNote: string | null;
+  /** Retained owner acknowledgment for reviewed unverified/unclosed days. */
+  unverifiedDaysNote: string | null;
+  /** Exact count the owner reviewed; the atomic write re-checks it. */
+  unverifiedDaysCount: number;
   obligations: readonly MoneyRolloverObligationPlanItem[];
   carriedOccurrences: readonly MoneyRolloverCarryItem[];
   createdAt: string;

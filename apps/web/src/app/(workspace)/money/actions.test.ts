@@ -129,11 +129,11 @@ test("money actions map application codes onto the component conflict contract",
   assert.equal(mapApplicationCode(undefined), "INTERNAL");
 });
 
-test("money page wires the mutation components with the verified owner", () => {
-  assert.match(pageSource, /MoneyCreatePanel/);
-  assert.match(pageSource, /MoneyRowActions/);
+test("money page wires the primary mutation and history components with the verified owner", () => {
+  assert.match(pageSource, /MoneyQuickEntry/);
+  assert.match(pageSource, /MoneyHistory/);
   assert.match(pageSource, /ownerKey=\{user\.id\}/);
-  assert.match(pageSource, /expense=\{expense\}/);
+  assert.doesNotMatch(pageSource, /MoneyCreatePanel|MoneyMovementPanel/);
 });
 
 /**

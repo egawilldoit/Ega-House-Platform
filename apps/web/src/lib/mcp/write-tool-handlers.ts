@@ -993,6 +993,7 @@ export function createMcpWriteToolHandlers(
         settingsOverrides?: Record<string, unknown> | null;
         allowUncoveredDays?: boolean;
         acceptClosingDifferenceNote?: string | null;
+        acceptUnverifiedDaysNote?: string | null;
       },
     ): Promise<CallToolResult> {
       try {
@@ -1010,6 +1011,8 @@ export function createMcpWriteToolHandlers(
           allowUncoveredDays: input.allowUncoveredDays ?? false,
           acceptClosingDifferenceNote:
             input.acceptClosingDifferenceNote ?? null,
+          acceptUnverifiedDaysNote:
+            input.acceptUnverifiedDaysNote ?? null,
         };
         return await withExclusiveMutation(
           client,

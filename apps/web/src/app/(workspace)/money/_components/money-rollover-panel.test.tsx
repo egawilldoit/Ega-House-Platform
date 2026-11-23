@@ -132,6 +132,25 @@ test("rollover panel discloses a truncated variance history", () => {
 });
 
 
+test("rollover panel discloses unverified dates and requires a retained acknowledgment", () => {
+  const html = renderToStaticMarkup(
+    <MoneyRolloverPanel
+      preview={preview({
+        unverifiedDates: ["2026-11-01", "2026-11-21", "2026-11-22"],
+        unverifiedDayCount: 3,
+        unverifiedDaysAcknowledged: false,
+        requiresUnverifiedDaysAcknowledgment: true,
+      })}
+      previewUnavailableReason={null}
+      action={async () => ({ ok: true, error: null })}
+    />,
+  );
+  assert.match(html, /name="acceptUnverifiedDaysNote"/);
+  assert.match(html, /3 reviewed · acknowledgment required/);
+  assert.match(html, /2026-11-01, 2026-11-21, 2026-11-22/);
+  assert.match(html, /server refuses rollover while the acknowledgment is missing/i);
+});
+
 test("rollover confirmation submits its form", () => {
   const html = renderToStaticMarkup(
     <MoneyRolloverPanel preview={preview()} previewUnavailableReason={null} action={async () => ({ ok: true, error: null })} />,

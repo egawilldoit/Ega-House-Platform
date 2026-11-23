@@ -111,6 +111,7 @@ export type McpMoneyRolloverInput = Readonly<{
   settingsOverrides?: Record<string, unknown> | null;
   allowUncoveredDays?: boolean;
   acceptClosingDifferenceNote?: string | null;
+  acceptUnverifiedDaysNote?: string | null;
 }>;
 
 type ToolPayload = {
@@ -446,6 +447,8 @@ export function createMcpMoneyPeriodHandlers(
             allowUncoveredDays: input.allowUncoveredDays ?? false,
             acceptClosingDifferenceNote:
               input.acceptClosingDifferenceNote ?? null,
+            acceptUnverifiedDaysNote:
+              input.acceptUnverifiedDaysNote ?? null,
           },
           input.operationId,
           { now, timezone, surface: "mcp" },

@@ -805,6 +805,8 @@ export async function rolloverMoneyPeriodAction(
         settingsOverrides,
         acceptClosingDifferenceNote:
           formText(formData, "acceptClosingDifferenceNote") || null,
+        acceptUnverifiedDaysNote:
+          formText(formData, "acceptUnverifiedDaysNote") || null,
       },
       operationId,
       { now: context.now, timezone: context.timezone, surface: "web" },

@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   assessMoneyRollover,
   buildCarryForwardOpening,
+  canonicalMoneyRolloverPayload,
   defaultMoneyRolloverRange,
   generateMoneyPeriodWeekWindows,
   inclusiveDayCount,
@@ -38,19 +39,25 @@ test("month length and partial periods produce valid dates", () => {
   assert.equal(inclusiveDayCount(range.startDate, range.endDate), 28);
 });
 
-test("only an ended period with every day closed is a rollover source", () => {
+test("a tracking or ended period with reviewed days is a rollover source", () => {
   assert.equal(moneyRolloverSourceFailure(endedPeriod), null);
-  assert.match(
-    moneyRolloverSourceFailure({ ...endedPeriod, lifecycle: "tracking" })?.message ?? "",
-    /Close the final day/,
+  // Calendar progression no longer requires the final-day close: finalization
+  // is an explicit rollover decision, not a close-driven precondition.
+  assert.equal(
+    moneyRolloverSourceFailure({ ...endedPeriod, lifecycle: "tracking" }),
+    null,
   );
-  assert.match(
-    moneyRolloverSourceFailure({ ...endedPeriod, activeDate: "2026-11-29" })?.message ?? "",
-    /not its end date/,
+  assert.equal(
+    moneyRolloverSourceFailure({ ...endedPeriod, activeDate: "2026-11-29" }),
+    null,
   );
   assert.match(
     moneyRolloverSourceFailure({ ...endedPeriod, lifecycle: "rolled_over" })?.message ?? "",
     /already rolled over/,
+  );
+  assert.match(
+    moneyRolloverSourceFailure({ ...endedPeriod, activeDate: "2026-12-01" })?.message ?? "",
+    /after its end date/,
   );
 });
 
@@ -118,6 +125,60 @@ test("parse rejects unknown opening modes and unverified balances", () => {
   });
   assert.equal(parsed.ok, true);
   assert.equal(parsed.ok && parsed.value.unpaidItems?.treatment, "cancel");
+});
+
+test("unverified-day acknowledgment is a bounded retained note", () => {
+  const base = {
+    sourcePeriodId: endedPeriod.id,
+    expectedVersion: 2,
+    startDate: "2026-12-01",
+    endDate: "2026-12-19",
+    allowUncoveredDays: false,
+    opening: { mode: "carry_forward" },
+  };
+  assert.equal(
+    parseMoneyRolloverInput({ ...base, acceptUnverifiedDaysNote: "no" }).ok,
+    false,
+  );
+  assert.equal(
+    parseMoneyRolloverInput({
+      ...base,
+      acceptUnverifiedDaysNote: "x".repeat(501),
+    }).ok,
+    false,
+  );
+  const parsed = parseMoneyRolloverInput({
+    ...base,
+    acceptUnverifiedDaysNote: "  Reviewed skipped days  ",
+  });
+  assert.equal(parsed.ok, true);
+  assert.equal(
+    parsed.ok && parsed.value.acceptUnverifiedDaysNote,
+    "Reviewed skipped days",
+  );
+  assert.equal(
+    parsed.ok &&
+      parseMoneyRolloverInput({ ...base }).ok &&
+      parseMoneyRolloverInput({ ...base, acceptUnverifiedDaysNote: null }).ok,
+    true,
+  );
+  // An old request without the new field keeps its canonical fingerprint.
+  const oldPayload = canonicalMoneyRolloverPayload({
+    ...base,
+    unpaidItems: null,
+    settingsOverrides: null,
+    acceptClosingDifferenceNote: null,
+    acceptUnverifiedDaysNote: null,
+  });
+  assert.equal(oldPayload.includes("acceptUnverifiedDaysNote"), false);
+  const newPayload = canonicalMoneyRolloverPayload({
+    ...base,
+    unpaidItems: null,
+    settingsOverrides: null,
+    acceptClosingDifferenceNote: null,
+    acceptUnverifiedDaysNote: "Reviewed skipped days",
+  });
+  assert.match(newPayload, /acceptUnverifiedDaysNote/);
 });
 
 test("a carry-forward opening keeps provenance and never invents zero", () => {
@@ -467,8 +528,8 @@ test("a restated close does not suppress paid-payment or counted-visit choices",
   );
 });
 
-test("incomplete close evidence is a blocker, not a passed comparison", () => {
-  const result = assessMoneyRollover({
+test("unverified days are acknowledged, never fabricated as close evidence", () => {
+  const pending = assessMoneyRollover({
     cutoffDate: "2026-11-30",
     modeledClosingCashMinor: 10_000,
     verifiedClosingCashMinor: null,
@@ -479,11 +540,14 @@ test("incomplete close evidence is a blocker, not a passed comparison", () => {
     closeSnapshots: {
       available: true,
       closeCount: 1,
-      requiredCloseCount: 2,
-      trackedFromDate: "2026-11-01",
-      missingCloseDates: ["2026-11-02"],
+      periodDayCount: 3,
+      requiredCloseCount: 3,
+      trackedFromDate: "2026-11-02",
+      closedDates: ["2026-11-02"],
+      missingCloseDates: ["2026-11-01", "2026-11-03"],
+      unverifiedDayCount: 2,
       completeCloseEvidence: false,
-      lastClosedDate: "2026-11-30",
+      lastClosedDate: "2026-11-02",
       comparableToRestatedTotals: true,
       restatedDifferenceCount: 0,
       restatedDifferences: [],
@@ -495,15 +559,54 @@ test("incomplete close evidence is a blocker, not a passed comparison", () => {
       savingsTransferredMinor: 0,
     },
   });
-  assert.equal(result.blockers.length, 1);
-  assert.match(result.blockers[0], /gap inside the tracked range/);
-  assert.match(result.blockers[0], /2026-11-02/);
-  const difference = result.differences.find(
+  assert.equal(pending.blockers.length, 0);
+  assert.equal(pending.choices.length, 1);
+  assert.match(pending.choices[0], /Acknowledge the 2 reviewed unverified/);
+  const difference = pending.differences.find(
     (entry) => entry.code === "incomplete_close_evidence",
   );
-  assert.equal(difference?.status, "unavailable");
-  assert.match(difference?.message ?? "", /Tracking began on 2026-11-01/);
-  assert.match(difference?.message ?? "", /leading days before tracking began/);
+  assert.equal(difference?.status, "choice_required");
+  assert.match(difference?.message ?? "", /2026-11-01/);
+  assert.match(difference?.message ?? "", /never invents close rows/);
+
+  const accepted = assessMoneyRollover({
+    cutoffDate: "2026-11-30",
+    modeledClosingCashMinor: 10_000,
+    verifiedClosingCashMinor: null,
+    differenceAccepted: false,
+    pendingOccurrences: [],
+    unpaidChoice: null,
+    openingMode: "carry_forward",
+    closeSnapshots: {
+      available: true,
+      closeCount: 0,
+      periodDayCount: 2,
+      requiredCloseCount: 2,
+      trackedFromDate: null,
+      closedDates: [],
+      missingCloseDates: ["2026-11-01", "2026-11-02"],
+      unverifiedDayCount: 2,
+      completeCloseEvidence: false,
+      lastClosedDate: null,
+      comparableToRestatedTotals: true,
+      restatedDifferenceCount: 0,
+      restatedDifferences: [],
+      paidObligationCount: 0,
+      paidObligationMismatchCount: 0,
+      countedVisitCount: 0,
+      countedVisitMismatchCount: 0,
+      savingsTargetMinor: null,
+      savingsTransferredMinor: 0,
+    },
+    unverifiedDaysAccepted: true,
+  });
+  assert.equal(accepted.choices.length, 0);
+  assert.equal(
+    accepted.differences.find(
+      (entry) => entry.code === "incomplete_close_evidence",
+    )?.status,
+    "accepted",
+  );
 });
 
 test("rollover settings overrides use the canonical bounded settings parser", () => {

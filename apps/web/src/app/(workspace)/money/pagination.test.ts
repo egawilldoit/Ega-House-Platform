@@ -5,77 +5,72 @@ import {
   MONEY_PAGE_SIZE,
   MAX_MONEY_PAGER_OFFSET,
   moneyHref,
-  resolveMoneyPagerOffsets,
+  parseMoneyHistoryKind,
+  resolveMoneyHistoryState,
 } from "./pagination";
 
-test("pager offsets default to zero", () => {
-  assert.deepEqual(resolveMoneyPagerOffsets({}), {
-    expenseOffset: 0,
-    movementOffset: 0,
+test("the unified history offset defaults to zero and the kind filter to all", () => {
+  assert.deepEqual(resolveMoneyHistoryState({}), { offset: 0, kind: null });
+});
+
+test("a legacy pager parameter lands on one bounded history page", () => {
+  assert.deepEqual(resolveMoneyHistoryState({ offset: "25" }), {
+    offset: 25,
+    kind: null,
+  });
+  assert.deepEqual(resolveMoneyHistoryState({ expenseOffset: "50" }), {
+    offset: 50,
+    kind: null,
+  });
+  assert.deepEqual(resolveMoneyHistoryState({ movementOffset: "75" }), {
+    offset: 75,
+    kind: null,
   });
 });
 
-test("a legacy offset seeds both pagers", () => {
-  assert.deepEqual(resolveMoneyPagerOffsets({ offset: "25" }), {
-    expenseOffset: 25,
-    movementOffset: 25,
+test("a valid kind filter is parsed and an invalid one falls back to all", () => {
+  assert.equal(parseMoneyHistoryKind("expense"), "expense");
+  assert.equal(parseMoneyHistoryKind("savings_transfer"), "savings_transfer");
+  assert.equal(parseMoneyHistoryKind("opening"), "opening");
+  assert.equal(parseMoneyHistoryKind("not_a_kind"), null);
+  assert.equal(parseMoneyHistoryKind(""), null);
+  assert.deepEqual(resolveMoneyHistoryState({ kind: "income", offset: "25" }), {
+    offset: 25,
+    kind: "income",
   });
-});
-
-test("dedicated pager parameters win independently", () => {
-  assert.deepEqual(
-    resolveMoneyPagerOffsets({ offset: "50", expenseOffset: "75" }),
-    { expenseOffset: 75, movementOffset: 50 },
-  );
-  assert.deepEqual(
-    resolveMoneyPagerOffsets({ offset: "50", movementOffset: "75" }),
-    { expenseOffset: 50, movementOffset: 75 },
-  );
-  assert.deepEqual(
-    resolveMoneyPagerOffsets({ expenseOffset: "25", movementOffset: "50" }),
-    { expenseOffset: 25, movementOffset: 50 },
-  );
 });
 
 test("invalid offsets fall back to zero and excessive offsets are clamped", () => {
-  assert.deepEqual(
-    resolveMoneyPagerOffsets({
-      offset: "-25",
-      expenseOffset: "abc",
-      movementOffset: "999999999999999999999999",
-    }),
-    { expenseOffset: 0, movementOffset: 0 },
+  assert.equal(resolveMoneyHistoryState({ offset: "-25" }).offset, 0);
+  assert.equal(resolveMoneyHistoryState({ offset: "abc" }).offset, 0);
+  assert.equal(
+    resolveMoneyHistoryState({ offset: "999999999999999999999999" }).offset,
+    0,
   );
-  assert.deepEqual(
-    resolveMoneyPagerOffsets({
-      expenseOffset: String(MAX_MONEY_PAGER_OFFSET),
-      movementOffset: String(MAX_MONEY_PAGER_OFFSET + 1),
-    }),
-    {
-      expenseOffset: MAX_MONEY_PAGER_OFFSET,
-      movementOffset: MAX_MONEY_PAGER_OFFSET,
-    },
+  assert.equal(
+    resolveMoneyHistoryState({ offset: String(MAX_MONEY_PAGER_OFFSET + 1) }).offset,
+    MAX_MONEY_PAGER_OFFSET,
   );
 });
 
-test("pager links keep the selected period and the other pager's offset", () => {
+test("history links keep the selected period, page and kind", () => {
   assert.equal(
     moneyHref({
       periodId: "period-42",
-      expenseOffset: MONEY_PAGE_SIZE,
-      movementOffset: MONEY_PAGE_SIZE * 2,
+      offset: MONEY_PAGE_SIZE,
+      kind: "expense",
     }),
-    "/money?periodId=period-42&expenseOffset=25&movementOffset=50",
+    "/money?periodId=period-42&offset=25&kind=expense",
   );
 });
 
-test("pager links omit absent state and encode special period ids", () => {
+test("history links omit absent state and encode special period ids", () => {
   assert.equal(
-    moneyHref({ periodId: null, expenseOffset: 0, movementOffset: 0 }),
+    moneyHref({ periodId: null, offset: 0, kind: null }),
     "/money",
   );
   assert.equal(
-    moneyHref({ periodId: "a b&c", expenseOffset: 0, movementOffset: 25 }),
-    "/money?periodId=a+b%26c&movementOffset=25",
+    moneyHref({ periodId: "a b&c", offset: 0, kind: null }),
+    "/money?periodId=a+b%26c",
   );
 });
