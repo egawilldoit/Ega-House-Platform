@@ -29,6 +29,7 @@ import type {
   CalendarTaskPage,
   CalendarTaskScanRecord,
 } from "@ega/application/calendar-sync/ports";
+import { deterministicCalendarEventId } from "@ega/application/calendar-sync/rules";
 import {
   continueCalendarSync,
   getCalendarSyncStatus,
@@ -1694,22 +1695,26 @@ test("a saved event id is adopted when its metadata proves the current destinati
 test("a missing task cannot delete an unowned planned event", async () => {
   const repository = new FakeRepository();
   const provider = new FakeProvider();
-  provider.events.set("foreign-event", {
-    id: "foreign-event", status: "confirmed", summary: "Foreign",
+  const eventId = deterministicCalendarEventId({
+    ownerUserId: actor.userId, taskId: "task-1",
+    destinationKey: destination.destinationKey, generation: 1,
+  });
+  provider.events.set(eventId, {
+    id: eventId, status: "confirmed", summary: "Foreign",
     start: { dateTime: "2026-05-10T09:00:00.000Z" },
     end: { dateTime: "2026-05-10T10:00:00.000Z" }, privateProperties: {}, raw: {},
   });
   repository.jobs.set("scheduled", {
     id: "scheduled", ownerUserId: actor.userId, taskId: "task-1", runId: null,
     destination, operation: "delete", status: "pending", attempts: 0,
-    eventId: "foreign-event", generation: 1, eventExists: false, payloadHash: null,
+    eventId, generation: 1, eventExists: false, payloadHash: null,
     claimToken: null, permanentFailure: false, exclusionReason: null,
     lastError: null, scheduledAt: "2026-05-10T08:00:00.000Z",
     taskUpdatedAt: "2026-05-10T08:00:00.000Z",
   });
   await processCalendarRecovery(actor, buildDeps(repository, provider));
   assert.equal(provider.deleteCalls, 0);
-  assert.equal(provider.events.get("foreign-event")?.summary, "Foreign");
+  assert.equal(provider.events.get(eventId)?.summary, "Foreign");
 });
 
 test("recovery retries a provider success after atomic settlement fails", async () => {
@@ -1736,6 +1741,33 @@ test("recovery retries a provider success after atomic settlement fails", async 
   assert.equal(repository.mappings.size, 1);
   assert.equal(repository.jobs.get("scheduled")?.status, "succeeded");
   assert.equal(provider.createCalls, 2);
+});
+
+test("recovery removes an unsettled first publish after the task is archived", async () => {
+  const repository = new FakeRepository();
+  const provider = new FakeProvider();
+  repository.addTask(task());
+  repository.jobs.set("scheduled", {
+    id: "scheduled", ownerUserId: actor.userId, taskId: "task-1", runId: null,
+    destination, operation: "upsert", status: "pending", attempts: 0,
+    eventId: null, generation: 1, eventExists: false, payloadHash: null,
+    claimToken: null, permanentFailure: false, exclusionReason: null,
+    lastError: null, scheduledAt: "2026-05-10T08:00:00.000Z",
+    taskUpdatedAt: "2026-05-10T08:00:00.000Z",
+  });
+  repository.failNextCompletion = true;
+  await processCalendarRecovery(actor, buildDeps(repository, provider));
+  assert.equal(provider.events.size, 1);
+  assert.equal(repository.mappings.size, 0);
+  const first = repository.jobs.get("scheduled")!;
+  assert.equal(first.status, "processing");
+  repository.jobs.set(first.id, { ...first, status: "pending", claimToken: null });
+  repository.addTask(task({ archivedAt: "2026-05-10T08:30:00.000Z" }));
+  await processCalendarRecovery(actor, buildDeps(repository, provider));
+  assert.equal(provider.events.size, 0);
+  assert.equal(provider.deleteCalls, 1);
+  assert.equal(repository.mappings.size, 0);
+  assert.equal(repository.jobs.get("scheduled")?.status, "succeeded");
 });
 
 test("recovery leaves another destination's queued job pending after an account switch", async () => {

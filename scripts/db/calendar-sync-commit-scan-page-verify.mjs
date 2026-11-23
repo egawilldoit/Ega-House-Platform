@@ -1100,7 +1100,7 @@ async function main() {
        VALUES ($1, $2, $3, 'event-generation-1', 'delete', 'processing', 1,
                $4::timestamptz, 2, $5, $6, 'proof-removal',
                'proof-removal@example.test', 'primary', 1, true, $7,
-               '2026-11-23T11:05:00+00:00', $4::timestamptz, NULL, false)`,
+               clock_timestamp() + interval '5 minutes', $4::timestamptz, NULL, false)`,
       [
         TASK_REMOVAL_JOB,
         OWNER_REMOVAL,
@@ -1212,7 +1212,7 @@ async function main() {
         ${RUN_REMOVAL}::uuid,
         ${ORPHAN_JOB_CLAIM}::uuid,
         ${10}::integer,
-        ${NOW_REMOVAL}::timestamptz,
+        clock_timestamp(),
         ${300}::integer
       )
     `;
@@ -1364,7 +1364,7 @@ async function main() {
        VALUES ($1, $2, $3, 'event-generation-2', 'delete', 'processing', 1,
                $4::timestamptz, 2, $5, $6, 'proof-removal',
                'proof-removal@example.test', 'primary', 2, true, $7,
-               '2026-11-23T11:05:00+00:00', $4::timestamptz, NULL, false)`,
+               clock_timestamp() + interval '5 minutes', $4::timestamptz, NULL, false)`,
       [
         TASK_REMOVAL_REPUBLISH_JOB,
         OWNER_REMOVAL,

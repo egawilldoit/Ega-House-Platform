@@ -1159,138 +1159,87 @@ async function processJob(
     | RefreshedCalendarCredentials
     | undefined;
 
-  if (!task) {
-    if (job.eventExists && job.eventId) {
-      const deleted = job.eventId
-        ? await deps.provider.deleteEvent(connection, job.eventId)
-        : ({ ok: true, value: { alreadyRemoved: true }, refreshedCredentials: undefined } as const);
+  const plannedEventId = deterministicCalendarEventId({
+    ownerUserId: job.ownerUserId,
+    taskId: job.taskId,
+    destinationKey: job.destination.destinationKey,
+    generation: job.generation,
+  });
+  const built = task
+    ? buildCalendarEventPayload({
+        ownerUserId: task.ownerUserId,
+        task,
+        destination: job.destination,
+        generation: job.generation,
+        eventId: job.eventId ?? plannedEventId,
+        linkBaseUrl: config.linkBaseUrl,
+      })
+    : null;
 
-      if (!deleted.ok) {
-        if (deleted.error.kind === "authorization") {
+  if (!task || built?.plan.kind === "excluded" || job.operation === "delete") {
+    const exclusionReason = built?.plan.kind === "excluded"
+      ? built.plan.exclusionReason
+      : job.exclusionReason;
+    let eventId = job.eventExists ? job.eventId : null;
+    // An insert may have reached Google before its local settlement failed.
+    // For a planned ID without a mapping, verify ownership before deleting it.
+    if (!eventId && (job.eventId === plannedEventId ||
+      (job.eventId === null && job.operation === "upsert"))) {
+      const lookup = await deps.provider.getEvent(connection, plannedEventId);
+      if (!lookup.ok) {
+        if (lookup.error.kind === "authorization") {
           await pauseForAuthorization(actor, deps, {
-            runId: job.runId,
-            connection,
-            message: deleted.error.message,
-            nowIso,
+            runId: job.runId, connection, message: lookup.error.message, nowIso,
           });
           return { authFailure: true };
         }
         await failJob(actor, deps, {
-          job,
-          message: deleted.error.message,
-          permanent: deleted.error.kind === "permanent",
-          retryAfterSeconds: deleted.error.retryAfterSeconds,
-          nowIso,
-          now,
+          job, message: lookup.error.message, permanent: lookup.error.kind === "permanent",
+          retryAfterSeconds: lookup.error.retryAfterSeconds, nowIso, now,
         });
         return {};
       }
-
-      refreshedCredentials = deleted.refreshedCredentials;
-      await completeJobOutcome(actor, deps, {
-        job,
-        connection,
-        outcome: "removed",
-        eventId: null,
-        payloadHash: null,
-        generation: job.generation,
-        exclusionReason: job.exclusionReason,
-        mappingRemoval: job.eventId
-          ? { eventId: job.eventId, generation: job.generation }
-          : null,
-        nowIso,
-        taskSyncStatus: "skipped",
-      });
-      return { refreshedCredentials };
-    }
-
-    await completeJobOutcome(actor, deps, {
-      job,
-      connection,
-      outcome: "excluded",
-      eventId: null,
-      payloadHash: null,
-      generation: job.generation,
-      exclusionReason: job.exclusionReason,
-      nowIso,
-      taskSyncStatus: "skipped",
-    });
-    return {};
-  }
-
-  const built = buildCalendarEventPayload({
-    ownerUserId: task.ownerUserId,
-    task,
-    destination: job.destination,
-    generation: job.generation,
-    eventId:
-      job.eventId ??
-      deterministicCalendarEventId({
-        ownerUserId: task.ownerUserId,
-        taskId: task.id,
-        destinationKey: job.destination.destinationKey,
-        generation: job.generation,
-      }),
-    linkBaseUrl: config.linkBaseUrl,
-  });
-
-  if (built.plan.kind === "excluded") {
-    if (!job.eventExists || !job.eventId) {
-      await completeJobOutcome(actor, deps, {
-        job,
-        connection,
-        outcome: "excluded",
-        eventId: null,
-        payloadHash: null,
-        generation: job.generation,
-        exclusionReason: built.plan.exclusionReason,
-        nowIso,
-        taskSyncStatus: "skipped",
-      });
-      return {};
-    }
-
-    const deleted = await deps.provider.deleteEvent(connection, job.eventId);
-    if (!deleted.ok) {
-      if (deleted.error.kind === "authorization") {
-        await pauseForAuthorization(actor, deps, {
-          runId: job.runId,
-          connection,
-          message: deleted.error.message,
-          nowIso,
-        });
-        return { authFailure: true };
+      refreshedCredentials = lookup.refreshedCredentials;
+      const metadata = lookup.value?.privateProperties;
+      if (lookup.value?.status !== "cancelled" &&
+          metadata?.source === "ega-house" &&
+          metadata.task_id === job.taskId &&
+          metadata.owner_user_id === job.ownerUserId &&
+          metadata.destination_key === job.destination.destinationKey &&
+          metadata.generation === String(job.generation)) {
+        eventId = plannedEventId;
       }
-      await failJob(actor, deps, {
-        job,
-        message: deleted.error.message,
-        permanent: deleted.error.kind === "permanent",
-        retryAfterSeconds: deleted.error.retryAfterSeconds,
-        nowIso,
-        now,
-      });
-      return {};
     }
 
-    refreshedCredentials = deleted.refreshedCredentials;
+    if (eventId) {
+      if (!(await claimStillCurrent(actor, deps, job))) return { refreshedCredentials };
+      const deleted = await deps.provider.deleteEvent(connection, eventId);
+      if (!deleted.ok) {
+        if (deleted.error.kind === "authorization") {
+          await pauseForAuthorization(actor, deps, {
+            runId: job.runId, connection, message: deleted.error.message, nowIso,
+          });
+          return { authFailure: true, refreshedCredentials };
+        }
+        await failJob(actor, deps, {
+          job, message: deleted.error.message, permanent: deleted.error.kind === "permanent",
+          retryAfterSeconds: deleted.error.retryAfterSeconds, nowIso, now,
+        });
+        return { refreshedCredentials };
+      }
+      refreshedCredentials = deleted.refreshedCredentials ?? refreshedCredentials;
+    }
+
     await completeJobOutcome(actor, deps, {
-      job,
-      connection,
-      outcome: "removed",
-      eventId: null,
-      payloadHash: null,
-      generation: job.generation,
-      exclusionReason: built.plan.exclusionReason,
-      mappingRemoval: job.eventId
-        ? { eventId: job.eventId, generation: job.generation }
-        : null,
-      nowIso,
-      taskSyncStatus: "skipped",
+      job, connection, outcome: eventId ? "removed" : "excluded",
+      eventId: null, payloadHash: null, generation: job.generation, exclusionReason,
+      mappingRemoval: eventId ? { eventId, generation: job.generation } : null,
+      nowIso, taskSyncStatus: "skipped",
     });
     return { refreshedCredentials };
   }
 
-  if (!built.payload) {
+  if (!built?.payload) {
     await failJob(actor, deps, {
       job,
       message: "The Calendar event payload could not be built.",
@@ -1301,54 +1250,7 @@ async function processJob(
     return {};
   }
 
-  const payload = { ...built.payload, eventId: job.eventId ?? built.payload.eventId };
-
-  if (job.operation === "delete") {
-    if (!job.eventExists || !job.eventId) {
-      await completeJobOutcome(actor, deps, {
-        job, connection, outcome: "excluded", eventId: null, payloadHash: null,
-        generation: job.generation, exclusionReason: job.exclusionReason,
-        nowIso, taskSyncStatus: "skipped",
-      });
-      return {};
-    }
-    const deleted = await deps.provider.deleteEvent(connection, payload.eventId);
-    if (!deleted.ok) {
-      if (deleted.error.kind === "authorization") {
-        await pauseForAuthorization(actor, deps, {
-          runId: job.runId,
-          connection,
-          message: deleted.error.message,
-          nowIso,
-        });
-        return { authFailure: true };
-      }
-      await failJob(actor, deps, {
-        job,
-        message: deleted.error.message,
-        permanent: deleted.error.kind === "permanent",
-        retryAfterSeconds: deleted.error.retryAfterSeconds,
-        nowIso,
-        now,
-      });
-      return {};
-    }
-
-    refreshedCredentials = deleted.refreshedCredentials;
-    await completeJobOutcome(actor, deps, {
-      job,
-      connection,
-      outcome: "removed",
-      eventId: null,
-      payloadHash: null,
-      generation: job.generation,
-      exclusionReason: job.exclusionReason,
-      mappingRemoval: { eventId: payload.eventId, generation: job.generation },
-      nowIso,
-      taskSyncStatus: "skipped",
-    });
-    return { refreshedCredentials };
-  }
+  const payload = built.payload;
 
   let writeResult = job.eventExists && job.eventId
     ? await deps.provider.updateEvent(connection, payload.eventId, payload)
