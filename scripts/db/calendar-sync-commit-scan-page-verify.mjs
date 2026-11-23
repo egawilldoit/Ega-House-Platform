@@ -1404,6 +1404,46 @@ async function main() {
       "an old delete could not retire the newer mapping; the current delete retired it",
     );
 
+    // Simulate an insert accepted by Google whose initial settlement failed.
+    await sql`
+      DELETE FROM public.calendar_event_mappings
+      WHERE owner_user_id = ${OWNER_REMOVAL}::uuid
+        AND task_id = ${TASK_REMOVAL}::uuid
+        AND destination_key = ${DESTINATION_REMOVAL}
+    `;
+    await sql`
+      UPDATE public.calendar_sync_jobs
+      SET operation = 'upsert', status = 'processing',
+          claim_token = ${REMOVAL_REPUBLISH_CLAIM}::uuid,
+          lease_expires_at = clock_timestamp() + interval '5 minutes'
+      WHERE id = ${TASK_REMOVAL_REPUBLISH_JOB}::uuid
+    `;
+    const [unmappedRemoval] = await completeJobQuery(sql, {
+      jobId: TASK_REMOVAL_REPUBLISH_JOB,
+      claimToken: REMOVAL_REPUBLISH_CLAIM,
+      outcome: "removed",
+      eventId: null,
+      generation: 2,
+      removeMapping: true,
+      removedEventId: "event-generation-2",
+      removedGeneration: 2,
+      nowIso: NOW_REMOVAL,
+    });
+    assert(unmappedRemoval.completed, "confirmed removal of an unmapped event must settle");
+    const [removedGeneration] = await sql`
+      SELECT status, event_id, generation FROM public.calendar_event_mappings
+      WHERE owner_user_id = ${OWNER_REMOVAL}::uuid
+        AND task_id = ${TASK_REMOVAL}::uuid
+        AND destination_key = ${DESTINATION_REMOVAL}
+    `;
+    assert(
+      removedGeneration?.status === "removed" &&
+        removedGeneration.event_id === "event-generation-2" &&
+        removedGeneration.generation === 2,
+      "unmapped removal must record the used event ID and generation for the next publish",
+    );
+    log("UNMAPPED-REMOVE", "confirmed removal retained the generation for republish");
+
     const [orphanRemoval] = await completeJobQuery(sql, {
       jobId: claimedOrphan.id,
       claimToken: ORPHAN_JOB_CLAIM,

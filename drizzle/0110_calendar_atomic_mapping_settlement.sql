@@ -65,16 +65,21 @@ BEGIN
   IF p_remove_mapping
     AND p_removed_event_id IS NOT NULL
     AND p_removed_generation IS NOT NULL THEN
-    UPDATE public.calendar_event_mappings AS mapping
-    SET status = 'removed',
-        metadata_verified = true,
-        updated_at = p_now
-    WHERE mapping.owner_user_id = v_job.owner_user_id
-      AND mapping.task_id = v_job.task_id
-      AND mapping.destination_key = v_job.destination_key
-      AND mapping.status = 'active'
-      AND mapping.event_id = p_removed_event_id
-      AND mapping.generation = p_removed_generation;
+    -- A first publish can reach Google without ever creating an active mapping.
+    -- Keep the removed generation so a later publish does not reuse its event ID.
+    INSERT INTO public.calendar_event_mappings AS mapping (
+      owner_user_id, task_id, destination_key, google_account_subject,
+      google_account_email, calendar_id, event_id, generation, status,
+      metadata_verified, updated_at
+    ) VALUES (
+      v_job.owner_user_id, v_job.task_id, v_job.destination_key,
+      v_job.google_account_subject, v_job.google_account_email, v_job.calendar_id,
+      p_removed_event_id, p_removed_generation, 'removed', true, p_now
+    ) ON CONFLICT (owner_user_id, task_id, destination_key) DO UPDATE
+    SET status = 'removed', metadata_verified = true, updated_at = p_now
+    WHERE mapping.status = 'active'
+      AND mapping.event_id = EXCLUDED.event_id
+      AND mapping.generation = EXCLUDED.generation;
   END IF;
 
   UPDATE public.calendar_sync_jobs

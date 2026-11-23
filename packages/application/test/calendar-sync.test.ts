@@ -68,6 +68,8 @@ function task(overrides: Partial<CalendarTaskScanRecord> = {}): CalendarTaskScan
 
 class FakeProvider implements CalendarEventProvider {
   events = new Map<string, CalendarEventDocument>();
+  deletedEventIds = new Set<string>();
+  retainDeletedEventIds = false;
   createCalls = 0;
   updateCalls = 0;
   deleteCalls = 0;
@@ -127,7 +129,7 @@ class FakeProvider implements CalendarEventProvider {
     payload: CalendarEventPayload,
   ): Promise<CalendarProviderResult<CalendarEventDocument>> {
     this.createCalls += 1;
-    if (this.events.has(payload.eventId)) {
+    if (this.events.has(payload.eventId) || this.deletedEventIds.has(payload.eventId)) {
       return {
         ok: false,
         error: { kind: "conflict", message: "Event id already exists." },
@@ -177,6 +179,7 @@ class FakeProvider implements CalendarEventProvider {
   ): Promise<CalendarProviderResult<{ alreadyRemoved: boolean }>> {
     this.deleteCalls += 1;
     const existed = this.events.delete(eventId);
+    if (existed && this.retainDeletedEventIds) this.deletedEventIds.add(eventId);
     return this.result({ alreadyRemoved: !existed });
   }
 }
@@ -605,8 +608,20 @@ class FakeRepository implements CalendarSyncRepository {
     if (removal) {
       const key = this.mappingKey(job.taskId, job.destination.destinationKey);
       const mapping = this.mappings.get(key);
-      if (
-        mapping &&
+      if (!mapping) {
+        const result = await this.upsertMapping(_actor, {
+          ownerUserId: job.ownerUserId,
+          taskId: job.taskId,
+          destination: job.destination,
+          eventId: removal.eventId,
+          generation: removal.generation,
+          metadataVerified: true,
+          payloadHash: null,
+          nowIso: "2026-05-10T09:00:00.000Z",
+        });
+        if (!result.ok) return result;
+        this.mappings.set(key, { ...result.value, status: "removed" });
+      } else if (
         mapping.status === "active" &&
         mapping.eventId === removal.eventId &&
         mapping.generation === removal.generation
@@ -1743,9 +1758,11 @@ test("recovery retries a provider success after atomic settlement fails", async 
   assert.equal(provider.createCalls, 2);
 });
 
-test("recovery removes an unsettled first publish after the task is archived", async () => {
+test("recovery removes an unsettled first publish and republishes under a new ID when restored", async () => {
   const repository = new FakeRepository();
   const provider = new FakeProvider();
+  provider.retainDeletedEventIds = true;
+  const deps = buildDeps(repository, provider);
   repository.addTask(task());
   repository.jobs.set("scheduled", {
     id: "scheduled", ownerUserId: actor.userId, taskId: "task-1", runId: null,
@@ -1756,18 +1773,28 @@ test("recovery removes an unsettled first publish after the task is archived", a
     taskUpdatedAt: "2026-05-10T08:00:00.000Z",
   });
   repository.failNextCompletion = true;
-  await processCalendarRecovery(actor, buildDeps(repository, provider));
+  await processCalendarRecovery(actor, deps);
   assert.equal(provider.events.size, 1);
+  const [originalId] = provider.events.keys();
   assert.equal(repository.mappings.size, 0);
   const first = repository.jobs.get("scheduled")!;
   assert.equal(first.status, "processing");
   repository.jobs.set(first.id, { ...first, status: "pending", claimToken: null });
   repository.addTask(task({ archivedAt: "2026-05-10T08:30:00.000Z" }));
-  await processCalendarRecovery(actor, buildDeps(repository, provider));
+  await processCalendarRecovery(actor, deps);
   assert.equal(provider.events.size, 0);
   assert.equal(provider.deleteCalls, 1);
-  assert.equal(repository.mappings.size, 0);
   assert.equal(repository.jobs.get("scheduled")?.status, "succeeded");
+  assert.equal([...repository.mappings.values()][0]?.status, "removed");
+
+  repository.addTask(task({ updatedAt: "2026-05-10T12:00:00.000Z" }));
+  const republished = await startCalendarSync(actor, deps);
+  assert.equal(republished.ok, true);
+  assert.equal(provider.events.size, 1, "restoring must publish one active event");
+  const [replacement] = provider.events.values();
+  assert.notEqual(replacement.id, originalId);
+  assert.equal(replacement.privateProperties.generation, "2");
+  assert.equal(provider.updateCalls, 0);
 });
 
 test("recovery leaves another destination's queued job pending after an account switch", async () => {
