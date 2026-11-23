@@ -1554,6 +1554,21 @@ export type Database = {
         Args: { p_subtask_id: string; p_new_task_id: string }
         Returns: boolean
       }
+      calendar_sync_upsert_mapping: {
+        Args: {
+          p_owner_user_id: string
+          p_task_id: string
+          p_destination_key: string
+          p_google_account_subject: string | null
+          p_google_account_email: string | null
+          p_calendar_id: string | null
+          p_event_id: string
+          p_generation: number
+          p_payload_hash: string | null
+          p_now: string
+        }
+        Returns: Database["public"]["Tables"]["calendar_event_mappings"]["Row"][]
+      }
       create_task_comment: {
         Args: {
           p_task_id: string

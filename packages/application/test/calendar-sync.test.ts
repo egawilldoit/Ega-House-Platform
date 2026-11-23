@@ -1334,7 +1334,12 @@ test("legacy saved event id is updated in place and acquires private metadata", 
     summary: "Old title",
     start: { dateTime: "2026-05-10T09:00:00.000Z" },
     end: { dateTime: "2026-05-10T10:00:00.000Z" },
-    privateProperties: { source: "ega-house" },
+    privateProperties: {
+      source: "ega-house",
+      task_id: "task-1",
+      owner_user_id: actor.userId,
+      destination_key: destination.destinationKey,
+    },
     raw: {},
   });
 
@@ -1353,6 +1358,87 @@ test("legacy saved event id is updated in place and acquires private metadata", 
   assert.equal(provider.updateCalls, 1);
   if (!second.ok) return;
   assert.equal(second.data.run?.counts.unchanged, 1);
+});
+
+test("a source-only event tag never adopts an unscoped saved event id for an update", async () => {
+  const repository = new FakeRepository();
+  const provider = new FakeProvider();
+  repository.addTask(
+    task({
+      calendarEventId: "source-only-event",
+      updatedAt: "2026-05-10T09:00:00.000Z",
+    }),
+  );
+  // The listing filters by the source tag, so this event is visible, but a
+  // source-only tag does not say which task, owner or destination owns it.
+  provider.events.set("source-only-event", {
+    id: "source-only-event",
+    status: "confirmed",
+    summary: "Old title",
+    start: { dateTime: "2026-05-10T09:00:00.000Z" },
+    end: { dateTime: "2026-05-10T10:00:00.000Z" },
+    privateProperties: { source: "ega-house" },
+    raw: {},
+  });
+
+  const deps = buildDeps(repository, provider);
+  const result = await startCalendarSync(actor, deps);
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+
+  assert.deepEqual(
+    {
+      create: provider.createCalls,
+      update: provider.updateCalls,
+      delete: provider.deleteCalls,
+    },
+    { create: 0, update: 0, delete: 0 },
+  );
+  assert.equal(provider.events.get("source-only-event")?.summary, "Old title");
+  assert.equal(repository.jobs.size, 0);
+  assert.equal(repository.mappings.size, 0);
+  assert.equal(
+    repository.tasks.get("task-1")?.calendarEventId,
+    "source-only-event",
+  );
+  assert.equal(result.data.run?.counts.failed, 1);
+
+  const item = [...repository.items.values()].flat()[0];
+  assert.equal(item?.eventId, null);
+  assert.match(String(item?.errorMessage), /different Google account or calendar/);
+});
+
+test("a source-only event tag never deletes an unscoped saved event id", async () => {
+  const repository = new FakeRepository();
+  const provider = new FakeProvider();
+  repository.addTask(
+    task({
+      calendarEventId: "source-only-excluded-event",
+      calendarSyncEnabled: false,
+    }),
+  );
+  provider.events.set("source-only-excluded-event", {
+    id: "source-only-excluded-event",
+    status: "confirmed",
+    summary: "Old title",
+    start: { dateTime: "2026-05-10T09:00:00.000Z" },
+    end: { dateTime: "2026-05-10T10:00:00.000Z" },
+    privateProperties: { source: "ega-house" },
+    raw: {},
+  });
+
+  const result = await startCalendarSync(actor, buildDeps(repository, provider));
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+
+  // Without explicit task/owner/destination metadata the source tag alone
+  // cannot prove the event belongs to this task, so removal is blocked.
+  assert.equal(provider.deleteCalls, 0);
+  assert.equal(provider.createCalls, 0);
+  assert.equal(provider.updateCalls, 0);
+  assert.equal(provider.events.has("source-only-excluded-event"), true);
+  assert.equal(repository.jobs.size, 0);
+  assert.equal(result.data.run?.counts.excluded, 1);
 });
 
 test("unmapped deterministic-id conflict is reported and the foreign event is untouched", async () => {

@@ -8,7 +8,9 @@
 -- * tasks.calendar_event_id is preserved, but adopted only when the current
 --   destination positively proves it belongs to this task.
 -- * Legacy jobs whose original destination cannot be established stay
---   unstamped and are rejected before any Google request.
+--   unstamped and are rejected before any Google request. A calendar switch
+--   on the same connection cannot be distinguished from the current calendar,
+--   so those jobs stay unbound too.
 -- * No event is deleted by this migration.
 
 ALTER TABLE public.calendar_integration_settings
@@ -169,14 +171,18 @@ CREATE UNIQUE INDEX IF NOT EXISTS calendar_sync_jobs_one_pending_v2_unique
   WHERE status = 'pending' AND queue_version = 2;
 --> statement-breakpoint
 
--- Stamp a legacy scheduled-sync job only when the account identity in settings
--- was already captured when the job was queued (`connected_at` changes on
--- connect/reconnect, not on token refresh). That is positive evidence of the
--- job's original destination. A connection switched before this upgrade cannot
--- establish where older jobs' events live: leave those rows unstamped, so the
--- legacy scheduled-sync worker rejects them before any Google request and the
--- v2 recovery path never claims them. Jobs that already carry a destination
--- are preserved untouched.
+-- Stamp a legacy scheduled-sync job only when the owner's settings prove both
+-- the original account AND the original calendar. `connected_at` changes on
+-- connect/reconnect, but `calendar_id` can be changed without reconnecting, so
+-- account identity alone is not evidence of the calendar a job was queued for.
+-- `updated_at` is advanced by every settings write (connect, reconnect and
+-- calendar change), so requiring it to be at or before the job's creation is a
+-- conservative proof that neither the account nor the calendar changed after
+-- the job was queued. Any settings change after queuing (including a calendar
+-- switch on the same connection) leaves the job unstamped: the legacy
+-- scheduled-sync worker rejects unstamped jobs before any Google request and
+-- the v2 recovery path never claims them. Jobs that already carry a
+-- destination are preserved untouched.
 UPDATE public.calendar_sync_jobs AS j
 SET
   destination_key =
@@ -194,6 +200,8 @@ WHERE j.owner_user_id = s.owner_user_id
   AND j.destination_key = ''
   AND s.connected_at IS NOT NULL
   AND s.connected_at <= j.created_at
+  AND s.updated_at IS NOT NULL
+  AND s.updated_at <= j.created_at
   AND (
     NULLIF(lower(trim(s.google_account_email)), '') IS NOT NULL
     OR NULLIF(trim(s.google_account_subject), '') IS NOT NULL

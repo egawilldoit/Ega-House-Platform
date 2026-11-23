@@ -24,6 +24,7 @@ function createCalendarSyncSupabaseMock(options?: { settingsLoadError?: boolean 
     },
   ];
   const jobs: Array<Record<string, unknown>> = [];
+  const mappings: Array<Record<string, unknown>> = [];
   const settings = {
     owner_user_id: "owner-1",
     provider: "google",
@@ -45,7 +46,11 @@ function createCalendarSyncSupabaseMock(options?: { settingsLoadError?: boolean 
         ? tasks
         : table === "calendar_sync_jobs"
           ? jobs
-          : [settings];
+          : table === "calendar_event_mappings"
+            ? [...mappings].sort(
+                (a, b) => Number(b.generation ?? 0) - Number(a.generation ?? 0),
+              )
+            : [settings];
 
     return rows.filter((row) =>
       Object.entries(filters).every(([column, value]) => row[column] === value),
@@ -76,13 +81,22 @@ function createCalendarSyncSupabaseMock(options?: { settingsLoadError?: boolean 
       order() {
         return query;
       },
-      async limit(limit: number) {
+      limit(limit: number) {
         const rows = queryRows(table, filters).filter((row) =>
           Object.entries(inFilters).every(([column, values]) =>
             values.includes(row[column]),
           ),
         );
-        return { data: rows.slice(0, limit), error: null };
+        const result = { data: rows.slice(0, limit), error: null };
+        return {
+          ...result,
+          then(resolve: (value: typeof result) => void) {
+            resolve(result);
+          },
+          async maybeSingle() {
+            return { data: result.data[0] ?? null, error: null };
+          },
+        };
       },
       async maybeSingle() {
         if (table === "calendar_integration_settings" && options?.settingsLoadError) {
@@ -124,6 +138,25 @@ function createCalendarSyncSupabaseMock(options?: { settingsLoadError?: boolean 
         return { data: { user: { id: "owner-1" } }, error: null };
       },
     },
+    async rpc(name: string, args: Record<string, unknown>) {
+      if (name !== "calendar_sync_upsert_mapping") {
+        throw new Error(`unexpected rpc: ${name}`);
+      }
+      mappings.push({
+        id: `mapping-${mappings.length + 1}`,
+        owner_user_id: args.p_owner_user_id,
+        task_id: args.p_task_id,
+        destination_key: args.p_destination_key,
+        google_account_subject: args.p_google_account_subject,
+        google_account_email: args.p_google_account_email,
+        calendar_id: args.p_calendar_id,
+        event_id: args.p_event_id,
+        generation: args.p_generation,
+        status: "active",
+        updated_at: args.p_now,
+      });
+      return { data: [], error: null };
+    },
     from(table: string) {
       return {
         select() {
@@ -146,7 +179,7 @@ function createCalendarSyncSupabaseMock(options?: { settingsLoadError?: boolean 
     },
   };
 
-  return { jobs, settings, supabase, tasks };
+  return { jobs, mappings, settings, supabase, tasks };
 }
 
 test("enqueueCalendarSyncJob marks task pending and inserts an outbox row", async () => {
@@ -241,6 +274,8 @@ test("processPendingCalendarSyncJobs persists refreshed token for orphan delete 
     status: "pending",
     attempts: 0,
     queue_version: 1,
+    event_exists: true,
+    generation: 1,
     destination_key: "owner@example.com|primary",
     google_account_subject: null,
     google_account_email: "owner@example.com",
@@ -416,4 +451,194 @@ test("processPendingCalendarSyncJobs rejects a legacy job left unstamped by an a
     String(mock.tasks[0]?.calendar_sync_failure_reason),
     /could not be verified/,
   );
+});
+
+test("an account switch with no mapping history does not enqueue the old event id", async () => {
+  const mock = createCalendarSyncSupabaseMock();
+  mock.tasks[0].calendar_event_id = "account-a-event";
+  mock.settings.google_account_email = "new@example.com";
+  mock.settings.calendar_id = "primary-b";
+
+  const result = await enqueueCalendarSyncJob(
+    { taskId: "task-1", operation: "upsert", calendarEventId: "account-a-event" },
+    { supabase: mock.supabase as never, nowIso: "2026-05-10T09:00:00.000Z" },
+  );
+
+  assert.equal(result.errorMessage, null);
+  const job = mock.jobs[0];
+  assert.equal(job?.destination_key, "new@example.com|primary-b");
+  assert.notEqual(job?.calendar_event_id, "account-a-event");
+  assert.equal(job?.event_exists, false);
+  assert.equal(job?.queue_version, 1);
+});
+
+test("the worker creates a fresh event after a switch and repeats safely on the same destination", async () => {
+  const mock = createCalendarSyncSupabaseMock();
+  mock.tasks[0].calendar_event_id = "account-a-event";
+  mock.settings.google_account_email = "new@example.com";
+  mock.settings.calendar_id = "primary-b";
+  await enqueueCalendarSyncJob(
+    { taskId: "task-1", operation: "upsert" },
+    { supabase: mock.supabase as never },
+  );
+
+  const writes: string[] = [];
+  const client = {
+    async createEvent(input: { eventId?: string | null }) {
+      writes.push(`create:${String(input.eventId ?? null)}`);
+      return { eventId: "account-b-event", errorMessage: null };
+    },
+    async patchEvent(input: { eventId: string }) {
+      writes.push(`patch:${input.eventId}`);
+      return { eventId: input.eventId, errorMessage: null };
+    },
+    async deleteEvent(input: { eventId: string }) {
+      writes.push(`delete:${input.eventId}`);
+      return { ok: true, errorMessage: null };
+    },
+  };
+
+  const first = await processPendingCalendarSyncJobs({
+    supabase: mock.supabase as never,
+    nowIso: "2026-05-10T09:00:00.000Z",
+    client: client as never,
+  });
+  assert.deepEqual(first, { ok: true, processed: 1, failed: 0 });
+  assert.deepEqual(writes, ["create:null"]);
+  assert.equal(mock.tasks[0].calendar_event_id, "account-b-event");
+  assert.equal(mock.mappings[0]?.event_id, "account-b-event");
+  assert.equal(mock.mappings[0]?.destination_key, "new@example.com|primary-b");
+
+  // The successful v1 write is now durably scoped. A repeat enqueue routes to
+  // v2 with the same event id and the legacy worker makes no duplicate write.
+  await enqueueCalendarSyncJob(
+    { taskId: "task-1", operation: "upsert" },
+    { supabase: mock.supabase as never, nowIso: "2026-05-10T10:00:00.000Z" },
+  );
+  const repeatJob = mock.jobs[1];
+  assert.equal(repeatJob?.queue_version, 2);
+  assert.equal(repeatJob?.calendar_event_id, "account-b-event");
+  assert.equal(repeatJob?.event_exists, true);
+
+  const second = await processPendingCalendarSyncJobs({
+    supabase: mock.supabase as never,
+    nowIso: "2026-05-10T10:05:00.000Z",
+    client: client as never,
+  });
+  assert.deepEqual(second, { ok: true, processed: 0, failed: 0 });
+  assert.deepEqual(writes, ["create:null"]);
+});
+
+test("a delete with no mapping history never targets the previous account's event id", async () => {
+  const mock = createCalendarSyncSupabaseMock();
+  mock.tasks[0].calendar_event_id = "account-a-event";
+  mock.settings.google_account_email = "new@example.com";
+  mock.settings.calendar_id = "primary-b";
+
+  await enqueueCalendarSyncJob(
+    {
+      taskId: "task-1",
+      operation: "delete",
+      calendarEventId: "account-a-event",
+    },
+    { supabase: mock.supabase as never },
+  );
+  const job = mock.jobs[0];
+  assert.notEqual(job?.calendar_event_id, "account-a-event");
+  assert.equal(job?.event_exists, false);
+
+  const writes: string[] = [];
+  const result = await processPendingCalendarSyncJobs({
+    supabase: mock.supabase as never,
+    nowIso: "2026-05-10T09:00:00.000Z",
+    client: {
+      async createEvent() {
+        writes.push("create");
+        return { eventId: "wrong-account-event", errorMessage: null };
+      },
+      async patchEvent() {
+        writes.push("patch");
+        return { eventId: "wrong-account-event", errorMessage: null };
+      },
+      async deleteEvent(input: { eventId: string }) {
+        writes.push(`delete:${input.eventId}`);
+        return { ok: true, errorMessage: null };
+      },
+    } as never,
+  });
+
+  assert.deepEqual(result, { ok: true, processed: 1, failed: 0 });
+  assert.deepEqual(writes, []);
+});
+
+test("a missing-task delete requires scoped provenance before calling Google", async () => {
+  function orphanDeleteMock(eventExists: boolean) {
+    const mock = createCalendarSyncSupabaseMock();
+    mock.tasks.length = 0;
+    mock.jobs.push({
+      id: "orphan-delete",
+      owner_user_id: "owner-1",
+      task_id: "deleted-task",
+      calendar_event_id: "unscoped-event",
+      operation: "delete",
+      status: "pending",
+      attempts: 0,
+      queue_version: 1,
+      event_exists: eventExists,
+      generation: 1,
+      destination_key: "owner@example.com|primary",
+      google_account_subject: null,
+      google_account_email: "owner@example.com",
+      calendar_id: "primary",
+      created_at: "2026-05-10T08:00:00.000Z",
+      locked_at: null,
+      last_error: null,
+    });
+    return mock;
+  }
+
+  const unscoped = orphanDeleteMock(false);
+  const unscopedWrites: string[] = [];
+  await processPendingCalendarSyncJobs({
+    supabase: unscoped.supabase as never,
+    nowIso: "2026-05-10T09:00:00.000Z",
+    client: {
+      async createEvent() {
+        unscopedWrites.push("create");
+        return { eventId: "unexpected", errorMessage: null };
+      },
+      async patchEvent() {
+        unscopedWrites.push("patch");
+        return { eventId: "unexpected", errorMessage: null };
+      },
+      async deleteEvent(input: { eventId: string }) {
+        unscopedWrites.push(`delete:${input.eventId}`);
+        return { ok: true, errorMessage: null };
+      },
+    } as never,
+  });
+  assert.deepEqual(unscopedWrites, []);
+
+  const scoped = orphanDeleteMock(true);
+  const scopedWrites: string[] = [];
+  const result = await processPendingCalendarSyncJobs({
+    supabase: scoped.supabase as never,
+    nowIso: "2026-05-10T09:00:00.000Z",
+    client: {
+      async createEvent() {
+        scopedWrites.push("create");
+        return { eventId: "unexpected", errorMessage: null };
+      },
+      async patchEvent() {
+        scopedWrites.push("patch");
+        return { eventId: "unexpected", errorMessage: null };
+      },
+      async deleteEvent(input: { eventId: string }) {
+        scopedWrites.push(`delete:${input.eventId}`);
+        return { ok: true, errorMessage: null };
+      },
+    } as never,
+  });
+  assert.deepEqual(result, { ok: true, processed: 1, failed: 0 });
+  assert.deepEqual(scopedWrites, ["delete:unscoped-event"]);
 });

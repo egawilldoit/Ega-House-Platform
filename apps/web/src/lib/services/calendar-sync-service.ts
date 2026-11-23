@@ -32,6 +32,8 @@ type CalendarSyncJobRow = {
   google_account_subject?: string | null;
   google_account_email?: string | null;
   calendar_id?: string | null;
+  event_exists?: boolean | null;
+  generation?: number | null;
 };
 
 type CalendarSyncTaskRow = {
@@ -107,6 +109,21 @@ function legacyJobDestinationFailure(
   return null;
 }
 
+/**
+ * A queued event id is usable only when the enqueue proved it was already
+ * bound to this task and destination (`event_exists`). An id copied from
+ * `tasks.calendar_event_id` on a new connection has no such proof: Google
+ * events created by the legacy worker carry no scope metadata, and a switch
+ * with no mapping history cannot tell where the old id really lives. Jobs
+ * without scoped provenance create a fresh event in the stamped destination
+ * instead of patching or deleting the previous account's event.
+ */
+function scopedJobEventId(job: CalendarSyncJobRow) {
+  return job.event_exists === true && job.calendar_event_id
+    ? job.calendar_event_id
+    : null;
+}
+
 async function resolveSupabaseClient(supabase?: SupabaseServerClient) {
   if (supabase) {
     return supabase;
@@ -147,11 +164,10 @@ export async function enqueueCalendarSyncJob(
   }
 
   let ownerUserId = input.ownerUserId ?? null;
-  let calendarEventId = input.calendarEventId ?? null;
-  if (!ownerUserId || calendarEventId === null) {
+  if (!ownerUserId) {
     const taskResult = await supabase
       .from("tasks")
-      .select("owner_user_id, calendar_event_id")
+      .select("owner_user_id")
       .eq("id", taskId)
       .maybeSingle();
 
@@ -159,9 +175,11 @@ export async function enqueueCalendarSyncJob(
       return { errorMessage: "Unable to load task owner for Calendar sync." };
     }
 
-    ownerUserId ??= taskResult.data?.owner_user_id ?? null;
-    calendarEventId ??= taskResult.data?.calendar_event_id ?? null;
+    ownerUserId = taskResult.data?.owner_user_id ?? null;
   }
+  // input.calendarEventId and tasks.calendar_event_id are deliberately not
+  // adopted here. They predate destination binding and carry no account or
+  // calendar scope; only a durable mapping can prove where an event lives.
 
   ownerUserId ??= await getAuthenticatedUserId(supabase);
   if (!ownerUserId) {
@@ -275,27 +293,23 @@ export async function enqueueCalendarSyncJob(
     latestMapping?.status === "active"
       ? Math.max(1, mappingGeneration)
       : Math.max(1, mappingGeneration + 1);
-  const eventId =
+  // Positive scoped provenance comes only from an active mapping for this
+  // exact task and destination. Without one, the deterministic id is a fresh
+  // target in the current destination and must be created, never patched or
+  // deleted through an id left behind by a previous account or calendar.
+  const scopedEventId =
     latestMapping?.status === "active" && latestMapping.event_id
       ? latestMapping.event_id
-      : staleDestinationMapping
-        ? deterministicCalendarEventId({
-            ownerUserId,
-            taskId,
-            destinationKey,
-            generation: 1,
-          })
-        : calendarEventId ||
-          deterministicCalendarEventId({
-            ownerUserId,
-            taskId,
-            destinationKey,
-            generation,
-          });
-  const eventExists =
-    !staleDestinationMapping &&
-    ((latestMapping?.status === "active" && Boolean(latestMapping.event_id)) ||
-      Boolean(calendarEventId));
+      : null;
+  const eventId =
+    scopedEventId ??
+    deterministicCalendarEventId({
+      ownerUserId,
+      taskId,
+      destinationKey,
+      generation,
+    });
+  const eventExists = !staleDestinationMapping && Boolean(scopedEventId);
 
   const { error: taskUpdateError } = await supabase
     .from("tasks")
@@ -401,7 +415,7 @@ async function claimPendingCalendarSyncJobs(
   const { data: candidates, error: loadError } = await supabase
     .from("calendar_sync_jobs")
     .select(
-      "id, owner_user_id, task_id, calendar_event_id, operation, attempts, queue_version, destination_key, google_account_subject, google_account_email, calendar_id",
+      "id, owner_user_id, task_id, calendar_event_id, operation, attempts, queue_version, destination_key, google_account_subject, google_account_email, calendar_id, event_exists, generation",
     )
     .in("status", ["pending", "failed"])
     .lt("attempts", MAX_CALENDAR_SYNC_ATTEMPTS)
@@ -431,7 +445,7 @@ async function claimPendingCalendarSyncJobs(
       .eq("id", candidate.id)
       .in("status", ["pending", "failed"])
       .select(
-        "id, owner_user_id, task_id, calendar_event_id, operation, attempts, destination_key, google_account_subject, google_account_email, calendar_id",
+        "id, owner_user_id, task_id, calendar_event_id, operation, attempts, destination_key, google_account_subject, google_account_email, calendar_id, event_exists, generation",
       )
       .maybeSingle();
 
@@ -463,6 +477,37 @@ async function loadCalendarSyncTask(
   return { errorMessage: null, data: data as CalendarSyncTaskRow | null };
 }
 
+/**
+ * The legacy worker creates Google events with provider-generated ids and no
+ * scope metadata. Recording the successful id in the durable mapping table is
+ * what gives the next enqueue positive provenance: it then routes through the
+ * v2 queue and patches or removes that exact event instead of creating a
+ * second copy. A failed mapping write is not hidden as a failed Google write —
+ * the event already exists, so retrying the provider call would duplicate it.
+ */
+async function recordLegacyEventMapping(
+  supabase: SupabaseServerClient,
+  input: {
+    job: CalendarSyncJobRow;
+    eventId: string;
+    nowIso: string;
+  },
+) {
+  if (!input.job.destination_key) return;
+  await supabase.rpc("calendar_sync_upsert_mapping", {
+    p_owner_user_id: input.job.owner_user_id,
+    p_task_id: input.job.task_id,
+    p_destination_key: input.job.destination_key,
+    p_google_account_subject: input.job.google_account_subject ?? null,
+    p_google_account_email: input.job.google_account_email ?? null,
+    p_calendar_id: input.job.calendar_id ?? null,
+    p_event_id: input.eventId,
+    p_generation: input.job.generation ?? 1,
+    p_payload_hash: null,
+    p_now: input.nowIso,
+  });
+}
+
 async function completeCalendarSyncJob(
   supabase: SupabaseServerClient,
   input: {
@@ -492,6 +537,19 @@ async function completeCalendarSyncJob(
       updated_at: input.nowIso,
     })
     .eq("id", input.job.id);
+
+  if (
+    input.status === "succeeded" &&
+    input.task &&
+    input.eventId &&
+    input.job.operation !== "delete"
+  ) {
+    await recordLegacyEventMapping(supabase, {
+      job: input.job,
+      eventId: input.eventId,
+      nowIso: input.nowIso,
+    });
+  }
 
   if (!input.task) {
     return;
@@ -531,6 +589,7 @@ export async function processPendingCalendarSyncJobs(options?: {
   const client = options?.client ?? googleCalendarClient;
 
   for (const job of claimResult.jobs) {
+    const scopedEventId = scopedJobEventId(job);
     const taskResult = await loadCalendarSyncTask(supabase, job);
     if (taskResult.errorMessage) {
       failed += 1;
@@ -548,7 +607,7 @@ export async function processPendingCalendarSyncJobs(options?: {
     const task = taskResult.data;
 
     const needsCalendarWrite = Boolean(
-      task || (job.operation === "delete" && job.calendar_event_id),
+      task || (job.operation === "delete" && scopedEventId),
     );
     if (!needsCalendarWrite) {
       processed += 1;
@@ -625,7 +684,7 @@ export async function processPendingCalendarSyncJobs(options?: {
           scheduledEndAt: null,
           calendarSyncEnabled: false,
           calendarReminderMinutes: 0,
-          calendarEventId: job.calendar_event_id,
+          calendarEventId: scopedEventId,
           archivedAt: nowIso,
         },
         settings,
@@ -677,7 +736,7 @@ export async function processPendingCalendarSyncJobs(options?: {
         calendarSyncEnabled:
           job.operation === "delete" ? false : task.calendar_sync_enabled,
         calendarReminderMinutes: task.calendar_reminder_minutes,
-        calendarEventId: task.calendar_event_id,
+        calendarEventId: scopedEventId,
         archivedAt: task.archived_at,
       },
       settings,

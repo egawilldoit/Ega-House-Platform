@@ -390,13 +390,36 @@ function indexEntryFromDocument(
 }
 
 /**
+ * An unscoped `tasks.calendar_event_id` may be adopted only when the event's
+ * private metadata explicitly names this source, task, owner and destination.
+ * `checkIndexedEvent` is deliberately permissive for *established* mappings —
+ * a mapped event whose tag was stripped is still repaired in place — but that
+ * tolerance is not proof for an id that has no durable scope. A source-only
+ * tag (or a missing task/owner/destination tag) could describe any task's
+ * event, so it must never authorize an update or delete under a new account.
+ */
+function hasExplicitScopedProvenance(input: {
+  event: CalendarEventIndexEntry;
+  task: CalendarTaskScanRecord;
+  destination: CalendarSyncDestination;
+}) {
+  const { event, task, destination } = input;
+  return (
+    event.source === "ega-house" &&
+    event.taskId === task.id &&
+    event.ownerUserId === task.ownerUserId &&
+    event.destinationKey === destination.destinationKey
+  );
+}
+
+/**
  * `tasks.calendar_event_id` predates destination binding. Adopt it only when
  * the current destination's completed listing positively ties that event to
  * this task, owner and destination. An unscoped id is not proof by itself:
  * neither the absence of mapping history nor the presence of an event with
- * that id is enough when its metadata contradicts ownership. A first sync
- * under a different account must not update, delete or adopt an event that
- * belongs to the previous account.
+ * a matching id is enough unless its metadata explicitly carries the full
+ * scope. A first sync under a different account must not update, delete or
+ * adopt an event that belongs to the previous account.
  */
 function legacyEventProvenance(input: {
   task: CalendarTaskScanRecord;
@@ -410,12 +433,12 @@ function legacyEventProvenance(input: {
   // belongs elsewhere, even if a same-id event is now visible here.
   if (input.hasOtherDestinationMapping) return "unverified";
   const event = input.eventIndex.get(input.task.calendarEventId);
-  if (!event) return "unverified";
-  return checkIndexedEvent({
+  if (!event || event.status === "cancelled") return "unverified";
+  return hasExplicitScopedProvenance({
     event,
     task: input.task,
     destination: input.destination,
-  }).kind === "ok"
+  })
     ? "verified"
     : "unverified";
 }
