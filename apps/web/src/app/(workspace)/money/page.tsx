@@ -75,6 +75,7 @@ type Props = {
     offset?: string;
     kind?: string;
     periodId?: string;
+    scope?: string;
   }>;
 };
 
@@ -82,7 +83,7 @@ export default async function MoneyPage({ searchParams }: Props) {
   const user = await getCurrentUser();
   if (!user) redirect("/login?next=/money");
   const params = await searchParams;
-  const { offset, kind } = resolveMoneyHistoryState(params);
+  const { offset, kind, scope } = resolveMoneyHistoryState(params);
   const selectedPeriodId =
     typeof params.periodId === "string" && params.periodId.trim()
       ? params.periodId.trim()
@@ -158,7 +159,7 @@ export default async function MoneyPage({ searchParams }: Props) {
       {
         limit: String(MONEY_PAGE_SIZE),
         offset: String(offset),
-        ...(moneyState?.period
+        ...(scope === "period" && moneyState?.period
           ? {
               from: moneyState.period.startDate,
               to: moneyState.period.endDate,
@@ -303,10 +304,13 @@ export default async function MoneyPage({ searchParams }: Props) {
         timezone={timezone}
         selectedPeriodLabel={selectedPeriodLabel}
         historyScopeLabel={
-          moneyState?.period
+          scope === "period" && moneyState?.period
             ? `History is scoped to ${moneyState.period.startDate}–${moneyState.period.endDate}.`
-            : "History covers all recorded movements."
+            : moneyState?.period
+              ? `History covers all recorded movements; totals remain scoped to ${moneyState.period.startDate}–${moneyState.period.endDate}.`
+              : "History covers all recorded movements."
         }
+        scope={scope}
         canChangeBookingDate={
           moneyState?.period ? moneyState.period.lifecycle === "tracking" : true
         }

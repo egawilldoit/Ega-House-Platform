@@ -25,11 +25,14 @@ export type MoneyHistoryParams = Readonly<{
   movementOffset?: string;
   kind?: string;
   periodId?: string;
+  /** `all` explicitly includes movements outside the selected period. */
+  scope?: string;
 }>;
 
 export type MoneyHistoryState = Readonly<{
   offset: number;
   kind: MoneyKind | null;
+  scope: "period" | "all";
 }>;
 
 function parsePagerOffset(raw: string | undefined): number {
@@ -51,6 +54,7 @@ export function resolveMoneyHistoryState(params: MoneyHistoryParams): MoneyHisto
   return {
     offset: parsePagerOffset(legacyOffset),
     kind: parseMoneyHistoryKind(params.kind),
+    scope: params.scope === "all" ? "all" : "period",
   };
 }
 
@@ -68,11 +72,13 @@ export function moneyHref(state: Readonly<{
   periodId: string | null;
   offset: number;
   kind: MoneyKind | null;
+  scope?: "period" | "all";
 }>): string {
   const params = new URLSearchParams();
   if (state.periodId) params.set("periodId", state.periodId);
   if (state.offset > 0) params.set("offset", String(state.offset));
   if (state.kind) params.set("kind", state.kind);
+  if (state.scope === "all") params.set("scope", "all");
   const query = params.toString();
   return query ? `/money?${query}` : "/money";
 }

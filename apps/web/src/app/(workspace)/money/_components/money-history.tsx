@@ -20,6 +20,7 @@ type MoneyHistoryProps = {
   timezone: string;
   selectedPeriodLabel: string | null;
   historyScopeLabel: string;
+  scope: "period" | "all";
   canChangeBookingDate: boolean;
 };
 
@@ -71,9 +72,11 @@ export function MoneyHistory({
   timezone,
   selectedPeriodLabel,
   historyScopeLabel,
+  scope,
   canChangeBookingDate,
 }: MoneyHistoryProps) {
-  const pageHref = (nextOffset: number) => moneyHref({ periodId, offset: nextOffset, kind });
+  const pageHref = (nextOffset: number) =>
+    moneyHref({ periodId, offset: nextOffset, kind, scope });
   return (
     <section
       aria-labelledby="money-history-heading"
@@ -86,13 +89,29 @@ export function MoneyHistory({
         >
           Movement history
         </h2>
-        <p className="text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
-          One chronological ledger for every kind. {historyScopeLabel}
-        </p>
+        <div className="text-right">
+          <p className="text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
+            One chronological ledger for every kind. {historyScopeLabel}
+          </p>
+          {periodId ? (
+            <a
+              className="text-[length:var(--text-meta)] underline"
+              href={moneyHref({
+                periodId,
+                offset: 0,
+                kind,
+                scope: scope === "all" ? "period" : "all",
+              })}
+            >
+              {scope === "all" ? "Show this period" : "Show all history"}
+            </a>
+          ) : null}
+        </div>
       </div>
 
       <form method="get" action="/money" className="mt-3 flex flex-wrap items-end gap-3">
         {periodId ? <input type="hidden" name="periodId" value={periodId} /> : null}
+        {scope === "all" ? <input type="hidden" name="scope" value="all" /> : null}
         <label className="flex flex-col gap-1 text-[length:var(--text-meta)]">
           Kind
           <select name="kind" defaultValue={kind ?? ""} className="input-instrument h-9 text-sm">
@@ -150,7 +169,7 @@ export function MoneyHistory({
         <div className="mt-4 rounded border border-ega-border p-4">
           <p className="text-[color:var(--ega-text-secondary)]">
             {kind
-              ? periodId
+              ? periodId && scope === "period"
                 ? "No movements of this kind are recorded in this period."
                 : "No movements of this kind are recorded."
               : offset > 0
