@@ -48,7 +48,6 @@
   height: 100dvh;
   height: 100svh;
   overflow: hidden;
-  overscroll-behavior: contain;
   gap: 4px;
   padding: 12px 10px;
   background: var(--ega-bg);

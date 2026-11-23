@@ -111,7 +111,7 @@ describe("EGA-654 navigation structure", () => {
     // Names are unconditional (not gated on the compact prop).
     expect(navigation).toContain("aria-label={route.label}");
     // PR-02 retired per-project rows; destinations come from the single route registry.
-    expect(navigation).toContain("COMMAND_ROUTES.map");
+    expect(navigation).toContain("SIDEBAR_ROUTES.map");
     expect(navigation).not.toContain("getProjectAccessibleLabel");
   });
 });

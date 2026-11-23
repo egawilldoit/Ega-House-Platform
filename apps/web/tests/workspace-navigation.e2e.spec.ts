@@ -11,12 +11,12 @@ const PRIMARY_WORKSPACE_ROUTES = [
   { path: "/tasks", label: "Tasks" },
   { path: "/tasks/projects", label: "Projects" },
   { path: "/money", label: "Money" },
+  { path: "/timer", label: "Timer" },
   { path: "/review", label: "Review" },
 ] as const;
 
 const UTILITY_WORKSPACE_ROUTES = [
   { path: "/goals", label: "Goals" },
-  { path: "/timer", label: "Timer" },
 ] as const;
 
 function getShellRoot(page: Page) {
@@ -39,9 +39,7 @@ async function getNavLink(page: Page, label: string) {
 }
 
 /**
- * Utility destinations (Goals, Timer) are intentionally absent from the
- * five-item sidebar. They must remain reachable through the command palette
- * without a document reload so the workspace shell survives.
+ * Goals remains reachable through the command palette without a document reload.
  */
 async function openUtilityDestination(page: Page, route: (typeof UTILITY_WORKSPACE_ROUTES)[number]) {
   await page.getByTestId("workspace-search-trigger").first().click();
@@ -347,13 +345,11 @@ test.describe("Workspace navigation with persistent shell", () => {
       .first();
     await expect(drawer).toBeVisible({ timeout: 10_000 });
 
-    const drawerTodayLink = fixtures.page.getByRole("link", { name: "Today" }).first();
-    await expect(drawerTodayLink).toBeVisible({ timeout: 10_000 });
-    await drawerTodayLink.click();
-    await fixtures.page.waitForURL(
-      (url) => url.pathname === "/today" || url.pathname.startsWith("/today/"),
-      { timeout: 10_000 },
-    );
+    const timerLink = drawer.getByRole("link", { name: "Timer", exact: true });
+    await expect(timerLink).toBeVisible({ timeout: 10_000 });
+    await timerLink.click();
+    await fixtures.page.waitForURL((url) => url.pathname === "/timer", { timeout: 10_000 });
+    await expect(drawer).toBeHidden();
 
     await expect(shellRoot).toBeVisible({ timeout: 10_000 });
     const identityAfter = await shellRoot.evaluate((el, expectedTestId) => {

@@ -1,15 +1,18 @@
 // @vitest-environment jsdom
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { WorkspaceNavigationDrawer } from "./sidebar-mobile-drawer";
 
 let container: HTMLDivElement;
 let root: Root;
+let mobileViewport: EventTarget;
 
 beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  mobileViewport = new EventTarget();
+  vi.stubGlobal("matchMedia", () => mobileViewport);
   container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);
@@ -19,6 +22,8 @@ afterEach(async () => {
   await act(async () => root.unmount());
   container.remove();
   document.body.style.overflow = "";
+  document.documentElement.style.overflow = "";
+  vi.unstubAllGlobals();
 });
 
 function pressTab(target: EventTarget, shiftKey = false) {
@@ -115,6 +120,24 @@ describe("WorkspaceNavigationDrawer", () => {
     expect(
       document.querySelector('[role="dialog"][aria-label="Workspace navigation"]'),
     ).toBeNull();
+  });
+
+  it("dismisses the drawer and restores existing scroll styles when desktop navigation takes over", async () => {
+    document.documentElement.style.overflow = "clip";
+    await renderDrawer();
+
+    const trigger = getButton("Open workspace navigation");
+    await click(trigger);
+    expect(document.documentElement.style.overflow).toBe("hidden");
+
+    await act(async () => {
+      mobileViewport.dispatchEvent(Object.assign(new Event("change"), { matches: false }));
+    });
+
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    expect(document.querySelector(".workspace-drawer-layer")).toBeNull();
+    expect(document.documentElement.style.overflow).toBe("clip");
+    expect(document.body.style.overflow).toBe("");
   });
 
   it("traps forward and reverse keyboard focus inside the drawer", async () => {
