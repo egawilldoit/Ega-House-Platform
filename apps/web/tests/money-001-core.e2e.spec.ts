@@ -167,6 +167,24 @@ test("optional close, reviewed finalization and an accurate primary view", async
   await expect(page.getByTestId("money-daily-reference")).toBeVisible();
   await expect(page.getByTestId("money-daily-remaining")).toBeVisible();
 
+  // Every advanced capability stays reachable from the secondary navigation.
+  for (const [linkName, headingName] of [
+    ["Savings & emergency", "Savings and emergency protection"],
+    ["Budget & caps", "Budget and advisory caps"],
+    ["Export", "Export"],
+    ["Period setup", "Period setup and settings"],
+    ["Day close", "Optional day close"],
+    ["Finalize & audit", "Finalize, roll over and audit"],
+  ] as const) {
+    await page.getByRole("link", { name: linkName, exact: true }).click();
+    await expect(
+      page.getByRole("heading", { name: headingName, exact: true }).first(),
+    ).toBeVisible();
+  }
+  await expect(
+    page.getByRole("link", { name: "Bills & recurring", exact: true }).first(),
+  ).toHaveAttribute("href", "/money/recurring");
+
   // --- Finalization: missing acknowledgment is refused, then retained.
   const rolloverPanel = page.locator("#money-rollover");
   await expect(rolloverPanel.getByTestId("rollover-unverified-count")).toContainText(
