@@ -289,7 +289,7 @@ test("optional close, reviewed finalization and an accurate primary view", async
   // pre-period and gap movements, without losing the selected-period view.
   await page.getByRole("link", { name: "Show all history", exact: true }).click();
   await expect(
-    page.getByText("History covers all recorded movements", { exact: false }),
+    page.getByText("History covers all recorded movements", { exact: false }).first(),
   ).toBeVisible();
   await page.getByRole("link", { name: "Show this period", exact: true }).click();
 
