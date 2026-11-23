@@ -21,7 +21,8 @@ type MoneyHistoryProps = {
   selectedPeriodLabel: string | null;
   historyScopeLabel: string;
   scope: "period" | "all";
-  canChangeBookingDate: boolean;
+  /** The one tracking period; rows from other periods keep their date locked. */
+  trackingPeriodId: string | null;
 };
 
 function toEditableExpense(row: MoneyLedgerRow): ExpenseDto | null {
@@ -73,7 +74,7 @@ export function MoneyHistory({
   selectedPeriodLabel,
   historyScopeLabel,
   scope,
-  canChangeBookingDate,
+  trackingPeriodId,
 }: MoneyHistoryProps) {
   const pageHref = (nextOffset: number) =>
     moneyHref({ periodId, offset: nextOffset, kind, scope });
@@ -124,7 +125,7 @@ export function MoneyHistory({
           Apply filter
         </button>
         {kind ? (
-          <a className="underline text-[length:var(--text-meta)]" href={moneyHref({ periodId, offset: 0, kind: null })}>
+          <a className="underline text-[length:var(--text-meta)]" href={moneyHref({ periodId, offset: 0, kind: null, scope })}>
             Clear filter
           </a>
         ) : null}
@@ -196,6 +197,8 @@ export function MoneyHistory({
               {movements.map((row) => {
                 const effect = movementEffect(row);
                 const expense = toEditableExpense(row);
+                const canChangeBookingDate =
+                  row.periodId === null || row.periodId === trackingPeriodId;
                 return (
                   <tr key={row.id} className="border-t border-ega-border" data-testid={`money-history-row-${row.id}`}>
                     <td className="p-3 tabular-nums">
@@ -222,7 +225,11 @@ export function MoneyHistory({
                       {row.kind === "opening" ? (
                         <span className="text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">Period settings</span>
                       ) : expense ? (
-                        <MoneyRowActions ownerKey={ownerKey} expense={expense} />
+                        <MoneyRowActions
+                          ownerKey={ownerKey}
+                          expense={expense}
+                          canChangeBookingDate={canChangeBookingDate}
+                        />
                       ) : (
                         <MoneyMovementActions
                           movement={row}

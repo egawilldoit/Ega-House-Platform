@@ -289,9 +289,26 @@ export async function updateMovement(
   // A correction that keeps the original booking date is a historical edit,
   // not a new routine entry. It must remain possible after the source period
   // has ended or rolled over (FR-008/US-14/US-29). Only an actual date move is
-  // subject to the tracking-period routine-entry guard; moving a movement to a
-  // different historical date still needs the explicit correction path.
+  // subject to the tracking-period routine-entry guard.
   if (bookingDate !== undefined && bookingDate !== movement.bookingDate) {
+    // A movement already assigned to a non-tracking period keeps its booking
+    // date. Moving it into the live tracking window would split its period_id
+    // from the booking-date ledger and silently restate ended-period evidence.
+    if (movement.periodId !== null) {
+      const tracking = await options.periods.findTracking(actor);
+      if (!tracking.ok) {
+        return failureFor(
+          tracking.error.code,
+          "Unable to check the tracking period right now.",
+        );
+      }
+      if (!tracking.value || tracking.value.id !== movement.periodId) {
+        return applicationFailure(
+          "Historical period movements keep their original booking date. Record an explicit adjustment instead of moving the date.",
+          "validation",
+        );
+      }
+    }
     const guard = await assertRoutineEntryAllowed(
       actor,
       options.periods,

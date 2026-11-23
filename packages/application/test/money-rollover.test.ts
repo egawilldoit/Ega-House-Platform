@@ -291,6 +291,7 @@ test("early tracking verification cannot invent a future balance cutoff", async 
       acceptClosingDifferenceNote: "reviewed counted cash",
     }),
     "750e8400-e29b-41d4-a716-446655440014",
+    { now: new Date("2026-11-23T09:00:00.000Z") },
   );
   assert.equal(result.ok, false);
   assert.match(
@@ -298,6 +299,34 @@ test("early tracking verification cannot invent a future balance cutoff", async 
     /only available after the source period ends/,
   );
   assert.equal(fake.writes.length, 0);
+});
+
+test("a tracking source at its end date may use a verified cutoff", async () => {
+  const fake = fakeRepository(
+    context({
+      period: endedPeriod({
+        lifecycle: "tracking",
+        activeDate: "2026-11-28",
+      }),
+    }),
+  );
+  const result = await rolloverMoneyPeriod(
+    actor,
+    { repository: fake.repository, obligations: noTemplates },
+    baseInput({
+      opening: {
+        mode: "verified_source",
+        amountMinor: 68_900,
+        cutoffDate: "2026-11-30",
+        evidence: "counted cash on the last day",
+        note: null,
+      },
+    }),
+    "750e8400-e29b-41d4-a716-446655440017",
+    { now: new Date("2026-11-30T09:00:00.000Z") },
+  );
+  assert.equal(result.ok, true);
+  assert.equal(fake.writes.length, 1);
 });
 
 test("a late tracking source may use a verified cutoff covering its end", async () => {

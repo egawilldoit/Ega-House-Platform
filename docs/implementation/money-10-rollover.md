@@ -109,8 +109,10 @@ Status: implementation candidate on `t3/money-10-mcp-delivery`, rebased onto
 
 ## Verification run on this branch
 
-- Full migration journal applied cleanly to a disposable PostgreSQL 17 cluster
-  (all entries through `0107_money_10_period_rollover`).
+- Full migration journal applied cleanly to a disposable PostgreSQL cluster
+  (all entries through `0109_money_11_optional_close_rollover`), including the
+  MONEY-001-A finalization rules and the `money-001-a-optional-close-rollover-verify.mjs`
+  proof.
 - `scripts/db/money-10-rollover-verify.mjs` passed against that cluster. It
   finishes the source and middle periods through real `money_close_day` calls,
   asserts two retained close snapshots compare cleanly with restated totals, then

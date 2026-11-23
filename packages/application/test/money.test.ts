@@ -754,6 +754,39 @@ test("an amount-only correction survives after the source period is rolled over"
   }
 });
 
+test("a historical movement date cannot be moved into a different period", async () => {
+  const period = periodRecord({
+    id: "historical-period",
+    lifecycle: "rolled_over",
+    activeDate: "2026-11-30",
+  });
+  const { repository, periodRepository, rows } = makeRepository({ periods: [period] });
+  const historical = movement({
+    kind: "income",
+    direction: "in",
+    category: null,
+    needVsWant: null,
+    countsInDaily: false,
+    bookingDate: "2026-11-10",
+    periodId: "historical-period",
+    idempotencyKey: "historical-date",
+  });
+  rows.push(historical);
+
+  const moved = await updateMovement(
+    ACTOR,
+    repository,
+    historical.id,
+    { version: 1, bookingDate: "2026-12-05" },
+    { periods: periodRepository },
+  );
+  assert.equal(moved.ok, false);
+  if (!moved.ok) {
+    assert.equal(moved.code, "validation");
+    assert.match(moved.errorMessage, /original booking date/);
+  }
+});
+
 test("listMovements returns the effective cutoff and only that owner's rows", async () => {
   const { repository, rows } = makeRepository();
   rows.push(
