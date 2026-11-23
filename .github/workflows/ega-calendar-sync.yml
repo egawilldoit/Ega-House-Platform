@@ -1,0 +1,36 @@
+name: EGA Calendar Sync Recovery
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ega-calendar-sync-recovery
+  cancel-in-progress: false
+
+jobs:
+  recover-calendar-sync:
+    name: Recover Calendar sync
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Resume unfinished Calendar runs and drain queued work
+        shell: bash
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          ENDPOINT_PATH="/api/cron/calendar-sync"
+          ENDPOINT="${APP_URL}${ENDPOINT_PATH}"
+
+          echo "Endpoint path: ${ENDPOINT_PATH}"
+
+          RESPONSE_BODY="$(curl -f -s -S -X POST "$ENDPOINT" \
+            -H "Authorization: Bearer ${CRON_SECRET}")"
+
+          echo "Response body: ${RESPONSE_BODY}"

@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { getCalendarIntegrationSecretSnapshotForOwner } from "@/lib/services/calendar-settings-service";
+import { deterministicCalendarEventId } from "@ega/application/calendar-sync/rules";
 import {
   googleCalendarClient,
   syncGoogleCalendarEventForTask,
@@ -100,6 +101,135 @@ export async function enqueueCalendarSyncJob(
     return { errorMessage: "Unable to resolve Calendar sync owner." };
   }
 
+  let settings: {
+    google_account_subject?: string | null;
+    google_account_email?: string | null;
+    calendar_id?: string | null;
+  } = {};
+  try {
+    const settingsResult = await supabase
+      .from("calendar_integration_settings")
+      .select("google_account_subject, google_account_email, calendar_id")
+      .eq("owner_user_id", ownerUserId)
+      .eq("provider", "google")
+      .maybeSingle();
+    settings = (settingsResult.data ?? {}) as typeof settings;
+  } catch {
+    // Older deployments and narrow test doubles may not expose Calendar
+    // settings; the legacy scheduled-sync queue still accepts the job.
+    settings = {};
+  }
+  const accountKey =
+    settings.google_account_email?.trim().toLowerCase() ||
+    settings.google_account_subject?.trim() ||
+    "unknown-account";
+  const destinationKey = `${accountKey}|${settings.calendar_id?.trim() || "primary"}`;
+
+  type CalendarMappingRow = {
+    event_id: string | null;
+    generation: number | null;
+    status: string | null;
+  };
+  let latestMapping: CalendarMappingRow | null = null;
+  try {
+    const mappingResult = await supabase
+      .from("calendar_event_mappings")
+      .select("event_id, generation, status")
+      .eq("owner_user_id", ownerUserId)
+      .eq("task_id", taskId)
+      .eq("destination_key", destinationKey)
+      .order("generation", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const candidate = (mappingResult.data ?? null) as CalendarMappingRow | null;
+    latestMapping =
+      candidate &&
+      typeof candidate.event_id === "string" &&
+      candidate.event_id.length > 0 &&
+      (candidate.status === "active" || candidate.status === "removed")
+        ? candidate
+        : null;
+  } catch {
+    latestMapping = null;
+  }
+
+  let anyDestinationMapping: (CalendarMappingRow & {
+    destination_key: string | null;
+  }) | null = null;
+  try {
+    const anyMappingResult = await supabase
+      .from("calendar_event_mappings")
+      .select("destination_key, event_id, generation, status")
+      .eq("owner_user_id", ownerUserId)
+      .eq("task_id", taskId)
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const candidate = (anyMappingResult.data ?? null) as
+      | (CalendarMappingRow & { destination_key: string | null })
+      | null;
+    anyDestinationMapping =
+      candidate &&
+      typeof candidate.event_id === "string" &&
+      candidate.event_id.length > 0
+        ? candidate
+        : null;
+  } catch {
+    anyDestinationMapping = null;
+  }
+
+  let activeRunId: string | null = null;
+  try {
+    const activeRunResult = await supabase
+      .from("calendar_sync_runs")
+      .select("id, status")
+      .eq("owner_user_id", ownerUserId)
+      .eq("destination_key", destinationKey)
+      .eq("status", "active")
+      .limit(1)
+      .maybeSingle();
+    activeRunId =
+      activeRunResult.data?.status === "active"
+        ? activeRunResult.data.id
+        : null;
+  } catch {
+    activeRunId = null;
+  }
+
+  const staleDestinationMapping = Boolean(
+    anyDestinationMapping &&
+      anyDestinationMapping.destination_key !== destinationKey,
+  );
+  const useDurableQueue = Boolean(
+    latestMapping || activeRunId || staleDestinationMapping,
+  );
+  const mappingGeneration = Number(latestMapping?.generation ?? 0);
+  const generation =
+    latestMapping?.status === "active"
+      ? Math.max(1, mappingGeneration)
+      : Math.max(1, mappingGeneration + 1);
+  const eventId =
+    latestMapping?.status === "active" && latestMapping.event_id
+      ? latestMapping.event_id
+      : staleDestinationMapping
+        ? deterministicCalendarEventId({
+            ownerUserId,
+            taskId,
+            destinationKey,
+            generation: 1,
+          })
+        : calendarEventId ||
+          deterministicCalendarEventId({
+            ownerUserId,
+            taskId,
+            destinationKey,
+            generation,
+          });
+  const eventExists =
+    !staleDestinationMapping &&
+    ((latestMapping?.status === "active" && Boolean(latestMapping.event_id)) ||
+      Boolean(calendarEventId));
+
   const { error: taskUpdateError } = await supabase
     .from("tasks")
     .update({
@@ -114,17 +244,57 @@ export async function enqueueCalendarSyncJob(
     return { errorMessage: "Unable to mark task Calendar sync pending." };
   }
 
-  const { error } = await supabase.from("calendar_sync_jobs").insert({
+  const jobPayload = {
     owner_user_id: ownerUserId,
     task_id: taskId,
-    calendar_event_id: calendarEventId,
+    calendar_event_id: eventId,
     operation,
     status: "pending",
     attempts: 0,
+    queue_version: useDurableQueue ? 2 : 1,
+    run_id: activeRunId,
+    destination_key: destinationKey,
+    google_account_subject: settings.google_account_subject ?? null,
+    google_account_email: settings.google_account_email ?? null,
+    calendar_id: settings.calendar_id?.trim() || "primary",
+    generation,
+    event_exists: useDurableQueue ? eventExists : false,
+    scheduled_at: nowIso,
     updated_at: nowIso,
-  });
+  };
+
+  const { error } = await supabase.from("calendar_sync_jobs").insert(jobPayload);
 
   if (error) {
+    const isCoalesceConflict =
+      (error as { code?: string }).code === "23505" && useDurableQueue;
+    if (isCoalesceConflict) {
+      const { error: updateError } = await supabase
+        .from("calendar_sync_jobs")
+        .update({
+          calendar_event_id: eventId,
+          operation,
+          generation,
+          event_exists: eventExists,
+          run_id: activeRunId,
+          last_error: null,
+          permanent_failure: false,
+          scheduled_at: nowIso,
+          updated_at: nowIso,
+        } as never)
+        .eq("owner_user_id", ownerUserId)
+        .eq("task_id", taskId)
+        .eq("destination_key", destinationKey)
+        .eq("status", "pending")
+        .eq("queue_version", 2);
+
+      if (updateError) {
+        return { errorMessage: "Unable to enqueue Calendar sync job." };
+      }
+
+      return { errorMessage: null };
+    }
+
     return { errorMessage: "Unable to enqueue Calendar sync job." };
   }
 
@@ -163,7 +333,9 @@ async function claimPendingCalendarSyncJobs(
 ) {
   const { data: candidates, error: loadError } = await supabase
     .from("calendar_sync_jobs")
-    .select("id, owner_user_id, task_id, calendar_event_id, operation, attempts")
+    .select(
+      "id, owner_user_id, task_id, calendar_event_id, operation, attempts, queue_version",
+    )
     .in("status", ["pending", "failed"])
     .lt("attempts", MAX_CALENDAR_SYNC_ATTEMPTS)
     .order("created_at", { ascending: true })
@@ -174,12 +346,19 @@ async function claimPendingCalendarSyncJobs(
   }
 
   const jobs: CalendarSyncJobRow[] = [];
-  for (const candidate of (candidates ?? []) as CalendarSyncJobRow[]) {
+  for (const candidate of (candidates ?? []) as Array<
+    CalendarSyncJobRow & { queue_version?: number | null }
+  >) {
+    // Queue version 2 is owned by the durable manual-sync engine.
+    if (candidate.queue_version === 2) continue;
     const { data: claimed, error } = await supabase
       .from("calendar_sync_jobs")
       .update({
         status: "processing",
         locked_at: input.nowIso,
+        lease_expires_at: new Date(
+          new Date(input.nowIso).getTime() + 5 * 60_000,
+        ).toISOString(),
         updated_at: input.nowIso,
       })
       .eq("id", candidate.id)
@@ -240,6 +419,7 @@ async function completeCalendarSyncJob(
       attempts,
       last_error: input.failureReason,
       locked_at: null,
+      lease_expires_at: null,
       updated_at: input.nowIso,
     })
     .eq("id", input.job.id);

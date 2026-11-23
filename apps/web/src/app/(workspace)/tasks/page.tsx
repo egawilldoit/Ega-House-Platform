@@ -10,6 +10,7 @@ import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { getTasksPageModel } from "./_lib/tasks-page-model";
 import { TasksPageView } from "./_components/TasksPageView";
+import { getWebCalendarSyncStatus } from "@/lib/services/calendar-sync-engine";
 
 export const metadata: Metadata = {
   title: "Tasks",
@@ -52,6 +53,8 @@ type TasksPageProps = {
     statusUpdateError?: string;
     viewError?: string;
     viewSuccess?: string;
+    success?: string;
+    error?: string;
   }>;
 };
 
@@ -64,6 +67,33 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
   const model = await getTasksPageModel(resolvedSearchParams, {
     defaultLayout: preferences.taskLayout,
   });
+  const calendarStatusResult = await getWebCalendarSyncStatus(
+    process.env.APP_URL?.trim() || "http://localhost",
+  ).catch(() => null);
+  const calendarSyncStatus =
+    calendarStatusResult?.ok === true
+      ? calendarStatusResult.data
+      : {
+          connection: {
+            connected: false,
+            needsReconnect: false,
+            accountEmail: null,
+            calendarId: "primary",
+            destinationKey: "unknown-account|primary",
+          },
+          run: null,
+          pausedRun: null,
+          message: null,
+          continuationBlocked: false,
+        };
+  const calendarOAuthNotice = resolvedSearchParams.error
+    ? { tone: "error" as const, message: resolvedSearchParams.error.slice(0, 180) }
+    : resolvedSearchParams.success
+      ? {
+          tone: "success" as const,
+          message: resolvedSearchParams.success.slice(0, 180),
+        }
+      : null;
 
   return (
     <TasksWorkspaceShell
@@ -79,7 +109,13 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
         </Link>
       }
     >
-      <TasksPageView model={model} ownerId={user?.id ?? null} favouriteAction={toggleFavoriteAction} />
+      <TasksPageView
+        model={model}
+        ownerId={user?.id ?? null}
+        favouriteAction={toggleFavoriteAction}
+        calendarSyncStatus={calendarSyncStatus}
+        calendarOAuthNotice={calendarOAuthNotice}
+      />
     </TasksWorkspaceShell>
   );
 }

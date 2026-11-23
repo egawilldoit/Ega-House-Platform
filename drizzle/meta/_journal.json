@@ -708,6 +708,13 @@
       "when": 1787880000071,
       "tag": "0108_money_10_savings_reconciliation",
       "breakpoints": true
+    },
+    {
+      "idx": 122,
+      "version": "7",
+      "when": 1787880000072,
+      "tag": "0109_calendar_sync_v2",
+      "breakpoints": true
     }
   ]
 }

@@ -22,3 +22,5 @@ export * from "./weekly-review/repository";
 export * from "./money/obligations-repository";
 export * from "./money/obligation-payments-repository";
 export * from "./money/rollover-repository";
+export * from "./calendar/repository";
+export * from "./calendar/google-calendar-provider";

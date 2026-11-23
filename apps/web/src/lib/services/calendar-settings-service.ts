@@ -50,6 +50,7 @@ export type GoogleCalendarTokenConnectionInput = {
   refreshToken?: string | null;
   expiresInSeconds?: number | null;
   googleAccountEmail?: string | null;
+  googleAccountSubject?: string | null;
 };
 
 const CALENDAR_SETTINGS_SAFE_SELECT =
@@ -349,13 +350,30 @@ export async function connectGoogleCalendarWithTokens(
     const writeSupabase = await resolveCalendarSettingsWriteClient(
       options?.supabase,
     );
+    const existingResult = await writeSupabase
+      .from("calendar_integration_settings")
+      .select("google_account_email, google_account_subject")
+      .eq("owner_user_id", authResult.userId)
+      .eq("provider", GOOGLE_CALENDAR_PROVIDER)
+      .maybeSingle();
+    const existing = (existingResult.data ?? {}) as {
+      google_account_email?: string | null;
+      google_account_subject?: string | null;
+    };
     const writeResult = await writeSupabase
       .from("calendar_integration_settings")
       .upsert(
         {
           owner_user_id: authResult.userId,
           provider: GOOGLE_CALENDAR_PROVIDER,
-          google_account_email: input.googleAccountEmail?.trim() || null,
+          google_account_email:
+            input.googleAccountEmail?.trim() ||
+            existing.google_account_email ||
+            null,
+          google_account_subject:
+            input.googleAccountSubject?.trim() ||
+            existing.google_account_subject ||
+            null,
           access_token_encrypted: encryptCalendarToken(accessToken),
           refresh_token_encrypted: encryptCalendarToken(refreshToken),
           token_expires_at: getTokenExpiresAtIso(
@@ -364,6 +382,8 @@ export async function connectGoogleCalendarWithTokens(
           ),
           connected_at: updatedAtIso,
           disconnected_at: null,
+          reconnect_required_at: null,
+          reconnect_required_reason: null,
           updated_at: updatedAtIso,
         },
         { onConflict: "owner_user_id,provider" },
@@ -411,11 +431,14 @@ export async function disconnectGoogleCalendar(options?: {
         owner_user_id: authResult.userId,
         provider: GOOGLE_CALENDAR_PROVIDER,
         google_account_email: null,
+        google_account_subject: null,
         access_token_encrypted: null,
         refresh_token_encrypted: null,
         token_expires_at: null,
         connected_at: null,
         disconnected_at: updatedAtIso,
+        reconnect_required_at: null,
+        reconnect_required_reason: null,
         scheduled_task_sync_enabled: false,
         updated_at: updatedAtIso,
       },

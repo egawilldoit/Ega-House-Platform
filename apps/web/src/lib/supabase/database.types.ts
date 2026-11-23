@@ -208,9 +208,12 @@ export type Database = {
           default_reminder_minutes: number
           disconnected_at: string | null
           google_account_email: string | null
+          google_account_subject: string | null
           id: string
           owner_user_id: string
           provider: string
+          reconnect_required_at: string | null
+          reconnect_required_reason: string | null
           refresh_token_encrypted: string | null
           scheduled_task_sync_enabled: boolean
           token_expires_at: string | null
@@ -224,9 +227,12 @@ export type Database = {
           default_reminder_minutes?: number
           disconnected_at?: string | null
           google_account_email?: string | null
+          google_account_subject?: string | null
           id?: string
           owner_user_id?: string
           provider?: string
+          reconnect_required_at?: string | null
+          reconnect_required_reason?: string | null
           refresh_token_encrypted?: string | null
           scheduled_task_sync_enabled?: boolean
           token_expires_at?: string | null
@@ -240,9 +246,12 @@ export type Database = {
           default_reminder_minutes?: number
           disconnected_at?: string | null
           google_account_email?: string | null
+          google_account_subject?: string | null
           id?: string
           owner_user_id?: string
           provider?: string
+          reconnect_required_at?: string | null
+          reconnect_required_reason?: string | null
           refresh_token_encrypted?: string | null
           scheduled_task_sync_enabled?: boolean
           token_expires_at?: string | null
@@ -263,6 +272,22 @@ export type Database = {
           status: string
           task_id: string
           updated_at: string
+          queue_version: number
+          run_id: string | null
+          destination_key: string
+          google_account_subject: string | null
+          google_account_email: string | null
+          calendar_id: string | null
+          generation: number
+          event_exists: boolean
+          claim_token: string | null
+          lease_expires_at: string | null
+          scheduled_at: string
+          payload_hash: string | null
+          outcome: string | null
+          exclusion_reason: string | null
+          permanent_failure: boolean
+          task_updated_at: string | null
         }
         Insert: {
           attempts?: number
@@ -276,6 +301,22 @@ export type Database = {
           status?: string
           task_id: string
           updated_at?: string
+          queue_version?: number
+          run_id?: string | null
+          destination_key?: string
+          google_account_subject?: string | null
+          google_account_email?: string | null
+          calendar_id?: string | null
+          generation?: number
+          event_exists?: boolean
+          claim_token?: string | null
+          lease_expires_at?: string | null
+          scheduled_at?: string
+          payload_hash?: string | null
+          outcome?: string | null
+          exclusion_reason?: string | null
+          permanent_failure?: boolean
+          task_updated_at?: string | null
         }
         Update: {
           attempts?: number
@@ -288,6 +329,181 @@ export type Database = {
           owner_user_id?: string
           status?: string
           task_id?: string
+          updated_at?: string
+          queue_version?: number
+          run_id?: string | null
+          destination_key?: string
+          google_account_subject?: string | null
+          google_account_email?: string | null
+          calendar_id?: string | null
+          generation?: number
+          event_exists?: boolean
+          claim_token?: string | null
+          lease_expires_at?: string | null
+          scheduled_at?: string
+          payload_hash?: string | null
+          outcome?: string | null
+          exclusion_reason?: string | null
+          permanent_failure?: boolean
+          task_updated_at?: string | null
+        }
+        Relationships: []
+      }
+      calendar_sync_runs: {
+        Row: {
+          id: string
+          owner_user_id: string
+          destination_key: string
+          google_account_subject: string | null
+          google_account_email: string | null
+          calendar_id: string
+          status: string
+          retry_mode: boolean
+          scan_cursor_created_at: string | null
+          scan_cursor_task_id: string | null
+          scan_complete: boolean
+          scan_claim_token: string | null
+          scan_lease_expires_at: string | null
+          last_error: string | null
+          created_at: string
+          updated_at: string
+          completed_at: string | null
+        }
+        Insert: {
+          id?: string
+          owner_user_id?: string
+          destination_key: string
+          google_account_subject?: string | null
+          google_account_email?: string | null
+          calendar_id: string
+          status?: string
+          retry_mode?: boolean
+          scan_cursor_created_at?: string | null
+          scan_cursor_task_id?: string | null
+          scan_complete?: boolean
+          scan_claim_token?: string | null
+          scan_lease_expires_at?: string | null
+          last_error?: string | null
+          created_at?: string
+          updated_at?: string
+          completed_at?: string | null
+        }
+        Update: {
+          id?: string
+          owner_user_id?: string
+          destination_key?: string
+          google_account_subject?: string | null
+          google_account_email?: string | null
+          calendar_id?: string
+          status?: string
+          retry_mode?: boolean
+          scan_cursor_created_at?: string | null
+          scan_cursor_task_id?: string | null
+          scan_complete?: boolean
+          scan_claim_token?: string | null
+          scan_lease_expires_at?: string | null
+          last_error?: string | null
+          created_at?: string
+          updated_at?: string
+          completed_at?: string | null
+        }
+        Relationships: []
+      }
+      calendar_sync_run_items: {
+        Row: {
+          id: string
+          run_id: string
+          owner_user_id: string
+          task_id: string
+          outcome: string
+          exclusion_reason: string | null
+          event_id: string | null
+          payload_hash: string | null
+          error_message: string | null
+          job_id: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          run_id: string
+          owner_user_id: string
+          task_id: string
+          outcome?: string
+          exclusion_reason?: string | null
+          event_id?: string | null
+          payload_hash?: string | null
+          error_message?: string | null
+          job_id?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          run_id?: string
+          owner_user_id?: string
+          task_id?: string
+          outcome?: string
+          exclusion_reason?: string | null
+          event_id?: string | null
+          payload_hash?: string | null
+          error_message?: string | null
+          job_id?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      calendar_event_mappings: {
+        Row: {
+          id: string
+          owner_user_id: string
+          task_id: string
+          destination_key: string
+          google_account_subject: string | null
+          google_account_email: string | null
+          calendar_id: string
+          event_id: string
+          generation: number
+          status: string
+          metadata_verified: boolean
+          payload_hash: string | null
+          last_synced_at: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          owner_user_id: string
+          task_id: string
+          destination_key: string
+          google_account_subject?: string | null
+          google_account_email?: string | null
+          calendar_id: string
+          event_id: string
+          generation?: number
+          status?: string
+          metadata_verified?: boolean
+          payload_hash?: string | null
+          last_synced_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          owner_user_id?: string
+          task_id?: string
+          destination_key?: string
+          google_account_subject?: string | null
+          google_account_email?: string | null
+          calendar_id?: string
+          event_id?: string
+          generation?: number
+          status?: string
+          metadata_verified?: boolean
+          payload_hash?: string | null
+          last_synced_at?: string | null
+          created_at?: string
           updated_at?: string
         }
         Relationships: []
