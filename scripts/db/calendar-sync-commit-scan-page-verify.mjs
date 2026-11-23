@@ -21,6 +21,14 @@
  *   CLAIM - `calendar_sync_claim_jobs` returns the persisted target for a mapped
  *           update and a mapped delete, so the worker updates or removes the
  *           planned event instead of creating a duplicate.
+ *   RECOVER - an expired processing claim with a newer pending edit is folded
+ *           into that edit instead of violating the one-pending guard. The
+ *           latest intent is claimed, a same-generation event identity is kept
+ *           for an ambiguous write, run links survive, and the expired token
+ *           cannot finalize newer work.
+ *   RELEASE - a released or retryably failed claim folds into a newer pending
+ *           edit the same way, without recording the older failure against
+ *           newer work; an unsuperseded retry keeps its backoff and attempts.
  *
  * Usage:
  *   node --import tsx scripts/db/calendar-sync-commit-scan-page-verify.mjs \
@@ -51,6 +59,11 @@ const CLAIM = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
 const CLAIM_REPLAY = "ffffffff-ffff-4fff-8fff-ffffffffffff";
 const CLAIM_REPLAN = "12121212-1212-4212-8212-121212121212";
 const JOB_CLAIM = "13131313-1313-4313-8313-131313131313";
+const CLAIM_EDIT = "14141414-1414-4414-8414-141414141414";
+const JOB_CLAIM_RECOVER = "15151515-1515-4515-8515-151515151515";
+const CLAIM_EDIT_RELEASE = "16161616-1616-4616-8616-161616161616";
+const JOB_CLAIM_RELEASE = "17171717-1717-4717-8717-171717171717";
+const JOB_CLAIM_RETRY = "18181818-1818-4818-8818-181818181818";
 const DESTINATION_KEY = "proof-subject|primary";
 const CURSOR_CREATED_AT = "2026-11-23T10:00:00+00:00";
 const TASK_UPDATED_AT = "2026-11-23T09:59:00+00:00";
@@ -59,6 +72,11 @@ const NOW_REPLAY = "2026-11-23T10:02:00+00:00";
 const NOW_REPLAN = "2026-11-23T10:03:00+00:00";
 const JOB_CLAIM_AT = "2026-11-23T10:04:00+00:00";
 const LEASE_UNTIL = "2026-11-23T10:06:00+00:00";
+const NOW_EDIT = "2026-11-23T10:05:00+00:00";
+const NOW_RECOVER = "2026-11-23T10:10:00+00:00";
+const NOW_EDIT_RELEASE = "2026-11-23T10:11:00+00:00";
+const NOW_RELEASE = "2026-11-23T10:12:00+00:00";
+const RETRY_AT = "2026-11-23T10:13:00+00:00";
 
 function parseArgs() {
   const args = {};
@@ -276,6 +294,86 @@ function commitQuery(sql, commit) {
     ${sql.json(commit.jobs)}::jsonb,
     ${commit.nowIso}::timestamptz
   ) AS committed`;
+}
+
+function claimJobsQuery(sql, claimToken, nowIso) {
+  return sql`
+    SELECT id, task_id, calendar_event_id, operation, status, attempts,
+           claim_token, generation, event_exists, payload_hash, run_id,
+           destination_key, scheduled_at
+    FROM public.calendar_sync_claim_jobs(
+      ${OWNER}::uuid,
+      ${DESTINATION_KEY}::text,
+      ${RUN}::uuid,
+      ${claimToken}::uuid,
+      ${10}::integer,
+      ${nowIso}::timestamptz,
+      ${300}::integer
+    )
+  `;
+}
+
+function releaseJobsQuery(sql, jobIds, claimToken, nowIso, settlement = {}) {
+  return sql`
+    SELECT id, task_id, status, attempts, scheduled_at, last_error, outcome,
+           exclusion_reason, permanent_failure, generation, calendar_event_id,
+           payload_hash
+    FROM public.calendar_sync_release_claimed_jobs(
+      ${jobIds}::uuid[],
+      ${claimToken}::uuid,
+      ${nowIso}::timestamptz,
+      ${Boolean(settlement.recordFailure)}::boolean,
+      ${settlement.lastError ?? null}::text,
+      ${settlement.outcome ?? null}::varchar,
+      ${settlement.exclusionReason ?? null}::text,
+      ${settlement.scheduledAt ?? null}::timestamptz
+    )
+  `;
+}
+
+function editDrafts(input) {
+  return normalizeCommit({
+    runId: RUN,
+    claimToken: input.claimToken,
+    nextCursor: { createdAt: CURSOR_CREATED_AT, taskId: TASK_C },
+    scanComplete: true,
+    items: [
+      {
+        taskId: TASK_A,
+        outcome: "pending",
+        exclusionReason: null,
+        eventId: input.eventId,
+        payloadHash: input.payloadHash,
+        errorMessage: null,
+      },
+    ],
+    jobs: [
+      {
+        taskId: TASK_A,
+        operation: "upsert",
+        eventId: input.eventId,
+        generation: 3,
+        eventExists: true,
+        payloadHash: input.payloadHash,
+        exclusionReason: null,
+        taskUpdatedAt: input.taskUpdatedAt,
+      },
+    ],
+    nowIso: input.nowIso,
+  });
+}
+
+async function jobsForTask(sql, taskId) {
+  return sql.unsafe(
+    `SELECT id, task_id, calendar_event_id, operation, status, attempts,
+            claim_token, lease_expires_at, generation, event_exists,
+            payload_hash, run_id, scheduled_at, last_error, outcome,
+            exclusion_reason, permanent_failure
+     FROM public.calendar_sync_jobs
+     WHERE run_id = $1 AND task_id = $2
+     ORDER BY created_at`,
+    [RUN, taskId],
+  );
 }
 
 async function main() {
@@ -591,6 +689,279 @@ async function main() {
     );
     assert(claimedC?.destination_key === DESTINATION_KEY, "task C claim must stay destination-bound");
     log("CLAIM", "claimed mapped update and delete jobs exposed their planned targets");
+
+    // Finish the delete claim so the recovery scenario has exactly one
+    // processing job for task A.
+    const [completedC] = await sql`
+      UPDATE public.calendar_sync_jobs
+      SET status = 'succeeded', outcome = 'removed', claim_token = NULL,
+          lease_expires_at = NULL, locked_at = NULL,
+          updated_at = ${NOW_EDIT}::timestamptz
+      WHERE id = ${jobC.id}::uuid
+        AND status = 'processing'
+        AND claim_token = ${JOB_CLAIM}::uuid
+      RETURNING id
+    `;
+    assert(completedC, "task C claim must complete before the recovery scenario");
+    await sql`
+      UPDATE public.calendar_sync_run_items
+      SET outcome = 'removed', event_id = NULL, payload_hash = NULL,
+          updated_at = ${NOW_EDIT}::timestamptz
+      WHERE run_id = ${RUN}::uuid AND task_id = ${TASK_C}::uuid
+    `;
+
+    // A newer edit is planned while task A's earlier claim is still processing.
+    // The scan commit cannot coalesce into a processing row, so it inserts a
+    // second pending row for the same task and destination.
+    const [editClaim] = await claimScanQuery(sql, CLAIM_EDIT, NOW_EDIT);
+    assert(editClaim.claimed === true, "the run must be scannable while a job is processing");
+    const [editCommitted] = await commitQuery(
+      sql,
+      editDrafts({
+        claimToken: CLAIM_EDIT,
+        nowIso: NOW_EDIT,
+        eventId: "event-a2",
+        payloadHash: "hash-a3",
+        taskUpdatedAt: "2026-11-23T10:04:30+00:00",
+      }),
+    );
+    assert(editCommitted.committed === true, "a newer edit must commit");
+
+    const editedJobs = await jobsForTask(sql, TASK_A);
+    assert(editedJobs.length === 2, "a newer edit must queue beside the processing claim");
+    const stillProcessingA = editedJobs.find((row) => row.status === "processing");
+    const pendingA = editedJobs.find((row) => row.status === "pending");
+    assert(stillProcessingA?.id === jobA.id, "the earlier claim must stay processing");
+    assert(pendingA, "the newer edit must insert a pending row");
+    assert(pendingA.id !== jobA.id, "the newer pending edit must be a separate row");
+    assert(pendingA.generation === 3, "the newer pending edit must carry its generation");
+    assert(pendingA.operation === "upsert", "the newer pending edit must carry its operation");
+    assert(pendingA.payload_hash === "hash-a3", "the newer pending edit must carry its payload hash");
+
+    // Same-generation event identity: a pending row without a planned target
+    // must inherit the expired claim's target so an ambiguous write retries the
+    // same Google event instead of creating another one.
+    await sql`
+      UPDATE public.calendar_sync_jobs
+      SET calendar_event_id = NULL
+      WHERE id = ${pendingA.id}::uuid
+    `;
+
+    // The earlier claim lease (10:09) is expired at 10:10. The claim must fold the
+    // expired processing row into the newer pending row atomically.
+    const recoveredJobs = await claimJobsQuery(sql, JOB_CLAIM_RECOVER, NOW_RECOVER);
+    assert(recoveredJobs.length === 1, "only the newer pending edit must be claimable");
+    const recoveredA = recoveredJobs[0];
+    assert(recoveredA.id === pendingA.id, "the coalesced pending edit must survive recovery");
+    assert(recoveredA.task_id === TASK_A, "the recovered claim must be task A");
+    assert(recoveredA.status === "processing", "the recovered claim must be processing");
+    assert(
+      recoveredA.claim_token === JOB_CLAIM_RECOVER,
+      "the recovered claim must carry its new token",
+    );
+    assert(
+      recoveredA.attempts === 1,
+      "the newer intent must keep its own retry budget, not the expired attempt",
+    );
+    assert(recoveredA.generation === 3, "the recovered claim must keep the latest generation");
+    assert(recoveredA.operation === "upsert", "the recovered claim must keep the latest operation");
+    assert(
+      recoveredA.payload_hash === "hash-a3",
+      "the recovered claim must keep the latest payload hash",
+    );
+    assert(
+      recoveredA.calendar_event_id === "event-a2",
+      "a same-generation pending edit must inherit the ambiguous-write target",
+    );
+    assert(recoveredA.run_id === RUN, "the recovered claim must keep run accounting");
+
+    const recoveredRows = await jobsForTask(sql, TASK_A);
+    assert(recoveredRows.length === 1, "recovery must leave exactly one task A job");
+    assert(recoveredRows[0].id === pendingA.id, "recovery must keep the newer pending row");
+    assert(recoveredRows[0].status === "processing", "recovery must claim the surviving row");
+    assert(
+      !recoveredRows.some((row) => row.id === jobA.id),
+      "recovery must remove the expired processing row",
+    );
+    const [pendingRowCount] = await sql`
+      SELECT count(*)::integer AS count FROM public.calendar_sync_jobs
+      WHERE run_id = ${RUN}::uuid AND task_id = ${TASK_A}::uuid
+        AND status = 'pending'
+    `;
+    assert(pendingRowCount.count === 0, "recovery must leave no duplicate pending row");
+    const [linkedItem] = await sql`
+      SELECT job_id FROM public.calendar_sync_run_items
+      WHERE run_id = ${RUN}::uuid AND task_id = ${TASK_A}::uuid
+    `;
+    assert(
+      linkedItem.job_id === pendingA.id,
+      "run accounting must link the surviving job after recovery",
+    );
+
+    const [recoveredCounts] = await sql`
+      SELECT public.calendar_sync_run_counts(${RUN}::uuid) AS counts
+    `;
+    assert(recoveredCounts.counts.total === 3, "run totals must not change on recovery");
+    assert(recoveredCounts.counts.removed === 1, "the completed delete must stay counted");
+    assert(recoveredCounts.counts.unchanged === 1, "unchanged work must stay counted");
+    assert(recoveredCounts.counts.processing === 1, "the recovered claim must be the only processing job");
+    assert(
+      recoveredCounts.counts.pending === 1,
+      "the run counts must report one unfinished recovered job, not a duplicate",
+    );
+    assert(recoveredCounts.counts.ready === 1, "recovered work must be ready exactly once");
+    assert(recoveredCounts.counts.retrying === 0, "a recovered claim must not look retrying");
+
+    const [staleCompleted] = await sql`
+      UPDATE public.calendar_sync_jobs
+      SET status = 'succeeded', outcome = 'created', claim_token = NULL,
+          lease_expires_at = NULL
+      WHERE id = ${jobA.id}::uuid
+        AND status = 'processing'
+        AND claim_token = ${JOB_CLAIM}::uuid
+      RETURNING id
+    `;
+    assert(!staleCompleted, "the expired claim token must not finalize removed work");
+    const [staleFinalizedSurvivor] = await sql`
+      UPDATE public.calendar_sync_jobs
+      SET status = 'succeeded', outcome = 'created'
+      WHERE id = ${pendingA.id}::uuid
+        AND status = 'processing'
+        AND claim_token = ${JOB_CLAIM}::uuid
+      RETURNING id
+    `;
+    assert(!staleFinalizedSurvivor, "the expired claim token must not finalize the newer claim");
+    const [survivingClaim] = await sql`
+      SELECT status, claim_token FROM public.calendar_sync_jobs
+      WHERE id = ${pendingA.id}::uuid
+    `;
+    assert(survivingClaim.status === "processing", "the newer claim must stay processing");
+    assert(
+      survivingClaim.claim_token === JOB_CLAIM_RECOVER,
+      "the newer claim must keep its own token",
+    );
+    const [expiredRow] = await sql`
+      SELECT count(*)::integer AS count FROM public.calendar_sync_jobs
+      WHERE id = ${jobA.id}::uuid
+    `;
+    assert(expiredRow.count === 0, "the expired processing row must be gone");
+    log(
+      "RECOVER",
+      "expired processing folded into the newer pending edit; latest intent claimed and stale token rejected",
+    );
+
+    // The release and retryable-failure paths share the collision. A newer edit
+    // first supersedes the release: the newest intent stays pending, the older
+    // claim is removed, and its failure is not recorded against newer work.
+    const [releaseEditClaim] = await claimScanQuery(sql, CLAIM_EDIT_RELEASE, NOW_EDIT_RELEASE);
+    assert(releaseEditClaim.claimed === true, "the run must be scannable during the release scenario");
+    const [releaseEditCommitted] = await commitQuery(
+      sql,
+      editDrafts({
+        claimToken: CLAIM_EDIT_RELEASE,
+        nowIso: NOW_EDIT_RELEASE,
+        eventId: "event-a2",
+        payloadHash: "hash-a4",
+        taskUpdatedAt: "2026-11-23T10:10:30+00:00",
+      }),
+    );
+    assert(releaseEditCommitted.committed === true, "the release-scenario edit must commit");
+
+    const beforeRelease = await jobsForTask(sql, TASK_A);
+    assert(beforeRelease.length === 2, "the release scenario must have a processing and pending row");
+    const releasePendingA = beforeRelease.find((row) => row.status === "pending");
+    assert(releasePendingA, "the release scenario must keep the newer pending edit");
+
+    const supersededRelease = await releaseJobsQuery(
+      sql,
+      [pendingA.id],
+      JOB_CLAIM_RECOVER,
+      NOW_EDIT_RELEASE,
+      {
+        recordFailure: true,
+        lastError: "Transient Google Calendar error.",
+        outcome: "failed",
+        scheduledAt: NOW_RELEASE,
+      },
+    );
+    assert(
+      supersededRelease.length === 0,
+      "a release superseded by a newer edit must not report the old claim",
+    );
+
+    const afterRelease = await jobsForTask(sql, TASK_A);
+    assert(afterRelease.length === 1, "a superseded release must leave one job");
+    assert(afterRelease[0].id === releasePendingA.id, "a superseded release must keep the newer row");
+    assert(afterRelease[0].status === "pending", "a superseded release must stay pending");
+    assert(afterRelease[0].last_error === null, "the newer intent must not inherit an older failure");
+    assert(afterRelease[0].outcome === null, "the newer intent must not inherit an older outcome");
+    assert(afterRelease[0].payload_hash === "hash-a4", "the newer intent must keep its payload hash");
+    assert(
+      new Date(afterRelease[0].scheduled_at).getTime() <= new Date(NOW_EDIT_RELEASE).getTime(),
+      "a superseded release must leave the newer intent ready",
+    );
+    const [staleReleaseFinalize] = await sql`
+      UPDATE public.calendar_sync_jobs
+      SET status = 'succeeded'
+      WHERE id = ${pendingA.id}::uuid
+        AND status = 'processing'
+        AND claim_token = ${JOB_CLAIM_RECOVER}::uuid
+      RETURNING id
+    `;
+    assert(!staleReleaseFinalize, "a superseded release token must not finalize newer work");
+
+    const claimedReleaseJobs = await claimJobsQuery(sql, JOB_CLAIM_RELEASE, NOW_RELEASE);
+    assert(claimedReleaseJobs.length === 1, "the surviving newer edit must be claimable");
+    const claimedReleaseA = claimedReleaseJobs[0];
+    assert(claimedReleaseA.id === releasePendingA.id, "the claim must keep the surviving edit");
+    assert(claimedReleaseA.status === "processing", "the release claim must be processing");
+    assert(claimedReleaseA.attempts === 1, "the release claim must advance attempts once");
+
+    // With no newer edit, a retryable failure settles the claimed row in place
+    // with its backoff and error, and the retry budget is retained.
+    const failedJobs = await releaseJobsQuery(
+      sql,
+      [claimedReleaseA.id],
+      JOB_CLAIM_RELEASE,
+      NOW_RELEASE,
+      {
+        recordFailure: true,
+        lastError: "Transient Google Calendar error.",
+        outcome: "failed",
+        scheduledAt: RETRY_AT,
+      },
+    );
+    assert(failedJobs.length === 1, "an unsuperseded failure must settle its claimed row");
+    const settledFailure = failedJobs[0];
+    assert(settledFailure.id === claimedReleaseA.id, "the same row must return to pending");
+    assert(settledFailure.status === "pending", "a retryable failure must return to pending");
+    assert(settledFailure.attempts === 1, "a retryable failure must keep its attempt count");
+    assert(
+      settledFailure.last_error === "Transient Google Calendar error.",
+      "a retryable failure must record its error",
+    );
+    assert(settledFailure.outcome === "failed", "a retryable failure must record its outcome");
+    assert(
+      new Date(settledFailure.scheduled_at).toISOString() === new Date(RETRY_AT).toISOString(),
+      "a retryable failure must honor its backoff",
+    );
+
+    const tooEarlyJobs = await claimJobsQuery(
+      sql,
+      "19191919-1919-4919-8919-191919191919",
+      NOW_RELEASE,
+    );
+    assert(tooEarlyJobs.length === 0, "a retry backoff must not be claimable early");
+    const retriedJobs = await claimJobsQuery(sql, JOB_CLAIM_RETRY, RETRY_AT);
+    assert(retriedJobs.length === 1, "the retry must be claimable at its backoff time");
+    assert(retriedJobs[0].id === claimedReleaseA.id, "the retry must keep the same job row");
+    assert(retriedJobs[0].attempts === 2, "the retry must advance attempts from the settled count");
+    assert(retriedJobs[0].claim_token === JOB_CLAIM_RETRY, "the retry must carry a new token");
+    assert(retriedJobs[0].payload_hash === "hash-a4", "the retry must keep the latest payload hash");
+    log(
+      "RELEASE",
+      "release and retryable failure fold into newer edits and preserve backoff without duplicates",
+    );
 
     console.log("CALENDAR-SYNC-COMMIT-SCAN-PAGE-VERIFY PASS");
   } finally {

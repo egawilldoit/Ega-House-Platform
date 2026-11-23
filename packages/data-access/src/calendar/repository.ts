@@ -715,16 +715,16 @@ export class SupabaseCalendarSyncRepository implements CalendarSyncRepository {
     input: { jobIds: string[]; claimToken: string; nowIso: string },
   ): Promise<RepositoryResult<void>> {
     if (input.jobIds.length === 0) return { ok: true, value: undefined };
-    const result = await this.supabase
-      .from("calendar_sync_jobs")
-      .update({
-        status: "pending",
-        claim_token: null,
-        lease_expires_at: null,
-        updated_at: input.nowIso,
-      } as never)
-      .in("id", input.jobIds)
-      .eq("claim_token", input.claimToken);
+    const result = await this.supabase.rpc("calendar_sync_release_claimed_jobs", {
+      p_job_ids: input.jobIds,
+      p_claim_token: input.claimToken,
+      p_now: input.nowIso,
+      p_record_failure: false,
+      p_last_error: null,
+      p_outcome: null,
+      p_exclusion_reason: null,
+      p_scheduled_at: null,
+    });
     if (result.error) return failure(result.error);
     return { ok: true, value: undefined };
   }
@@ -818,14 +818,40 @@ export class SupabaseCalendarSyncRepository implements CalendarSyncRepository {
       nowIso: string;
     },
   ): Promise<RepositoryResult<boolean>> {
+    if (!input.failure.permanent) {
+      // A newer pending edit may exist for the same task and destination. The
+      // database function folds this claim into that pending slot; a superseded
+      // claim reports false so its failure is not recorded against newer work.
+      const released = await this.supabase.rpc(
+        "calendar_sync_release_claimed_jobs",
+        {
+          p_job_ids: [input.job.id],
+          p_claim_token: input.claimToken,
+          p_now: input.nowIso,
+          p_record_failure: true,
+          p_last_error: input.failure.message,
+          p_outcome: input.failure.outcome,
+          p_exclusion_reason: input.failure.exclusionReason ?? null,
+          p_scheduled_at: input.failure.retryAt ?? input.nowIso,
+        },
+      );
+      if (released.error) return failure(released.error);
+      return {
+        ok: true,
+        value: asRows(released.data).some(
+          (row) => String(row.id) === input.job.id,
+        ),
+      };
+    }
+
     const result = await this.supabase
       .from("calendar_sync_jobs")
       .update({
-        status: input.failure.permanent ? "failed" : "pending",
+        status: "failed",
         outcome: input.failure.outcome,
         exclusion_reason: input.failure.exclusionReason ?? null,
         last_error: input.failure.message,
-        permanent_failure: input.failure.permanent,
+        permanent_failure: true,
         scheduled_at: input.failure.retryAt ?? input.nowIso,
         claim_token: null,
         lease_expires_at: null,

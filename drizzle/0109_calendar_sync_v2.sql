@@ -69,6 +69,9 @@ CREATE TABLE IF NOT EXISTS public.calendar_sync_run_items (
 
 CREATE INDEX IF NOT EXISTS calendar_sync_run_items_outcome_idx
   ON public.calendar_sync_run_items (run_id, outcome);
+CREATE INDEX IF NOT EXISTS calendar_sync_run_items_job_idx
+  ON public.calendar_sync_run_items (job_id)
+  WHERE job_id IS NOT NULL;
 --> statement-breakpoint
 
 CREATE TABLE IF NOT EXISTS public.calendar_event_mappings (
@@ -403,6 +406,17 @@ $commit$;
 -- Atomic claim with FOR UPDATE SKIP LOCKED. An expired lease is returned to
 -- pending first. A pending job is never claimed while another valid processing
 -- lease exists for the same task and destination.
+--
+-- An expired v2 processing row may have a newer pending edit for the same task
+-- and destination: a scan-page commit cannot coalesce into a processing row, so
+-- it inserts a pending row. The one-pending guard means the processing row
+-- cannot simply be demoted. Delete and re-insert it into the pending slot so a
+-- concurrent commit coalesces through ON CONFLICT instead of raising a unique
+-- violation. When a pending row already exists it keeps the latest intent; the
+-- expired row's calendar event id is used only when that row has none and the
+-- generations match, because an ambiguous write may have used that
+-- deterministic id and the retry must target it again. The expired row id
+-- disappears, so its claim token can no longer finalize the newer work.
 CREATE OR REPLACE FUNCTION public.calendar_sync_claim_jobs(
   p_owner uuid,
   p_destination_key text,
@@ -417,20 +431,70 @@ SECURITY INVOKER
 SET search_path = ''
 AS $claim_jobs$
 BEGIN
+  -- Legacy v1 claims predate the pending guard, so they can return in place.
   UPDATE public.calendar_sync_jobs
   SET status = 'pending',
       claim_token = NULL,
       lease_expires_at = NULL,
       updated_at = p_now
   WHERE status = 'processing'
+    AND queue_version = 1
+    AND run_id IS NULL
     AND lease_expires_at IS NOT NULL
     AND lease_expires_at <= p_now
-    AND (
-      (queue_version = 2 AND (p_run_id IS NULL OR run_id = p_run_id))
-      OR (queue_version = 1 AND run_id IS NULL)
-    )
     AND (p_owner IS NULL OR owner_user_id = p_owner)
     AND (p_destination_key IS NULL OR destination_key = p_destination_key);
+
+  WITH expired AS (
+    DELETE FROM public.calendar_sync_jobs AS job
+    WHERE job.status = 'processing'
+      AND job.queue_version = 2
+      AND job.lease_expires_at IS NOT NULL
+      AND job.lease_expires_at <= p_now
+      AND (p_run_id IS NULL OR job.run_id = p_run_id)
+      AND (p_owner IS NULL OR job.owner_user_id = p_owner)
+      AND (p_destination_key IS NULL OR job.destination_key = p_destination_key)
+    RETURNING job.*
+  ),
+  merged AS (
+    INSERT INTO public.calendar_sync_jobs (
+      id, owner_user_id, task_id, calendar_event_id, operation, status, attempts,
+      last_error, locked_at, created_at, updated_at, queue_version, run_id,
+      destination_key, google_account_subject, google_account_email, calendar_id,
+      generation, event_exists, claim_token, lease_expires_at, scheduled_at,
+      payload_hash, outcome, exclusion_reason, permanent_failure, task_updated_at
+    )
+    SELECT
+      expired.id, expired.owner_user_id, expired.task_id,
+      expired.calendar_event_id, expired.operation, 'pending', expired.attempts,
+      expired.last_error, NULL, expired.created_at, p_now, expired.queue_version,
+      expired.run_id, expired.destination_key, expired.google_account_subject,
+      expired.google_account_email, expired.calendar_id, expired.generation,
+      expired.event_exists, NULL, NULL, expired.scheduled_at,
+      expired.payload_hash, expired.outcome, expired.exclusion_reason,
+      expired.permanent_failure, expired.task_updated_at
+    FROM expired
+    ON CONFLICT (owner_user_id, task_id, destination_key)
+      WHERE (status = 'pending' AND queue_version = 2)
+    DO UPDATE
+    SET calendar_event_id = COALESCE(
+          public.calendar_sync_jobs.calendar_event_id,
+          CASE
+            WHEN public.calendar_sync_jobs.generation = EXCLUDED.generation
+              THEN EXCLUDED.calendar_event_id
+          END
+        ),
+        scheduled_at = LEAST(public.calendar_sync_jobs.scheduled_at, p_now),
+        updated_at = p_now
+    RETURNING *
+  )
+  UPDATE public.calendar_sync_run_items AS item
+  SET job_id = merged.id
+  FROM expired, merged
+  WHERE item.job_id = expired.id
+    AND merged.owner_user_id = expired.owner_user_id
+    AND merged.task_id = expired.task_id
+    AND merged.destination_key = expired.destination_key;
 
   RETURN QUERY
   WITH candidates AS (
@@ -469,6 +533,120 @@ BEGIN
   RETURNING job.*;
 END
 $claim_jobs$;
+--> statement-breakpoint
+
+-- Return claimed work to the coalesced pending slot. A claim can fail or be
+-- released after a scan-page commit created a newer pending edit for the same
+-- task and destination; demoting the processing row in place would violate the
+-- one-pending guard. The newer intent wins, the processing row is removed so
+-- its token cannot finalize newer work, and the same-generation event id is
+-- kept because an ambiguous write may have used it. Rows without a competing
+-- pending edit are returned to pending with an optional failure settlement and
+-- returned to the caller, so a retry that was superseded reports no outcome.
+CREATE OR REPLACE FUNCTION public.calendar_sync_release_claimed_jobs(
+  p_job_ids uuid[],
+  p_claim_token uuid,
+  p_now timestamptz,
+  p_record_failure boolean,
+  p_last_error text,
+  p_outcome varchar,
+  p_exclusion_reason text,
+  p_scheduled_at timestamptz
+) RETURNS SETOF public.calendar_sync_jobs
+LANGUAGE plpgsql
+SECURITY INVOKER
+SET search_path = ''
+AS $release_jobs$
+DECLARE
+  v_job_id uuid;
+  v_job public.calendar_sync_jobs;
+BEGIN
+  IF p_claim_token IS NULL OR p_job_ids IS NULL THEN
+    RETURN;
+  END IF;
+
+  FOREACH v_job_id IN ARRAY p_job_ids LOOP
+    SELECT job.* INTO v_job
+    FROM public.calendar_sync_jobs AS job
+    WHERE job.id = v_job_id
+      AND job.status = 'processing'
+      AND job.claim_token = p_claim_token
+    FOR UPDATE;
+
+    CONTINUE WHEN NOT FOUND;
+
+    WITH expired AS (
+      DELETE FROM public.calendar_sync_jobs AS job
+      WHERE job.id = v_job.id
+      RETURNING job.*
+    ),
+    merged AS (
+      INSERT INTO public.calendar_sync_jobs (
+        id, owner_user_id, task_id, calendar_event_id, operation, status, attempts,
+        last_error, locked_at, created_at, updated_at, queue_version, run_id,
+        destination_key, google_account_subject, google_account_email, calendar_id,
+        generation, event_exists, claim_token, lease_expires_at, scheduled_at,
+        payload_hash, outcome, exclusion_reason, permanent_failure, task_updated_at
+      )
+      SELECT
+        expired.id, expired.owner_user_id, expired.task_id,
+        expired.calendar_event_id, expired.operation, 'pending', expired.attempts,
+        CASE WHEN p_record_failure THEN p_last_error ELSE expired.last_error END,
+        NULL, expired.created_at, p_now, expired.queue_version,
+        expired.run_id, expired.destination_key, expired.google_account_subject,
+        expired.google_account_email, expired.calendar_id, expired.generation,
+        expired.event_exists, NULL, NULL,
+        CASE
+          WHEN p_record_failure THEN COALESCE(p_scheduled_at, p_now)
+          ELSE expired.scheduled_at
+        END,
+        expired.payload_hash,
+        CASE WHEN p_record_failure THEN p_outcome ELSE expired.outcome END,
+        CASE
+          WHEN p_record_failure THEN p_exclusion_reason
+          ELSE expired.exclusion_reason
+        END,
+        CASE WHEN p_record_failure THEN false ELSE expired.permanent_failure END,
+        expired.task_updated_at
+      FROM expired
+      ON CONFLICT (owner_user_id, task_id, destination_key)
+        WHERE (status = 'pending' AND queue_version = 2)
+      DO UPDATE
+      SET calendar_event_id = COALESCE(
+            public.calendar_sync_jobs.calendar_event_id,
+            CASE
+              WHEN public.calendar_sync_jobs.generation = EXCLUDED.generation
+                THEN EXCLUDED.calendar_event_id
+            END
+          ),
+          scheduled_at = LEAST(public.calendar_sync_jobs.scheduled_at, p_now),
+          updated_at = p_now
+      RETURNING *
+    )
+    UPDATE public.calendar_sync_run_items AS item
+    SET job_id = merged.id
+    FROM expired, merged
+    WHERE item.job_id = expired.id
+      AND merged.owner_user_id = expired.owner_user_id
+      AND merged.task_id = expired.task_id
+      AND merged.destination_key = expired.destination_key;
+
+    -- If the row still exists under its own id, it was requeued in place and
+    -- owns its failure settlement. A conflicting newer pending row deletes the
+    -- old id, so it is reported as superseded instead.
+    SELECT job.* INTO v_job
+    FROM public.calendar_sync_jobs AS job
+    WHERE job.id = v_job_id
+      AND job.status = 'pending';
+
+    IF FOUND THEN
+      RETURN NEXT v_job;
+    END IF;
+  END LOOP;
+
+  RETURN;
+END
+$release_jobs$;
 --> statement-breakpoint
 
 CREATE OR REPLACE FUNCTION public.calendar_sync_list_orphan_mappings(
@@ -620,6 +798,7 @@ $upsert_mapping$;
 REVOKE ALL ON FUNCTION public.calendar_sync_claim_run_scan(uuid, uuid, timestamptz, integer) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.calendar_sync_commit_scan_page(uuid, uuid, timestamptz, uuid, boolean, jsonb, jsonb, timestamptz) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.calendar_sync_claim_jobs(uuid, text, uuid, uuid, integer, timestamptz, integer) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.calendar_sync_release_claimed_jobs(uuid[], uuid, timestamptz, boolean, text, varchar, text, timestamptz) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.calendar_sync_list_orphan_mappings(uuid, text, integer) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.calendar_sync_run_counts(uuid) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.calendar_sync_run_exclusions(uuid) FROM PUBLIC, anon;
@@ -628,6 +807,7 @@ REVOKE ALL ON FUNCTION public.calendar_sync_upsert_mapping(uuid, uuid, text, tex
 GRANT EXECUTE ON FUNCTION public.calendar_sync_claim_run_scan(uuid, uuid, timestamptz, integer) TO authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.calendar_sync_commit_scan_page(uuid, uuid, timestamptz, uuid, boolean, jsonb, jsonb, timestamptz) TO authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.calendar_sync_claim_jobs(uuid, text, uuid, uuid, integer, timestamptz, integer) TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.calendar_sync_release_claimed_jobs(uuid[], uuid, timestamptz, boolean, text, varchar, text, timestamptz) TO authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.calendar_sync_list_orphan_mappings(uuid, text, integer) TO authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.calendar_sync_run_counts(uuid) TO authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.calendar_sync_run_exclusions(uuid) TO authenticated, service_role;
