@@ -9,20 +9,20 @@ import {
   getShellRouteMeta,
 } from "./shell-route-meta";
 
-test("keeps exactly the five primary workspace destinations in the sidebar registry", () => {
+test("keeps the primary workspace destinations in the sidebar registry", () => {
   assert.deepEqual(
     COMMAND_ROUTES.map((route) => route.href),
-    ["/today", "/tasks", "/tasks/projects", "/money", "/review"],
+    ["/today", "/tasks", "/tasks/projects", "/money", "/timer", "/review"],
   );
   for (const route of COMMAND_ROUTES) {
     assert.equal(route.group, "primary");
   }
 });
 
-test("treats Goals and Timer as utility surfaces rather than primary destinations", () => {
+test("keeps Goals available as a contextual destination", () => {
   assert.deepEqual(
     UTILITY_ROUTES.map((route) => route.href),
-    ["/goals", "/timer"],
+    ["/goals"],
   );
   for (const route of UTILITY_ROUTES) {
     assert.equal(route.group, "utility");
@@ -34,7 +34,7 @@ test("treats Goals and Timer as utility surfaces rather than primary destination
   }
 });
 
-test("resolves utility page metadata and keeps both pages real deep links", () => {
+test("resolves Goals and Timer metadata and keeps both deep links", () => {
   assert.equal(getShellRouteMeta("/goals").label, "Goals");
   assert.equal(getShellRouteMeta("/goals/deep-link").label, "Goals");
   assert.equal(getShellRouteMeta("/timer").label, "Timer");

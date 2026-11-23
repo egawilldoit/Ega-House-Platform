@@ -62,7 +62,6 @@ export function WorkspaceNavigationDrawer({
   const panelId = useId();
   const triggerRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
-  const previousOverflowRef = useRef("");
 
   const closeDrawer = useCallback((options?: { restoreFocus?: boolean }) => {
     const restoreFocus = options?.restoreFocus ?? true;
@@ -79,11 +78,18 @@ export function WorkspaceNavigationDrawer({
   useEffect(() => {
     if (!open) return;
 
-    previousOverflowRef.current = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    document.documentElement.style.overflow = "hidden";
+    // Keep this query aligned with the sidebar breakpoint in workspace.css.
+    const mobileViewport = window.matchMedia("(max-width: 760px)");
+    function onViewportChange(event: MediaQueryListEvent) {
+      if (!event.matches) closeDrawer({ restoreFocus: false });
+    }
+
+    const previousBodyOverflow = document.body.style.overflow;
+    const previousRootOverflow = document.documentElement.style.overflow;
     const previousPaddingRight = document.body.style.paddingRight;
     const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
+    document.body.style.overflow = "hidden";
+    document.documentElement.style.overflow = "hidden";
     if (scrollbarWidth > 0) {
       document.body.style.paddingRight = `${scrollbarWidth}px`;
     }
@@ -129,11 +135,13 @@ export function WorkspaceNavigationDrawer({
       }
     }
 
+    mobileViewport.addEventListener("change", onViewportChange);
     document.addEventListener("keydown", onKeyDown);
     return () => {
+      mobileViewport.removeEventListener("change", onViewportChange);
       document.removeEventListener("keydown", onKeyDown);
-      document.body.style.overflow = previousOverflowRef.current;
-      document.documentElement.style.overflow = "";
+      document.body.style.overflow = previousBodyOverflow;
+      document.documentElement.style.overflow = previousRootOverflow;
       document.body.style.paddingRight = previousPaddingRight;
     };
   }, [closeDrawer, open]);

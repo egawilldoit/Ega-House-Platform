@@ -73,7 +73,7 @@ export function Sidebar({
       </div>
 
       {/* The only scroll region: primary navigation, workspaces, system nav. */}
-      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain [scrollbar-width:thin]">
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto [scrollbar-width:thin]">
         <Suspense fallback={null}>
           <SidebarNavigation
             favorites={favorites}

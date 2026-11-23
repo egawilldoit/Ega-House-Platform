@@ -6,36 +6,28 @@ export type ShellRouteMeta = {
   description: string;
 };
 
-/**
- * The five primary destinations. These are the only rows rendered by the
- * desktop sidebar and the mobile navigation drawer.
- */
+/** Destinations shared by the desktop sidebar and mobile navigation drawer. */
 export const COMMAND_ROUTES = [
   { href: "/today", label: "Today", group: "primary", description: "Daily execution" },
   { href: "/tasks", label: "Tasks", group: "primary", description: "Work inventory" },
   { href: "/tasks/projects", label: "Projects", group: "primary", description: "Workspaces" },
   { href: "/money", label: "Money", group: "primary", description: "Personal expense ledger" },
+  {
+    href: "/timer",
+    label: "Timer",
+    group: "primary",
+    description: "Focus sessions and history",
+  },
   { href: "/review", label: "Review", group: "primary", description: "Weekly feedback loop" },
 ] as const satisfies readonly ShellRouteMeta[];
 
-/**
- * Retained contextual surfaces. They keep real pages and deep links, are
- * reachable from their owning workflow (Projects → Goals, Review/Today and the
- * global active-timer chip → Timer), and stay searchable in the command
- * palette. They are deliberately not primary sidebar rows.
- */
+/** Contextual destinations remain searchable in the command palette. */
 export const UTILITY_ROUTES = [
   {
     href: "/goals",
     label: "Goals",
     group: "utility",
     description: "Cross-project objectives and health",
-  },
-  {
-    href: "/timer",
-    label: "Timer",
-    group: "utility",
-    description: "Focus sessions and history",
   },
 ] as const satisfies readonly ShellRouteMeta[];
 

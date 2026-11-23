@@ -8,8 +8,7 @@ import {
 } from "@/components/layout/shell-route-meta";
 
 // Routes with a config redirect must not reappear as palette commands. The
-// retained utility surfaces (Goals, Timer) are intentional exceptions below:
-// they are contextual pages, not retired redirects.
+// retained Goals page remains available as a contextual command.
 const RETIRED_PALETTE_ROUTES = new Set(["/apps", "/shutdown", "/work-analytics", "/archive", "/startup", "/friction"]);
 const PALETTE_ROUTES: readonly ShellRouteMeta[] = [
   ...COMMAND_ROUTES,
