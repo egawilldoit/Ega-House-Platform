@@ -158,6 +158,12 @@ export default async function MoneyPage({ searchParams }: Props) {
       {
         limit: String(MONEY_PAGE_SIZE),
         offset: String(offset),
+        ...(moneyState?.period
+          ? {
+              from: moneyState.period.startDate,
+              to: moneyState.period.endDate,
+            }
+          : {}),
         ...(kind ? { kind } : {}),
       },
       { timezone },
@@ -296,6 +302,11 @@ export default async function MoneyPage({ searchParams }: Props) {
         periodId={selectedPeriodId}
         timezone={timezone}
         selectedPeriodLabel={selectedPeriodLabel}
+        historyScopeLabel={
+          moneyState?.period
+            ? `History is scoped to ${moneyState.period.startDate}–${moneyState.period.endDate}.`
+            : "History covers all recorded movements."
+        }
       />
 
       <section aria-labelledby="money-secondary-heading" className="mt-6 rounded-lg border border-ega-border p-5">

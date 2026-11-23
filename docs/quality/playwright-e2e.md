@@ -45,10 +45,11 @@ always starts the production build. Development runs do not certify that build.
 | Today and timer | 2 | Two known outcomes saved/reloaded; start, recover the same active session after reload, stop and save outcome; exactly one ended session; competing clients, committed stop response loss, duplicate and delayed old-stop replay preserve the finalized session and a newer active session |
 | Personal schedule | 5 | Save/reload/pause, appearance write preserves schedule, dirty navigation/discard, server rejection of overlapping guidance, keyboard/reduced motion |
 | Money and CSV | 1 | Lose a real committed response and retry without duplicating, reload, export excludes B's same-day expense, edit, soft delete and database evidence |
+| MONEY-001-A optional close and finalization | 2 | Close one day, leave later days unclosed, move the active date and record a later expense exactly once with no fabricated closes; preview unverified coverage, acknowledge it, create one successor and prove owner isolation; verify one quick entry and one history at phone width |
 | Shutdown and review | 1 | Check-in and routine input survive reload and appear in Review evidence |
 | Notifications | 2 | Seeded notification, persisted read state and email-channel preference; real Hono settings PATCH with ordinary tokens, concurrent initial creation and independent fields, conflicting window rejection and owner isolation |
 
-The authenticated JSON guard requires the exact 16 reviewed file/title pairs
+The authenticated JSON guard requires the exact 14 reviewed file/title pairs
 under `chromium-disposable`, one passed attempt each, zero skipped/flaky/failed
 cases, and no report-level errors. Smoke has its own exact three-case guard.
 The guard tests include reports produced by the installed Playwright runner,

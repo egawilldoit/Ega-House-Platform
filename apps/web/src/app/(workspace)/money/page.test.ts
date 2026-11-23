@@ -71,6 +71,8 @@ test("one unified history lists every kind through a single paginated movement q
   assert.match(source, /listMovements\(/);
   assert.match(source, /limit:\s*String\(MONEY_PAGE_SIZE\)/);
   assert.match(source, /offset:\s*String\(offset\)/);
+  assert.match(source, /from:\s*moneyState\.period\.startDate/);
+  assert.match(source, /to:\s*moneyState\.period\.endDate/);
   assert.match(source, /\.\.\.\(kind \? \{ kind \} : \{\}\)/);
   assert.match(source, /MoneyHistory/);
   assert.doesNotMatch(source, /listExpenses\(/);

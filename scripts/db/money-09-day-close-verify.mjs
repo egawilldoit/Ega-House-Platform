@@ -283,14 +283,17 @@ async function main() {
       assert(denied, label);
     };
     await guard("direct update cannot rewind to a closed date", () => user(A, tx => tx.unsafe(
-      "UPDATE public.money_periods SET active_date='2026-11-09', version=version+1 WHERE id=$1", [period])));
+      "UPDATE public.money_periods SET active_date='2026-11-09', version=version+1 WHERE id=$1", [period])), "42501");
     await guard("direct update cannot rewind behind the retained close", () => user(A, tx => tx.unsafe(
-      "UPDATE public.money_periods SET active_date='2026-11-08', version=version+1 WHERE id=$1", [period])));
+      "UPDATE public.money_periods SET active_date='2026-11-08', version=version+1 WHERE id=$1", [period])), "42501");
     await guard("direct update cannot end a period without its final close", () => user(A, tx => tx.unsafe(
       "UPDATE public.money_periods SET lifecycle='ended', version=version+1 WHERE id=$1", [period])));
     // Skipping Nov 10 to Nov 11 is now a normal calendar move, not a close.
+    // The active date is written only by the definitions RPC so the day-start
+    // baseline is refreshed in the same operation.
     const advanced = await user(A, tx => tx.unsafe(
-      "UPDATE public.money_periods SET active_date='2026-11-11', version=version+1 WHERE id=$1 RETURNING active_date,version", [period]));
+      `SELECT * FROM public.money_update_period($1,$2,'2026-11-11'::date,NULL::jsonb,NULL::integer,NULL::text,NULL::text,NULL::jsonb,NULL::text,now()::timestamptz)`,
+      [period, current.version]));
     assert(advanced.length === 1 && day(advanced[0].active_date) === "2026-11-11"
       && advanced[0].version === current.version + 1,
       "a tracking active date may skip an unclosed day without a close");

@@ -19,6 +19,7 @@ type MoneyHistoryProps = {
   periodId: string | null;
   timezone: string;
   selectedPeriodLabel: string | null;
+  historyScopeLabel: string;
 };
 
 function toEditableExpense(row: MoneyLedgerRow): ExpenseDto | null {
@@ -68,6 +69,7 @@ export function MoneyHistory({
   periodId,
   timezone,
   selectedPeriodLabel,
+  historyScopeLabel,
 }: MoneyHistoryProps) {
   const pageHref = (nextOffset: number) => moneyHref({ periodId, offset: nextOffset, kind });
   return (
@@ -83,8 +85,7 @@ export function MoneyHistory({
           Movement history
         </h2>
         <p className="text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
-          One chronological ledger for every kind. Selecting a period changes the
-          summary and totals, not which global rows are listed.
+          One chronological ledger for every kind. {historyScopeLabel}
         </p>
       </div>
 

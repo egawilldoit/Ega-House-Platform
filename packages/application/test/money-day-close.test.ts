@@ -527,6 +527,40 @@ test("a historical selected date loads its exact close even outside the recent s
   assert.deepEqual(exactCalls, ["2026-11-09"]);
 });
 
+test("unverified coverage names the last unverified date, not a later closed date", async () => {
+  const period = makePeriod({
+    startDate: "2026-11-01",
+    endDate: "2026-11-30",
+    activeDate: "2026-11-23",
+    lifecycle: "tracking",
+  });
+  const closes = [
+    makeClose({ closeDate: "2026-11-20", id: "close-20" }),
+    makeClose({ closeDate: "2026-11-22", id: "close-22" }),
+  ];
+  const repository = {
+    async listDayCloses() {
+      return { ok: true as const, value: closes };
+    },
+    async getDayCloseForDate() {
+      return { ok: true as const, value: null };
+    },
+  } as unknown as MoneyPeriodRepository;
+
+  const result = await loadMoneyDayCloseViews(
+    ACTOR,
+    repository,
+    period,
+    { amountMinor: 50_000 },
+    "2026-11-23",
+  );
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.data.unverifiedThroughDate, "2026-11-21");
+  assert.equal(result.data.unverifiedDates.includes("2026-11-22"), false);
+  assert.equal(result.data.unverifiedDates.includes("2026-11-21"), true);
+});
+
 test("after the final day, routine entries require an explicit rollover or correction", async () => {
   const ended = makePeriod({ lifecycle: "ended", activeDate: "2026-11-30" });
   const result = await assertRoutineEntryAllowed(

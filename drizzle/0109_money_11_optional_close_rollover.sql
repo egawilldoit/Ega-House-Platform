@@ -61,6 +61,36 @@ CREATE TRIGGER "money_budget_target_revision_insert"
   EXECUTE FUNCTION public.record_money_budget_target_revision();
 --> statement-breakpoint
 
+-- A new period always begins tracking with no finalization/rollover evidence.
+-- The table-wide INSERT grant predates the rollover columns; without this guard
+-- an authenticated caller could pre-seed finalization_reference and then pass
+-- the lifecycle update guard. `money_create_period` and the rollover function
+-- are SECURITY DEFINER and still insert valid tracking rows.
+CREATE OR REPLACE FUNCTION public.enforce_money_period_insert()
+RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = ''
+AS $insert_guard$
+BEGIN
+  IF NEW.lifecycle <> 'tracking'
+     OR NEW.successor_period_id IS NOT NULL
+     OR NEW.rolled_over_at IS NOT NULL
+     OR NEW.finalization_reference IS NOT NULL THEN
+    RAISE EXCEPTION 'A new Money period must start tracking without finalization evidence.'
+      USING ERRCODE = '23514';
+  END IF;
+  RETURN NEW;
+END
+$insert_guard$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION public.enforce_money_period_insert() FROM PUBLIC, anon, authenticated;
+--> statement-breakpoint
+DROP TRIGGER IF EXISTS "money_periods_insert_guard" ON "public"."money_periods";
+CREATE TRIGGER "money_periods_insert_guard"
+  BEFORE INSERT ON "public"."money_periods"
+  FOR EACH ROW
+  EXECUTE FUNCTION public.enforce_money_period_insert();
+--> statement-breakpoint
+
 -- Calendar progression is independent of the optional close (MONEY-001 ID-07).
 CREATE OR REPLACE FUNCTION public.enforce_money_period_close_transition()
 RETURNS trigger
@@ -400,6 +430,7 @@ CREATE OR REPLACE FUNCTION public.money_update_period(
 )
 RETURNS SETOF public.money_periods
 LANGUAGE plpgsql
+SECURITY DEFINER
 SET search_path = ''
 AS $update_period$
 DECLARE
@@ -509,6 +540,12 @@ REVOKE ALL ON FUNCTION public.money_update_period(
 GRANT EXECUTE ON FUNCTION public.money_update_period(
   uuid, integer, date, jsonb, integer, text, text, jsonb, text, timestamp with time zone
 ) TO authenticated;
+--> statement-breakpoint
+
+-- The active date is a financial baseline cutoff. The definitions RPC above
+-- (and the close/rollover definitions) are the only writers; a direct column
+-- update could skip the fresh day-start baseline. Reading remains granted.
+REVOKE UPDATE ("active_date") ON TABLE public.money_periods FROM authenticated;
 --> statement-breakpoint
 
 -- Replace the rollover RPC with the finalization variant. The old signature is dropped so PostgREST cannot resolve an obsolete overload.

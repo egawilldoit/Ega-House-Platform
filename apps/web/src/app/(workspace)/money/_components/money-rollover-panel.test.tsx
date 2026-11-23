@@ -91,6 +91,58 @@ test("rollover panel always offers the acceptance note for a verified balance", 
   assert.match(html, /savings target versus transfers difference/);
 });
 
+test("rollover panel does not render unknown close evidence as zero", () => {
+  const html = renderToStaticMarkup(
+    <MoneyRolloverPanel
+      preview={preview({
+        closeSnapshots: { available: false, reason: "close_snapshot_unavailable" },
+        unverifiedDayCount: 0,
+        unverifiedDates: [],
+      })}
+      previewUnavailableReason={null}
+      action={async () => ({ ok: true, error: null })}
+    />,
+  );
+  assert.match(html, /Unavailable — retained close evidence could not be read/);
+  assert.doesNotMatch(html, />None</);
+});
+
+test("rollover panel lists retained closed dates for review", () => {
+  const html = renderToStaticMarkup(
+    <MoneyRolloverPanel
+      preview={preview({
+        closeSnapshots: {
+          available: true,
+          closeCount: 2,
+          closedDates: ["2026-11-02", "2026-11-03"],
+          periodDayCount: 3,
+          requiredCloseCount: 3,
+          trackedFromDate: "2026-11-02",
+          missingCloseDates: ["2026-11-01"],
+          unverifiedDayCount: 1,
+          completeCloseEvidence: false,
+          lastClosedDate: "2026-11-03",
+          comparableToRestatedTotals: true,
+          restatedDifferenceCount: 0,
+          restatedDifferences: [],
+          paidObligationCount: 0,
+          paidObligationMismatchCount: 0,
+          countedVisitCount: 0,
+          countedVisitMismatchCount: 0,
+          savingsTargetMinor: 12_000,
+          savingsTransferredMinor: 12_000,
+        },
+        unverifiedDayCount: 1,
+        unverifiedDates: ["2026-11-01"],
+      })}
+      previewUnavailableReason={null}
+      action={async () => ({ ok: true, error: null })}
+    />,
+  );
+  assert.match(html, /Show the 2 previously closed dates/);
+  assert.match(html, /2026-11-02, 2026-11-03/);
+});
+
 test("rollover panel discloses a prior verified-opening variance", () => {
   const html = renderToStaticMarkup(
     <MoneyRolloverPanel

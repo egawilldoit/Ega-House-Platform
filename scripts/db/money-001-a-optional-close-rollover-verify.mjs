@@ -212,9 +212,9 @@ async function main() {
     }
     assert(rewindDenied, "the active date never reopens a retained close");
 
-    // A transaction-local setting is caller-controlled, so it must never be
-    // accepted as proof of finalization. Ending without the final-day close or
-    // the internal rollover reference is refused even when the caller sets it.
+    // A direct lifecycle update is not proof of finalization. Ending without
+    // the final-day close or the internal rollover reference is refused, and a
+    // caller-controlled transaction setting cannot substitute for evidence.
     let directEndDenied = false;
     try {
       await user(A, async (tx) => {
@@ -235,6 +235,40 @@ async function main() {
     assert(
       directEndDenied,
       "a caller-set transaction marker cannot fabricate period finalization",
+    );
+    let directReferenceUpdateDenied = false;
+    try {
+      await user(A, tx =>
+        tx.unsafe(
+          "UPDATE public.money_periods SET finalization_reference=gen_random_uuid() WHERE id=$1",
+          [periodId],
+        ),
+      );
+    } catch (error) {
+      directReferenceUpdateDenied = error.code === "42501";
+    }
+    assert(
+      directReferenceUpdateDenied,
+      "the finalization reference is outside the authenticated column grant",
+    );
+    let preseededInsertDenied = false;
+    try {
+      await user(A, tx =>
+        tx.unsafe(
+          `INSERT INTO public.money_periods
+           (owner_user_id,start_date,end_date,currency,timezone,active_date,
+            lifecycle,finalization_reference,version)
+           VALUES ($1,'2027-03-01','2027-03-02','MAD','Africa/Casablanca',
+            '2027-03-01','tracking',gen_random_uuid(),1)`,
+          [A],
+        ),
+      );
+    } catch (error) {
+      preseededInsertDenied = error.code === "23514";
+    }
+    assert(
+      preseededInsertDenied,
+      "a direct insert cannot pre-seed finalization evidence",
     );
 
     // --- Skip Nov 21/22 and record Nov 23 -----------------------------------

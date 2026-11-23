@@ -19,6 +19,7 @@ import { updateMovementAction } from "../actions";
 export function MoneyMovementActions({ movement }: { movement: MoneyMovementDto }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
+  const [baseVersion, setBaseVersion] = useState(movement.version);
   const [amountInput, setAmountInput] = useState(formatMinorToMadInput(movement.amountMinor));
   const [bookingDate, setBookingDate] = useState(movement.bookingDate);
   const [note, setNote] = useState(movement.note ?? "");
@@ -26,6 +27,22 @@ export function MoneyMovementActions({ movement }: { movement: MoneyMovementDto 
   const [countsInDaily, setCountsInDaily] = useState(movement.countsInDaily ? "true" : "false");
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+
+  function toggleOpen() {
+    if (!open) {
+      // Open from the latest server data, then pin the version for this draft.
+      // A refresh while the form is open must not silently retarget the edit at
+      // a newer version with older inputs.
+      setAmountInput(formatMinorToMadInput(movement.amountMinor));
+      setBookingDate(movement.bookingDate);
+      setNote(movement.note ?? "");
+      setMerchant(movement.merchant ?? "");
+      setCountsInDaily(movement.countsInDaily ? "true" : "false");
+      setBaseVersion(movement.version);
+      setError(null);
+    }
+    setOpen((value) => !value);
+  }
 
   async function toggleDailyInclusion() {
     if (pending) return;
@@ -86,7 +103,7 @@ export function MoneyMovementActions({ movement }: { movement: MoneyMovementDto 
     setPending(true);
     try {
       const result = await updateMovementAction(movement.id, {
-        version: movement.version,
+        version: baseVersion,
         amountMinor: amount.value,
         bookingDate,
         note: note.trim() ? note : null,
@@ -112,13 +129,20 @@ export function MoneyMovementActions({ movement }: { movement: MoneyMovementDto 
         type="button"
         size="sm"
         variant="muted"
-        onClick={() => setOpen((value) => !value)}
+        onClick={toggleOpen}
         aria-expanded={open}
       >
         {open ? "Close" : "Correct"}
       </Button>
       {open ? (
         <form onSubmit={handleSubmit} className="mt-3 flex flex-wrap items-end gap-2" aria-label="Correct movement">
+          {movement.version !== baseVersion ? (
+            <p role="status" className="w-full text-sm text-[var(--signal-error)]">
+              This movement changed elsewhere. Your draft is kept; saving will return a
+              conflict so it cannot overwrite the newer version. Close and reopen to review
+              the latest values.
+            </p>
+          ) : null}
           <div className="space-y-1">
             <label htmlFor={`movement-amount-${movement.id}`} className="text-xs text-[color:var(--ega-text-secondary)]">Amount (MAD)</label>
             <Input

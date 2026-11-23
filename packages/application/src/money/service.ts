@@ -286,7 +286,12 @@ export async function updateMovement(
       tracking.value?.timezone ?? "UTC",
     );
   }
-  if (bookingDate !== undefined) {
+  // A correction that keeps the original booking date is a historical edit,
+  // not a new routine entry. It must remain possible after the source period
+  // has ended or rolled over (FR-008/US-14/US-29). Only an actual date move is
+  // subject to the tracking-period routine-entry guard; moving a movement to a
+  // different historical date still needs the explicit correction path.
+  if (bookingDate !== undefined && bookingDate !== movement.bookingDate) {
     const guard = await assertRoutineEntryAllowed(
       actor,
       options.periods,

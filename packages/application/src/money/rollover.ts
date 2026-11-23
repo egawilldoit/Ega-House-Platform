@@ -25,6 +25,7 @@ import {
   type ObligationCreateValues,
   type ObligationTemplate,
 } from "@ega/domain/obligations";
+import { getLocalDateInTimezone } from "@ega/domain/time-context";
 
 import type { AuthenticatedActor } from "../auth/actor";
 import { sha256Hex } from "../shared/hash";
@@ -376,6 +377,23 @@ async function prepareRollover(
     };
   }
 
+  // A verified balance is evidence for a cutoff, not a promise about future
+  // days. While a tracking source still has unreached days, its verified
+  // opening cannot cover the source end without inventing future evidence.
+  if (
+    values.opening.mode === "verified_source" &&
+    source.period.lifecycle === "tracking" &&
+    source.period.activeDate < source.period.endDate
+  ) {
+    return {
+      ok: false,
+      code: "validation",
+      message:
+        "A verified opening is only available after the source period ends. Use carry-forward for early finalization or wait until the period end.",
+    };
+  }
+  const localToday = getLocalDateInTimezone(now, source.period.timezone);
+
   let opening: MoneyOpeningInput | null = null;
   let initialized: "initialized" | "reconciled" = "initialized";
   let verifiedClosingCashMinor: number | null = null;
@@ -414,6 +432,12 @@ async function prepareRollover(
         ok: false,
         code: "validation",
         message: `The verified opening cutoff must cover the source close and not extend past the successor start (${source.period.endDate} through ${targets.startDate}).`,
+      };
+    } else if (verified.cutoffDate > localToday) {
+      openingFailure = {
+        ok: false,
+        code: "validation",
+        message: `The verified balance date cannot be in the future (today is ${localToday}).`,
       };
     } else {
       opening = buildVerifiedRolloverOpening(verified, source.period);

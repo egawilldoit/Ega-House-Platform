@@ -732,7 +732,9 @@ export function assessMoneyRollover(input: Readonly<{
         code: "incomplete_close_evidence",
         amountMinor: null,
         status: accepted ? "accepted" : "choice_required",
-        message: `Review retained ${closedCount === 1 ? "close" : "closes"} and ${missingLabel}. These dates stay unverified: rollover never invents close rows. Acknowledge them explicitly with a retained note before finalizing.`,
+        message: accepted
+          ? `Reviewed retained ${closedCount === 1 ? "close" : "closes"} and ${missingLabel}. The unverified dates are explicitly acknowledged with retained provenance; no close rows were invented.`
+          : `Review retained ${closedCount === 1 ? "close" : "closes"} and ${missingLabel}. These dates stay unverified: rollover never invents close rows. Acknowledge them explicitly with a retained note before finalizing.`,
       });
       if (!accepted) {
         choices.push(

@@ -13,6 +13,10 @@ export const journeys = {
     "shutdown check-in and routine evidence persist through a reload",
     "notification read state and channel preference survive reload",
   ],
+  "money-001-core.e2e.spec.ts": [
+    "optional close, reviewed finalization and an accurate primary view",
+    "one quick entry and one history remain usable on a phone-sized viewport",
+  ],
   "notification-settings.e2e.spec.ts": [
     "notification settings PATCH preserves concurrent fields, rejects conflicts and isolates owners",
   ],

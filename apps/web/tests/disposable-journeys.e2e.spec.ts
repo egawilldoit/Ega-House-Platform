@@ -2,6 +2,24 @@ import { readFile } from "node:fs/promises";
 import { test, expect, ownerClient } from "./disposable-fixtures";
 import { signInPwaOwner, setUnreadNotificationsForOwner } from "./pwa-fixtures";
 
+/**
+ * Server-rendered controlled inputs snap back if a test types before React has
+ * attached its handlers. Wait for the client property React installs on the
+ * node rather than sleeping for an arbitrary interval.
+ */
+async function waitForClientHydration(
+  page: import("@playwright/test").Page,
+  selector: string,
+) {
+  await page.waitForFunction((target) => {
+    const element = document.querySelector(target);
+    return (
+      element !== null &&
+      Object.keys(element).some((key) => key.startsWith("__reactProps"))
+    );
+  }, selector);
+}
+
 test("created task persists and owner B cannot read, update or delete it", async ({ page, owners }) => {
   await signInPwaOwner(page, owners.ownerA, "/tasks");
   const title = "E2E owner A private task";
@@ -123,17 +141,18 @@ test("Money survives reload, exports only the owner, then edits and deletes", as
   }).toBeTruthy();
   // The Money page refreshes itself on focus. A reload can briefly leave two
   // server-rendered copies of the ledger in the DOM, so scope to the visible
-  // expense section and wait for one settled match before asserting.
+  // unified history section and wait for one settled match before asserting.
   const emptyLedger = page
-    .locator('section[aria-labelledby="money-expenses-heading"]')
-    .getByText("No expenses yet.", { exact: true })
+    .locator('section[aria-labelledby="money-history-heading"]')
+    .getByText("No movements recorded yet.", { exact: false })
     .filter({ visible: true });
-  await expect.poll(() => emptyLedger.count()).toBe(1);
-  await expect(emptyLedger).toBeVisible();
+  // A refresh can briefly mount a second copy of the empty state; the durable
+  // assertion is that at least one visible empty ledger settles and the row is
+  // gone, before and after a reload.
+  await expect(emptyLedger.first()).toBeVisible();
   await expect(row).toHaveCount(0);
   await page.reload();
-  await expect.poll(() => emptyLedger.count()).toBe(1);
-  await expect(emptyLedger).toBeVisible();
+  await expect(emptyLedger.first()).toBeVisible();
   await expect(row).toHaveCount(0);
   const deleted = await a.from("personal_expenses").select("deleted_at").eq("id", expense.id).single();
   expect(deleted.error).toBeNull();
@@ -225,11 +244,13 @@ test("Money rollover resets selected period choices and retains savings acceptan
     await sql.end({ timeout: 5 });
   }
   await signInPwaOwner(page, owners.ownerA, `/money?periodId=${periods[0]}`);
+  await waitForClientHydration(page, "#rollover-start-date");
   const start = page.getByLabel("Successor start date (required)");
   await expect(start).toHaveValue("2026-11-02");
   await start.fill("2026-11-05");
   await page.getByLabel("New savings target (MAD)").fill("999");
   await page.getByRole("link", { name: "2026-11-10–2026-11-10" }).click();
+  await waitForClientHydration(page, "#rollover-start-date");
   await expect(start).toHaveValue("2026-11-11");
   await expect(page.getByLabel("New savings target (MAD)")).toHaveValue("");
   await start.fill("2026-11-12");

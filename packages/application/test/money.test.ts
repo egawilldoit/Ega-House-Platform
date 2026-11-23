@@ -717,6 +717,43 @@ test("update rejects moving the booking date outside the tracking period", async
   if (!outside.ok) assert.equal(outside.code, "validation");
 });
 
+test("an amount-only correction survives after the source period is rolled over", async () => {
+  const period = periodRecord({
+    lifecycle: "rolled_over",
+    activeDate: "2026-11-30",
+  });
+  const { repository, periodRepository, rows } = makeRepository({ periods: [period] });
+  const historical = movement({
+    kind: "income",
+    direction: "in",
+    category: null,
+    needVsWant: null,
+    countsInDaily: false,
+    bookingDate: "2026-11-10",
+    idempotencyKey: "historical-income",
+    amountMinor: 20_000,
+  });
+  rows.push(historical);
+
+  const corrected = await updateMovement(
+    ACTOR,
+    repository,
+    historical.id,
+    {
+      version: 1,
+      amountMinor: 21_000,
+      bookingDate: historical.bookingDate,
+    },
+    { periods: periodRepository },
+  );
+  assert.equal(corrected.ok, true);
+  if (corrected.ok) {
+    assert.equal(corrected.data.amountMinor, 21_000);
+    assert.equal(corrected.data.bookingDate, "2026-11-10");
+    assert.equal(corrected.data.version, 2);
+  }
+});
+
 test("listMovements returns the effective cutoff and only that owner's rows", async () => {
   const { repository, rows } = makeRepository();
   rows.push(

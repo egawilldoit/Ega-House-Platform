@@ -352,9 +352,9 @@ export function MoneyDayClosePanel({
         </form>
       ) : (
         <p role="status" className="mt-3 text-[length:var(--text-body)]">
-          This period is {period.lifecycle.replaceAll("_", " ")} and requires rollover before a new
-          routine day can be closed. Historical corrections remain available through the versioned
-          movement path.
+          {period.lifecycle === "rolled_over"
+            ? "This period was already rolled over. Continue from its successor period; historical corrections remain available through the versioned movement path."
+            : `This period is ${period.lifecycle.replaceAll("_", " ")} and requires rollover before a new routine day can be closed. Historical corrections remain available through the versioned movement path.`}
         </p>
       )}
 

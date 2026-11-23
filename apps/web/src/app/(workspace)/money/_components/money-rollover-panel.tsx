@@ -74,8 +74,13 @@ function MoneyRolloverForm({
   const pending = preview.pendingOccurrences;
   const difference = preview.reconciliation.differenceMinor;
   const datesChanged = startDate !== preview.targets.startDate || endDate !== preview.targets.endDate;
-  const unverifiedCount = preview.unverifiedDayCount ?? 0;
-  const unverifiedDates = preview.unverifiedDates ?? [];
+  const unverifiedUnavailable = preview.closeSnapshots.available === false;
+  const unverifiedCount = unverifiedUnavailable
+    ? 0
+    : (preview.unverifiedDayCount ?? 0);
+  const unverifiedDates = unverifiedUnavailable
+    ? []
+    : (preview.unverifiedDates ?? []);
 
   async function submit(formData: FormData) {
     setError(null);
@@ -150,12 +155,27 @@ function MoneyRolloverForm({
             Unverified days
           </dt>
           <dd className="font-medium" data-testid="rollover-unverified-count">
-            {unverifiedCount > 0
-              ? `${unverifiedCount} reviewed${preview.unverifiedDaysAcknowledged ? " · acknowledged" : " · acknowledgment required"}`
-              : "None"}
+            {unverifiedUnavailable
+              ? "Unavailable — retained close evidence could not be read"
+              : unverifiedCount > 0
+                ? `${unverifiedCount} reviewed${preview.unverifiedDaysAcknowledged ? " · acknowledged" : " · acknowledgment required"}`
+                : "None"}
           </dd>
         </div>
       </dl>
+
+      {preview.closeSnapshots.available &&
+      (preview.closeSnapshots.closedDates?.length ?? 0) > 0 ? (
+        <details className="mt-3 rounded border border-ega-border p-3">
+          <summary className="cursor-pointer text-[length:var(--text-meta)] underline">
+            Show the {preview.closeSnapshots.closedDates?.length} previously closed date
+            {(preview.closeSnapshots.closedDates?.length ?? 0) === 1 ? "" : "s"}
+          </summary>
+          <p className="mt-2 break-words text-[length:var(--text-meta)] tabular-nums">
+            {preview.closeSnapshots.closedDates?.join(", ")}
+          </p>
+        </details>
+      ) : null}
 
       {unverifiedCount > 0 ? (
         <div className="mt-3 rounded border border-ega-border p-3">

@@ -268,6 +268,38 @@ test("a tracking period is a legal rollover source after review", async () => {
   assert.equal(fake.writes[0].unverifiedDaysNote, null);
 });
 
+test("early tracking verification cannot invent a future balance cutoff", async () => {
+  const fake = fakeRepository(
+    context({
+      period: endedPeriod({
+        lifecycle: "tracking",
+        activeDate: "2026-11-23",
+      }),
+    }),
+  );
+  const result = await rolloverMoneyPeriod(
+    actor,
+    { repository: fake.repository, obligations: noTemplates },
+    baseInput({
+      opening: {
+        mode: "verified_source",
+        amountMinor: 68_900,
+        cutoffDate: "2026-11-23",
+        evidence: "counted cash",
+        note: null,
+      },
+      acceptClosingDifferenceNote: "reviewed counted cash",
+    }),
+    "750e8400-e29b-41d4-a716-446655440014",
+  );
+  assert.equal(result.ok, false);
+  assert.match(
+    !result.ok ? result.errorMessage : "",
+    /only available after the source period ends/,
+  );
+  assert.equal(fake.writes.length, 0);
+});
+
 test("unverified days require a retained acknowledgment before the write", async () => {
   const snapshots = {
     available: true as const,
@@ -384,6 +416,7 @@ test("a verified opening difference needs an explicit acceptance note", async ()
     { repository: fake.repository, obligations: noTemplates },
     baseInput({ opening: verified }),
     "750e8400-e29b-41d4-a716-446655440006",
+    { now: new Date("2026-12-01T09:00:00.000Z") },
   );
   assert.equal(blocked.ok, false);
   assert.match(!blocked.ok ? blocked.errorMessage : "", /difference/i);
@@ -396,6 +429,7 @@ test("a verified opening difference needs an explicit acceptance note", async ()
       acceptClosingDifferenceNote: "counted cash difference accepted",
     }),
     "750e8400-e29b-41d4-a716-446655440007",
+    { now: new Date("2026-12-01T09:00:00.000Z") },
   );
   assert.equal(accepted.ok, true);
   assert.equal(fake.writes[0].initialized, "reconciled");
@@ -477,6 +511,7 @@ test("a verified opening cutoff after the successor start is rejected", async ()
       },
     }),
     "750e8400-e29b-41d4-a716-446655440008",
+    { now: new Date("2026-12-10T09:00:00.000Z") },
   );
   assert.equal(result.ok, false);
   assert.match(!result.ok ? result.errorMessage : "", /cutoff/);

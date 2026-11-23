@@ -174,7 +174,7 @@ export async function loadMoneyDayCloseViews(
   }
   const coverage = {
     unverifiedDates,
-    unverifiedThroughDate: unverifiedDates.length > 0 ? coverageEnd : null,
+    unverifiedThroughDate: unverifiedDates.at(-1) ?? null,
     closedDayCount: closes.length,
   };
 
