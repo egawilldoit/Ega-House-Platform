@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import {
   bigint,
   boolean,
+  char,
   check,
   date,
   foreignKey,
@@ -2036,6 +2037,98 @@ export const moneyObligations = pgTable(
     check(
       "money_obligations_unpaid_has_no_payment_check",
       sql`${table.state} = 'paid' or (${table.paymentExpenseId} is null and ${table.paymentEvidence} is null)`,
+    ),
+  ],
+);
+
+/**
+ * MONEY-001-B workbook adoption evidence. One owner+snapshot row freezes the
+ * source snapshot and approved manifest and records the resumable execution
+ * state. It never stores a ledger row or a second balance.
+ */
+export const moneyImportAdoptions = pgTable(
+  "money_import_adoptions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    ownerUserId: uuid("owner_user_id").default(sql`auth.uid()`).notNull(),
+    snapshotId: varchar("snapshot_id", { length: 64 }).notNull(),
+    snapshotDigest: char("snapshot_digest", { length: 64 }).notNull(),
+    manifestDigest: char("manifest_digest", { length: 64 }).notNull(),
+    sourceIdentity: varchar("source_identity", { length: 512 }).notNull(),
+    targetEnvironment: varchar("target_environment", { length: 64 }).notNull(),
+    openingStrategy: varchar("opening_strategy", { length: 32 }).notNull(),
+    cutoverDate: date("cutover_date").notNull(),
+    status: varchar("status", { length: 24 }).default("applying").notNull(),
+    snapshot: jsonb("snapshot").notNull(),
+    manifest: jsonb("manifest").notNull(),
+    approval: jsonb("approval").notNull(),
+    appliedCounts: jsonb("applied_counts"),
+    postReconciliation: jsonb("post_reconciliation"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    appliedAt: timestamp("applied_at", { withTimezone: true }),
+  },
+  (table) => [
+    uniqueIndex("money_import_adoptions_owner_snapshot_unique").on(
+      table.ownerUserId,
+      table.snapshotId,
+    ),
+    index("money_import_adoptions_owner_status_idx").on(
+      table.ownerUserId,
+      table.status,
+      table.updatedAt.desc(),
+    ),
+    check(
+      "money_import_adoptions_snapshot_id_check",
+      sql`btrim(${table.snapshotId}) <> ''`,
+    ),
+    check(
+      "money_import_adoptions_snapshot_digest_check",
+      sql`btrim(${table.snapshotDigest}) ~ '^[0-9a-f]{64}$'`,
+    ),
+    check(
+      "money_import_adoptions_manifest_digest_check",
+      sql`btrim(${table.manifestDigest}) ~ '^[0-9a-f]{64}$'`,
+    ),
+    check(
+      "money_import_adoptions_source_identity_check",
+      sql`btrim(${table.sourceIdentity}) <> ''`,
+    ),
+    check(
+      "money_import_adoptions_environment_check",
+      sql`btrim(${table.targetEnvironment}) <> ''`,
+    ),
+    check(
+      "money_import_adoptions_opening_strategy_check",
+      sql`${table.openingStrategy} in ('verified_cutover_opening','full_history')`,
+    ),
+    check(
+      "money_import_adoptions_status_check",
+      sql`${table.status} in ('applying','adopted','review_needed')`,
+    ),
+    check(
+      "money_import_adoptions_snapshot_object_check",
+      sql`jsonb_typeof(${table.snapshot}) = 'object'`,
+    ),
+    check(
+      "money_import_adoptions_manifest_object_check",
+      sql`jsonb_typeof(${table.manifest}) = 'object'`,
+    ),
+    check(
+      "money_import_adoptions_approval_object_check",
+      sql`jsonb_typeof(${table.approval}) = 'object'`,
+    ),
+    check(
+      "money_import_adoptions_applied_counts_object_check",
+      sql`${table.appliedCounts} is null or jsonb_typeof(${table.appliedCounts}) = 'object'`,
+    ),
+    check(
+      "money_import_adoptions_post_reconciliation_object_check",
+      sql`${table.postReconciliation} is null or jsonb_typeof(${table.postReconciliation}) = 'object'`,
     ),
   ],
 );

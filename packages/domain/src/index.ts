@@ -11,6 +11,7 @@ export * from "./personal-operations";
 export * from "./preferences";
 export * from "./expenses";
 export * from "./money";
+export * from "./money-import";
 export * from "./money-rollover";
 export * from "./obligations";
 export * from "./checkins";
