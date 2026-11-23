@@ -22,6 +22,7 @@ import {
 } from "./rules";
 import type {
   CalendarConnectionRecord,
+  CalendarEventDocument,
   CalendarEventIndexEntry,
   CalendarEventProvider,
   CalendarJobRecord,
@@ -367,6 +368,27 @@ type LegacyEventProvenance = "none" | "verified" | "unverified";
 const UNVERIFIED_LEGACY_EVENT_MESSAGE =
   "The saved Calendar event belongs to a different Google account or calendar. Sync for this task is paused and the saved event id was not adopted. Reconnect the original destination or clear the saved event id, then retry.";
 
+const MAPPED_EVENT_LOOKUP_FAILED_MESSAGE =
+  "The saved Calendar event could not be verified in Google Calendar, so it was left unchanged.";
+
+function indexEntryFromDocument(
+  document: CalendarEventDocument,
+): CalendarEventIndexEntry {
+  const privateProperties = document.privateProperties;
+  return {
+    id: document.id,
+    status: document.status,
+    source: privateProperties.source ?? null,
+    taskId: privateProperties.task_id ?? null,
+    ownerUserId: privateProperties.owner_user_id ?? null,
+    destinationKey: privateProperties.destination_key ?? null,
+    generation: privateProperties.generation
+      ? Number(privateProperties.generation)
+      : null,
+    payloadHash: privateProperties.payload_hash ?? null,
+  };
+}
+
 /**
  * `tasks.calendar_event_id` predates destination binding. It may be adopted
  * only when the current destination listing contains that event or when the
@@ -387,10 +409,12 @@ function legacyEventProvenance(input: {
 type PlannedScanItem = Readonly<{
   item: CalendarRunItemDraft;
   job: CalendarScanJobDraft | null;
+  refreshedCredentials?: RefreshedCalendarCredentials;
 }>;
 
 async function planTaskForScan(input: {
   deps: CalendarSyncDependencies;
+  connection: CalendarConnectionRecord;
   task: CalendarTaskScanRecord;
   destination: CalendarSyncDestination;
   eventIndex: Map<string, CalendarEventIndexEntry>;
@@ -399,6 +423,7 @@ async function planTaskForScan(input: {
   hasOtherDestinationMapping: boolean;
 }): Promise<PlannedScanItem> {
   const { task, destination, eventIndex, mapping, latestMapping } = input;
+  let refreshedCredentials: RefreshedCalendarCredentials | undefined;
   const ownerUserId = task.ownerUserId;
   const nextGeneration = (latestMapping?.generation ?? 0) + 1;
   const currentGeneration = mapping?.generation ?? nextGeneration;
@@ -541,11 +566,86 @@ async function planTaskForScan(input: {
     }
 
     // The managed event is absent from the complete tagged-event listing.
-    // A verified mapping is proof of external deletion. Keep that mapping
-    // active until the replacement publication finalizes; the upsert itself
-    // advances the mapping generation, so a crash before the job is durable
-    // cannot hide an event that still exists. A legacy mapping gets one
-    // bounded update attempt, which repairs or advances the generation.
+    // The listing is filtered by the EGA House source tag, so absence alone
+    // does not prove deletion: a live event whose tag was stripped is still
+    // present in the calendar. Look it up in the verified destination before
+    // planning any regeneration. A definitive 404/410 (or a cancelled event)
+    // is the only evidence that advances the generation.
+    const lookup = await input.deps.provider.getEvent(
+      input.connection,
+      mapping.eventId,
+    );
+    if (!lookup.ok) {
+      // An unreadable, forbidden or transient lookup is ambiguous. Keep the
+      // mapping and the live event unchanged, and let the next run re-verify.
+      return {
+        item: {
+          taskId: task.id,
+          outcome: "failed",
+          exclusionReason: null,
+          eventId: mapping.eventId,
+          payloadHash: null,
+          errorMessage: `${MAPPED_EVENT_LOOKUP_FAILED_MESSAGE} ${lookup.error.message}`,
+        },
+        job: null,
+      };
+    }
+
+    refreshedCredentials = lookup.refreshedCredentials;
+    const liveCheck = lookup.value
+      ? checkIndexedEvent({
+          event: indexEntryFromDocument(lookup.value),
+          task,
+          destination,
+        })
+      : ({ kind: "missing" } as const);
+
+    if (liveCheck.kind === "conflict") {
+      return {
+        item: {
+          taskId: task.id,
+          outcome: "failed",
+          exclusionReason: null,
+          eventId: mapping.eventId,
+          payloadHash: null,
+          errorMessage: liveCheck.message,
+        },
+        job: null,
+        refreshedCredentials,
+      };
+    }
+
+    if (liveCheck.kind === "ok") {
+      // The event is live in the verified destination but its source tag is
+      // missing. Keep its id and generation and repair the metadata in place
+      // instead of publishing a second copy under a new deterministic id.
+      return {
+        item: {
+          taskId: task.id,
+          outcome: "pending",
+          exclusionReason: null,
+          eventId: mapping.eventId,
+          payloadHash: built.payloadHash,
+        },
+        job: {
+          taskId: task.id,
+          operation: "upsert",
+          eventId: mapping.eventId,
+          generation: mapping.generation,
+          eventExists: true,
+          payloadHash: built.payloadHash,
+          exclusionReason: null,
+          taskUpdatedAt: task.updatedAt,
+        },
+        refreshedCredentials,
+      };
+    }
+
+    // Google definitively confirmed removal. Keep the mapping active until the
+    // replacement publication finalizes; the upsert itself advances the
+    // mapping generation, so a crash before the job is durable cannot hide an
+    // event that still exists. A legacy mapping gets one bounded update
+    // attempt, which repairs or advances the generation.
     if (mapping.metadataVerified) {
       const eventId = deterministicCalendarEventId({
         ownerUserId,
@@ -572,6 +672,7 @@ async function planTaskForScan(input: {
           exclusionReason: null,
           taskUpdatedAt: task.updatedAt,
         },
+        refreshedCredentials,
       };
     }
   }
@@ -596,6 +697,7 @@ async function planTaskForScan(input: {
       exclusionReason: null,
       taskUpdatedAt: task.updatedAt,
     },
+    refreshedCredentials,
   };
 }
 
@@ -610,11 +712,16 @@ async function scanRun(
     nowIso: string;
   },
 ): Promise<
-  | { ok: true; run: CalendarRunRecord }
+  | {
+      ok: true;
+      run: CalendarRunRecord;
+      refreshedCredentials?: RefreshedCalendarCredentials;
+    }
   | { ok: false; message: string; authFailure?: boolean; retryable?: boolean }
 > {
   const config = getConfig(deps);
   let run = input.run;
+  let refreshedCredentials: RefreshedCalendarCredentials | undefined;
 
   while (!run.scanComplete && Date.now() < input.deadline) {
     const claimToken = randomUUID();
@@ -683,6 +790,7 @@ async function scanRun(
       };
       const planned = await planTaskForScan({
         deps,
+        connection: input.connection,
         task,
         destination: run.destination,
         eventIndex: input.eventIndex,
@@ -690,6 +798,8 @@ async function scanRun(
         latestMapping: mappingState.latest,
         hasOtherDestinationMapping: otherDestinationTaskIds.has(task.id),
       });
+      refreshedCredentials =
+        planned.refreshedCredentials ?? refreshedCredentials;
       items.push(planned.item);
       if (planned.job) jobs.push(planned.job);
     }
@@ -802,7 +912,7 @@ async function scanRun(
     if (!committed.ok || !committed.value) break;
   }
 
-  return { ok: true, run };
+  return { ok: true, run, refreshedCredentials };
 }
 
 function jobMatchesConnection(
@@ -1603,6 +1713,14 @@ async function processRunBatch(
       authFailure: Boolean(scanResult.authFailure),
       retryable: scanResult.retryable ?? false,
     };
+  }
+
+  if (scanResult.refreshedCredentials) {
+    await persistRefreshedCredentials(actor, deps, {
+      connection,
+      refreshed: scanResult.refreshedCredentials,
+      nowIso,
+    });
   }
 
   const drained = await drainRunJobs(actor, deps, {

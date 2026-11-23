@@ -138,6 +138,111 @@ function documentFromResource(resource: GoogleEventResource): CalendarEventDocum
   };
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function parsePrivateProperties(
+  value: unknown,
+): Record<string, string> | null {
+  if (value === undefined) return {};
+  if (!isRecord(value)) return null;
+  const properties: Record<string, string> = {};
+  for (const [key, entry] of Object.entries(value)) {
+    // Extended property values are strings. Treat anything else as a
+    // malformed page instead of silently dropping a tag that proves a managed
+    // event still exists.
+    if (typeof entry !== "string") return null;
+    properties[key] = entry;
+  }
+  return properties;
+}
+
+function managedEventIndexEntry(
+  item: unknown,
+): CalendarEventIndexEntry | null {
+  if (!isRecord(item)) return null;
+  if (typeof item.id !== "string" || item.id.length === 0) return null;
+  if (item.status !== undefined && typeof item.status !== "string") return null;
+
+  let privateProperties: Record<string, string> = {};
+  if (item.extendedProperties !== undefined) {
+    if (!isRecord(item.extendedProperties)) return null;
+    const parsed = parsePrivateProperties(item.extendedProperties.private);
+    if (!parsed) return null;
+    privateProperties = parsed;
+  }
+
+  return {
+    id: item.id,
+    status: item.status ?? "confirmed",
+    source: privateProperties.source ?? null,
+    taskId: privateProperties.task_id ?? null,
+    ownerUserId: privateProperties.owner_user_id ?? null,
+    destinationKey: privateProperties.destination_key ?? null,
+    generation: privateProperties.generation
+      ? Number(privateProperties.generation)
+      : null,
+    payloadHash: privateProperties.payload_hash ?? null,
+  };
+}
+
+function managedEventPage(payload: unknown): {
+  events: CalendarEventIndexEntry[];
+  nextPageToken: string | null;
+} | null {
+  if (!isRecord(payload) || "error" in payload) return null;
+
+  const items = payload.items;
+  if (items !== undefined && !Array.isArray(items)) return null;
+
+  const events: CalendarEventIndexEntry[] = [];
+  for (const item of items ?? []) {
+    const entry = managedEventIndexEntry(item);
+    if (!entry) return null;
+    events.push(entry);
+  }
+
+  const token = payload.nextPageToken;
+  if (
+    token !== undefined &&
+    token !== null &&
+    (typeof token !== "string" || token.trim().length === 0)
+  ) {
+    return null;
+  }
+
+  return {
+    events,
+    nextPageToken: typeof token === "string" ? token : null,
+  };
+}
+
+function eventDocument(
+  payload: unknown,
+  expectedEventId: string,
+): CalendarEventDocument | null {
+  if (!isRecord(payload)) return null;
+  if (payload.id !== expectedEventId) return null;
+  if (payload.status !== undefined && typeof payload.status !== "string") {
+    return null;
+  }
+  if (payload.extendedProperties !== undefined) {
+    if (!isRecord(payload.extendedProperties)) return null;
+    if (
+      parsePrivateProperties(payload.extendedProperties.private) === null
+    ) {
+      return null;
+    }
+  }
+  return documentFromResource(payload as GoogleEventResource);
+}
+
+const MALFORMED_LISTING_MESSAGE =
+  "Google Calendar returned an unreadable event listing. No Calendar changes were made; sync will retry.";
+const MALFORMED_LOOKUP_MESSAGE =
+  "Google Calendar returned an unreadable event lookup. The saved event was left unchanged; sync will retry.";
+
 function eventBody(payload: CalendarEventPayload) {
   return {
     id: payload.eventId,
@@ -443,28 +548,22 @@ export class GoogleCalendarEventProvider implements CalendarEventProvider {
         return { ok: false, error: await this.failureFromResponse(result.response) };
       }
 
-      const payload = (await result.response.json().catch(() => ({}))) as {
-        items?: GoogleEventResource[];
-        nextPageToken?: string;
-      };
-
-      for (const item of payload.items ?? []) {
-        const privateProperties = item.extendedProperties?.private ?? {};
-        events.push({
-          id: String(item.id ?? ""),
-          status: String(item.status ?? "confirmed"),
-          source: privateProperties.source ?? null,
-          taskId: privateProperties.task_id ?? null,
-          ownerUserId: privateProperties.owner_user_id ?? null,
-          destinationKey: privateProperties.destination_key ?? null,
-          generation: privateProperties.generation
-            ? Number(privateProperties.generation)
-            : null,
-          payloadHash: privateProperties.payload_hash ?? null,
-        });
+      const payload: unknown = await result.response
+        .json()
+        .catch(() => undefined);
+      const page = managedEventPage(payload);
+      if (!page) {
+        // A successful status with a body we cannot trust is not proof that the
+        // listing is empty or complete. Refuse the whole listing so the scan
+        // cannot infer removals from it.
+        return {
+          ok: false,
+          error: { kind: "retryable", message: MALFORMED_LISTING_MESSAGE },
+        };
       }
 
-      pageToken = payload.nextPageToken ?? null;
+      events.push(...page.events);
+      pageToken = page.nextPageToken;
       pageCount += 1;
       if (pageCount > 100) {
         return {
@@ -504,10 +603,19 @@ export class GoogleCalendarEventProvider implements CalendarEventProvider {
     if (!result.response.ok) {
       return { ok: false, error: await this.failureFromResponse(result.response) };
     }
-    const payload = (await result.response.json().catch(() => ({}))) as GoogleEventResource;
+    const payload: unknown = await result.response
+      .json()
+      .catch(() => undefined);
+    const document = eventDocument(payload, eventId);
+    if (!document) {
+      return {
+        ok: false,
+        error: { kind: "retryable", message: MALFORMED_LOOKUP_MESSAGE },
+      };
+    }
     return {
       ok: true,
-      value: documentFromResource(payload),
+      value: document,
       refreshedCredentials: result.refreshedCredentials,
     };
   }

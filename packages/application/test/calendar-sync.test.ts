@@ -72,6 +72,7 @@ class FakeProvider implements CalendarEventProvider {
   deleteCalls = 0;
   getCalls = 0;
   nextListFailure: { kind: "authorization" | "retryable" | "permanent"; message: string } | null = null;
+  nextGetFailure: { kind: "authorization" | "retryable" | "permanent"; message: string } | null = null;
 
   private result<T>(value: T): CalendarProviderResult<T> {
     return { ok: true, value, refreshedCredentials: undefined };
@@ -88,18 +89,22 @@ class FakeProvider implements CalendarEventProvider {
 
     return this.result({
       complete: true,
-      events: [...this.events.values()].map((event) => ({
-        id: event.id,
-        status: event.status,
-        source: event.privateProperties.source ?? null,
-        taskId: event.privateProperties.task_id ?? null,
-        ownerUserId: event.privateProperties.owner_user_id ?? null,
-        destinationKey: event.privateProperties.destination_key ?? null,
-        generation: event.privateProperties.generation
-          ? Number(event.privateProperties.generation)
-          : null,
-        payloadHash: event.privateProperties.payload_hash ?? null,
-      })),
+      // Google filters this listing by the EGA House source tag. Events whose
+      // tag was stripped are no longer listed even though they still exist.
+      events: [...this.events.values()]
+        .filter((event) => event.privateProperties.source === "ega-house")
+        .map((event) => ({
+          id: event.id,
+          status: event.status,
+          source: event.privateProperties.source ?? null,
+          taskId: event.privateProperties.task_id ?? null,
+          ownerUserId: event.privateProperties.owner_user_id ?? null,
+          destinationKey: event.privateProperties.destination_key ?? null,
+          generation: event.privateProperties.generation
+            ? Number(event.privateProperties.generation)
+            : null,
+          payloadHash: event.privateProperties.payload_hash ?? null,
+        })),
     });
   }
 
@@ -108,6 +113,11 @@ class FakeProvider implements CalendarEventProvider {
     eventId: string,
   ): Promise<CalendarProviderResult<CalendarEventDocument | null>> {
     this.getCalls += 1;
+    if (this.nextGetFailure) {
+      const failure = this.nextGetFailure;
+      this.nextGetFailure = null;
+      return { ok: false, error: failure };
+    }
     return this.result(this.events.get(eventId) ?? null);
   }
 
@@ -1173,12 +1183,100 @@ test("external deletion advances the generation and leaves exactly one replaceme
   assert.equal(result.ok, true);
   if (!result.ok) return;
 
+  assert.equal(provider.getCalls, 1, "absence is confirmed by a targeted lookup");
   assert.equal(provider.events.size, 1);
   const replacement = [...provider.events.values()][0];
   assert.notEqual(replacement.id, original.id);
   assert.equal(replacement.privateProperties.generation, "2");
   assert.equal(result.data.run?.counts.created, 1);
 });
+
+test("a live mapped event with a missing source tag keeps its id and generation", async () => {
+  const repository = new FakeRepository();
+  const provider = new FakeProvider();
+  repository.addTask(task());
+  const deps = buildDeps(repository, provider);
+
+  await startCalendarSync(actor, deps);
+  const original = [...provider.events.values()][0];
+  assert.ok(original);
+
+  // The event still exists in the verified destination, but its EGA House
+  // source tag is gone, so the tag-filtered listing omits it.
+  provider.events.set(original.id, { ...original, privateProperties: {} });
+
+  const result = await startCalendarSync(actor, deps);
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+
+  assert.equal(result.data.run?.counts.updated, 1);
+  assert.equal(provider.events.size, 1, "no duplicate event may be created");
+  const repaired = provider.events.get(original.id);
+  assert.equal(repaired?.privateProperties.source, "ega-house");
+  assert.equal(repaired?.privateProperties.task_id, "task-1");
+  assert.equal(repaired?.privateProperties.generation, "1");
+  assert.equal(provider.createCalls, 1);
+  assert.equal(provider.getCalls, 1);
+
+  const mapping = [...repository.mappings.values()][0];
+  assert.equal(mapping?.eventId, original.id);
+  assert.equal(mapping?.generation, 1);
+  assert.equal(mapping?.status, "active");
+
+  const stable = await startCalendarSync(actor, deps);
+  assert.equal(stable.ok, true);
+  if (!stable.ok) return;
+  assert.equal(stable.data.run?.counts.unchanged, 1);
+  assert.equal(provider.createCalls, 1);
+  assert.equal(provider.updateCalls, 1);
+});
+
+for (const kind of ["retryable", "permanent"] as const) {
+  test(`an ambiguous ${kind} lookup preserves the live event and active mapping`, async () => {
+    const repository = new FakeRepository();
+    const provider = new FakeProvider();
+    repository.addTask(task());
+    const deps = buildDeps(repository, provider);
+
+    await startCalendarSync(actor, deps);
+    const original = [...provider.events.values()][0];
+    assert.ok(original);
+    provider.events.set(original.id, { ...original, privateProperties: {} });
+
+    provider.nextGetFailure = {
+      kind,
+      message: "Google Calendar could not verify the saved event.",
+    };
+
+    const result = await startCalendarSync(actor, deps);
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+
+    assert.equal(result.data.run?.counts.failed, 1);
+    assert.equal(provider.createCalls, 1);
+    assert.equal(provider.updateCalls, 0);
+    assert.equal(provider.deleteCalls, 0);
+    assert.equal(provider.events.size, 1);
+    assert.deepEqual(
+      provider.events.get(original.id)?.privateProperties,
+      {},
+      "an ambiguous lookup must not mutate the live event",
+    );
+
+    const mapping = [...repository.mappings.values()][0];
+    assert.equal(mapping?.eventId, original.id);
+    assert.equal(mapping?.generation, 1);
+    assert.equal(mapping?.status, "active");
+
+    const failedItem = [...repository.items.values()]
+      .flat()
+      .find((item) => item.outcome === "failed");
+    assert.match(
+      String(failedItem?.errorMessage),
+      /could not be verified in Google Calendar/,
+    );
+  });
+}
 
 test("timed to all-day to timed updates the same event id and replaces both boundaries", async () => {
   const repository = new FakeRepository();

@@ -110,6 +110,91 @@ test("managed event listing pages through every page, including empty pages with
   assert.equal(result.value.events[0]?.payloadHash, "hash-1");
 });
 
+test("a successful listing with an unreadable body is rejected, not treated as empty", async () => {
+  const fetchImpl = (async () =>
+    new Response("{not-json", {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    })) as typeof fetch;
+
+  const result = await providerWith(fetchImpl).listManagedEvents(connection);
+  assert.equal(result.ok, false);
+  if (result.ok) return;
+  assert.equal(result.error.kind, "retryable");
+  assert.match(result.error.message, /unreadable event listing/i);
+});
+
+test("a listing page with an invalid item or page-token shape is rejected", async () => {
+  const malformedPages = [
+    { items: { id: "event-1" } },
+    { items: [{ status: "confirmed" }] },
+    { items: [{ id: "event-1", status: 7 }] },
+    {
+      items: [
+        {
+          id: "event-1",
+          extendedProperties: { private: { source: 7 } },
+        },
+      ],
+    },
+    { items: [], nextPageToken: 42 },
+    { items: [], nextPageToken: "   " },
+    { error: { message: "quota exceeded" } },
+  ];
+
+  for (const payload of malformedPages) {
+    const result = await providerWith(
+      (async () => Response.json(payload)) as typeof fetch,
+    ).listManagedEvents(connection);
+    assert.equal(result.ok, false, JSON.stringify(payload));
+    if (result.ok) continue;
+    assert.equal(result.error.kind, "retryable", JSON.stringify(payload));
+  }
+});
+
+test("event lookup reports 404 as confirmed absence", async () => {
+  const fetchImpl = (async () =>
+    new Response(null, { status: 404 })) as typeof fetch;
+
+  const result = await providerWith(fetchImpl).getEvent(
+    connection,
+    "ega-event-1",
+  );
+  assert.deepEqual(result, {
+    ok: true,
+    value: null,
+    refreshedCredentials: undefined,
+  });
+});
+
+test("event lookup rejects an unreadable or mismatched body instead of reporting absence", async () => {
+  const responses = [
+    async () =>
+      new Response("{not-json", {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    async () => Response.json({ id: "some-other-event", status: "confirmed" }),
+    async () =>
+      Response.json({
+        id: "ega-event-1",
+        status: "confirmed",
+        extendedProperties: { private: { source: 7 } },
+      }),
+  ];
+
+  for (const respond of responses) {
+    const result = await providerWith(respond as typeof fetch).getEvent(
+      connection,
+      "ega-event-1",
+    );
+    assert.equal(result.ok, false);
+    if (result.ok) continue;
+    assert.equal(result.error.kind, "retryable");
+    assert.match(result.error.message, /unreadable event lookup/i);
+  }
+});
+
 test("expired access token refreshes once per batch and keeps the stored refresh token", async () => {
   let tokenCalls = 0;
   const fetchImpl = (async (
