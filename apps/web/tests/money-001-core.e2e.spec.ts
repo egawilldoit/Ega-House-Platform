@@ -287,11 +287,11 @@ test("optional close, reviewed finalization and an accurate primary view", async
 
   // Period-scoped history has an explicit all-history escape hatch for
   // pre-period and gap movements, without losing the selected-period view.
-  await page.getByRole("link", { name: "Show all history", exact: true }).click();
+  await page.getByRole("link", { name: "Show all history", exact: true }).first().click();
   await expect(
     page.getByText("History covers all recorded movements", { exact: false }).first(),
   ).toBeVisible();
-  await page.getByRole("link", { name: "Show this period", exact: true }).click();
+  await page.getByRole("link", { name: "Show this period", exact: true }).first().click();
 
   // --- Owner B sees none of owner A's data.
   await page.context().clearCookies();
