@@ -66,6 +66,69 @@ export function sameCalendarDestination(
 }
 
 /**
+ * A destination is usable only when a Google account identity and a calendar
+ * were both recorded. Rows that predate account identity capture normalize to
+ * `unknown-account` and must be reconnected before Calendar writes are safe.
+ */
+export function isVerifiedCalendarDestination(
+  destination: Pick<
+    CalendarSyncDestination,
+    "accountSubject" | "accountEmail" | "calendarId"
+  >,
+) {
+  const accountEmail = destination.accountEmail?.trim().toLowerCase() ?? "";
+  const accountSubject = destination.accountSubject?.trim() ?? "";
+  const calendarId = destination.calendarId?.trim() ?? "";
+
+  return Boolean(
+    (accountEmail || accountSubject) &&
+      accountEmail !== "unknown-account" &&
+      accountSubject !== "unknown-account" &&
+      calendarId,
+  );
+}
+
+/**
+ * Compare destinations that must both carry verified account identity. An
+ * email (when both sides have one) is the strongest evidence; otherwise a
+ * subject shared by both sides is used. A legacy row that has the same email
+ * but no subject remains compatible with a later verified capture of the same
+ * account. Different known emails or subjects are a mismatch.
+ */
+export function sameVerifiedCalendarDestination(
+  left: Pick<
+    CalendarSyncDestination,
+    "accountSubject" | "accountEmail" | "calendarId"
+  >,
+  right: Pick<
+    CalendarSyncDestination,
+    "accountSubject" | "accountEmail" | "calendarId"
+  >,
+) {
+  if (
+    !isVerifiedCalendarDestination(left) ||
+    !isVerifiedCalendarDestination(right) ||
+    left.calendarId?.trim() !== right.calendarId?.trim()
+  ) {
+    return false;
+  }
+
+  const leftEmail = left.accountEmail?.trim().toLowerCase() ?? "";
+  const rightEmail = right.accountEmail?.trim().toLowerCase() ?? "";
+  if (leftEmail && rightEmail) {
+    return leftEmail === rightEmail;
+  }
+
+  const leftSubject = left.accountSubject?.trim() ?? "";
+  const rightSubject = right.accountSubject?.trim() ?? "";
+  if (leftSubject && rightSubject) {
+    return leftSubject === rightSubject;
+  }
+
+  return false;
+}
+
+/**
  * Stable Google event id. Google accepts lowercase base32hex (0-9, a-v); a
  * lower-case SHA-256 hex digest is a valid subset. Deriving the id from the
  * destination, task and generation lets an ambiguous insert or a failed

@@ -40,6 +40,7 @@ type CalendarSettingsSafeRow = {
 };
 
 type CalendarSettingsSecretRow = CalendarSettingsSafeRow & {
+  google_account_subject: string | null;
   access_token_encrypted: string | null;
   refresh_token_encrypted: string | null;
   token_expires_at: string | null;
@@ -202,7 +203,7 @@ export async function getCalendarIntegrationSecretSnapshot(options?: {
   const { data, error } = await supabase
     .from("calendar_integration_settings")
     .select(
-      `${CALENDAR_SETTINGS_SAFE_SELECT}, access_token_encrypted, refresh_token_encrypted, token_expires_at`,
+      `${CALENDAR_SETTINGS_SAFE_SELECT}, google_account_subject, access_token_encrypted, refresh_token_encrypted, token_expires_at`,
     )
     .eq("owner_user_id", authResult.userId)
     .eq("provider", GOOGLE_CALENDAR_PROVIDER)
@@ -235,7 +236,7 @@ export async function getCalendarIntegrationSecretSnapshotForOwner(
   const { data, error } = await supabase
     .from("calendar_integration_settings")
     .select(
-      `${CALENDAR_SETTINGS_SAFE_SELECT}, access_token_encrypted, refresh_token_encrypted, token_expires_at`,
+      `${CALENDAR_SETTINGS_SAFE_SELECT}, google_account_subject, access_token_encrypted, refresh_token_encrypted, token_expires_at`,
     )
     .eq("owner_user_id", normalizedOwnerUserId)
     .eq("provider", GOOGLE_CALENDAR_PROVIDER)
@@ -350,30 +351,18 @@ export async function connectGoogleCalendarWithTokens(
     const writeSupabase = await resolveCalendarSettingsWriteClient(
       options?.supabase,
     );
-    const existingResult = await writeSupabase
-      .from("calendar_integration_settings")
-      .select("google_account_email, google_account_subject")
-      .eq("owner_user_id", authResult.userId)
-      .eq("provider", GOOGLE_CALENDAR_PROVIDER)
-      .maybeSingle();
-    const existing = (existingResult.data ?? {}) as {
-      google_account_email?: string | null;
-      google_account_subject?: string | null;
-    };
+    // A reconnect may replace the account represented by this owner's tokens.
+    // Never retain a previous identity when the new token response did not
+    // verify one; an unverified identity would make a later queue write look
+    // destination-bound when the credentials are not.
     const writeResult = await writeSupabase
       .from("calendar_integration_settings")
       .upsert(
         {
           owner_user_id: authResult.userId,
           provider: GOOGLE_CALENDAR_PROVIDER,
-          google_account_email:
-            input.googleAccountEmail?.trim() ||
-            existing.google_account_email ||
-            null,
-          google_account_subject:
-            input.googleAccountSubject?.trim() ||
-            existing.google_account_subject ||
-            null,
+          google_account_email: input.googleAccountEmail?.trim() || null,
+          google_account_subject: input.googleAccountSubject?.trim() || null,
           access_token_encrypted: encryptCalendarToken(accessToken),
           refresh_token_encrypted: encryptCalendarToken(refreshToken),
           token_expires_at: getTokenExpiresAtIso(

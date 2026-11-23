@@ -396,7 +396,6 @@ export interface CalendarSyncRepository {
     actor: AuthenticatedActor,
     input: Readonly<{
       ownerUserId: string;
-      destinationKey: string;
       taskIds: string[];
     }>,
   ): Promise<RepositoryResult<CalendarMappingRecord[]>>;

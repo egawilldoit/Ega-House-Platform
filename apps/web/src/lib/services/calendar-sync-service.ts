@@ -1,6 +1,11 @@
 import { createClient } from "@/lib/supabase/server";
 import { getCalendarIntegrationSecretSnapshotForOwner } from "@/lib/services/calendar-settings-service";
-import { deterministicCalendarEventId } from "@ega/application/calendar-sync/rules";
+import {
+  deterministicCalendarEventId,
+  isVerifiedCalendarDestination,
+  normalizeCalendarDestination,
+  sameVerifiedCalendarDestination,
+} from "@ega/application/calendar-sync/rules";
 import {
   googleCalendarClient,
   syncGoogleCalendarEventForTask,
@@ -23,6 +28,10 @@ type CalendarSyncJobRow = {
   calendar_event_id: string | null;
   operation: CalendarSyncOperation;
   attempts: number;
+  destination_key?: string | null;
+  google_account_subject?: string | null;
+  google_account_email?: string | null;
+  calendar_id?: string | null;
 };
 
 type CalendarSyncTaskRow = {
@@ -39,6 +48,64 @@ type CalendarSyncTaskRow = {
 
 const MAX_CALENDAR_SYNC_ATTEMPTS = 5;
 const DEFAULT_CALENDAR_SYNC_BATCH_SIZE = 10;
+
+const CALENDAR_DESTINATION_UNVERIFIED_MESSAGE =
+  "Calendar sync paused because the queued Google account or calendar could not be verified against the connected destination. Reconnect the original Google account or re-enqueue this task; no Google Calendar event was changed.";
+
+type CalendarSyncCredentials = Readonly<{
+  google_account_subject: string | null;
+  google_account_email: string | null;
+  calendar_id: string | null;
+  connected_at: string | null;
+  disconnected_at: string | null;
+}>;
+
+function normalizeJobDestination(job: CalendarSyncJobRow) {
+  return normalizeCalendarDestination({
+    accountSubject: job.google_account_subject ?? null,
+    accountEmail: job.google_account_email ?? null,
+    calendarId: job.calendar_id ?? null,
+  });
+}
+
+/**
+ * Scheduled-sync (queue version 1) jobs are written with the destination that
+ * was current when they were queued. Before any Google call, prove that the
+ * credentials still belong to that same account and calendar. Otherwise the
+ * job is paused with an actionable failure instead of being redirected through
+ * a newly connected account.
+ */
+function legacyJobDestinationFailure(
+  job: CalendarSyncJobRow,
+  credentials: CalendarSyncCredentials,
+) {
+  const stamped = normalizeJobDestination(job);
+  const stampedKey = job.destination_key?.trim() ?? "";
+
+  if (!stampedKey || stamped.destinationKey !== stampedKey) {
+    return CALENDAR_DESTINATION_UNVERIFIED_MESSAGE;
+  }
+  if (!isVerifiedCalendarDestination(stamped)) {
+    return CALENDAR_DESTINATION_UNVERIFIED_MESSAGE;
+  }
+  if (!credentials.connected_at || credentials.disconnected_at) {
+    return "Google Calendar is not connected. No Google Calendar event was changed.";
+  }
+
+  const current = normalizeCalendarDestination({
+    accountSubject: credentials.google_account_subject,
+    accountEmail: credentials.google_account_email,
+    calendarId: credentials.calendar_id,
+  });
+  if (
+    !isVerifiedCalendarDestination(current) ||
+    !sameVerifiedCalendarDestination(stamped, current)
+  ) {
+    return CALENDAR_DESTINATION_UNVERIFIED_MESSAGE;
+  }
+
+  return null;
+}
 
 async function resolveSupabaseClient(supabase?: SupabaseServerClient) {
   if (supabase) {
@@ -334,7 +401,7 @@ async function claimPendingCalendarSyncJobs(
   const { data: candidates, error: loadError } = await supabase
     .from("calendar_sync_jobs")
     .select(
-      "id, owner_user_id, task_id, calendar_event_id, operation, attempts, queue_version",
+      "id, owner_user_id, task_id, calendar_event_id, operation, attempts, queue_version, destination_key, google_account_subject, google_account_email, calendar_id",
     )
     .in("status", ["pending", "failed"])
     .lt("attempts", MAX_CALENDAR_SYNC_ATTEMPTS)
@@ -363,7 +430,9 @@ async function claimPendingCalendarSyncJobs(
       })
       .eq("id", candidate.id)
       .in("status", ["pending", "failed"])
-      .select("id, owner_user_id, task_id, calendar_event_id, operation, attempts")
+      .select(
+        "id, owner_user_id, task_id, calendar_event_id, operation, attempts, destination_key, google_account_subject, google_account_email, calendar_id",
+      )
       .maybeSingle();
 
     if (!error && claimed) {
@@ -476,26 +545,78 @@ export async function processPendingCalendarSyncJobs(options?: {
       });
       continue;
     }
+    const task = taskResult.data;
 
-    if (!taskResult.data && job.operation === "delete" && job.calendar_event_id) {
-      const settingsResult = await getCalendarIntegrationSecretSnapshotForOwner(
-        job.owner_user_id,
-        { supabase },
-      );
-      if (settingsResult.errorMessage) {
-        failed += 1;
-        await completeCalendarSyncJob(supabase, {
-          job,
-          task: null,
-          status: "failed",
-          taskStatus: "failed",
-          eventId: job.calendar_event_id,
-          failureReason: settingsResult.errorMessage,
-          nowIso,
-        });
-        continue;
-      }
+    const needsCalendarWrite = Boolean(
+      task || (job.operation === "delete" && job.calendar_event_id),
+    );
+    if (!needsCalendarWrite) {
+      processed += 1;
+      await completeCalendarSyncJob(supabase, {
+        job,
+        task: null,
+        status: "succeeded",
+        taskStatus: "skipped",
+        eventId: null,
+        failureReason: null,
+        nowIso,
+      });
+      continue;
+    }
 
+    const settingsResult = await getCalendarIntegrationSecretSnapshotForOwner(
+      job.owner_user_id,
+      { supabase },
+    );
+    if (settingsResult.errorMessage) {
+      failed += 1;
+      await completeCalendarSyncJob(supabase, {
+        job,
+        task,
+        status: "failed",
+        taskStatus: "failed",
+        eventId: task?.calendar_event_id ?? null,
+        failureReason: settingsResult.errorMessage,
+        nowIso,
+      });
+      continue;
+    }
+    if (!settingsResult.data) {
+      failed += 1;
+      await completeCalendarSyncJob(supabase, {
+        job,
+        task,
+        status: "failed",
+        taskStatus: "failed",
+        eventId: task?.calendar_event_id ?? null,
+        failureReason:
+          "Google Calendar is not connected. No Google Calendar event was changed.",
+        nowIso,
+      });
+      continue;
+    }
+
+    const destinationFailure = legacyJobDestinationFailure(
+      job,
+      settingsResult.data,
+    );
+    if (destinationFailure) {
+      failed += 1;
+      await completeCalendarSyncJob(supabase, {
+        job,
+        task,
+        status: "failed",
+        taskStatus: "failed",
+        eventId: task?.calendar_event_id ?? null,
+        failureReason: destinationFailure,
+        nowIso,
+      });
+      continue;
+    }
+
+    const settings = settingsResult.data;
+
+    if (!task) {
       const syncResult = await syncGoogleCalendarEventForTask(
         {
           taskId: job.task_id,
@@ -507,7 +628,7 @@ export async function processPendingCalendarSyncJobs(options?: {
           calendarEventId: job.calendar_event_id,
           archivedAt: nowIso,
         },
-        settingsResult.data,
+        settings,
         { client },
       );
 
@@ -547,51 +668,19 @@ export async function processPendingCalendarSyncJobs(options?: {
       continue;
     }
 
-    if (!taskResult.data) {
-      processed += 1;
-      await completeCalendarSyncJob(supabase, {
-        job,
-        task: null,
-        status: "succeeded",
-        taskStatus: "skipped",
-        eventId: null,
-        failureReason: null,
-        nowIso,
-      });
-      continue;
-    }
-
-    const settingsResult = await getCalendarIntegrationSecretSnapshotForOwner(
-      job.owner_user_id,
-      { supabase },
-    );
-    if (settingsResult.errorMessage) {
-      failed += 1;
-      await completeCalendarSyncJob(supabase, {
-        job,
-        task: taskResult.data,
-        status: "failed",
-        taskStatus: "failed",
-        eventId: taskResult.data.calendar_event_id,
-        failureReason: settingsResult.errorMessage,
-        nowIso,
-      });
-      continue;
-    }
-
     const syncResult = await syncGoogleCalendarEventForTask(
       {
-        taskId: taskResult.data.id,
-        title: taskResult.data.title,
-        scheduledStartAt: taskResult.data.scheduled_start_at,
-        scheduledEndAt: taskResult.data.scheduled_end_at,
+        taskId: task.id,
+        title: task.title,
+        scheduledStartAt: task.scheduled_start_at,
+        scheduledEndAt: task.scheduled_end_at,
         calendarSyncEnabled:
-          job.operation === "delete" ? false : taskResult.data.calendar_sync_enabled,
-        calendarReminderMinutes: taskResult.data.calendar_reminder_minutes,
-        calendarEventId: taskResult.data.calendar_event_id,
-        archivedAt: taskResult.data.archived_at,
+          job.operation === "delete" ? false : task.calendar_sync_enabled,
+        calendarReminderMinutes: task.calendar_reminder_minutes,
+        calendarEventId: task.calendar_event_id,
+        archivedAt: task.archived_at,
       },
-      settingsResult.data,
+      settings,
       { client },
     );
 
@@ -608,10 +697,10 @@ export async function processPendingCalendarSyncJobs(options?: {
       failed += 1;
       await completeCalendarSyncJob(supabase, {
         job,
-        task: taskResult.data,
+        task,
         status: "failed",
         taskStatus: "failed",
-        eventId: taskResult.data.calendar_event_id,
+        eventId: task.calendar_event_id,
         failureReason: syncResult.failureReason,
         nowIso,
       });
@@ -621,7 +710,7 @@ export async function processPendingCalendarSyncJobs(options?: {
     processed += 1;
     await completeCalendarSyncJob(supabase, {
       job,
-      task: taskResult.data,
+      task,
       status: "succeeded",
       taskStatus: syncResult.status,
       eventId: syncResult.eventId,

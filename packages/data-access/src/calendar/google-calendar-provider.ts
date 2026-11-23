@@ -205,8 +205,24 @@ export class GoogleCalendarEventProvider implements CalendarEventProvider {
     );
   }
 
+  /**
+   * Cache tokens by the verified connection snapshot, not only by owner. A
+   * reconnect can replace the account and tokens for the same owner; a cached
+   * access token from the previous account must never be sent with the new
+   * calendar binding.
+   */
+  private connectionKey(connection: CalendarConnectionRecord) {
+    return [
+      connection.ownerUserId,
+      connection.accountSubject?.trim() ?? "",
+      connection.accountEmail?.trim().toLowerCase() ?? "",
+      connection.calendarId,
+      connection.updatedAt,
+    ].join("|");
+  }
+
   private tokenNeedsRefresh(connection: CalendarConnectionRecord) {
-    const cached = this.accessTokens.get(connection.ownerUserId);
+    const cached = this.accessTokens.get(this.connectionKey(connection));
     if (cached && cached.expiresAt > this.now().getTime() + 60_000) {
       return false;
     }
@@ -235,7 +251,8 @@ export class GoogleCalendarEventProvider implements CalendarEventProvider {
       });
     }
 
-    const cached = this.refreshTokens.get(connection.ownerUserId);
+    const key = this.connectionKey(connection);
+    const cached = this.refreshTokens.get(key);
     if (cached) return cached;
 
     const refresh = (async (): Promise<
@@ -290,7 +307,7 @@ export class GoogleCalendarEventProvider implements CalendarEventProvider {
           : {}),
       };
 
-      this.accessTokens.set(connection.ownerUserId, {
+      this.accessTokens.set(key, {
         token: payload.access_token,
         expiresAt: payload.expires_in
           ? this.now().getTime() + Math.max(0, payload.expires_in) * 1000
@@ -304,12 +321,13 @@ export class GoogleCalendarEventProvider implements CalendarEventProvider {
       };
     })();
 
-    this.refreshTokens.set(connection.ownerUserId, refresh);
+    this.refreshTokens.set(key, refresh);
     return refresh;
   }
 
   private async accessToken(connection: CalendarConnectionRecord) {
-    const cached = this.accessTokens.get(connection.ownerUserId);
+    const key = this.connectionKey(connection);
+    const cached = this.accessTokens.get(key);
     if (cached && cached.expiresAt > this.now().getTime() + 60_000) {
       return { ok: true as const, value: { accessToken: cached.token } };
     }
@@ -323,7 +341,7 @@ export class GoogleCalendarEventProvider implements CalendarEventProvider {
       }
     }
 
-    this.refreshTokens.delete(connection.ownerUserId);
+    this.refreshTokens.delete(key);
     return this.refreshAccessToken(connection);
   }
 
@@ -366,7 +384,7 @@ export class GoogleCalendarEventProvider implements CalendarEventProvider {
       retryOnAuthorization &&
       connection.refreshTokenEncrypted
     ) {
-      this.refreshTokens.delete(connection.ownerUserId);
+      this.refreshTokens.delete(this.connectionKey(connection));
       tokenResult = await this.refreshAccessToken(connection);
       if (!tokenResult.ok) return { ok: false, error: tokenResult.error };
       refreshed = tokenResult.refreshedCredentials ?? refreshed;

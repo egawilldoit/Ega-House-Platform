@@ -274,3 +274,35 @@ test("deleting an already removed event is a successful removal", async () => {
     refreshedCredentials: undefined,
   });
 });
+
+test("a reconnect for the same owner does not reuse the previous account's access token", async () => {
+  const authorizations: string[] = [];
+  const fetchImpl = (async (
+    url: string | URL | Request,
+    init?: RequestInit,
+  ) => {
+    const parsed = new URL(String(url));
+    if (parsed.hostname === "oauth2.googleapis.com") {
+      throw new Error("unexpected token refresh");
+    }
+    authorizations.push(
+      new Headers(init?.headers).get("authorization") ?? "",
+    );
+    return Response.json({ items: [] });
+  }) as typeof fetch;
+
+  const provider = providerWith(fetchImpl);
+  const first = await provider.listManagedEvents(connection);
+  const second = await provider.listManagedEvents({
+    ...connection,
+    accountSubject: "google-subject-2",
+    accountEmail: "new@example.com",
+    destinationKey: "new@example.com|primary",
+    accessTokenEncrypted: "enc-access-b",
+    updatedAt: "2026-05-11T00:00:00.000Z",
+  });
+
+  assert.equal(first.ok, true);
+  assert.equal(second.ok, true);
+  assert.deepEqual(authorizations, ["Bearer access", "Bearer access-b"]);
+});

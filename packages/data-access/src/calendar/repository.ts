@@ -641,14 +641,13 @@ export class SupabaseCalendarSyncRepository implements CalendarSyncRepository {
 
   async loadMappingsForTasks(
     _actor: AuthenticatedActor,
-    input: { ownerUserId: string; destinationKey: string; taskIds: string[] },
+    input: { ownerUserId: string; taskIds: string[] },
   ): Promise<RepositoryResult<CalendarMappingRecord[]>> {
     if (input.taskIds.length === 0) return { ok: true, value: [] };
     const result = await this.supabase
       .from("calendar_event_mappings")
       .select(MAPPING_COLUMNS)
       .eq("owner_user_id", input.ownerUserId)
-      .eq("destination_key", input.destinationKey)
       .in("task_id", input.taskIds);
     if (result.error) return failure(result.error);
     return { ok: true, value: asRows(result.data).map(mapMapping) };

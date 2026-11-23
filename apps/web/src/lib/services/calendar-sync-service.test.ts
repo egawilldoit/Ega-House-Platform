@@ -28,6 +28,7 @@ function createCalendarSyncSupabaseMock(options?: { settingsLoadError?: boolean 
     owner_user_id: "owner-1",
     provider: "google",
     google_account_email: "owner@example.com",
+    google_account_subject: null as string | null,
     scheduled_task_sync_enabled: true,
     default_reminder_minutes: 15,
     calendar_id: "primary",
@@ -239,6 +240,11 @@ test("processPendingCalendarSyncJobs persists refreshed token for orphan delete 
     operation: "delete",
     status: "pending",
     attempts: 0,
+    queue_version: 1,
+    destination_key: "owner@example.com|primary",
+    google_account_subject: null,
+    google_account_email: "owner@example.com",
+    calendar_id: "primary",
     created_at: "2026-05-10T08:00:00.000Z",
     locked_at: null,
     last_error: null,
@@ -269,4 +275,93 @@ test("processPendingCalendarSyncJobs persists refreshed token for orphan delete 
   assert.equal(mock.jobs[0]?.status, "succeeded");
   assert.equal(mock.settings.access_token_encrypted, "new-access-token");
   assert.equal(mock.settings.token_expires_at, "2026-05-10T10:00:00.000Z");
+});
+
+test("processPendingCalendarSyncJobs pauses a job queued for a different Google account", async () => {
+  const mock = createCalendarSyncSupabaseMock();
+  await enqueueCalendarSyncJob(
+    { taskId: "task-1", operation: "upsert" },
+    { supabase: mock.supabase as never },
+  );
+  assert.equal(mock.jobs[0]?.destination_key, "owner@example.com|primary");
+
+  // The owner reconnects with another Google account before the queued job
+  // runs. The job's stamped destination no longer matches the credentials.
+  mock.settings.google_account_email = "new@example.com";
+
+  const writes: string[] = [];
+  const result = await processPendingCalendarSyncJobs({
+    supabase: mock.supabase as never,
+    nowIso: "2026-05-10T09:00:00.000Z",
+    client: {
+      async createEvent() {
+        writes.push("create");
+        return { eventId: "wrong-account-event", errorMessage: null };
+      },
+      async patchEvent() {
+        writes.push("patch");
+        return { eventId: "wrong-account-event", errorMessage: null };
+      },
+      async deleteEvent() {
+        writes.push("delete");
+        return { ok: true, errorMessage: null };
+      },
+    },
+  });
+
+  assert.deepEqual(result, { ok: true, processed: 0, failed: 1 });
+  assert.deepEqual(writes, []);
+  assert.equal(mock.jobs[0]?.status, "failed");
+  assert.equal(mock.tasks[0]?.calendar_event_id, null);
+  assert.equal(mock.tasks[0]?.calendar_sync_status, "failed");
+  assert.match(
+    String(mock.tasks[0]?.calendar_sync_failure_reason),
+    /could not be verified/,
+  );
+});
+
+test("processPendingCalendarSyncJobs never writes a job without a destination stamp", async () => {
+  const mock = createCalendarSyncSupabaseMock();
+  mock.jobs.push({
+    id: "unstamped-job",
+    owner_user_id: "owner-1",
+    task_id: "task-1",
+    calendar_event_id: null,
+    operation: "upsert",
+    status: "pending",
+    attempts: 0,
+    queue_version: 1,
+    created_at: "2026-05-10T08:00:00.000Z",
+    locked_at: null,
+    last_error: null,
+  });
+
+  const writes: string[] = [];
+  const result = await processPendingCalendarSyncJobs({
+    supabase: mock.supabase as never,
+    nowIso: "2026-05-10T09:00:00.000Z",
+    client: {
+      async createEvent() {
+        writes.push("create");
+        return { eventId: "wrong-account-event", errorMessage: null };
+      },
+      async patchEvent() {
+        writes.push("patch");
+        return { eventId: "wrong-account-event", errorMessage: null };
+      },
+      async deleteEvent() {
+        writes.push("delete");
+        return { ok: true, errorMessage: null };
+      },
+    },
+  });
+
+  assert.deepEqual(result, { ok: true, processed: 0, failed: 1 });
+  assert.deepEqual(writes, []);
+  assert.equal(mock.jobs[0]?.status, "failed");
+  assert.equal(mock.tasks[0]?.calendar_sync_status, "failed");
+  assert.match(
+    String(mock.tasks[0]?.calendar_sync_failure_reason),
+    /could not be verified/,
+  );
 });

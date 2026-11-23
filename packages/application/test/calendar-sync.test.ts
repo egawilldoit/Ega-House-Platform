@@ -32,6 +32,7 @@ import type {
 import {
   continueCalendarSync,
   getCalendarSyncStatus,
+  processCalendarRecovery,
   startCalendarSync,
 } from "@ega/application/calendar-sync/service";
 
@@ -389,13 +390,13 @@ class FakeRepository implements CalendarSyncRepository {
 
   async loadMappingsForTasks(
     _actor: AuthenticatedActor,
-    input: { destinationKey: string; taskIds: string[] },
+    input: { taskIds: string[] },
   ) {
     return {
       ok: true as const,
-      value: input.taskIds
-        .map((taskId) => this.mappings.get(this.mappingKey(taskId, input.destinationKey)))
-        .filter((mapping): mapping is CalendarMappingRecord => Boolean(mapping)),
+      value: [...this.mappings.values()].filter((mapping) =>
+        input.taskIds.includes(mapping.taskId),
+      ),
     };
   }
 
@@ -412,6 +413,8 @@ class FakeRepository implements CalendarSyncRepository {
     ]);
 
     for (const draft of commit.jobs) {
+      const run = this.runs.get(commit.runId);
+      const jobDestination = run?.destination ?? destination;
       const existingJob = [...this.jobs.values()].find(
         (job) =>
           job.runId === commit.runId &&
@@ -423,7 +426,7 @@ class FakeRepository implements CalendarSyncRepository {
         ownerUserId: actor.userId,
         taskId: draft.taskId,
         runId: commit.runId,
-        destination,
+        destination: jobDestination,
         operation: draft.operation,
         status: "pending",
         attempts: 0,
@@ -711,7 +714,18 @@ class FakeRepository implements CalendarSyncRepository {
   }
 
   async listReadyDestinations(): Promise<{ ok: true; value: CalendarReadyQueue[] }> {
-    return { ok: true, value: [] };
+    const destinations = new Map<string, CalendarReadyQueue>();
+    for (const job of this.jobs.values()) {
+      if (job.status !== "pending") continue;
+      const key = `${job.ownerUserId}|${job.destination.destinationKey}`;
+      if (!destinations.has(key)) {
+        destinations.set(key, {
+          ownerUserId: job.ownerUserId,
+          destination: job.destination,
+        });
+      }
+    }
+    return { ok: true, value: [...destinations.values()] };
   }
 }
 
@@ -1085,4 +1099,142 @@ test("unmapped deterministic-id conflict is reported and the foreign event is un
   assert.equal(result.data.run?.counts.failed, 1);
   assert.equal(provider.events.get(eventId)?.summary, "Someone else's event");
   assert.equal(provider.updateCalls, 0);
+});
+
+test("a switched destination never adopts the previous destination's saved event id", async () => {
+  const repository = new FakeRepository();
+  const providerA = new FakeProvider();
+  repository.addTask(task());
+  const first = await startCalendarSync(actor, buildDeps(repository, providerA));
+  assert.equal(first.ok, true);
+
+  const mappingA = [...repository.mappings.values()][0];
+  assert.ok(mappingA);
+  const savedEventId = repository.tasks.get("task-1")?.calendarEventId;
+  assert.equal(savedEventId, mappingA.eventId);
+  const writesBefore = {
+    create: providerA.createCalls,
+    update: providerA.updateCalls,
+    remove: providerA.deleteCalls,
+  };
+
+  const providerB = new FakeProvider();
+  repository.connection = {
+    ...repository.connection,
+    accountSubject: "google-subject-2",
+    accountEmail: "new@example.com",
+    destinationKey: "new@example.com|primary",
+    updatedAt: "2026-05-11T00:00:00.000Z",
+  };
+
+  const switched = await startCalendarSync(actor, buildDeps(repository, providerB));
+  assert.equal(switched.ok, true);
+  if (!switched.ok) return;
+
+  // The previous account's event id is not adopted or written through the new
+  // account. The task is reported as paused for explicit reconciliation.
+  assert.deepEqual(
+    {
+      create: providerB.createCalls,
+      update: providerB.updateCalls,
+      remove: providerB.deleteCalls,
+    },
+    { create: 0, update: 0, remove: 0 },
+  );
+  assert.deepEqual(
+    {
+      create: providerA.createCalls,
+      update: providerA.updateCalls,
+      remove: providerA.deleteCalls,
+    },
+    writesBefore,
+  );
+  assert.equal(repository.tasks.get("task-1")?.calendarEventId, savedEventId);
+  assert.equal(switched.data.run?.counts.failed, 1);
+
+  const runB = [...repository.runs.values()].find(
+    (run) => run.destination.destinationKey === "new@example.com|primary",
+  );
+  assert.ok(runB);
+  const item = repository.items.get(runB.id)?.[0];
+  assert.equal(item?.outcome, "failed");
+  assert.match(String(item?.errorMessage), /different Google account or calendar/);
+  assert.equal(
+    [...repository.mappings.values()].filter(
+      (mapping) => mapping.destination.destinationKey === "new@example.com|primary",
+    ).length,
+    0,
+  );
+});
+
+test("recovery leaves another destination's queued job pending after an account switch", async () => {
+  const repository = new FakeRepository();
+  const provider = new FakeProvider();
+  repository.connection = {
+    ...repository.connection,
+    accountSubject: "google-subject-2",
+    accountEmail: "new@example.com",
+    destinationKey: "new@example.com|primary",
+    updatedAt: "2026-05-11T00:00:00.000Z",
+  };
+  repository.jobs.set("old-account-job", {
+    id: "old-account-job",
+    ownerUserId: actor.userId,
+    taskId: "task-1",
+    runId: null,
+    destination: {
+      accountSubject: "google-subject-1",
+      accountEmail: "owner@example.com",
+      calendarId: "primary",
+      destinationKey: "owner@example.com|primary",
+    },
+    operation: "upsert",
+    status: "pending",
+    attempts: 0,
+    eventId: null,
+    generation: 1,
+    eventExists: false,
+    payloadHash: null,
+    claimToken: null,
+    permanentFailure: false,
+    exclusionReason: null,
+    lastError: null,
+    scheduledAt: "2026-05-10T08:00:00.000Z",
+    taskUpdatedAt: "2026-05-10T08:00:00.000Z",
+  });
+  repository.addTask(task());
+
+  const result = await processCalendarRecovery(actor, buildDeps(repository, provider));
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+
+  assert.deepEqual(result.data, {
+    runsProcessed: 0,
+    destinationsProcessed: 0,
+    jobsProcessed: 0,
+  });
+  assert.equal(repository.jobs.get("old-account-job")?.status, "pending");
+  assert.equal(repository.jobs.get("old-account-job")?.attempts, 0);
+  assert.equal(
+    provider.createCalls + provider.updateCalls + provider.deleteCalls,
+    0,
+  );
+});
+
+test("manual sync cannot start without a verified Google account identity", async () => {
+  const repository = new FakeRepository();
+  const provider = new FakeProvider();
+  repository.connection = {
+    ...repository.connection,
+    accountSubject: null,
+    accountEmail: null,
+  };
+
+  const result = await startCalendarSync(actor, buildDeps(repository, provider));
+  assert.equal(result.ok, false);
+  if (result.ok) return;
+
+  assert.equal(result.reason, "calendar_identity_unverified");
+  assert.equal(repository.runs.size, 0);
+  assert.equal(provider.createCalls + provider.updateCalls + provider.deleteCalls, 0);
 });

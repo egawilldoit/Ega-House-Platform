@@ -10,9 +10,10 @@ import {
 import {
   buildCalendarEventPayload,
   deterministicCalendarEventId,
+  isVerifiedCalendarDestination,
   nextCalendarRetryAtIso,
   normalizeCalendarDestination,
-  sameCalendarDestination,
+  sameVerifiedCalendarDestination,
   CALENDAR_SYNC_DEFAULT_BATCH_BUDGET_MS,
   CALENDAR_SYNC_DEFAULT_JOB_LIMIT,
   CALENDAR_SYNC_DEFAULT_LEASE_SECONDS,
@@ -336,6 +337,7 @@ function checkIndexedEvent(input: {
 
 function pickMappings(
   mappings: CalendarMappingRecord[],
+  destinationKey: string,
 ): Map<string, { active: CalendarMappingRecord | null; latest: CalendarMappingRecord | null }> {
   const result = new Map<
     string,
@@ -343,6 +345,7 @@ function pickMappings(
   >();
 
   for (const mapping of mappings) {
+    if (mapping.destination.destinationKey !== destinationKey) continue;
     const current = result.get(mapping.taskId) ?? {
       active: null,
       latest: null,
@@ -359,6 +362,28 @@ function pickMappings(
   return result;
 }
 
+type LegacyEventProvenance = "none" | "verified" | "unverified";
+
+const UNVERIFIED_LEGACY_EVENT_MESSAGE =
+  "The saved Calendar event belongs to a different Google account or calendar. Sync for this task is paused and the saved event id was not adopted. Reconnect the original destination or clear the saved event id, then retry.";
+
+/**
+ * `tasks.calendar_event_id` predates destination binding. It may be adopted
+ * only when the current destination listing contains that event or when the
+ * task has no mapping history for any other destination. Once the task was
+ * synced under another destination, the unscoped id cannot prove provenance.
+ */
+function legacyEventProvenance(input: {
+  task: CalendarTaskScanRecord;
+  hasCurrentMapping: boolean;
+  hasOtherDestinationMapping: boolean;
+  eventIndex: Map<string, CalendarEventIndexEntry>;
+}): LegacyEventProvenance {
+  if (!input.task.calendarEventId || input.hasCurrentMapping) return "none";
+  if (input.eventIndex.has(input.task.calendarEventId)) return "verified";
+  return input.hasOtherDestinationMapping ? "unverified" : "verified";
+}
+
 type PlannedScanItem = Readonly<{
   item: CalendarRunItemDraft;
   job: CalendarScanJobDraft | null;
@@ -372,14 +397,21 @@ async function planTaskForScan(input: {
   eventIndex: Map<string, CalendarEventIndexEntry>;
   mapping: CalendarMappingRecord | null;
   latestMapping: CalendarMappingRecord | null;
+  hasOtherDestinationMapping: boolean;
 }): Promise<PlannedScanItem> {
   const { task, destination, eventIndex, mapping, latestMapping } = input;
   const ownerUserId = task.ownerUserId;
   const nextGeneration = (latestMapping?.generation ?? 0) + 1;
   const currentGeneration = mapping?.generation ?? nextGeneration;
+  const provenance = legacyEventProvenance({
+    task,
+    hasCurrentMapping: Boolean(mapping),
+    hasOtherDestinationMapping: input.hasOtherDestinationMapping,
+    eventIndex,
+  });
   const currentEventId =
     mapping?.eventId ??
-    task.calendarEventId ??
+    (provenance === "verified" ? task.calendarEventId : null) ??
     deterministicCalendarEventId({
       ownerUserId,
       taskId: task.id,
@@ -397,7 +429,10 @@ async function planTaskForScan(input: {
   });
 
   if (built.plan.kind === "excluded") {
-    const hasManagedEvent = Boolean(mapping?.status === "active" || task.calendarEventId);
+    const hasManagedEvent = Boolean(
+      mapping?.status === "active" ||
+        (provenance === "verified" && task.calendarEventId),
+    );
 
     if (!hasManagedEvent) {
       return {
@@ -430,6 +465,20 @@ async function planTaskForScan(input: {
         exclusionReason: built.plan.exclusionReason,
         taskUpdatedAt: task.updatedAt,
       },
+    };
+  }
+
+  if (provenance === "unverified") {
+    return {
+      item: {
+        taskId: task.id,
+        outcome: "failed",
+        exclusionReason: null,
+        eventId: null,
+        payloadHash: null,
+        errorMessage: UNVERIFIED_LEGACY_EVENT_MESSAGE,
+      },
+      job: null,
     };
   }
 
@@ -543,7 +592,9 @@ async function planTaskForScan(input: {
       operation: "upsert",
       eventId: currentEventId,
       generation: currentGeneration,
-      eventExists: Boolean(mapping || task.calendarEventId),
+      eventExists: Boolean(
+        mapping || (provenance === "verified" && task.calendarEventId),
+      ),
       payloadHash: built.payloadHash,
       exclusionReason: null,
       taskUpdatedAt: task.updatedAt,
@@ -606,14 +657,25 @@ async function scanRun(
     const page = pageResult.value;
     const mappingsResult = await deps.repository.loadMappingsForTasks(actor, {
       ownerUserId: run.ownerUserId,
-      destinationKey: run.destination.destinationKey,
       taskIds: page.tasks.map((task) => task.id),
     });
     if (!mappingsResult.ok) {
       return { ok: false, message: "Unable to load Calendar event mappings." };
     }
 
-    const mappingByTask = pickMappings(mappingsResult.value);
+    const mappingByTask = pickMappings(
+      mappingsResult.value,
+      run.destination.destinationKey,
+    );
+    const otherDestinationTaskIds = new Set(
+      mappingsResult.value
+        .filter(
+          (mapping) =>
+            mapping.destination.destinationKey !==
+            run.destination.destinationKey,
+        )
+        .map((mapping) => mapping.taskId),
+    );
     const items: CalendarRunItemDraft[] = [];
     const jobs: CalendarScanJobDraft[] = [];
 
@@ -630,6 +692,7 @@ async function scanRun(
         eventIndex: input.eventIndex,
         mapping: mappingState.active,
         latestMapping: mappingState.latest,
+        hasOtherDestinationMapping: otherDestinationTaskIds.has(task.id),
       });
       items.push(planned.item);
       if (planned.job) jobs.push(planned.job);
@@ -749,11 +812,13 @@ function jobMatchesConnection(
   job: CalendarJobRecord,
   connection: CalendarConnectionRecord,
 ) {
-  if (!job.destination.destinationKey) {
-    // Legacy scheduled-sync jobs predate destination binding.
-    return true;
-  }
-  return sameCalendarDestination(job.destination, connection);
+  return (
+    isVerifiedCalendarDestination(job.destination) &&
+    sameVerifiedCalendarDestination(
+      job.destination,
+      destinationOfConnection(connection),
+    )
+  );
 }
 
 async function completeJobOutcome(
@@ -1016,9 +1081,7 @@ async function processJob(
   const built = buildCalendarEventPayload({
     ownerUserId: task.ownerUserId,
     task,
-    destination: job.destination.destinationKey
-      ? job.destination
-      : destinationOfConnection(connection),
+    destination: job.destination,
     generation: job.generation,
     eventId:
       job.eventId ??
@@ -1220,9 +1283,7 @@ async function processJob(
       const mapping = await deps.repository.upsertMapping(actor, {
         ownerUserId: task.ownerUserId,
         taskId: task.id,
-        destination: job.destination.destinationKey
-          ? job.destination
-          : destinationOfConnection(connection),
+        destination: job.destination,
         eventId,
         generation,
         metadataVerified: true,
@@ -1255,8 +1316,7 @@ async function processJob(
         privateProperties.task_id === task.id &&
         privateProperties.owner_user_id === task.ownerUserId &&
         privateProperties.destination_key ===
-          (job.destination.destinationKey ||
-            destinationOfConnection(connection).destinationKey);
+          job.destination.destinationKey;
       if (metadataMatches) {
         writeResult = await deps.provider.updateEvent(
           connection,
@@ -1307,9 +1367,7 @@ async function processJob(
   const mappingResult = await deps.repository.upsertMapping(actor, {
     ownerUserId: task.ownerUserId,
     taskId: task.id,
-    destination: job.destination.destinationKey
-      ? job.destination
-      : destinationOfConnection(connection),
+    destination: job.destination,
     eventId,
     generation: job.generation,
     metadataVerified: true,
@@ -1450,23 +1508,6 @@ async function processRunBatch(
   const connection = connectionResult.value;
   const destination = destinationOfConnection(connection);
 
-  if (!sameCalendarDestination(destination, run.destination)) {
-    await deps.repository.pauseRun(
-      actor,
-      run.id,
-      `The Calendar destination changed to ${destination.calendarId}. Events already published to ${run.destination.calendarId} remain there.`,
-      nowIso,
-    );
-    return {
-      status: withStatusMessage(
-        await buildStatus(actor, deps, run.id),
-        `The Calendar destination changed. Events sent to ${run.destination.calendarId} remain there and were not moved.`,
-      ),
-      authFailure: false,
-      retryable: false,
-    };
-  }
-
   if (!isConnectionUsable(connection)) {
     await pauseForAuthorization(actor, deps, {
       runId: run.id,
@@ -1481,6 +1522,55 @@ async function processRunBatch(
         "Google Calendar needs to be reconnected before sync can continue.",
       ),
       authFailure: true,
+      retryable: false,
+    };
+  }
+
+  if (!isVerifiedCalendarDestination(destination)) {
+    await pauseForAuthorization(actor, deps, {
+      runId: run.id,
+      connection,
+      message:
+        "Google Calendar account identity could not be verified. Reconnect Google Calendar before sync can continue.",
+      nowIso,
+    });
+    return {
+      status: withStatusMessage(
+        await buildStatus(actor, deps, run.id),
+        "Google Calendar account identity could not be verified. Reconnect Google Calendar before sync can continue.",
+      ),
+      authFailure: true,
+      retryable: false,
+    };
+  }
+
+  if (!isVerifiedCalendarDestination(run.destination)) {
+    const message =
+      "This Calendar sync run predates verified account binding. Reconnect Google Calendar and start a new sync.";
+    await deps.repository.pauseRun(actor, run.id, message, nowIso);
+    return {
+      status: withStatusMessage(
+        await buildStatus(actor, deps, run.id),
+        message,
+      ),
+      authFailure: false,
+      retryable: false,
+    };
+  }
+
+  if (!sameVerifiedCalendarDestination(destination, run.destination)) {
+    await deps.repository.pauseRun(
+      actor,
+      run.id,
+      `The Calendar destination changed to ${destination.calendarId}. Events already published to ${run.destination.calendarId} remain there.`,
+      nowIso,
+    );
+    return {
+      status: withStatusMessage(
+        await buildStatus(actor, deps, run.id),
+        `The Calendar destination changed. Events sent to ${run.destination.calendarId} remain there and were not moved.`,
+      ),
+      authFailure: false,
       retryable: false,
     };
   }
@@ -1660,6 +1750,14 @@ export async function startCalendarSync(
   }
 
   const destination = destinationOfConnection(connection);
+  if (!isVerifiedCalendarDestination(destination)) {
+    return applicationFailure(
+      "Reconnect Google Calendar so its Google account identity can be verified before synchronizing tasks.",
+      "validation",
+      "calendar_identity_unverified",
+    );
+  }
+
   const now = getNow(deps);
   const runResult = await deps.repository.ensureRun(actor, {
     destination,
@@ -1751,11 +1849,27 @@ export async function processCalendarRecovery(
   let destinationsProcessed = 0;
   let jobsProcessed = 0;
   for (const queue of destinations.value) {
+    // A destination whose account or calendar cannot be verified is left
+    // pending for a later recovery pass instead of being written through the
+    // currently connected account.
+    if (!isVerifiedCalendarDestination(queue.destination)) continue;
+
     const connection = await deps.repository.getConnectionForOwner(
       actor,
       queue.ownerUserId,
     );
     if (!connection.ok || !connection.value || !isConnectionUsable(connection.value)) {
+      continue;
+    }
+
+    const connectionDestination = destinationOfConnection(connection.value);
+    if (
+      !isVerifiedCalendarDestination(connectionDestination) ||
+      !sameVerifiedCalendarDestination(
+        queue.destination,
+        connectionDestination,
+      )
+    ) {
       continue;
     }
 
