@@ -76,10 +76,13 @@ BEGIN
       v_job.google_account_subject, v_job.google_account_email, v_job.calendar_id,
       p_removed_event_id, p_removed_generation, 'removed', true, p_now
     ) ON CONFLICT (owner_user_id, task_id, destination_key) DO UPDATE
-    SET status = 'removed', metadata_verified = true, updated_at = p_now
-    WHERE mapping.status = 'active'
-      AND mapping.event_id = EXCLUDED.event_id
-      AND mapping.generation = EXCLUDED.generation;
+    SET status = 'removed', metadata_verified = true, updated_at = p_now,
+        event_id = EXCLUDED.event_id, generation = EXCLUDED.generation,
+        payload_hash = NULL
+    WHERE mapping.generation < EXCLUDED.generation
+       OR (mapping.generation = EXCLUDED.generation
+           AND mapping.event_id = EXCLUDED.event_id
+           AND mapping.status = 'active');
   END IF;
 
   UPDATE public.calendar_sync_jobs
@@ -190,3 +193,42 @@ $legacy_complete$;
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION public.calendar_sync_complete_legacy_job(uuid, uuid, text, text, text, text, boolean, timestamptz) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.calendar_sync_complete_legacy_job(uuid, uuid, text, text, text, text, boolean, timestamptz) TO authenticated, service_role;
+
+--> statement-breakpoint
+-- Keep a verified event discoverable across retries and queue coalescing.
+CREATE OR REPLACE FUNCTION public.calendar_sync_prepare_removal(
+  p_job_id uuid, p_claim_token uuid, p_event_id text, p_now timestamptz
+) RETURNS boolean
+LANGUAGE plpgsql SECURITY INVOKER SET search_path = ''
+AS $prepare_removal$
+DECLARE v_job public.calendar_sync_jobs;
+BEGIN
+  SELECT job.* INTO v_job
+  FROM public.calendar_sync_jobs AS job
+  WHERE job.id = p_job_id AND job.queue_version = 2
+    AND job.status = 'processing' AND job.claim_token = p_claim_token
+    AND job.lease_expires_at > clock_timestamp()
+  FOR UPDATE;
+  IF NOT FOUND THEN RETURN false; END IF;
+
+  INSERT INTO public.calendar_event_mappings AS mapping (
+    owner_user_id, task_id, destination_key, google_account_subject,
+    google_account_email, calendar_id, event_id, generation, status,
+    metadata_verified, updated_at
+  ) VALUES (
+    v_job.owner_user_id, v_job.task_id, v_job.destination_key,
+    v_job.google_account_subject, v_job.google_account_email, v_job.calendar_id,
+    p_event_id, v_job.generation, 'active', true, p_now
+  ) ON CONFLICT (owner_user_id, task_id, destination_key) DO UPDATE
+  SET event_id = EXCLUDED.event_id, generation = EXCLUDED.generation,
+      status = 'active', metadata_verified = true, payload_hash = NULL,
+      updated_at = p_now
+  WHERE mapping.generation < EXCLUDED.generation
+     OR (mapping.generation = EXCLUDED.generation
+         AND mapping.event_id = EXCLUDED.event_id AND mapping.status = 'active');
+  RETURN FOUND;
+END
+$prepare_removal$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION public.calendar_sync_prepare_removal(uuid, uuid, text, timestamptz) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.calendar_sync_prepare_removal(uuid, uuid, text, timestamptz) TO authenticated, service_role;

@@ -1418,6 +1418,34 @@ async function main() {
           lease_expires_at = clock_timestamp() + interval '5 minutes'
       WHERE id = ${TASK_REMOVAL_REPUBLISH_JOB}::uuid
     `;
+    const [stalePrepare] = await sql`
+      SELECT public.calendar_sync_prepare_removal(
+        ${TASK_REMOVAL_REPUBLISH_JOB}::uuid, ${REMOVAL_JOB_CLAIM}::uuid,
+        'event-generation-2', ${NOW_REMOVAL}::timestamptz
+      ) AS prepared
+    `;
+    assert(!stalePrepare.prepared, "a stale claim must not prepare a removal");
+    const [currentPrepare] = await sql`
+      SELECT public.calendar_sync_prepare_removal(
+        ${TASK_REMOVAL_REPUBLISH_JOB}::uuid, ${REMOVAL_REPUBLISH_CLAIM}::uuid,
+        'event-generation-2', ${NOW_REMOVAL}::timestamptz
+      ) AS prepared
+    `;
+    assert(currentPrepare.prepared, "a live claim must persist the verified target before delete");
+    const [preparedMapping] = await sql`
+      SELECT status, generation FROM public.calendar_event_mappings
+      WHERE owner_user_id = ${OWNER_REMOVAL}::uuid AND task_id = ${TASK_REMOVAL}::uuid
+        AND destination_key = ${DESTINATION_REMOVAL}
+    `;
+    assert(preparedMapping.status === "active" && preparedMapping.generation === 2,
+      "the prepared target must remain discoverable before confirmed deletion");
+    // Exercise settlement independently when the mapping still holds an older event.
+    await sql`
+      UPDATE public.calendar_event_mappings
+      SET generation = 1, event_id = 'event-generation-1'
+      WHERE owner_user_id = ${OWNER_REMOVAL}::uuid AND task_id = ${TASK_REMOVAL}::uuid
+        AND destination_key = ${DESTINATION_REMOVAL}
+    `;
     const [unmappedRemoval] = await completeJobQuery(sql, {
       jobId: TASK_REMOVAL_REPUBLISH_JOB,
       claimToken: REMOVAL_REPUBLISH_CLAIM,
@@ -1440,7 +1468,7 @@ async function main() {
       removedGeneration?.status === "removed" &&
         removedGeneration.event_id === "event-generation-2" &&
         removedGeneration.generation === 2,
-      "unmapped removal must record the used event ID and generation for the next publish",
+      "confirmed removal must advance an older mapping to the removed generation",
     );
     log("UNMAPPED-REMOVE", "confirmed removal retained the generation for republish");
 

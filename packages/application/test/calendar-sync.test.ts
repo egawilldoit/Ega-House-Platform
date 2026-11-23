@@ -547,6 +547,22 @@ class FakeRepository implements CalendarSyncRepository {
     };
   }
 
+  async prepareJobRemoval(
+    actor: AuthenticatedActor,
+    input: Parameters<CalendarSyncRepository["prepareJobRemoval"]>[1],
+  ) {
+    const job = this.jobs.get(input.jobId);
+    if (!job || job.status !== "processing" || job.claimToken !== input.claimToken) {
+      return { ok: true as const, value: false };
+    }
+    const result = await this.upsertMapping(actor, {
+      ownerUserId: job.ownerUserId, taskId: job.taskId, destination: job.destination,
+      eventId: input.eventId, generation: job.generation, metadataVerified: true,
+      payloadHash: null, nowIso: input.nowIso,
+    });
+    return result.ok ? { ok: true as const, value: true } : result;
+  }
+
   async advanceJobGeneration(
     _actor: AuthenticatedActor,
     input: {
@@ -622,12 +638,15 @@ class FakeRepository implements CalendarSyncRepository {
         if (!result.ok) return result;
         this.mappings.set(key, { ...result.value, status: "removed" });
       } else if (
-        mapping.status === "active" &&
-        mapping.eventId === removal.eventId &&
-        mapping.generation === removal.generation
+        mapping.generation < removal.generation ||
+        (mapping.status === "active" &&
+          mapping.eventId === removal.eventId &&
+          mapping.generation === removal.generation)
       ) {
         this.mappings.set(key, {
           ...mapping,
+          eventId: removal.eventId,
+          generation: removal.generation,
           status: "removed",
           metadataVerified: true,
         });
@@ -1758,44 +1777,60 @@ test("recovery retries a provider success after atomic settlement fails", async 
   assert.equal(provider.createCalls, 2);
 });
 
-test("recovery removes an unsettled first publish and republishes under a new ID when restored", async () => {
-  const repository = new FakeRepository();
-  const provider = new FakeProvider();
-  provider.retainDeletedEventIds = true;
-  const deps = buildDeps(repository, provider);
-  repository.addTask(task());
-  repository.jobs.set("scheduled", {
-    id: "scheduled", ownerUserId: actor.userId, taskId: "task-1", runId: null,
-    destination, operation: "upsert", status: "pending", attempts: 0,
-    eventId: null, generation: 1, eventExists: false, payloadHash: null,
-    claimToken: null, permanentFailure: false, exclusionReason: null,
-    lastError: null, scheduledAt: "2026-05-10T08:00:00.000Z",
-    taskUpdatedAt: "2026-05-10T08:00:00.000Z",
-  });
-  repository.failNextCompletion = true;
-  await processCalendarRecovery(actor, deps);
-  assert.equal(provider.events.size, 1);
-  const [originalId] = provider.events.keys();
-  assert.equal(repository.mappings.size, 0);
-  const first = repository.jobs.get("scheduled")!;
-  assert.equal(first.status, "processing");
-  repository.jobs.set(first.id, { ...first, status: "pending", claimToken: null });
-  repository.addTask(task({ archivedAt: "2026-05-10T08:30:00.000Z" }));
-  await processCalendarRecovery(actor, deps);
-  assert.equal(provider.events.size, 0);
-  assert.equal(provider.deleteCalls, 1);
-  assert.equal(repository.jobs.get("scheduled")?.status, "succeeded");
-  assert.equal([...repository.mappings.values()][0]?.status, "removed");
+for (const previousGeneration of [0, 1]) {
+  test(`recovery preserves a deleted event ID after settlement fails (previous generation ${previousGeneration})`, async () => {
+    const repository = new FakeRepository();
+    const provider = new FakeProvider();
+    provider.retainDeletedEventIds = true;
+    const deps = buildDeps(repository, provider);
+    repository.addTask(task());
+    if (previousGeneration) {
+      await repository.upsertMapping(actor, {
+        ownerUserId: actor.userId, taskId: "task-1", destination,
+        eventId: "externally-deleted-event", generation: previousGeneration,
+        metadataVerified: true, payloadHash: null, nowIso: "2026-05-10T08:00:00.000Z",
+      });
+    }
+    repository.jobs.set("scheduled", {
+      id: "scheduled", ownerUserId: actor.userId, taskId: "task-1", runId: null,
+      destination, operation: "upsert", status: "pending", attempts: 0,
+      eventId: null, generation: previousGeneration + 1, eventExists: false, payloadHash: null,
+      claimToken: null, permanentFailure: false, exclusionReason: null,
+      lastError: null, scheduledAt: "2026-05-10T08:00:00.000Z",
+      taskUpdatedAt: "2026-05-10T08:00:00.000Z",
+    });
+    repository.failNextCompletion = true;
+    await processCalendarRecovery(actor, deps);
+    assert.equal(provider.events.size, 1);
+    const [originalId] = provider.events.keys();
+    assert.equal([...repository.mappings.values()][0]?.generation ?? 0, previousGeneration);
+    const first = repository.jobs.get("scheduled")!;
+    assert.equal(first.status, "processing");
+    repository.jobs.set(first.id, { ...first, status: "pending", claimToken: null });
+    repository.addTask(task({ archivedAt: "2026-05-10T08:30:00.000Z" }));
+    repository.failNextCompletion = true;
+    await processCalendarRecovery(actor, deps);
+    assert.equal(provider.events.size, 0);
+    assert.equal(provider.deleteCalls, 1);
+    const interruptedRemoval = repository.jobs.get(first.id)!;
+    assert.equal(interruptedRemoval.status, "processing");
+    assert.equal([...repository.mappings.values()][0]?.status, "active");
+    repository.jobs.set(first.id, { ...interruptedRemoval, status: "pending", claimToken: null });
+    await processCalendarRecovery(actor, deps);
+    assert.equal(provider.deleteCalls, 2, "retry must use the persisted target");
+    assert.equal(repository.jobs.get("scheduled")?.status, "succeeded");
+    assert.equal([...repository.mappings.values()][0]?.status, "removed");
 
-  repository.addTask(task({ updatedAt: "2026-05-10T12:00:00.000Z" }));
-  const republished = await startCalendarSync(actor, deps);
-  assert.equal(republished.ok, true);
-  assert.equal(provider.events.size, 1, "restoring must publish one active event");
-  const [replacement] = provider.events.values();
-  assert.notEqual(replacement.id, originalId);
-  assert.equal(replacement.privateProperties.generation, "2");
-  assert.equal(provider.updateCalls, 0);
-});
+    repository.addTask(task({ updatedAt: "2026-05-10T12:00:00.000Z" }));
+    const republished = await startCalendarSync(actor, deps);
+    assert.equal(republished.ok, true);
+    assert.equal(provider.events.size, 1, "restoring must publish one active event");
+    const [replacement] = provider.events.values();
+    assert.notEqual(replacement.id, originalId);
+    assert.equal(replacement.privateProperties.generation, String(previousGeneration + 2));
+    assert.equal(provider.updateCalls, 0);
+  });
+}
 
 test("recovery leaves another destination's queued job pending after an account switch", async () => {
   const repository = new FakeRepository();

@@ -744,6 +744,20 @@ export class SupabaseCalendarSyncRepository implements CalendarSyncRepository {
     return { ok: true, value: Boolean(result.data) };
   }
 
+  async prepareJobRemoval(
+    _actor: AuthenticatedActor,
+    input: Parameters<CalendarSyncRepository["prepareJobRemoval"]>[1],
+  ): Promise<RepositoryResult<boolean>> {
+    const result = await this.supabase.rpc("calendar_sync_prepare_removal", {
+      p_job_id: input.jobId,
+      p_claim_token: input.claimToken,
+      p_event_id: input.eventId,
+      p_now: input.nowIso,
+    });
+    if (result.error) return failure(result.error);
+    return { ok: true, value: Boolean(result.data) };
+  }
+
   async advanceJobGeneration(
     _actor: AuthenticatedActor,
     input: {

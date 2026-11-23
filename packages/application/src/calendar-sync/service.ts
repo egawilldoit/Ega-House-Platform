@@ -1181,6 +1181,29 @@ async function processJob(
       ? built.plan.exclusionReason
       : job.exclusionReason;
     let eventId = job.eventExists ? job.eventId : null;
+    let removalGeneration = job.generation;
+    // A verified target survives claim recovery in the destination mapping,
+    // even if Google has already deleted it and a newer edit replaced the job.
+    const mappings = await deps.repository.loadMappingsForTasks(actor, {
+      ownerUserId: job.ownerUserId, taskIds: [job.taskId],
+    });
+    if (!mappings.ok) {
+      await failJob(actor, deps, {
+        job, message: "Unable to load the Calendar removal target.",
+        permanent: false, nowIso, now,
+      });
+      return {};
+    }
+    const mapped = mappings.value.find((mapping) =>
+      mapping.destination.destinationKey === job.destination.destinationKey &&
+      mapping.status === "active" && mapping.metadataVerified &&
+      (mapping.generation === job.generation ||
+        ((!task || built?.plan.kind === "excluded") && mapping.generation > job.generation)),
+    );
+    if (mapped && (!eventId || mapped.generation > job.generation)) {
+      eventId = mapped.eventId;
+      removalGeneration = mapped.generation;
+    }
     // An insert may have reached Google before its local settlement failed.
     // For a planned ID without a mapping, verify ownership before deleting it.
     if (!eventId && (job.eventId === plannedEventId ||
@@ -1207,6 +1230,18 @@ async function processJob(
           metadata.owner_user_id === job.ownerUserId &&
           metadata.destination_key === job.destination.destinationKey &&
           metadata.generation === String(job.generation)) {
+        if (!job.claimToken) return { refreshedCredentials };
+        const prepared = await deps.repository.prepareJobRemoval(actor, {
+          jobId: job.id, claimToken: job.claimToken, eventId: plannedEventId, nowIso,
+        });
+        if (!prepared.ok) {
+          await failJob(actor, deps, {
+            job, message: "Unable to save the verified Calendar removal target.",
+            permanent: false, nowIso, now,
+          });
+          return { refreshedCredentials };
+        }
+        if (!prepared.value) return { refreshedCredentials };
         eventId = plannedEventId;
       }
     }
@@ -1232,8 +1267,8 @@ async function processJob(
 
     await completeJobOutcome(actor, deps, {
       job, connection, outcome: eventId ? "removed" : "excluded",
-      eventId: null, payloadHash: null, generation: job.generation, exclusionReason,
-      mappingRemoval: eventId ? { eventId, generation: job.generation } : null,
+      eventId: null, payloadHash: null, generation: removalGeneration, exclusionReason,
+      mappingRemoval: eventId ? { eventId, generation: removalGeneration } : null,
       nowIso, taskSyncStatus: "skipped",
     });
     return { refreshedCredentials };

@@ -189,9 +189,8 @@ export type CalendarRunFailure = Readonly<{
 
 /**
  * The provider-confirmed event and generation that a completion may retire.
- * The repository applies this only when the mapping still identifies that
- * exact event and generation, so a stale removal can never retire a newer
- * mapping published after it.
+ * This may advance an older mapping, but cannot overwrite a newer mapping
+ * or a different event in the same generation.
  */
 export type CalendarMappingRemoval = Readonly<{
   eventId: string;
@@ -447,6 +446,10 @@ export interface CalendarSyncRepository {
     actor: AuthenticatedActor,
     jobId: string,
     claimToken: string,
+  ): Promise<RepositoryResult<boolean>>;
+  prepareJobRemoval(
+    actor: AuthenticatedActor,
+    input: Readonly<{ jobId: string; claimToken: string; eventId: string; nowIso: string }>,
   ): Promise<RepositoryResult<boolean>>;
   advanceJobGeneration(
     actor: AuthenticatedActor,
