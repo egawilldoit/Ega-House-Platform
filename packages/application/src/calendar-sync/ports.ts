@@ -36,6 +36,7 @@ export type CalendarConnectionRecord = Readonly<
   CalendarSyncDestination & {
     ownerUserId: string;
     provider: "google";
+    timeZone?: string;
     accessTokenEncrypted: string | null;
     refreshTokenEncrypted: string | null;
     tokenExpiresAt: string | null;
@@ -233,8 +234,8 @@ export type CalendarEventIndexEntry = Readonly<{
 }>;
 
 export type CalendarEventTime =
-  | Readonly<{ date: string; dateTime?: never }>
-  | Readonly<{ dateTime: string; date?: never }>;
+  | Readonly<{ date: string; dateTime?: never; timeZone?: never }>
+  | Readonly<{ dateTime: string; timeZone?: string; date?: never }>;
 
 export type CalendarEventPayload = Readonly<{
   eventId: string;

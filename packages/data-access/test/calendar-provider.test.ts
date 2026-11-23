@@ -270,8 +270,8 @@ test("create sends deterministic id, private source metadata, and reminder", asy
       id: "ega-event-1",
       status: "confirmed",
       summary: "Plan",
-      start: { dateTime: "2026-05-10T09:00:00.000Z" },
-      end: { dateTime: "2026-05-10T10:00:00.000Z" },
+      start: { dateTime: "2026-05-10T10:00:00+01:00" },
+      end: { dateTime: "2026-05-10T10:00:00Z" },
       extendedProperties: {
         private: { source: "ega-house", task_id: "task-1" },
       },
@@ -282,8 +282,8 @@ test("create sends deterministic id, private source metadata, and reminder", asy
     eventId: "ega-event-1",
     summary: "Plan",
     description: "Open in EGA House: https://ega.example/tasks?task=task-1",
-    start: { dateTime: "2026-05-10T09:00:00.000Z" },
-    end: { dateTime: "2026-05-10T10:00:00.000Z" },
+    start: { dateTime: "2026-05-10T09:00:00.000Z", timeZone: "Europe/London" },
+    end: { dateTime: "2026-05-10T10:00:00.000Z", timeZone: "Europe/London" },
     reminderMinutes: 15,
     privateProperties: {
       source: "ega-house",
@@ -306,8 +306,8 @@ test("create sends deterministic id, private source metadata, and reminder", asy
     id: "ega-event-1",
     summary: "Plan",
     description: "Open in EGA House: https://ega.example/tasks?task=task-1",
-    start: { dateTime: "2026-05-10T09:00:00.000Z" },
-    end: { dateTime: "2026-05-10T10:00:00.000Z" },
+    start: { dateTime: "2026-05-10T09:00:00.000Z", timeZone: "Europe/London" },
+    end: { dateTime: "2026-05-10T10:00:00.000Z", timeZone: "Europe/London" },
     reminders: {
       useDefault: false,
       overrides: [{ method: "popup", minutes: 15 }],
@@ -390,4 +390,41 @@ test("a reconnect for the same owner does not reuse the previous account's acces
   assert.equal(first.ok, true);
   assert.equal(second.ok, true);
   assert.deepEqual(authorizations, ["Bearer access", "Bearer access-b"]);
+});
+
+test("PATCH clears opposite boundary fields and rejects mixed responses", async () => {
+  const allDay = { date: "2026-05-10" };
+  const timed = { dateTime: "2026-05-10T09:00:00.000Z", timeZone: "Europe/London" };
+  const common = {
+    eventId: "ega-event-1",
+    summary: "Plan",
+    description: "",
+    reminderMinutes: 10,
+    privateProperties: { source: "ega-house" },
+  };
+  const cases = [
+    { boundary: allDay, patch: { ...allDay, dateTime: null, timeZone: null }, old: timed },
+    { boundary: timed, patch: { ...timed, date: null }, old: allDay },
+  ];
+  for (const { boundary, patch, old } of cases) {
+    for (const keepOldBoundary of [false, true]) {
+      const provider = providerWith(async (_url, init) => {
+        assert.equal(init?.method, "PATCH");
+        assert.deepEqual(JSON.parse(String(init?.body)).start, patch);
+        assert.deepEqual(JSON.parse(String(init?.body)).end, patch);
+        return Response.json({
+          id: common.eventId,
+          start: keepOldBoundary ? { ...old, ...boundary } : boundary,
+          end: boundary,
+          extendedProperties: { private: common.privateProperties },
+        });
+      });
+      const result = await provider.updateEvent(connection, common.eventId, {
+        ...common,
+        start: boundary,
+        end: boundary,
+      });
+      assert.equal(result.ok, !keepOldBoundary);
+    }
+  }
 });

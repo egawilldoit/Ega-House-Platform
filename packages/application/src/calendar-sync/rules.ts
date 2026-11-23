@@ -159,6 +159,7 @@ export function buildCalendarEventPayload(input: {
   generation: number;
   eventId: string;
   linkBaseUrl: string;
+  timeZone?: string;
 }) {
   const task = input.task;
   const plan = planCalendarTaskEvent(task);
@@ -187,8 +188,12 @@ export function buildCalendarEventPayload(input: {
     eventId: input.eventId,
     summary: input.task.title,
     description: `Open in EGA House: ${link}`,
-    start: plan.start,
-    end: plan.end,
+    start: "dateTime" in plan.start && input.timeZone
+      ? { ...plan.start, timeZone: input.timeZone }
+      : plan.start,
+    end: "dateTime" in plan.end && input.timeZone
+      ? { ...plan.end, timeZone: input.timeZone }
+      : plan.end,
     reminderMinutes: safeReminderMinutes,
     privateProperties,
   };

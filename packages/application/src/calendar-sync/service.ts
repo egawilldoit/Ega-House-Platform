@@ -22,6 +22,7 @@ import {
 } from "./rules";
 import type {
   CalendarConnectionRecord,
+  CalendarProviderFailure,
   CalendarEventDocument,
   CalendarEventIndexEntry,
   CalendarEventProvider,
@@ -447,7 +448,7 @@ type PlannedScanItem = Readonly<{
   item: CalendarRunItemDraft;
   job: CalendarScanJobDraft | null;
   refreshedCredentials?: RefreshedCalendarCredentials;
-}>;
+}> | { lookupFailure: CalendarProviderFailure };
 
 async function planTaskForScan(input: {
   deps: CalendarSyncDependencies;
@@ -488,6 +489,7 @@ async function planTaskForScan(input: {
     generation: currentGeneration,
     eventId: currentEventId,
     linkBaseUrl: input.deps.config.linkBaseUrl,
+    timeZone: input.connection.timeZone,
   });
 
   if (built.plan.kind === "excluded") {
@@ -614,6 +616,9 @@ async function planTaskForScan(input: {
       mapping.eventId,
     );
     if (!lookup.ok) {
+      if (lookup.error.kind === "authorization" || lookup.error.kind === "retryable") {
+        return { lookupFailure: lookup.error };
+      }
       // An unreadable, forbidden or transient lookup is ambiguous. Keep the
       // mapping and the live event unchanged, and let the next run re-verify.
       return {
@@ -761,7 +766,8 @@ async function scanRun(
   let run = input.run;
   let refreshedCredentials: RefreshedCalendarCredentials | undefined;
 
-  while (!run.scanComplete && Date.now() < input.deadline) {
+  let tasksExhausted = false;
+  while (!run.scanComplete && !tasksExhausted && Date.now() < input.deadline) {
     const claimToken = randomUUID();
     const claimed = await deps.repository.claimScan(actor, {
       runId: run.id,
@@ -836,6 +842,29 @@ async function scanRun(
         latestMapping: mappingState.latest,
         hasOtherDestinationMapping: otherDestinationTaskIds.has(task.id),
       });
+      if ("lookupFailure" in planned) {
+        await deps.repository.commitScanPage(actor, {
+          runId: run.id,
+          claimToken,
+          nextCursor: run.scanCursorCreatedAt && run.scanCursorTaskId
+            ? { createdAt: run.scanCursorCreatedAt, taskId: run.scanCursorTaskId }
+            : null,
+          scanComplete: false,
+          items: [],
+          jobs: [],
+          nowIso: input.nowIso,
+        });
+        const authFailure = planned.lookupFailure.kind === "authorization";
+        if (authFailure) {
+          await pauseForAuthorization(actor, deps, {
+            runId: run.id,
+            connection: input.connection,
+            message: planned.lookupFailure.message,
+            nowIso: input.nowIso,
+          });
+        }
+        return { ok: false, message: planned.lookupFailure.message, authFailure, retryable: !authFailure };
+      }
       refreshedCredentials =
         planned.refreshedCredentials ?? refreshedCredentials;
       items.push(planned.item);
@@ -845,8 +874,12 @@ async function scanRun(
     const commit: CalendarScanCommit = {
       runId: run.id,
       claimToken,
-      nextCursor: page.nextCursor,
-      scanComplete: page.complete,
+      nextCursor: page.nextCursor ?? (
+        run.scanCursorCreatedAt && run.scanCursorTaskId
+          ? { createdAt: run.scanCursorCreatedAt, taskId: run.scanCursorTaskId }
+          : null
+      ),
+      scanComplete: false,
       items,
       jobs,
       nowIso: input.nowIso,
@@ -865,12 +898,13 @@ async function scanRun(
       return { ok: false, message: "Unable to refresh the Calendar sync run." };
     }
     run = refreshed.value;
+    tasksExhausted = page.complete;
   }
 
   // Remove managed events whose task row no longer exists. Orphan cleanup runs
   // only after the task scan has completed, so a not-yet-scanned page can never
   // be mistaken for a deleted task.
-  while (run.scanComplete && Date.now() < input.deadline) {
+  while (!run.scanComplete && tasksExhausted && Date.now() < input.deadline) {
     const claimToken = randomUUID();
     const claimed = await deps.repository.claimScan(actor, {
       runId: run.id,
@@ -885,8 +919,11 @@ async function scanRun(
       destinationKey: run.destination.destinationKey,
       limit: config.scanPageSize,
     });
-    if (!orphans.ok || orphans.value.length === 0) {
-      await deps.repository.commitScanPage(actor, {
+    if (!orphans.ok) {
+      return { ok: false, message: "Unable to load orphaned Calendar mappings.", retryable: true };
+    }
+    if (orphans.value.length === 0) {
+      const completed = await deps.repository.commitScanPage(actor, {
         runId: run.id,
         claimToken,
         nextCursor:
@@ -901,6 +938,10 @@ async function scanRun(
         jobs: [],
         nowIso: input.nowIso,
       });
+      if (!completed.ok || !completed.value) {
+        return { ok: false, message: "Unable to finish the Calendar scan.", retryable: true };
+      }
+      run = { ...run, scanComplete: true };
       break;
     }
 
@@ -942,7 +983,7 @@ async function scanRun(
               taskId: run.scanCursorTaskId,
             }
           : null,
-      scanComplete: true,
+      scanComplete: false,
       items,
       jobs,
       nowIso: input.nowIso,
@@ -1040,8 +1081,8 @@ async function failJob(
 ) {
   const attempts = input.job.attempts;
   const exhausted = attempts >= CALENDAR_SYNC_MAX_ATTEMPTS;
-  const permanent = input.permanent || exhausted;
-  const retryAt = permanent
+  const terminal = input.permanent || exhausted;
+  const retryAt = terminal
     ? null
     : nextCalendarRetryAtIso({
         jobId: input.job.id,
@@ -1057,7 +1098,7 @@ async function failJob(
       message: exhausted
         ? `${input.message} Retry limit reached.`
         : input.message,
-      permanent,
+      permanent: input.permanent,
       retryAt,
       outcome: input.outcome ?? "failed",
       exclusionReason: input.exclusionReason ?? null,
@@ -1075,21 +1116,21 @@ async function failJob(
     await deps.repository.updateTaskSyncState(actor, {
       taskId: input.job.taskId,
       eventId: input.job.eventId,
-      status: permanent ? "failed" : "pending",
+      status: terminal ? "failed" : "pending",
       failureReason: input.message,
       nowIso: input.nowIso,
     });
   }
 
-  if (input.job.runId) {
+  if (input.job.runId && !terminal) {
     await deps.repository.updateRunItem(actor, {
       runId: input.job.runId,
       taskId: input.job.taskId,
-      outcome: permanent ? "failed" : "pending",
+      outcome: "pending",
       exclusionReason: input.exclusionReason ?? null,
       eventId: input.job.eventId,
       payloadHash: input.job.payloadHash,
-      errorMessage: permanent ? input.message : null,
+      errorMessage: null,
       nowIso: input.nowIso,
     });
   }
@@ -1173,6 +1214,7 @@ async function processJob(
         generation: job.generation,
         eventId: job.eventId ?? plannedEventId,
         linkBaseUrl: config.linkBaseUrl,
+        timeZone: connection.timeZone,
       })
     : null;
 
@@ -1285,91 +1327,118 @@ async function processJob(
     return {};
   }
 
-  const payload = built.payload;
-
-  let writeResult = job.eventExists && job.eventId
-    ? await deps.provider.updateEvent(connection, payload.eventId, payload)
-    : await deps.provider.createEvent(connection, payload);
-
-  if (!writeResult.ok && writeResult.error.kind === "not_found" && job.eventId) {
-    // The managed event was deleted externally. Advance the generation only
-    // after the deletion is confirmed, then create exactly one replacement.
-    // The mapping stays on the old generation until the upsert below retires
-    // it, so a crash before the replacement is published cannot retire a
-    // mapping that a newer generation still owns.
-    if (!(await claimStillCurrent(actor, deps, job))) {
-      return { refreshedCredentials };
-    }
-
-    const generation = job.generation + 1;
-    const eventId = deterministicCalendarEventId({
-      ownerUserId: task.ownerUserId,
-      taskId: task.id,
-      destinationKey: job.destination.destinationKey,
-      generation,
+  const mappings = await deps.repository.loadMappingsForTasks(actor, {
+    ownerUserId: job.ownerUserId,
+    taskIds: [job.taskId],
+  });
+  if (!mappings.ok) {
+    await failJob(actor, deps, {
+      job, message: "Unable to load Calendar event mappings.",
+      permanent: false, nowIso, now,
     });
-    const nextPayload = {
+    return {};
+  }
+
+  const mapping = pickMappings(mappings.value, job.destination.destinationKey).get(job.taskId)?.latest;
+  let generation = job.generation;
+  const { payloadHash } = built;
+  let payload = built.payload;
+  let updating = Boolean(job.eventExists && job.eventId);
+
+  function targetEvent(eventId: string, nextGeneration: number) {
+    generation = nextGeneration;
+    payload = {
       ...payload,
       eventId,
-      privateProperties: {
-        ...payload.privateProperties,
-        generation: String(generation),
-      },
+      privateProperties: { ...payload.privateProperties, generation: String(generation) },
     };
-    if (job.claimToken) {
-      const advanced = await deps.repository.advanceJobGeneration(actor, {
-        jobId: job.id,
-        claimToken: job.claimToken,
-        generation,
-        eventId,
-        payloadHash: built.payloadHash,
-        nowIso,
-      });
-      if (!advanced.ok || !advanced.value) {
-        return { refreshedCredentials };
-      }
+  }
+
+  async function rotateEvent(nextGeneration: number) {
+    if (!job.claimToken) return false;
+    const eventId = deterministicCalendarEventId({
+      ownerUserId: job.ownerUserId,
+      taskId: job.taskId,
+      destinationKey: job.destination.destinationKey,
+      generation: nextGeneration,
+    });
+    const advanced = await deps.repository.advanceJobGeneration(actor, {
+      jobId: job.id,
+      claimToken: job.claimToken,
+      generation: nextGeneration,
+      eventId,
+      payloadHash,
+      nowIso,
+    });
+    if (!advanced.ok || !advanced.value) return false;
+    targetEvent(eventId, nextGeneration);
+    updating = false;
+    return true;
+  }
+
+  let needsMappingLookup = false;
+  if (mapping && mapping.generation >= generation) {
+    if (mapping.status === "removed") {
+      if (!(await rotateEvent(mapping.generation + 1))) return {};
+    } else {
+      needsMappingLookup = !updating || job.eventId !== mapping.eventId;
+      targetEvent(mapping.eventId, mapping.generation);
+      updating = true;
     }
-    writeResult = await deps.provider.createEvent(connection, nextPayload);
-    if (writeResult.ok) {
-      if (!(await claimStillCurrent(actor, deps, job))) {
-        return { refreshedCredentials: writeResult.refreshedCredentials };
-      }
-      await completeJobOutcome(actor, deps, {
-        job, connection, outcome: "created", eventId,
-        payloadHash: built.payloadHash, generation, exclusionReason: null,
-        nowIso, taskSyncStatus: "synced",
-      });
-      return { refreshedCredentials: writeResult.refreshedCredentials };
-    }
-  } else if (!writeResult.ok && writeResult.error.kind === "conflict") {
-    // A 409 on insert means the deterministic id already exists. Adopt it only
-    // when its private metadata proves the expected task and destination.
+  }
+
+  let lookupFailure: CalendarProviderFailure | undefined;
+  if (needsMappingLookup) {
     const existing = await deps.provider.getEvent(connection, payload.eventId);
-    if (existing.ok && existing.value) {
+    if (!existing.ok) {
+      lookupFailure = existing.error;
+    } else if (!existing.value || existing.value.status === "cancelled") {
+      if (!(await rotateEvent(generation + 1))) return {};
+    }
+  }
+
+  if (!(await claimStillCurrent(actor, deps, job))) return {};
+
+  let writeResult = lookupFailure
+    ? { ok: false as const, error: lookupFailure }
+    : updating
+      ? await deps.provider.updateEvent(connection, payload.eventId, payload)
+      : await deps.provider.createEvent(connection, payload);
+
+  if (!writeResult.ok && writeResult.error.kind === "not_found" && updating) {
+    if (!(await rotateEvent(generation + 1))) return {};
+    writeResult = await deps.provider.createEvent(connection, payload);
+  }
+  if (!writeResult.ok && writeResult.error.kind === "conflict") {
+    const existing = await deps.provider.getEvent(connection, payload.eventId);
+    if (!existing.ok) {
+      writeResult = existing;
+    } else if (existing.value) {
       const privateProperties = existing.value.privateProperties;
       const metadataMatches =
-        existing.value.status !== "cancelled" &&
         privateProperties.source === "ega-house" &&
         privateProperties.task_id === task.id &&
         privateProperties.owner_user_id === task.ownerUserId &&
-        privateProperties.destination_key ===
-          job.destination.destinationKey;
-      if (metadataMatches) {
-        writeResult = await deps.provider.updateEvent(
-          connection,
-          payload.eventId,
-          payload,
-        );
+        privateProperties.destination_key === job.destination.destinationKey;
+      if (existing.value.status === "cancelled" &&
+          (metadataMatches || mapping?.eventId === existing.value.id)) {
+        const existingGeneration = Number(privateProperties.generation);
+        const verifiedGeneration = metadataMatches && Number.isSafeInteger(existingGeneration)
+          ? existingGeneration
+          : 0;
+        if (!(await rotateEvent(Math.max(generation, verifiedGeneration, mapping?.generation ?? 0) + 1))) return {};
+        writeResult = await deps.provider.createEvent(connection, payload);
+      } else if (metadataMatches && existing.value.status !== "cancelled") {
+        if (!(await claimStillCurrent(actor, deps, job))) return {};
+        writeResult = await deps.provider.updateEvent(connection, payload.eventId, payload);
       } else {
-        await failJob(actor, deps, {
-          job,
-          message:
-            "A Google Calendar event with the deterministic id already exists for a different task or calendar. It was left untouched.",
-          permanent: true,
-          nowIso,
-          now,
-        });
-        return {};
+        writeResult = {
+          ok: false,
+          error: {
+            kind: "permanent",
+            message: "A Google Calendar event with the deterministic id already exists for a different task or calendar. It was left untouched.",
+          },
+        };
       }
     }
   }
@@ -1404,10 +1473,10 @@ async function processJob(
   await completeJobOutcome(actor, deps, {
     job,
     connection,
-    outcome: job.eventExists ? "updated" : "created",
+    outcome: updating ? "updated" : "created",
     eventId,
-    payloadHash: built.payloadHash,
-    generation: job.generation,
+    payloadHash,
+    generation,
     exclusionReason: null,
     nowIso,
     taskSyncStatus: "synced",
@@ -1425,13 +1494,22 @@ async function persistRefreshedCredentials(
     nowIso: string;
   },
 ) {
-  if (!input.refreshed.accessTokenEncrypted) return;
-  await deps.repository.updateConnectionCredentials(actor, {
+  if (!input.refreshed.accessTokenEncrypted) return input.connection;
+  const saved = await deps.repository.updateConnectionCredentials(actor, {
     ownerUserId: input.connection.ownerUserId,
     expectedUpdatedAt: input.connection.updatedAt,
     credentials: input.refreshed,
     nowIso: input.nowIso,
   });
+  if (!saved.ok || !saved.value) return input.connection;
+  return {
+    ...input.connection,
+    ...input.refreshed,
+    refreshTokenEncrypted: input.refreshed.refreshTokenEncrypted === undefined
+      ? input.connection.refreshTokenEncrypted
+      : input.refreshed.refreshTokenEncrypted,
+    updatedAt: input.nowIso,
+  };
 }
 
 async function drainRunJobs(
@@ -1492,6 +1570,11 @@ async function drainRunJobs(
       refreshed = result.refreshedCredentials ?? refreshed;
       processed += 1;
       if (result.authFailure) {
+        await deps.repository.releaseJobs(actor, {
+          jobIds: jobs.slice(index).map((job) => job.id),
+          claimToken,
+          nowIso: input.nowIso,
+        });
         return { authFailure: true, refreshed };
       }
     }
@@ -1504,11 +1587,12 @@ async function processRunBatch(
   actor: AuthenticatedActor,
   deps: CalendarSyncDependencies,
   run: CalendarRunRecord,
+  requestDeadline?: number,
 ): Promise<CalendarSyncProcessResult> {
   const now = getNow(deps);
   const nowIso = now.toISOString();
   const config = getConfig(deps);
-  const deadline = Date.now() + config.requestBudgetMs;
+  const deadline = requestDeadline ?? Date.now() + config.requestBudgetMs;
 
   const connectionResult = await deps.repository.getConnectionForOwner(
     actor,
@@ -1525,7 +1609,7 @@ async function processRunBatch(
     };
   }
 
-  const connection = connectionResult.value;
+  let connection = connectionResult.value;
   const destination = destinationOfConnection(connection);
 
   if (!isConnectionUsable(connection)) {
@@ -1595,57 +1679,60 @@ async function processRunBatch(
     };
   }
 
-  const listing = await deps.provider.listManagedEvents(connection);
-  if (!listing.ok) {
-    if (isAuthorizationFailure(listing.error)) {
-      await pauseForAuthorization(actor, deps, {
-        runId: run.id,
-        connection,
-        message: listing.error.message,
-        nowIso,
-      });
+  let eventIndex = new Map<string, CalendarEventIndexEntry>();
+  if (!run.scanComplete) {
+    const listing = await deps.provider.listManagedEvents(connection);
+    if (!listing.ok) {
+      if (isAuthorizationFailure(listing.error)) {
+        await pauseForAuthorization(actor, deps, {
+          runId: run.id,
+          connection,
+          message: listing.error.message,
+          nowIso,
+        });
+        return {
+          status: withStatusMessage(
+            await buildStatus(actor, deps, run.id),
+            listing.error.message,
+          ),
+          authFailure: true,
+          retryable: false,
+        };
+      }
+
       return {
         status: withStatusMessage(
           await buildStatus(actor, deps, run.id),
-          listing.error.message,
+          "Google Calendar events could not be verified. No removals were attempted; retry to continue.",
         ),
-        authFailure: true,
-        retryable: false,
+        authFailure: false,
+        retryable: true,
       };
     }
 
-    return {
-      status: withStatusMessage(
-        await buildStatus(actor, deps, run.id),
-        "Google Calendar events could not be verified. No removals were attempted; retry to continue.",
-      ),
-      authFailure: false,
-      retryable: true,
-    };
-  }
+    if (!listing.value.complete) {
+      // An incomplete event listing is not proof that any managed event was
+      // deleted, so the scan intentionally refuses to infer removals.
+      return {
+        status: withStatusMessage(
+          await buildStatus(actor, deps, run.id),
+          "The Calendar event listing was incomplete. No removals were attempted; retry to continue.",
+        ),
+        authFailure: false,
+        retryable: true,
+      };
+    }
 
-  if (!listing.value.complete) {
-    // An incomplete event listing is not proof that any managed event was
-    // deleted, so the scan intentionally refuses to infer removals.
-    return {
-      status: withStatusMessage(
-        await buildStatus(actor, deps, run.id),
-        "The Calendar event listing was incomplete. No removals were attempted; retry to continue.",
-      ),
-      authFailure: false,
-      retryable: true,
-    };
-  }
+    if (listing.refreshedCredentials) {
+      connection = await persistRefreshedCredentials(actor, deps, {
+        connection,
+        refreshed: listing.refreshedCredentials,
+        nowIso,
+      });
+    }
 
-  if (listing.refreshedCredentials) {
-    await persistRefreshedCredentials(actor, deps, {
-      connection,
-      refreshed: listing.refreshedCredentials,
-      nowIso,
-    });
+    eventIndex = eventIndexFor(listing.value.events);
   }
-
-  const eventIndex = eventIndexFor(listing.value.events);
   const scanResult = await scanRun(actor, deps, {
     run,
     connection,
@@ -1666,7 +1753,7 @@ async function processRunBatch(
   }
 
   if (scanResult.refreshedCredentials) {
-    await persistRefreshedCredentials(actor, deps, {
+    connection = await persistRefreshedCredentials(actor, deps, {
       connection,
       refreshed: scanResult.refreshedCredentials,
       nowIso,
@@ -1851,6 +1938,7 @@ export async function processCalendarRecovery(
   const config = getConfig(deps);
   const now = getNow(deps);
   const nowIso = now.toISOString();
+  const deadline = Date.now() + config.requestBudgetMs;
   const runs = await deps.repository.listActiveRuns(actor, options?.runLimit ?? 5);
   if (!runs.ok) {
     return applicationFailure("Unable to load active Calendar sync runs.");
@@ -1858,7 +1946,8 @@ export async function processCalendarRecovery(
 
   let runsProcessed = 0;
   for (const run of runs.value) {
-    await processRunBatch(actor, deps, run);
+    if (Date.now() >= deadline) break;
+    await processRunBatch(actor, deps, run, deadline);
     runsProcessed += 1;
   }
 
@@ -1877,6 +1966,7 @@ export async function processCalendarRecovery(
   let destinationsProcessed = 0;
   let jobsProcessed = 0;
   for (const queue of destinations.value) {
+    if (Date.now() >= deadline) break;
     // A destination whose account or calendar cannot be verified is left
     // pending for a later recovery pass instead of being written through the
     // currently connected account.
@@ -1916,7 +2006,15 @@ export async function processCalendarRecovery(
     let refreshed:
       | RefreshedCalendarCredentials
       | undefined;
-    for (const job of claimed.value) {
+    for (const [index, job] of claimed.value.entries()) {
+      if (Date.now() >= deadline) {
+        await deps.repository.releaseJobs(actor, {
+          jobIds: claimed.value.slice(index).map((remaining) => remaining.id),
+          claimToken,
+          nowIso,
+        });
+        break;
+      }
       const result = await processJob(actor, deps, {
         job,
         connection: connection.value,
@@ -1925,6 +2023,14 @@ export async function processCalendarRecovery(
       });
       refreshed = result.refreshedCredentials ?? refreshed;
       jobsProcessed += 1;
+      if (result.authFailure) {
+        await deps.repository.releaseJobs(actor, {
+          jobIds: claimed.value.slice(index).map((remaining) => remaining.id),
+          claimToken,
+          nowIso,
+        });
+        break;
+      }
     }
     if (refreshed) {
       await persistRefreshedCredentials(actor, deps, {

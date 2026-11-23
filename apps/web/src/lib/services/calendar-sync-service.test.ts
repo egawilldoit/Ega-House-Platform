@@ -6,7 +6,7 @@ import {
   processPendingCalendarSyncJobs,
 } from "./calendar-sync-service";
 
-function createCalendarSyncSupabaseMock(options?: { settingsLoadError?: boolean }) {
+function createCalendarSyncSupabaseMock(options?: { settingsLoadError?: boolean; claimBeforeCoalesce?: boolean }) {
   const tasks = [
     {
       id: "task-1",
@@ -24,6 +24,7 @@ function createCalendarSyncSupabaseMock(options?: { settingsLoadError?: boolean 
     },
   ];
   const jobs: Array<Record<string, unknown>> = [];
+  let claimBeforeCoalesce = options?.claimBeforeCoalesce;
   const mappings: Array<Record<string, unknown>> = [];
   const settings = {
     owner_user_id: "owner-1",
@@ -181,6 +182,13 @@ function createCalendarSyncSupabaseMock(options?: { settingsLoadError?: boolean 
           return createQuery(table, "update", payload);
         },
         async insert(payload: Record<string, unknown>) {
+          if (claimBeforeCoalesce) {
+            claimBeforeCoalesce = false;
+            const pending = jobs.find((job) => job.status === "pending");
+            assert.ok(pending);
+            pending.status = "processing";
+            return { data: null, error: { code: "23505" } };
+          }
           jobs.push({
             id: `job-${jobs.length + 1}`,
             created_at: "2026-05-10T08:00:00.000Z",
@@ -627,4 +635,41 @@ test("a missing-task delete requires scoped provenance before calling Google", a
   });
   assert.deepEqual(result, { ok: true, processed: 1, failed: 0 });
   assert.deepEqual(scopedWrites, ["delete:unscoped-event"]);
+});
+
+test("returning to account A uses its active mapping even when account B also has a mapping", async () => {
+  const mock = createCalendarSyncSupabaseMock();
+  mock.mappings.push(
+    { owner_user_id: "owner-1", task_id: "task-1", destination_key: "owner@example.com|primary",
+      event_id: "account-a-event", generation: 2, status: "active" },
+    { owner_user_id: "owner-1", task_id: "task-1", destination_key: "other@example.com|primary",
+      event_id: "account-b-event", generation: 4, status: "active" },
+  );
+
+  const result = await enqueueCalendarSyncJob(
+    { taskId: "task-1", operation: "upsert" },
+    { supabase: mock.supabase as never },
+  );
+
+  assert.equal(result.errorMessage, null);
+  assert.equal(mock.jobs[0]?.calendar_event_id, "account-a-event");
+  assert.equal(mock.jobs[0]?.event_exists, true);
+  assert.equal(mock.jobs[0]?.run_id, null);
+});
+
+test("an edit is reinserted when the conflicting pending row is claimed before coalescing", async () => {
+  const mock = createCalendarSyncSupabaseMock({ claimBeforeCoalesce: true });
+  mock.jobs.push({
+    id: "original-job", owner_user_id: "owner-1", task_id: "task-1",
+    destination_key: "owner@example.com|primary", status: "pending", queue_version: 2,
+  });
+
+  const result = await enqueueCalendarSyncJob(
+    { taskId: "task-1", operation: "upsert" },
+    { supabase: mock.supabase as never },
+  );
+
+  assert.equal(result.errorMessage, null);
+  assert.deepEqual(mock.jobs.map((job) => job.status), ["processing", "pending"]);
+  assert.equal(mock.jobs[1]?.run_id, null);
 });

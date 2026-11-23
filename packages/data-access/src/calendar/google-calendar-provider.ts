@@ -121,9 +121,17 @@ function timeFromGoogle(value: { date?: string; dateTime?: string } | undefined)
   return null;
 }
 
-function timeToGoogle(value: CalendarEventTime) {
-  if ("date" in value && value.date) return { date: value.date };
-  return { dateTime: value.dateTime };
+function timeToGoogle(value: CalendarEventTime, patch: boolean) {
+  if ("date" in value && value.date) {
+    return patch
+      ? { date: value.date, dateTime: null, timeZone: null }
+      : { date: value.date };
+  }
+  return {
+    dateTime: value.dateTime,
+    ...(value.timeZone ? { timeZone: value.timeZone } : {}),
+    ...(patch ? { date: null } : {}),
+  };
 }
 
 function documentFromResource(resource: GoogleEventResource): CalendarEventDocument {
@@ -243,13 +251,13 @@ const MALFORMED_LISTING_MESSAGE =
 const MALFORMED_LOOKUP_MESSAGE =
   "Google Calendar returned an unreadable event lookup. The saved event was left unchanged; sync will retry.";
 
-function eventBody(payload: CalendarEventPayload) {
+function eventBody(payload: CalendarEventPayload, patch = false) {
   return {
-    id: payload.eventId,
+    ...(!patch ? { id: payload.eventId } : {}),
     summary: payload.summary,
     description: payload.description,
-    start: timeToGoogle(payload.start),
-    end: timeToGoogle(payload.end),
+    start: timeToGoogle(payload.start, patch),
+    end: timeToGoogle(payload.end, patch),
     reminders: {
       useDefault: false,
       overrides: [{ method: "popup", minutes: payload.reminderMinutes }],
@@ -260,26 +268,37 @@ function eventBody(payload: CalendarEventPayload) {
   };
 }
 
-function shapeMatches(
-  document: CalendarEventDocument,
+function boundaryMatches(
+  actual: unknown,
+  expected: CalendarEventTime,
+): boolean {
+  if (!isRecord(actual)) return false;
+  if (expected.date) {
+    return actual.date === expected.date && !("dateTime" in actual);
+  }
+  return (
+    typeof expected.dateTime === "string" &&
+    !("date" in actual) &&
+    typeof actual.dateTime === "string" &&
+    Date.parse(actual.dateTime) === Date.parse(expected.dateTime)
+  );
+}
+
+function writtenEvent(
+  resource: unknown,
+  eventId: string,
   payload: CalendarEventPayload,
-) {
-  if (!document.start || !document.end) return false;
+): CalendarEventDocument | null {
   if (
-    ("date" in payload.start && document.start.date !== payload.start.date) ||
-    ("dateTime" in payload.start &&
-      document.start.dateTime !== payload.start.dateTime)
-  ) {
-    return false;
-  }
-  if (
-    ("date" in payload.end && document.end.date !== payload.end.date) ||
-    ("dateTime" in payload.end && document.end.dateTime !== payload.end.dateTime)
-  ) {
-    return false;
-  }
-  if (payload.privateProperties.source !== "ega-house") return false;
-  return document.privateProperties.source === "ega-house";
+    !isRecord(resource) ||
+    !boundaryMatches(resource.start, payload.start) ||
+    !boundaryMatches(resource.end, payload.end)
+  ) return null;
+
+  const document = eventDocument(resource, eventId);
+  return document?.privateProperties.source === "ega-house" && document.status !== "cancelled"
+    ? document
+    : null;
 }
 
 export class GoogleCalendarEventProvider implements CalendarEventProvider {
@@ -633,10 +652,9 @@ export class GoogleCalendarEventProvider implements CalendarEventProvider {
     if (!result.response.ok) {
       return { ok: false, error: await this.failureFromResponse(result.response) };
     }
-    const document = documentFromResource(
-      (await result.response.json().catch(() => ({}))) as GoogleEventResource,
-    );
-    if (!shapeMatches(document, payload)) {
+    const resource: unknown = await result.response.json().catch(() => null);
+    const document = writtenEvent(resource, payload.eventId, payload);
+    if (!document) {
       return {
         ok: false,
         error: {
@@ -657,8 +675,7 @@ export class GoogleCalendarEventProvider implements CalendarEventProvider {
     eventId: string,
     payload: CalendarEventPayload,
   ): Promise<CalendarProviderResult<CalendarEventDocument>> {
-    const body = eventBody(payload);
-    delete (body as { id?: string }).id;
+    const body = eventBody(payload, true);
     const result = await this.authorizedFetch(
       connection,
       `/events/${encodeURIComponent(eventId)}`,
@@ -681,10 +698,9 @@ export class GoogleCalendarEventProvider implements CalendarEventProvider {
     if (!result.response.ok) {
       return { ok: false, error: await this.failureFromResponse(result.response) };
     }
-    const document = documentFromResource(
-      (await result.response.json().catch(() => ({}))) as GoogleEventResource,
-    );
-    if (!shapeMatches(document, payload)) {
+    const resource: unknown = await result.response.json().catch(() => null);
+    const document = writtenEvent(resource, eventId, payload);
+    if (!document) {
       return {
         ok: false,
         error: {

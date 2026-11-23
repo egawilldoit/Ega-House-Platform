@@ -218,47 +218,47 @@ ALTER TABLE public.calendar_event_mappings FORCE ROW LEVEL SECURITY;
 
 CREATE POLICY calendar_sync_runs_select_own
   ON public.calendar_sync_runs FOR SELECT TO authenticated
-  USING (owner_user_id = auth.uid());
+  USING (owner_user_id = (SELECT auth.uid()) AND ((SELECT auth.jwt()) ->> 'client_id') IS NULL);
 CREATE POLICY calendar_sync_runs_insert_own
   ON public.calendar_sync_runs FOR INSERT TO authenticated
-  WITH CHECK (owner_user_id = auth.uid());
+  WITH CHECK (owner_user_id = (SELECT auth.uid()) AND ((SELECT auth.jwt()) ->> 'client_id') IS NULL);
 CREATE POLICY calendar_sync_runs_update_own
   ON public.calendar_sync_runs FOR UPDATE TO authenticated
-  USING (owner_user_id = auth.uid())
-  WITH CHECK (owner_user_id = auth.uid());
+  USING (owner_user_id = (SELECT auth.uid()) AND ((SELECT auth.jwt()) ->> 'client_id') IS NULL)
+  WITH CHECK (owner_user_id = (SELECT auth.uid()) AND ((SELECT auth.jwt()) ->> 'client_id') IS NULL);
 CREATE POLICY calendar_sync_runs_delete_own
   ON public.calendar_sync_runs FOR DELETE TO authenticated
-  USING (owner_user_id = auth.uid());
+  USING (owner_user_id = (SELECT auth.uid()) AND ((SELECT auth.jwt()) ->> 'client_id') IS NULL);
 --> statement-breakpoint
 
 CREATE POLICY calendar_sync_run_items_select_own
   ON public.calendar_sync_run_items FOR SELECT TO authenticated
-  USING (owner_user_id = auth.uid());
+  USING (owner_user_id = (SELECT auth.uid()) AND ((SELECT auth.jwt()) ->> 'client_id') IS NULL);
 CREATE POLICY calendar_sync_run_items_insert_own
   ON public.calendar_sync_run_items FOR INSERT TO authenticated
-  WITH CHECK (owner_user_id = auth.uid());
+  WITH CHECK (owner_user_id = (SELECT auth.uid()) AND ((SELECT auth.jwt()) ->> 'client_id') IS NULL);
 CREATE POLICY calendar_sync_run_items_update_own
   ON public.calendar_sync_run_items FOR UPDATE TO authenticated
-  USING (owner_user_id = auth.uid())
-  WITH CHECK (owner_user_id = auth.uid());
+  USING (owner_user_id = (SELECT auth.uid()) AND ((SELECT auth.jwt()) ->> 'client_id') IS NULL)
+  WITH CHECK (owner_user_id = (SELECT auth.uid()) AND ((SELECT auth.jwt()) ->> 'client_id') IS NULL);
 CREATE POLICY calendar_sync_run_items_delete_own
   ON public.calendar_sync_run_items FOR DELETE TO authenticated
-  USING (owner_user_id = auth.uid());
+  USING (owner_user_id = (SELECT auth.uid()) AND ((SELECT auth.jwt()) ->> 'client_id') IS NULL);
 --> statement-breakpoint
 
 CREATE POLICY calendar_event_mappings_select_own
   ON public.calendar_event_mappings FOR SELECT TO authenticated
-  USING (owner_user_id = auth.uid());
+  USING (owner_user_id = (SELECT auth.uid()) AND ((SELECT auth.jwt()) ->> 'client_id') IS NULL);
 CREATE POLICY calendar_event_mappings_insert_own
   ON public.calendar_event_mappings FOR INSERT TO authenticated
-  WITH CHECK (owner_user_id = auth.uid());
+  WITH CHECK (owner_user_id = (SELECT auth.uid()) AND ((SELECT auth.jwt()) ->> 'client_id') IS NULL);
 CREATE POLICY calendar_event_mappings_update_own
   ON public.calendar_event_mappings FOR UPDATE TO authenticated
-  USING (owner_user_id = auth.uid())
-  WITH CHECK (owner_user_id = auth.uid());
+  USING (owner_user_id = (SELECT auth.uid()) AND ((SELECT auth.jwt()) ->> 'client_id') IS NULL)
+  WITH CHECK (owner_user_id = (SELECT auth.uid()) AND ((SELECT auth.jwt()) ->> 'client_id') IS NULL);
 CREATE POLICY calendar_event_mappings_delete_own
   ON public.calendar_event_mappings FOR DELETE TO authenticated
-  USING (owner_user_id = auth.uid());
+  USING (owner_user_id = (SELECT auth.uid()) AND ((SELECT auth.jwt()) ->> 'client_id') IS NULL);
 --> statement-breakpoint
 
 -- Claim one scan page. The token and lease make a crashed continuation
@@ -381,22 +381,30 @@ BEGIN
     NULLIF(job->>'payload_hash', ''),
     NULLIF(job->>'exclusion_reason', ''),
     NULLIF(job->>'task_updated_at', '')::timestamptz,
-    p_now
+    LEAST(p_now, now())
   FROM jsonb_array_elements(COALESCE(p_jobs, '[]'::jsonb)) AS job
   ON CONFLICT (owner_user_id, task_id, destination_key)
     WHERE (status = 'pending' AND queue_version = 2)
   DO UPDATE
   SET operation = EXCLUDED.operation,
-      calendar_event_id = COALESCE(
-        EXCLUDED.calendar_event_id,
-        public.calendar_sync_jobs.calendar_event_id
-      ),
-      generation = EXCLUDED.generation,
-      event_exists = EXCLUDED.event_exists,
+      run_id = EXCLUDED.run_id,
+      attempts = 0,
+      calendar_event_id = CASE
+        WHEN calendar_sync_jobs.generation > EXCLUDED.generation
+          AND calendar_sync_jobs.calendar_event_id IS NOT NULL
+          THEN calendar_sync_jobs.calendar_event_id
+        ELSE COALESCE(EXCLUDED.calendar_event_id, calendar_sync_jobs.calendar_event_id)
+      END,
+      generation = CASE
+        WHEN calendar_sync_jobs.calendar_event_id IS NOT NULL
+          THEN greatest(calendar_sync_jobs.generation, EXCLUDED.generation)
+        ELSE EXCLUDED.generation
+      END,
+      event_exists = EXCLUDED.event_exists AND calendar_sync_jobs.generation <= EXCLUDED.generation,
       payload_hash = EXCLUDED.payload_hash,
       exclusion_reason = EXCLUDED.exclusion_reason,
       task_updated_at = EXCLUDED.task_updated_at,
-      scheduled_at = LEAST(public.calendar_sync_jobs.scheduled_at, p_now),
+      scheduled_at = LEAST(public.calendar_sync_jobs.scheduled_at, p_now, now()),
       last_error = NULL,
       permanent_failure = false,
       updated_at = p_now;
@@ -405,11 +413,12 @@ BEGIN
   SET job_id = job.id
   FROM public.calendar_sync_jobs AS job
   WHERE item.run_id = p_run_id
+    AND item.outcome = 'pending'
     AND job.run_id = p_run_id
     AND job.task_id = item.task_id
     AND job.destination_key = v_run.destination_key
     AND job.queue_version = 2
-    AND job.status IN ('pending', 'processing');
+    AND job.status = 'pending';
 
   UPDATE public.calendar_sync_runs
   SET scan_cursor_created_at = p_next_cursor_created_at,
@@ -435,9 +444,9 @@ $commit$;
 -- cannot simply be demoted. Delete and re-insert it into the pending slot so a
 -- concurrent commit coalesces through ON CONFLICT instead of raising a unique
 -- violation. When a pending row already exists it keeps the latest intent; the
--- expired row's calendar event id is used only when that row has none and the
--- generations match, because an ambiguous write may have used that
--- deterministic id and the retry must target it again. The expired row id
+-- expired row's event identity is retained when it has a newer generation
+-- or supplies the missing id for the same generation. An ambiguous write may
+-- already have used that id. The expired row id
 -- disappears, so its claim token can no longer finalize the newer work.
 CREATE OR REPLACE FUNCTION public.calendar_sync_claim_jobs(
   p_owner uuid,
@@ -473,7 +482,17 @@ BEGIN
       AND job.queue_version = 2
       AND job.lease_expires_at IS NOT NULL
       AND job.lease_expires_at <= p_now
-      AND (p_run_id IS NULL OR job.run_id = p_run_id)
+      AND (
+        job.run_id IS NOT DISTINCT FROM p_run_id
+        OR EXISTS (
+          SELECT 1 FROM public.calendar_sync_jobs AS pending
+          WHERE pending.owner_user_id = job.owner_user_id
+            AND pending.task_id = job.task_id
+            AND pending.destination_key = job.destination_key
+            AND pending.queue_version = 2 AND pending.status = 'pending'
+            AND pending.run_id IS NOT DISTINCT FROM p_run_id
+        )
+      )
       AND (p_owner IS NULL OR job.owner_user_id = p_owner)
       AND (p_destination_key IS NULL OR job.destination_key = p_destination_key)
     RETURNING job.*
@@ -488,7 +507,7 @@ BEGIN
     )
     SELECT
       expired.id, expired.owner_user_id, expired.task_id,
-      expired.calendar_event_id, expired.operation, 'pending', expired.attempts,
+      expired.calendar_event_id, expired.operation, 'pending', least(expired.attempts, 7),
       expired.last_error, NULL, expired.created_at, p_now, expired.queue_version,
       expired.run_id, expired.destination_key, expired.google_account_subject,
       expired.google_account_email, expired.calendar_id, expired.generation,
@@ -499,15 +518,24 @@ BEGIN
     ON CONFLICT (owner_user_id, task_id, destination_key)
       WHERE (status = 'pending' AND queue_version = 2)
     DO UPDATE
-    SET calendar_event_id = COALESCE(
-          public.calendar_sync_jobs.calendar_event_id,
-          CASE
-            WHEN public.calendar_sync_jobs.generation = EXCLUDED.generation
-              THEN EXCLUDED.calendar_event_id
-          END
-        ),
-        scheduled_at = LEAST(public.calendar_sync_jobs.scheduled_at, p_now),
-        updated_at = p_now
+    SET calendar_event_id = CASE
+        WHEN EXCLUDED.generation > calendar_sync_jobs.generation AND EXCLUDED.calendar_event_id IS NOT NULL
+          THEN EXCLUDED.calendar_event_id
+        WHEN EXCLUDED.generation = calendar_sync_jobs.generation
+          THEN COALESCE(calendar_sync_jobs.calendar_event_id, EXCLUDED.calendar_event_id)
+        ELSE calendar_sync_jobs.calendar_event_id
+      END,
+      generation = CASE
+        WHEN EXCLUDED.calendar_event_id IS NOT NULL
+          THEN greatest(calendar_sync_jobs.generation, EXCLUDED.generation)
+        ELSE calendar_sync_jobs.generation
+      END,
+      run_id = COALESCE(calendar_sync_jobs.run_id, EXCLUDED.run_id),
+      event_exists = calendar_sync_jobs.event_exists AND NOT (
+        EXCLUDED.generation > calendar_sync_jobs.generation AND EXCLUDED.calendar_event_id IS NOT NULL
+      ),
+      scheduled_at = LEAST(public.calendar_sync_jobs.scheduled_at, p_now, now()),
+      updated_at = p_now
     RETURNING *
   )
   UPDATE public.calendar_sync_run_items AS item
@@ -524,12 +552,12 @@ BEGIN
     FROM public.calendar_sync_jobs AS job
     WHERE job.queue_version = 2
       AND job.status = 'pending'
-      AND job.scheduled_at <= p_now
+      AND (job.attempts = 0 OR job.scheduled_at <= p_now)
       AND job.attempts < 8
       AND job.permanent_failure = false
       AND (p_owner IS NULL OR job.owner_user_id = p_owner)
       AND (p_destination_key IS NULL OR job.destination_key = p_destination_key)
-      AND (p_run_id IS NULL OR job.run_id = p_run_id)
+      AND job.run_id IS NOT DISTINCT FROM p_run_id
       AND NOT EXISTS (
         SELECT 1
         FROM public.calendar_sync_jobs AS lease
@@ -593,6 +621,7 @@ BEGIN
     WHERE job.id = v_job_id
       AND job.status = 'processing'
       AND job.claim_token = p_claim_token
+      AND job.lease_expires_at > clock_timestamp()
     FOR UPDATE;
 
     CONTINUE WHEN NOT FOUND;
@@ -612,7 +641,8 @@ BEGIN
       )
       SELECT
         expired.id, expired.owner_user_id, expired.task_id,
-        expired.calendar_event_id, expired.operation, 'pending', expired.attempts,
+        expired.calendar_event_id, expired.operation, 'pending',
+        CASE WHEN p_record_failure THEN expired.attempts ELSE greatest(expired.attempts - 1, 0) END,
         CASE WHEN p_record_failure THEN p_last_error ELSE expired.last_error END,
         NULL, expired.created_at, p_now, expired.queue_version,
         expired.run_id, expired.destination_key, expired.google_account_subject,
@@ -634,15 +664,24 @@ BEGIN
       ON CONFLICT (owner_user_id, task_id, destination_key)
         WHERE (status = 'pending' AND queue_version = 2)
       DO UPDATE
-      SET calendar_event_id = COALESCE(
-            public.calendar_sync_jobs.calendar_event_id,
-            CASE
-              WHEN public.calendar_sync_jobs.generation = EXCLUDED.generation
-                THEN EXCLUDED.calendar_event_id
-            END
-          ),
-          scheduled_at = LEAST(public.calendar_sync_jobs.scheduled_at, p_now),
-          updated_at = p_now
+      SET calendar_event_id = CASE
+          WHEN EXCLUDED.generation > calendar_sync_jobs.generation AND EXCLUDED.calendar_event_id IS NOT NULL
+            THEN EXCLUDED.calendar_event_id
+          WHEN EXCLUDED.generation = calendar_sync_jobs.generation
+            THEN COALESCE(calendar_sync_jobs.calendar_event_id, EXCLUDED.calendar_event_id)
+          ELSE calendar_sync_jobs.calendar_event_id
+        END,
+        generation = CASE
+          WHEN EXCLUDED.calendar_event_id IS NOT NULL
+            THEN greatest(calendar_sync_jobs.generation, EXCLUDED.generation)
+          ELSE calendar_sync_jobs.generation
+        END,
+        run_id = COALESCE(calendar_sync_jobs.run_id, EXCLUDED.run_id),
+        event_exists = calendar_sync_jobs.event_exists AND NOT (
+          EXCLUDED.generation > calendar_sync_jobs.generation AND EXCLUDED.calendar_event_id IS NOT NULL
+        ),
+        scheduled_at = LEAST(public.calendar_sync_jobs.scheduled_at, p_now, now()),
+        updated_at = p_now
       RETURNING *
     )
     UPDATE public.calendar_sync_run_items AS item
@@ -812,30 +851,30 @@ STABLE
 SECURITY INVOKER
 SET search_path = ''
 AS $counts$
+  WITH job_state AS (
+    SELECT task_id,
+      bool_or(status = 'processing') AS processing,
+      bool_or(status = 'processing' OR attempts = 0 OR scheduled_at <= now()) AS ready
+    FROM public.calendar_sync_jobs
+    WHERE run_id = p_run_id AND status IN ('pending', 'processing')
+    GROUP BY task_id
+  )
   SELECT jsonb_build_object(
-    'total', (SELECT count(*) FROM public.calendar_sync_run_items WHERE run_id = p_run_id),
-    'created', (SELECT count(*) FROM public.calendar_sync_run_items WHERE run_id = p_run_id AND outcome = 'created'),
-    'updated', (SELECT count(*) FROM public.calendar_sync_run_items WHERE run_id = p_run_id AND outcome = 'updated'),
-    'removed', (SELECT count(*) FROM public.calendar_sync_run_items WHERE run_id = p_run_id AND outcome = 'removed'),
-    'unchanged', (SELECT count(*) FROM public.calendar_sync_run_items WHERE run_id = p_run_id AND outcome = 'unchanged'),
-    'excluded', (SELECT count(*) FROM public.calendar_sync_run_items WHERE run_id = p_run_id AND outcome = 'excluded'),
-    'failed', (SELECT count(*) FROM public.calendar_sync_run_items WHERE run_id = p_run_id AND outcome = 'failed'),
-    'pending', (
-      SELECT count(*) FROM public.calendar_sync_jobs
-      WHERE run_id = p_run_id
-        AND (status = 'processing' OR (status = 'pending' AND scheduled_at <= now()))
-    ),
-    'processing', (SELECT count(*) FROM public.calendar_sync_jobs WHERE run_id = p_run_id AND status = 'processing'),
-    'ready', (
-      SELECT count(*) FROM public.calendar_sync_jobs
-      WHERE run_id = p_run_id
-        AND (status = 'processing' OR (status = 'pending' AND scheduled_at <= now()))
-    ),
-    'retrying', (
-      SELECT count(*) FROM public.calendar_sync_jobs
-      WHERE run_id = p_run_id AND status = 'pending' AND attempts > 0 AND scheduled_at > now()
-    )
-  );
+    'total', count(*),
+    'created', count(*) FILTER (WHERE outcome = 'created'),
+    'updated', count(*) FILTER (WHERE outcome = 'updated'),
+    'removed', count(*) FILTER (WHERE outcome = 'removed'),
+    'unchanged', count(*) FILTER (WHERE outcome = 'unchanged'),
+    'excluded', count(*) FILTER (WHERE outcome = 'excluded'),
+    'failed', count(*) FILTER (WHERE outcome = 'failed'),
+    'pending', count(*) FILTER (WHERE outcome = 'pending' AND ready IS DISTINCT FROM false),
+    'processing', count(*) FILTER (WHERE processing),
+    'ready', count(*) FILTER (WHERE ready),
+    'retrying', count(*) FILTER (WHERE outcome = 'pending' AND NOT ready)
+  )
+  FROM public.calendar_sync_run_items AS item
+  LEFT JOIN job_state USING (task_id)
+  WHERE item.run_id = p_run_id;
 $counts$;
 --> statement-breakpoint
 

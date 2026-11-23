@@ -34,6 +34,7 @@ import {
   continueCalendarSync,
   getCalendarSyncStatus,
   processCalendarRecovery,
+  retryCalendarSync,
   startCalendarSync,
 } from "@ega/application/calendar-sync/service";
 
@@ -73,6 +74,8 @@ class FakeProvider implements CalendarEventProvider {
   createCalls = 0;
   updateCalls = 0;
   deleteCalls = 0;
+  listCalls = 0;
+  nextCreateFailure: { kind: "authorization" | "retryable"; message: string } | null = null;
   getCalls = 0;
   nextListFailure: { kind: "authorization" | "retryable" | "permanent"; message: string } | null = null;
   nextGetFailure: { kind: "authorization" | "retryable" | "permanent"; message: string } | null = null;
@@ -84,6 +87,7 @@ class FakeProvider implements CalendarEventProvider {
   async listManagedEvents(): Promise<
     CalendarProviderResult<{ complete: boolean; events: CalendarEventIndexEntry[] }>
   > {
+    this.listCalls += 1;
     if (this.nextListFailure) {
       const failure = this.nextListFailure;
       this.nextListFailure = null;
@@ -129,6 +133,11 @@ class FakeProvider implements CalendarEventProvider {
     payload: CalendarEventPayload,
   ): Promise<CalendarProviderResult<CalendarEventDocument>> {
     this.createCalls += 1;
+    if (this.nextCreateFailure) {
+      const error = this.nextCreateFailure;
+      this.nextCreateFailure = null;
+      return { ok: false, error };
+    }
     if (this.events.has(payload.eventId) || this.deletedEventIds.has(payload.eventId)) {
       return {
         ok: false,
@@ -226,7 +235,21 @@ class FakeRepository implements CalendarSyncRepository {
     return { ok: true, value: this.connection };
   }
 
-  async updateConnectionCredentials(): Promise<{ ok: true; value: boolean }> {
+  async updateConnectionCredentials(
+    _actor: AuthenticatedActor,
+    input: Parameters<CalendarSyncRepository["updateConnectionCredentials"]>[1],
+  ): Promise<{ ok: true; value: boolean }> {
+    if (input.expectedUpdatedAt !== this.connection.updatedAt) {
+      return { ok: true, value: false };
+    }
+    this.connection = {
+      ...this.connection,
+      ...input.credentials,
+      refreshTokenEncrypted: input.credentials.refreshTokenEncrypted === undefined
+        ? this.connection.refreshTokenEncrypted
+        : input.credentials.refreshTokenEncrypted,
+      updatedAt: input.nowIso,
+    };
     return { ok: true, value: true };
   }
 
@@ -255,6 +278,7 @@ class FakeRepository implements CalendarSyncRepository {
         updatedAt: input.nowIso,
       };
       this.runs.set(run.id, run);
+      if (input.retryMode) await this.requeueRetryableJobs(_actor, { runId: run.id, destinationKey: run.destination.destinationKey, nowIso: input.nowIso });
       return { ok: true, value: run };
     }
     const run: CalendarRunRecord = {
@@ -308,8 +332,22 @@ class FakeRepository implements CalendarSyncRepository {
     return { ok: true as const, value: undefined };
   }
 
-  async requeueRetryableJobs() {
-    return { ok: true as const, value: 0 };
+  async requeueRetryableJobs(
+    _actor: AuthenticatedActor,
+    { runId, destinationKey, nowIso }: Parameters<CalendarSyncRepository["requeueRetryableJobs"]>[1],
+  ) {
+    let requeued = 0;
+    for (const job of this.jobs.values()) {
+      if (job.runId !== runId || job.destination.destinationKey !== destinationKey ||
+          job.permanentFailure || !["failed", "pending"].includes(job.status)) continue;
+      this.jobs.set(job.id, {
+        ...job, attempts: 0, status: "pending", lastError: null, scheduledAt: nowIso,
+      });
+      const item = this.runItems(runId).find((row) => row.taskId === job.taskId);
+      if (item) Object.assign(item, { outcome: "pending", errorMessage: null });
+      requeued += 1;
+    }
+    return { ok: true as const, value: requeued };
   }
 
   async getRunCounts(_actor: AuthenticatedActor, runId: string) {
@@ -392,7 +430,7 @@ class FakeRepository implements CalendarSyncRepository {
       ok: true,
       value: {
         tasks: page,
-        nextCursor: hasMore
+        nextCursor: page.length > 0
           ? { createdAt: page[page.length - 1].createdAt, taskId: page[page.length - 1].id }
           : null,
         complete: !hasMore,
@@ -695,12 +733,16 @@ class FakeRepository implements CalendarSyncRepository {
     }
     this.jobs.set(job.id, {
       ...job,
-      status: input.failure.permanent ? "failed" : "pending",
+      status: input.failure.retryAt ? "pending" : "failed",
       permanentFailure: input.failure.permanent,
       lastError: input.failure.message,
       scheduledAt: input.failure.retryAt ?? job.scheduledAt,
       claimToken: null,
     });
+    if (!input.failure.retryAt && job.runId) {
+      const item = this.runItems(job.runId).find((row) => row.taskId === job.taskId);
+      if (item) Object.assign(item, { outcome: "failed", errorMessage: input.failure.message });
+    }
     return { ok: true as const, value: true };
   }
 
@@ -1022,6 +1064,8 @@ test("failed orphan enqueue keeps the mapping active and a retry removes the eve
 
   const interrupted = await startCalendarSync(actor, deps);
   assert.equal(interrupted.ok, true);
+  if (!interrupted.ok) return;
+  assert.equal(interrupted.data.run?.scanComplete, false);
   assert.equal(provider.events.size, 1, "the Google event must still exist");
   assert.equal(
     [...repository.mappings.values()][0]?.status,
@@ -1280,7 +1324,7 @@ test("a live mapped event with a missing source tag keeps its id and generation"
   assert.equal(provider.updateCalls, 1);
 });
 
-for (const kind of ["retryable", "permanent"] as const) {
+for (const kind of ["retryable", "permanent", "authorization"] as const) {
   test(`an ambiguous ${kind} lookup preserves the live event and active mapping`, async () => {
     const repository = new FakeRepository();
     const provider = new FakeProvider();
@@ -1301,7 +1345,11 @@ for (const kind of ["retryable", "permanent"] as const) {
     assert.equal(result.ok, true);
     if (!result.ok) return;
 
-    assert.equal(result.data.run?.counts.failed, 1);
+    assert.equal(result.data.run?.counts.failed, kind === "permanent" ? 1 : 0);
+    if (kind !== "permanent") {
+      assert.equal(result.data.run?.scanComplete, false);
+      assert.equal(result.data.continuationBlocked, true);
+    }
     assert.equal(provider.createCalls, 1);
     assert.equal(provider.updateCalls, 0);
     assert.equal(provider.deleteCalls, 0);
@@ -1320,10 +1368,12 @@ for (const kind of ["retryable", "permanent"] as const) {
     const failedItem = [...repository.items.values()]
       .flat()
       .find((item) => item.outcome === "failed");
-    assert.match(
-      String(failedItem?.errorMessage),
-      /could not be verified in Google Calendar/,
-    );
+    if (kind === "permanent") {
+      assert.match(String(failedItem?.errorMessage), /could not be verified in Google Calendar/);
+    } else {
+      assert.equal(failedItem, undefined);
+      assert.match(String(result.data.message), /could not verify the saved event/);
+    }
   });
 }
 
@@ -1902,4 +1952,222 @@ test("manual sync cannot start without a verified Google account identity", asyn
   assert.equal(result.reason, "calendar_identity_unverified");
   assert.equal(repository.runs.size, 0);
   assert.equal(provider.createCalls + provider.updateCalls + provider.deleteCalls, 0);
+});
+
+function queuedJob(overrides: Partial<CalendarJobRecord> = {}): CalendarJobRecord {
+  return {
+    id: "scheduled", ownerUserId: actor.userId, taskId: "task-1", runId: null,
+    destination, operation: "upsert", status: "pending", attempts: 0,
+    eventId: null, generation: 1, eventExists: false, payloadHash: null,
+    claimToken: null, permanentFailure: false, exclusionReason: null,
+    lastError: null, scheduledAt: "2026-05-10T08:00:00.000Z",
+    taskUpdatedAt: "2026-05-10T08:00:00.000Z",
+    ...overrides,
+  };
+}
+
+test("an exhausted transient failure can be retried without listing the calendar again", async () => {
+  const repository = new FakeRepository();
+  const provider = new FakeProvider();
+  const deps = buildDeps(repository, provider);
+  repository.addTask(task());
+  const started = await startCalendarSync(actor, {
+    ...deps, config: { ...deps.config, jobLimit: 0 },
+  });
+  assert.ok(started.ok && started.data.run?.scanComplete);
+  const [job] = repository.jobs.values();
+  repository.jobs.set(job.id, { ...job, attempts: 7 });
+  provider.nextCreateFailure = { kind: "retryable", message: "Google unavailable" };
+  const exhausted = await continueCalendarSync(actor, deps, started.data.run.id);
+  assert.ok(exhausted.ok);
+  assert.equal(exhausted.data.run?.counts.failed, 1);
+  assert.equal(repository.jobs.get(job.id)?.permanentFailure, false);
+  assert.equal(repository.jobs.get(job.id)?.attempts, 8);
+
+  const retried = await retryCalendarSync(actor, deps);
+  assert.ok(retried.ok);
+  assert.equal(retried.data.run?.counts.created, 1);
+  assert.equal(retried.data.run?.counts.failed, 0);
+  assert.equal(repository.jobs.get(job.id)?.attempts, 1);
+  assert.equal(provider.listCalls, 1);
+});
+
+test("a batch persists a second token refresh against the updated connection", async () => {
+  const repository = new FakeRepository();
+  const provider = new FakeProvider();
+  repository.addTask(task());
+  const list = provider.listManagedEvents.bind(provider);
+  provider.listManagedEvents = async () => {
+    const result = await list();
+    assert.ok(result.ok);
+    return {
+      ...result,
+      refreshedCredentials: { accessTokenEncrypted: "listed", tokenExpiresAt: null },
+    };
+  };
+  const create = provider.createEvent.bind(provider);
+  provider.createEvent = async (connection, payload) => {
+    assert.equal(connection.accessTokenEncrypted, "listed");
+    assert.equal(connection.updatedAt, repository.connection.updatedAt);
+    const result = await create(connection, payload);
+    assert.ok(result.ok);
+    return {
+      ...result,
+      refreshedCredentials: { accessTokenEncrypted: "created", tokenExpiresAt: null },
+    };
+  };
+
+  const result = await startCalendarSync(actor, buildDeps(repository, provider));
+
+  assert.ok(result.ok);
+  assert.equal(result.data.run?.counts.created, 1);
+  assert.equal(repository.connection.accessTokenEncrypted, "created");
+  assert.equal(repository.connection.refreshTokenEncrypted, "refresh");
+});
+
+test("recovery releases the remaining batch on an authorization failure", async () => {
+  const repository = new FakeRepository();
+  const provider = new FakeProvider();
+  repository.addTask(task());
+  repository.addTask(task({ id: "task-2" }));
+  repository.jobs.set("scheduled", queuedJob());
+  repository.jobs.set("second", queuedJob({ id: "second", taskId: "task-2" }));
+  provider.nextCreateFailure = { kind: "authorization", message: "Revoked access" };
+
+  await processCalendarRecovery(actor, buildDeps(repository, provider));
+
+  assert.equal(provider.createCalls, 1);
+  assert.ok(repository.connection.reconnectRequiredAt);
+  assert.deepEqual([...repository.jobs.values()].map((job) => job.status), ["pending", "pending"]);
+});
+
+test("a worker with an expired claim makes no provider write", async () => {
+  const repository = new FakeRepository();
+  const provider = new FakeProvider();
+  repository.addTask(task());
+  repository.jobs.set("scheduled", queuedJob());
+  repository.isJobClaimCurrent = async () => ({ ok: true, value: false });
+
+  await processCalendarRecovery(actor, buildDeps(repository, provider));
+
+  assert.equal(provider.createCalls, 0);
+  assert.equal(repository.jobs.get("scheduled")?.status, "processing");
+});
+
+for (const mapped of [false, true]) {
+  test(`recovery republishes past an owned cancelled event (mapping present: ${mapped})`, async () => {
+    const repository = new FakeRepository();
+    const provider = new FakeProvider();
+    repository.addTask(task());
+    const eventId = deterministicCalendarEventId({
+      ownerUserId: actor.userId, taskId: "task-1",
+      destinationKey: destination.destinationKey, generation: 1,
+    });
+    provider.events.set(eventId, {
+      id: eventId, status: "cancelled", summary: null, start: null, end: null,
+      privateProperties: mapped ? {} : {
+        source: "ega-house", task_id: "task-1", owner_user_id: actor.userId,
+        destination_key: destination.destinationKey, generation: "1",
+      },
+      raw: {},
+    });
+    if (mapped) {
+      await repository.upsertMapping(actor, {
+        ownerUserId: actor.userId, taskId: "task-1", destination, eventId, generation: 1,
+        metadataVerified: true, payloadHash: null, nowIso: "2026-05-10T08:00:00.000Z",
+      });
+    }
+    repository.jobs.set("scheduled", queuedJob());
+
+    await processCalendarRecovery(actor, buildDeps(repository, provider));
+
+    assert.equal(provider.events.get(eventId)?.status, "cancelled");
+    assert.equal(provider.updateCalls, 0);
+    const [mapping] = repository.mappings.values();
+    assert.equal(mapping?.generation, 2);
+    assert.notEqual(mapping?.eventId, eventId);
+    assert.ok(mapping);
+    assert.equal(provider.events.get(mapping.eventId)?.status, "confirmed");
+  });
+}
+
+test("an unfinished orphan scan cannot close the run when the request budget expires", async (t) => {
+  const repository = new FakeRepository();
+  const provider = new FakeProvider();
+  const deps = buildDeps(repository, provider);
+  repository.addTask(task());
+  await startCalendarSync(actor, deps);
+  repository.tasks.delete("task-1");
+
+  let time = Date.now();
+  t.mock.method(Date, "now", () => time);
+  const commitScanPage = repository.commitScanPage.bind(repository);
+  repository.commitScanPage = async (actor, commit) => {
+    const result = await commitScanPage(actor, commit);
+    time += deps.config.requestBudgetMs;
+    return result;
+  };
+  const interrupted = await startCalendarSync(actor, deps);
+  assert.ok(interrupted.ok && interrupted.data.run);
+  assert.equal(interrupted.data.run.scanComplete, false);
+  assert.equal(interrupted.data.run.status, "active");
+  assert.equal(provider.deleteCalls, 0);
+
+  repository.commitScanPage = commitScanPage;
+  const recovered = await continueCalendarSync(actor, deps, interrupted.data.run.id);
+  assert.ok(recovered.ok);
+  assert.equal(recovered.data.run?.status, "completed");
+  assert.equal(recovered.data.run?.counts.removed, 1);
+  assert.equal(provider.deleteCalls, 1);
+});
+
+test("authorization failure while verifying a create conflict pauses the run", async () => {
+  const repository = new FakeRepository();
+  const provider = new FakeProvider();
+  repository.addTask(task());
+  repository.jobs.set("scheduled", queuedJob());
+  const eventId = deterministicCalendarEventId({
+    ownerUserId: actor.userId, taskId: "task-1",
+    destinationKey: destination.destinationKey, generation: 1,
+  });
+  provider.deletedEventIds.add(eventId);
+  provider.nextGetFailure = { kind: "authorization", message: "Revoked access" };
+
+  await processCalendarRecovery(actor, buildDeps(repository, provider));
+
+  assert.equal(provider.createCalls, 1);
+  assert.equal(provider.updateCalls, 0);
+  assert.ok(repository.connection.reconnectRequiredAt);
+  assert.equal(repository.jobs.get("scheduled")?.status, "pending");
+});
+
+test("a task restored after Google deletion but before settlement publishes a new event", async () => {
+  const repository = new FakeRepository();
+  const provider = new FakeProvider();
+  const deps = buildDeps(repository, provider);
+  repository.addTask(task());
+  await startCalendarSync(actor, deps);
+  const [original] = provider.events.values();
+  repository.addTask(task({ archivedAt: "2026-05-10T08:30:00.000Z" }));
+  repository.jobs.set("scheduled", queuedJob({ eventId: original.id }));
+  provider.retainDeletedEventIds = true;
+  repository.failNextCompletion = true;
+
+  await processCalendarRecovery(actor, deps);
+  assert.equal(provider.deleteCalls, 1);
+  assert.equal(provider.events.size, 0);
+  assert.equal([...repository.mappings.values()][0]?.status, "active");
+  const interrupted = repository.jobs.get("scheduled");
+  assert.ok(interrupted && interrupted.status === "processing");
+
+  repository.addTask(task());
+  repository.jobs.set(interrupted.id, { ...interrupted, status: "pending", claimToken: null });
+  await processCalendarRecovery(actor, deps);
+
+  assert.equal(provider.deleteCalls, 1);
+  assert.equal(provider.events.size, 1);
+  const [restored] = provider.events.values();
+  assert.notEqual(restored.id, original.id);
+  assert.equal(restored.privateProperties.generation, "2");
+  assert.equal(repository.jobs.get(interrupted.id)?.status, "succeeded");
 });

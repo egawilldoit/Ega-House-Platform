@@ -240,54 +240,6 @@ export async function enqueueCalendarSyncJob(
     latestMapping = null;
   }
 
-  let anyDestinationMapping: (CalendarMappingRow & {
-    destination_key: string | null;
-  }) | null = null;
-  try {
-    const anyMappingResult = await supabase
-      .from("calendar_event_mappings")
-      .select("destination_key, event_id, generation, status")
-      .eq("owner_user_id", ownerUserId)
-      .eq("task_id", taskId)
-      .order("updated_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    const candidate = (anyMappingResult.data ?? null) as
-      | (CalendarMappingRow & { destination_key: string | null })
-      | null;
-    anyDestinationMapping =
-      candidate &&
-      typeof candidate.event_id === "string" &&
-      candidate.event_id.length > 0
-        ? candidate
-        : null;
-  } catch {
-    anyDestinationMapping = null;
-  }
-
-  let activeRunId: string | null = null;
-  try {
-    const activeRunResult = await supabase
-      .from("calendar_sync_runs")
-      .select("id, status")
-      .eq("owner_user_id", ownerUserId)
-      .eq("destination_key", destinationKey)
-      .eq("status", "active")
-      .limit(1)
-      .maybeSingle();
-    activeRunId =
-      activeRunResult.data?.status === "active"
-        ? activeRunResult.data.id
-        : null;
-  } catch {
-    activeRunId = null;
-  }
-
-  const staleDestinationMapping = Boolean(
-    anyDestinationMapping &&
-      anyDestinationMapping.destination_key !== destinationKey,
-  );
-  const useDurableQueue = true;
   const mappingGeneration = Number(latestMapping?.generation ?? 0);
   const generation =
     latestMapping?.status === "active"
@@ -309,7 +261,7 @@ export async function enqueueCalendarSyncJob(
       destinationKey,
       generation,
     });
-  const eventExists = !staleDestinationMapping && Boolean(scopedEventId);
+  const eventExists = Boolean(scopedEventId);
 
   const { error: taskUpdateError } = await supabase
     .from("tasks")
@@ -332,14 +284,14 @@ export async function enqueueCalendarSyncJob(
     operation,
     status: "pending",
     attempts: 0,
-    queue_version: useDurableQueue ? 2 : 1,
-    run_id: activeRunId,
+    queue_version: 2,
+    run_id: null,
     destination_key: destinationKey,
     google_account_subject: settings.google_account_subject ?? null,
     google_account_email: settings.google_account_email ?? null,
     calendar_id: settings.calendar_id?.trim() || "primary",
     generation,
-    event_exists: useDurableQueue ? eventExists : false,
+    event_exists: eventExists,
     scheduled_at: nowIso,
     updated_at: nowIso,
   };
@@ -348,16 +300,15 @@ export async function enqueueCalendarSyncJob(
 
   if (error) {
     const isCoalesceConflict =
-      (error as { code?: string }).code === "23505" && useDurableQueue;
+      error.code === "23505";
     if (isCoalesceConflict) {
-      const { error: updateError } = await supabase
+      const { data: updatedJob, error: updateError } = await supabase
         .from("calendar_sync_jobs")
         .update({
           calendar_event_id: eventId,
           operation,
           generation,
           event_exists: eventExists,
-          run_id: activeRunId,
           last_error: null,
           permanent_failure: false,
           scheduled_at: nowIso,
@@ -367,12 +318,20 @@ export async function enqueueCalendarSyncJob(
         .eq("task_id", taskId)
         .eq("destination_key", destinationKey)
         .eq("status", "pending")
-        .eq("queue_version", 2);
+        .eq("queue_version", 2)
+        .select("id")
+        .maybeSingle();
 
       if (updateError) {
         return { errorMessage: "Unable to enqueue Calendar sync job." };
       }
 
+      if (!updatedJob) {
+        const retried = await supabase.from("calendar_sync_jobs").insert(jobPayload);
+        if (retried.error) {
+          return { errorMessage: "Unable to enqueue Calendar sync job." };
+        }
+      }
       return { errorMessage: null };
     }
 

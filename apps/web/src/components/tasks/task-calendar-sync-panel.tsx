@@ -217,7 +217,7 @@ export function TaskCalendarSyncPanel({
               >
                 {busy === "start" ? "Synchronizing…" : "Synchronize"}
               </Button>
-              {counts && counts.failed > 0 ? (
+              {counts && (counts.failed > 0 || counts.retrying > 0) ? (
                 <Button
                   type="button"
                   variant="secondary"

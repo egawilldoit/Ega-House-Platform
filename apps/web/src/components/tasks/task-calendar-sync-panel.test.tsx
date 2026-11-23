@@ -108,3 +108,17 @@ test("Calendar sync panel surfaces reconnect and paused destination messaging", 
   assert.match(markup, /Events already published there remain in that calendar/);
   assert.match(markup, /existing events stay in Google Calendar/);
 });
+
+test("Calendar sync panel offers Retry retryable during backoff", () => {
+  const initialStatus = status();
+  assert.ok(initialStatus.run);
+  const markup = renderToStaticMarkup(
+    React.createElement(TaskCalendarSyncPanel, {
+      initialStatus: {
+        ...initialStatus,
+        run: { ...initialStatus.run, counts: { ...initialStatus.run.counts, retrying: 1 } },
+      },
+    }),
+  );
+  assert.match(markup, /Retry retryable/);
+});

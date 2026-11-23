@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { createAuthenticatedActor } from "@ega/application";
 import type { CalendarJobRecord } from "@ega/application/calendar-sync/ports";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 import { SupabaseCalendarSyncRepository } from "../src/calendar/repository";
 
@@ -168,8 +168,8 @@ test("retryable failJob reports no settlement when a newer pending edit supersed
   assert.equal(fake.rpcCalls.length, 1);
 });
 
-test("permanent failJob does not need the pending slot or the queue function", async () => {
-  const fake = new FakeCalendarSupabase();
+test("permanent failJob settles through the lease-guarded terminal function", async () => {
+  const fake = new FakeCalendarSupabase(true);
   const repository = new SupabaseCalendarSyncRepository(
     fake as unknown as SupabaseClient,
   );
@@ -188,10 +188,49 @@ test("permanent failJob does not need the pending slot or the queue function", a
   });
 
   assert.deepEqual(result, { ok: true, value: true });
-  assert.equal(fake.rpcCalls.length, 0);
-  assert.equal(fake.updateCalls.length, 1);
-  assert.equal(fake.updateCalls[0]?.status, "failed");
-  assert.equal(fake.updateCalls[0]?.permanent_failure, true);
+  assert.deepEqual(fake.rpcCalls, [{
+    name: "calendar_sync_fail_claim",
+    args: {
+      p_job_id: JOB_ID,
+      p_claim_token: CLAIM_TOKEN,
+      p_outcome: "failed",
+      p_exclusion_reason: null,
+      p_last_error: "The event belongs to another task.",
+      p_permanent: true,
+      p_now: NOW,
+    },
+  }]);
+  assert.equal(fake.updateCalls.length, 0);
+});
+
+test("ready destinations include expired runless leases and exclude pending jobs in backoff", async () => {
+  const supabase = createClient("https://calendar-proof.example", "test-key", {
+    auth: { persistSession: false, autoRefreshToken: false },
+    global: {
+      fetch: async (url) => {
+        const { pathname, searchParams } = new URL(String(url));
+        assert.equal(pathname, "/rest/v1/calendar_sync_jobs");
+        assert.equal(searchParams.get("run_id"), "is.null");
+        assert.equal(searchParams.get("queue_version"), "eq.2");
+        assert.equal(searchParams.get("permanent_failure"), "eq.false");
+        assert.match(searchParams.get("or") ?? "", /pending,attempts\.lt\.8,or\(attempts\.eq\.0,scheduled_at\.lte\./);
+        assert.match(searchParams.get("or") ?? "", /processing,lease_expires_at\.lte\./);
+        return Response.json([{
+          owner_user_id: ACTOR.userId,
+          destination_key: JOB.destination.destinationKey,
+          google_account_subject: JOB.destination.accountSubject,
+          google_account_email: JOB.destination.accountEmail,
+          calendar_id: JOB.destination.calendarId,
+        }]);
+      },
+    },
+  });
+  const repository = new SupabaseCalendarSyncRepository(supabase);
+
+  assert.deepEqual(await repository.listReadyDestinations(ACTOR, 5), {
+    ok: true,
+    value: [{ ownerUserId: ACTOR.userId, destination: JOB.destination }],
+  });
 });
 
 test("completeJob settles the job, confirmed mapping removal and run item atomically", async () => {

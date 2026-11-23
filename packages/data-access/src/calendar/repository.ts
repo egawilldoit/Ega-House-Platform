@@ -245,7 +245,17 @@ export class SupabaseCalendarSyncRepository implements CalendarSyncRepository {
       .maybeSingle();
     if (result.error) return failure(result.error);
     if (!result.data) return { ok: true, value: null };
-    return { ok: true, value: mapConnection(asRow(result.data)) };
+    const context = await this.supabase
+      .from("user_time_context")
+      .select("iana_timezone")
+      .eq("user_id", ownerUserId)
+      .maybeSingle();
+    if (context.error) return failure(context.error);
+    const timeZone = context.data ? nullableString(asRow(context.data).iana_timezone) : null;
+    return {
+      ok: true,
+      value: { ...mapConnection(asRow(result.data)), ...(timeZone ? { timeZone } : {}) },
+    };
   }
 
   async updateConnectionCredentials(
@@ -342,11 +352,12 @@ export class SupabaseCalendarSyncRepository implements CalendarSyncRepository {
       if (resumed.error) return failure(resumed.error);
       const run = resumed.data ? mapRun(asRow(resumed.data)) : latestRun;
       if (input.retryMode) {
-        await this.requeueRetryableJobs(_actor, {
+        const requeued = await this.requeueRetryableJobs(_actor, {
           runId: run.id,
           destinationKey: run.destination.destinationKey,
           nowIso: input.nowIso,
         });
+        if (!requeued.ok) return requeued;
       }
       return { ok: true, value: run };
     }
@@ -457,45 +468,13 @@ export class SupabaseCalendarSyncRepository implements CalendarSyncRepository {
     _actor: AuthenticatedActor,
     input: { runId: string; destinationKey: string; nowIso: string },
   ): Promise<RepositoryResult<number>> {
-    let query = this.supabase
-      .from("calendar_sync_jobs")
-      .update({
-        status: "pending",
-        permanent_failure: false,
-        scheduled_at: input.nowIso,
-        claim_token: null,
-        lease_expires_at: null,
-        updated_at: input.nowIso,
-      } as never)
-      .eq("run_id", input.runId)
-      .eq("destination_key", input.destinationKey)
-      .eq("queue_version", 2)
-      .eq("permanent_failure", false)
-      .in("status", ["failed", "pending"])
-      .gt("attempts", 0)
-      .select("id");
-    if (this.scope === "owner") query = query.eq("owner_user_id", _actor.userId);
-    const result = await query;
+    const result = await this.supabase.rpc("calendar_sync_requeue_retryable_jobs", {
+      p_run_id: input.runId,
+      p_destination_key: input.destinationKey,
+      p_now: input.nowIso,
+    });
     if (result.error) return failure(result.error);
-
-    const requeuedJobs = asRows(result.data);
-    if (requeuedJobs.length > 0) {
-      await this.supabase
-        .from("calendar_sync_run_items")
-        .update({
-          outcome: "pending",
-          error_message: null,
-          updated_at: input.nowIso,
-        } as never)
-        .eq("run_id", input.runId)
-        .in(
-          "task_id",
-          requeuedJobs.map((job) => String(job.task_id)),
-        )
-        .eq("outcome", "failed");
-    }
-
-    return { ok: true, value: requeuedJobs.length };
+    return { ok: true, value: Number(result.data) };
   }
 
   async getRunCounts(
@@ -617,7 +596,7 @@ export class SupabaseCalendarSyncRepository implements CalendarSyncRepository {
       value: {
         tasks: page.map(mapTask),
         nextCursor:
-          hasMore && last
+          last
             ? { createdAt: String(last.created_at), taskId: String(last.id) }
             : null,
         complete: !hasMore,
@@ -733,13 +712,10 @@ export class SupabaseCalendarSyncRepository implements CalendarSyncRepository {
     jobId: string,
     claimToken: string,
   ): Promise<RepositoryResult<boolean>> {
-    const result = await this.supabase
-      .from("calendar_sync_jobs")
-      .select("id")
-      .eq("id", jobId)
-      .eq("status", "processing")
-      .eq("claim_token", claimToken)
-      .maybeSingle();
+    const result = await this.supabase.rpc("calendar_sync_claim_is_current", {
+      p_job_id: jobId,
+      p_claim_token: claimToken,
+    });
     if (result.error) return failure(result.error);
     return { ok: true, value: Boolean(result.data) };
   }
@@ -769,20 +745,14 @@ export class SupabaseCalendarSyncRepository implements CalendarSyncRepository {
       nowIso: string;
     },
   ): Promise<RepositoryResult<boolean>> {
-    const result = await this.supabase
-      .from("calendar_sync_jobs")
-      .update({
-        generation: input.generation,
-        event_exists: false,
-        calendar_event_id: input.eventId,
-        payload_hash: input.payloadHash,
-        updated_at: input.nowIso,
-      } as never)
-      .eq("id", input.jobId)
-      .eq("status", "processing")
-      .eq("claim_token", input.claimToken)
-      .select("id")
-      .maybeSingle();
+    const result = await this.supabase.rpc("calendar_sync_advance_generation", {
+      p_job_id: input.jobId,
+      p_claim_token: input.claimToken,
+      p_generation: input.generation,
+      p_event_id: input.eventId,
+      p_payload_hash: input.payloadHash,
+      p_now: input.nowIso,
+    });
     if (result.error) return failure(result.error);
     return { ok: true, value: Boolean(result.data) };
   }
@@ -825,7 +795,7 @@ export class SupabaseCalendarSyncRepository implements CalendarSyncRepository {
       nowIso: string;
     },
   ): Promise<RepositoryResult<boolean>> {
-    if (!input.failure.permanent) {
+    if (!input.failure.permanent && input.failure.retryAt) {
       // A newer pending edit may exist for the same task and destination. The
       // database function folds this claim into that pending slot; a superseded
       // claim reports false so its failure is not recorded against newer work.
@@ -851,25 +821,15 @@ export class SupabaseCalendarSyncRepository implements CalendarSyncRepository {
       };
     }
 
-    const result = await this.supabase
-      .from("calendar_sync_jobs")
-      .update({
-        status: "failed",
-        outcome: input.failure.outcome,
-        exclusion_reason: input.failure.exclusionReason ?? null,
-        last_error: input.failure.message,
-        permanent_failure: true,
-        scheduled_at: input.failure.retryAt ?? input.nowIso,
-        claim_token: null,
-        lease_expires_at: null,
-        locked_at: null,
-        updated_at: input.nowIso,
-      } as never)
-      .eq("id", input.job.id)
-      .eq("status", "processing")
-      .eq("claim_token", input.claimToken)
-      .select("id")
-      .maybeSingle();
+    const result = await this.supabase.rpc("calendar_sync_fail_claim", {
+      p_job_id: input.job.id,
+      p_claim_token: input.claimToken,
+      p_outcome: input.failure.outcome,
+      p_exclusion_reason: input.failure.exclusionReason ?? null,
+      p_last_error: input.failure.message,
+      p_permanent: input.failure.permanent,
+      p_now: input.nowIso,
+    });
     if (result.error) return failure(result.error);
     return { ok: true, value: Boolean(result.data) };
   }
@@ -976,40 +936,20 @@ export class SupabaseCalendarSyncRepository implements CalendarSyncRepository {
     _actor: AuthenticatedActor,
     input: { runId: string; nowIso: string },
   ): Promise<RepositoryResult<CalendarRunRecord | null>> {
-    const runResult = await this.getRun(_actor, input.runId);
-    if (!runResult.ok || !runResult.value) return { ok: true, value: null };
-    if (!runResult.value.scanComplete) return { ok: true, value: runResult.value };
-
-    const pending = await this.countPendingRunJobs(_actor, input.runId);
-    if (!pending.ok || pending.value > 0) {
-      return { ok: true, value: runResult.value };
-    }
-
-    const result = await this.supabase
-      .from("calendar_sync_runs")
-      .update({
-        status: "completed",
-        completed_at: input.nowIso,
-        updated_at: input.nowIso,
-      } as never)
-      .eq("id", input.runId)
-      .eq("status", "active")
-      .select(RUN_COLUMNS)
-      .maybeSingle();
+    const result = await this.supabase.rpc("calendar_sync_complete_run_if_drained", {
+      p_run_id: input.runId,
+      p_now: input.nowIso,
+    });
     if (result.error) return failure(result.error);
-    return { ok: true, value: result.data ? mapRun(asRow(result.data)) : runResult.value };
+    const [completed] = asRows(result.data);
+    return { ok: true, value: completed ? mapRun(completed) : null };
   }
 
   async listActiveRuns(
     actor: AuthenticatedActor,
     limit: number,
   ): Promise<RepositoryResult<CalendarRunRecord[]>> {
-    let query = this.supabase
-      .from("calendar_sync_runs")
-      .select(RUN_COLUMNS)
-      .eq("status", "active")
-      .order("updated_at", { ascending: true })
-      .limit(limit);
+    let query = this.supabase.rpc("calendar_sync_list_actionable_runs", { p_limit: limit });
     if (this.scope === "owner") query = query.eq("owner_user_id", actor.userId);
     const result = await query;
     if (result.error) return failure(result.error);
@@ -1020,14 +960,18 @@ export class SupabaseCalendarSyncRepository implements CalendarSyncRepository {
     actor: AuthenticatedActor,
     limit: number,
   ): Promise<RepositoryResult<CalendarReadyQueue[]>> {
+    const nowIso = new Date().toISOString();
     let query = this.supabase
       .from("calendar_sync_jobs")
       .select(
         "owner_user_id, destination_key, google_account_subject, google_account_email, calendar_id",
       )
       .eq("queue_version", 2)
-      .eq("status", "pending")
-      .lte("scheduled_at", new Date().toISOString())
+      .is("run_id", null)
+      .eq("permanent_failure", false)
+      .or(
+        `and(status.eq.pending,attempts.lt.8,or(attempts.eq.0,scheduled_at.lte.${nowIso})),and(status.eq.processing,lease_expires_at.lte.${nowIso})`,
+      )
       .order("scheduled_at", { ascending: true })
       .limit(Math.max(limit * 20, 50));
     if (this.scope === "owner") query = query.eq("owner_user_id", actor.userId);

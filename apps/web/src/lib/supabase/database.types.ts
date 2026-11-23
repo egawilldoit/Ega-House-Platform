@@ -1537,6 +1537,45 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      calendar_sync_advance_generation: {
+        Args: {
+          p_job_id: string
+          p_claim_token: string
+          p_generation: number
+          p_event_id: string
+          p_payload_hash: string | null
+          p_now: string
+        }
+        Returns: boolean
+      }
+      calendar_sync_claim_is_current: {
+        Args: { p_job_id: string; p_claim_token: string }
+        Returns: boolean
+      }
+      calendar_sync_complete_run_if_drained: {
+        Args: { p_run_id: string; p_now: string }
+        Returns: Database["public"]["Tables"]["calendar_sync_runs"]["Row"][]
+      }
+      calendar_sync_fail_claim: {
+        Args: {
+          p_job_id: string
+          p_claim_token: string
+          p_outcome: string
+          p_exclusion_reason: string | null
+          p_last_error: string
+          p_permanent: boolean
+          p_now: string
+        }
+        Returns: boolean
+      }
+      calendar_sync_list_actionable_runs: {
+        Args: { p_limit: number }
+        Returns: Database["public"]["Tables"]["calendar_sync_runs"]["Row"][]
+      }
+      calendar_sync_requeue_retryable_jobs: {
+        Args: { p_run_id: string; p_destination_key: string; p_now: string }
+        Returns: number
+      }
       calendar_sync_complete_legacy_job: {
         Args: { p_job_id: string; p_claim_token: string; p_status: string; p_task_status: string; p_event_id: string | null; p_failure_reason: string | null; p_update_task: boolean; p_now: string }
         Returns: boolean
