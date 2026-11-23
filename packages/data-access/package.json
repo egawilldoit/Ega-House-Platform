@@ -16,6 +16,7 @@
     "./preferences": "./src/preferences/repository.ts",
     "./expenses": "./src/expenses/repository.ts",
     "./money": "./src/money/repository.ts",
+    "./money/import": "./src/money/import-repository.ts",
     "./money/budgets": "./src/money/budget-repository.ts",
     "./money/coffee": "./src/money/coffee-repository.ts",
     "./money/obligations": "./src/money/obligations-repository.ts",
