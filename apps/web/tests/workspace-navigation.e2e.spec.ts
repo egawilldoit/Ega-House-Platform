@@ -62,6 +62,27 @@ test.describe("Workspace navigation with persistent shell", () => {
     "Set E2E_AUTH_EMAIL and E2E_AUTH_PASSWORD to run authenticated workspace navigation tests.",
   );
 
+  test("keeps the desktop sidebar in view while Timer history scrolls", async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    const { page: workspace } = await createPwaFixtures(page);
+    await (await getNavLink(workspace, "Timer")).click();
+    await expect(workspace).toHaveURL(/\/timer(?:[?#]|$)/);
+    const sidebar = workspace.locator(".app-sidebar");
+    const main = workspace.locator(".app-main");
+    // Exercise the overflow fallback and guarantee a scroll range even with empty history.
+    await workspace.addStyleTag({
+      content: ".app-shell { overflow-x: hidden } .app-main { min-height: 250vh }",
+    });
+    await expect(sidebar).toBeVisible();
+    const before = await sidebar.boundingBox();
+    expect(before).not.toBeNull();
+    await workspace.evaluate(() => window.scrollTo(0, 700));
+    await expect.poll(() => workspace.evaluate(() => window.scrollY)).toBe(700);
+    await expect.poll(() => sidebar.boundingBox()).toEqual(before);
+    const content = await main.boundingBox();
+    expect(content?.x).toBeCloseTo((before?.x ?? 0) + (before?.width ?? 0));
+  });
+
   test("authenticated navigation preserves shell identity across primary and utility destinations", async ({
     page,
   }) => {

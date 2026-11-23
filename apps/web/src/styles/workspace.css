@@ -31,17 +31,21 @@
 
 .app-shell {
   display: grid;
-  grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
+  --app-sidebar-width: var(--sidebar-width);
+  grid-template-columns: var(--app-sidebar-width) minmax(0, 1fr);
   align-items: start;
 }
 
 .app-shell[data-collapsed="true"] {
-  grid-template-columns: var(--sidebar-collapsed-width) minmax(0, 1fr);
+  --app-sidebar-width: var(--sidebar-collapsed-width);
 }
 
 .app-sidebar {
-  position: sticky;
-  top: 0;
+  /* Keep the rail pinned even when a shell ancestor clips overflow. */
+  position: fixed;
+  inset-block-start: 0;
+  inset-inline-start: 0;
+  inline-size: var(--app-sidebar-width);
   z-index: 30;
   display: flex;
   flex-direction: column;
@@ -55,6 +59,7 @@
 }
 
 .app-main {
+  grid-column: -2 / -1;
   min-width: 0;
   display: flex;
   flex-direction: column;
