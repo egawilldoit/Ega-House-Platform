@@ -7,9 +7,11 @@ import type {
   CalendarRunCounts,
   CalendarRunExclusionCount,
   CalendarRunFailure,
+  CalendarRunItemDraft,
   CalendarRunRecord,
   CalendarScanCommit,
   CalendarScanCursor,
+  CalendarScanJobDraft,
   CalendarSyncDestination,
   CalendarSyncItemOutcome,
   CalendarSyncRepository,
@@ -164,6 +166,37 @@ const RUN_COLUMNS =
 
 const MAPPING_COLUMNS =
   "id, owner_user_id, task_id, destination_key, google_account_subject, google_account_email, calendar_id, event_id, generation, status, metadata_verified, payload_hash, last_synced_at, updated_at";
+
+// calendar_sync_commit_scan_page reads snake_case JSON keys from p_items and
+// p_jobs. Keep that dialect at the adapter boundary so application drafts stay
+// camelCase and a missing key can never become a NULL task_id in SQL.
+export function toCalendarScanItemPayload(
+  item: CalendarRunItemDraft,
+): Record<string, unknown> {
+  return {
+    task_id: item.taskId,
+    outcome: item.outcome,
+    exclusion_reason: item.exclusionReason,
+    event_id: item.eventId,
+    payload_hash: item.payloadHash,
+    error_message: item.errorMessage ?? null,
+  };
+}
+
+export function toCalendarScanJobPayload(
+  job: CalendarScanJobDraft,
+): Record<string, unknown> {
+  return {
+    task_id: job.taskId,
+    operation: job.operation,
+    calendar_event_id: job.eventId,
+    generation: job.generation,
+    event_exists: job.eventExists,
+    payload_hash: job.payloadHash,
+    exclusion_reason: job.exclusionReason,
+    task_updated_at: job.taskUpdatedAt,
+  };
+}
 
 export class SupabaseCalendarSyncRepository implements CalendarSyncRepository {
   constructor(
@@ -631,8 +664,8 @@ export class SupabaseCalendarSyncRepository implements CalendarSyncRepository {
       p_next_cursor_created_at: commit.nextCursor?.createdAt ?? null,
       p_next_cursor_task_id: commit.nextCursor?.taskId ?? null,
       p_scan_complete: commit.scanComplete,
-      p_items: commit.items,
-      p_jobs: commit.jobs,
+      p_items: commit.items.map(toCalendarScanItemPayload),
+      p_jobs: commit.jobs.map(toCalendarScanJobPayload),
       p_now: commit.nowIso,
     });
     if (result.error) return failure(result.error);
