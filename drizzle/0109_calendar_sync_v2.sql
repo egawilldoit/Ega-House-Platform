@@ -270,7 +270,9 @@ $claim$;
 --> statement-breakpoint
 
 -- Commit a scanned task page together with its queued work and cursor. A crash
--- can only replay the page; it cannot skip it.
+-- can only replay the page; it cannot skip it. Queued work keeps the planned
+-- calendar event id so a claimed update or delete targets the mapped event
+-- instead of creating a duplicate.
 CREATE OR REPLACE FUNCTION public.calendar_sync_commit_scan_page(
   p_run_id uuid,
   p_claim_token uuid,
@@ -338,7 +340,7 @@ BEGIN
   SELECT
     v_run.owner_user_id,
     (job->>'task_id')::uuid,
-    NULL,
+    NULLIF(job->>'calendar_event_id', ''),
     job->>'operation',
     'pending',
     0,
@@ -360,6 +362,10 @@ BEGIN
     WHERE (status = 'pending' AND queue_version = 2)
   DO UPDATE
   SET operation = EXCLUDED.operation,
+      calendar_event_id = COALESCE(
+        EXCLUDED.calendar_event_id,
+        public.calendar_sync_jobs.calendar_event_id
+      ),
       generation = EXCLUDED.generation,
       event_exists = EXCLUDED.event_exists,
       payload_hash = EXCLUDED.payload_hash,

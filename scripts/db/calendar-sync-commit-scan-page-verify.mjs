@@ -15,6 +15,12 @@
  *           every field at the adapter boundary, so the same page persists run
  *           items with real task ids, links them to the coalesced job, and
  *           advances the scan cursor.
+ *   TARGET - a normalized job keeps its `calendar_event_id` on insert, adopts a
+ *           re-planned target when the same task/destination coalesces, and
+ *           survives a same-page replay without a second queue row.
+ *   CLAIM - `calendar_sync_claim_jobs` returns the persisted target for a mapped
+ *           update and a mapped delete, so the worker updates or removes the
+ *           planned event instead of creating a duplicate.
  *
  * Usage:
  *   node --import tsx scripts/db/calendar-sync-commit-scan-page-verify.mjs \
@@ -39,12 +45,19 @@ const OWNER = "11111111-1111-4111-8111-111111111111";
 const PROJECT = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const TASK_A = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const TASK_B = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+const TASK_C = "99999999-9999-4999-8999-999999999999";
 const RUN = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
 const CLAIM = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
+const CLAIM_REPLAY = "ffffffff-ffff-4fff-8fff-ffffffffffff";
+const CLAIM_REPLAN = "12121212-1212-4212-8212-121212121212";
+const JOB_CLAIM = "13131313-1313-4313-8313-131313131313";
 const DESTINATION_KEY = "proof-subject|primary";
 const CURSOR_CREATED_AT = "2026-11-23T10:00:00+00:00";
 const TASK_UPDATED_AT = "2026-11-23T09:59:00+00:00";
 const NOW = "2026-11-23T10:01:00+00:00";
+const NOW_REPLAY = "2026-11-23T10:02:00+00:00";
+const NOW_REPLAN = "2026-11-23T10:03:00+00:00";
+const JOB_CLAIM_AT = "2026-11-23T10:04:00+00:00";
 const LEASE_UNTIL = "2026-11-23T10:06:00+00:00";
 
 function parseArgs() {
@@ -177,12 +190,12 @@ async function captureCode(fn) {
   }
 }
 
-function commitDrafts() {
+function commitDrafts(overrides = {}) {
   return {
     runId: RUN,
     claimToken: CLAIM,
-    nextCursor: { createdAt: CURSOR_CREATED_AT, taskId: TASK_B },
-    scanComplete: true,
+    nextCursor: { createdAt: CURSOR_CREATED_AT, taskId: TASK_C },
+    scanComplete: false,
     items: [
       {
         taskId: TASK_A,
@@ -199,6 +212,14 @@ function commitDrafts() {
         eventId: "event-b",
         payloadHash: "hash-b",
       },
+      {
+        taskId: TASK_C,
+        outcome: "pending",
+        exclusionReason: "archived",
+        eventId: "event-c",
+        payloadHash: null,
+        errorMessage: null,
+      },
     ],
     jobs: [
       {
@@ -211,9 +232,37 @@ function commitDrafts() {
         exclusionReason: null,
         taskUpdatedAt: TASK_UPDATED_AT,
       },
+      {
+        taskId: TASK_C,
+        operation: "delete",
+        eventId: "event-c",
+        generation: 1,
+        eventExists: true,
+        payloadHash: null,
+        exclusionReason: "archived",
+        taskUpdatedAt: TASK_UPDATED_AT,
+      },
     ],
     nowIso: NOW,
+    ...overrides,
   };
+}
+
+function normalizeCommit(drafts) {
+  return {
+    ...drafts,
+    items: drafts.items.map(toCalendarScanItemPayload),
+    jobs: drafts.jobs.map(toCalendarScanJobPayload),
+  };
+}
+
+function claimScanQuery(sql, claimToken, nowIso) {
+  return sql`SELECT public.calendar_sync_claim_run_scan(
+    ${RUN}::uuid,
+    ${claimToken}::uuid,
+    ${nowIso}::timestamptz,
+    ${300}::integer
+  ) AS claimed`;
 }
 
 function commitQuery(sql, commit) {
@@ -257,9 +306,10 @@ async function main() {
     );
     await sql.unsafe(
       `INSERT INTO public.tasks (id, project_id, owner_user_id, title, updated_at)
-       VALUES ($1, $3, $4, 'Task A', $5::timestamptz),
-              ($2, $3, $4, 'Task B', $5::timestamptz)`,
-      [TASK_A, TASK_B, PROJECT, OWNER, TASK_UPDATED_AT],
+       VALUES ($1, $4, $5, 'Task A', $6::timestamptz),
+              ($2, $4, $5, 'Task B', $6::timestamptz),
+              ($3, $4, $5, 'Task C', $6::timestamptz)`,
+      [TASK_A, TASK_B, TASK_C, PROJECT, OWNER, TASK_UPDATED_AT],
     );
     await sql.unsafe(
       `INSERT INTO public.calendar_sync_runs (
@@ -271,7 +321,7 @@ async function main() {
                'active', $4, $5::timestamptz)`,
       [RUN, OWNER, DESTINATION_KEY, CLAIM, LEASE_UNTIL],
     );
-    log("SEED", "active run, scan claim, project and two tasks ready");
+    log("SEED", "active run, scan claim, project and three tasks ready");
 
     // RED: the pre-fix adapter forwarded the camelCase drafts unchanged. The
     // SQL function reads snake_case keys, so the first item has no task_id.
@@ -286,14 +336,10 @@ async function main() {
     log("RED", `camelCase drafts fail as expected (${redCode}); no partial items persisted`);
 
     // GREEN: the adapter normalizes every field before the RPC call.
-    const commit = {
-      ...drafts,
-      items: drafts.items.map(toCalendarScanItemPayload),
-      jobs: drafts.jobs.map(toCalendarScanJobPayload),
-    };
+    const commit = normalizeCommit(drafts);
     assert(
       commit.jobs[0].calendar_event_id === "event-a",
-      "normalized job payload must carry calendar_event_id for the fix-2 consumer",
+      "normalized job payload must carry calendar_event_id for the SQL target",
     );
     const [committed] = await commitQuery(sql, commit);
     assert(committed.committed === true, "normalized nonempty page must commit");
@@ -306,9 +352,10 @@ async function main() {
        ORDER BY task_id`,
       [RUN],
     );
-    assert(items.length === 2, "both scanned tasks must persist a run item");
+    assert(items.length === 3, "all scanned tasks must persist a run item");
     const itemA = items.find((row) => row.task_id === TASK_A);
     const itemB = items.find((row) => row.task_id === TASK_B);
+    const itemC = items.find((row) => row.task_id === TASK_C);
     assert(itemA?.outcome === "pending", "task A item outcome must persist");
     assert(itemA?.event_id === "event-a", "task A item event id must persist");
     assert(itemA?.payload_hash === "hash-a", "task A item payload hash must persist");
@@ -316,28 +363,45 @@ async function main() {
     assert(itemB?.outcome === "unchanged", "task B item outcome must persist");
     assert(itemB?.event_id === "event-b", "task B item event id must persist");
     assert(itemB?.job_id === null, "a task without work must not link a job");
+    assert(itemC?.outcome === "pending", "task C removal item outcome must persist");
+    assert(itemC?.event_id === "event-c", "task C item event id must persist");
+    assert(itemC?.job_id, "task C removal item must link to its queued job");
 
     const jobs = await sql.unsafe(
-      `SELECT task_id, operation, status, queue_version, generation, event_exists,
-              payload_hash, task_updated_at, run_id, destination_key
+      `SELECT id, task_id, calendar_event_id, operation, status, queue_version,
+              generation, event_exists, payload_hash, task_updated_at, run_id,
+              destination_key
        FROM public.calendar_sync_jobs
        WHERE run_id = $1`,
       [RUN],
     );
-    assert(jobs.length === 1, "one coalesced job must be queued for the scanned page");
-    const job = jobs[0];
-    assert(job.task_id === TASK_A, "job task id must come from the normalized payload");
-    assert(job.operation === "upsert", "job operation must persist");
-    assert(job.status === "pending", "job must be queued as pending");
-    assert(job.queue_version === 2, "job must be a v2 queue job");
-    assert(job.generation === 2, "job generation must persist");
-    assert(job.event_exists === true, "job event_exists must persist");
-    assert(job.payload_hash === "hash-a", "job payload hash must persist");
+    assert(jobs.length === 2, "one coalesced job per scanned task must be queued");
+    const jobA = jobs.find((row) => row.task_id === TASK_A);
+    const jobC = jobs.find((row) => row.task_id === TASK_C);
+    assert(jobA, "task A update job must persist");
+    assert(jobC, "task C delete job must persist");
+    assert(jobA.operation === "upsert", "task A job operation must persist");
+    assert(jobA.status === "pending", "task A job must be queued as pending");
+    assert(jobA.queue_version === 2, "task A job must be a v2 queue job");
+    assert(jobA.generation === 2, "task A job generation must persist");
+    assert(jobA.event_exists === true, "task A job event_exists must persist");
+    assert(jobA.payload_hash === "hash-a", "task A job payload hash must persist");
     assert(
-      new Date(job.task_updated_at).toISOString() === new Date(TASK_UPDATED_AT).toISOString(),
-      "job task_updated_at must persist",
+      new Date(jobA.task_updated_at).toISOString() ===
+        new Date(TASK_UPDATED_AT).toISOString(),
+      "task A job task_updated_at must persist",
     );
-    assert(job.destination_key === DESTINATION_KEY, "job must inherit the run destination");
+    assert(jobA.destination_key === DESTINATION_KEY, "task A job must inherit the destination");
+    assert(
+      jobA.calendar_event_id === "event-a",
+      "Fix 2: a mapped update job must persist its planned calendar_event_id",
+    );
+    assert(jobC.operation === "delete", "task C job operation must persist");
+    assert(jobC.generation === 1, "task C job generation must persist");
+    assert(
+      jobC.calendar_event_id === "event-c",
+      "Fix 2: a mapped delete job must persist its planned calendar_event_id",
+    );
 
     const [run] = await sql.unsafe(
       `SELECT scan_cursor_created_at, scan_cursor_task_id, scan_complete,
@@ -350,10 +414,183 @@ async function main() {
         new Date(CURSOR_CREATED_AT).toISOString(),
       "scan cursor timestamp must advance",
     );
-    assert(run.scan_cursor_task_id === TASK_B, "scan cursor task id must advance");
-    assert(run.scan_complete === true, "scan completion flag must persist");
+    assert(run.scan_cursor_task_id === TASK_C, "scan cursor task id must advance");
+    assert(run.scan_complete === false, "an unfinished scan must stay incomplete");
     assert(run.scan_claim_token === null, "committed scan claim must clear");
     assert(run.scan_lease_expires_at === null, "committed scan lease must clear");
+    log("TARGET", "inserted update and delete jobs kept their planned event ids");
+
+    // A crash replays the same page. Re-claim the run and commit the identical
+    // page: the pending jobs must coalesce by id and keep the same target.
+    const [replayClaim] = await claimScanQuery(sql, CLAIM_REPLAY, NOW_REPLAY);
+    assert(replayClaim.claimed === true, "a replayed scan page must be claimable");
+    const replayCommit = normalizeCommit(
+      commitDrafts({ claimToken: CLAIM_REPLAY, nowIso: NOW_REPLAY }),
+    );
+    const [replayed] = await commitQuery(sql, replayCommit);
+    assert(replayed.committed === true, "an identical replay must commit");
+
+    const replayJobs = await sql.unsafe(
+      `SELECT id, task_id, calendar_event_id, operation, generation
+       FROM public.calendar_sync_jobs
+       WHERE run_id = $1
+       ORDER BY task_id`,
+      [RUN],
+    );
+    assert(replayJobs.length === 2, "a page replay must not queue duplicate jobs");
+    const replayedA = replayJobs.find((row) => row.task_id === TASK_A);
+    const replayedC = replayJobs.find((row) => row.task_id === TASK_C);
+    assert(replayedA?.id === jobA.id, "task A replay must coalesce into the same job");
+    assert(replayedC?.id === jobC.id, "task C replay must coalesce into the same job");
+    assert(
+      replayedA.calendar_event_id === "event-a",
+      "task A replay must preserve the planned target",
+    );
+    assert(
+      replayedC.calendar_event_id === "event-c",
+      "task C replay must preserve the planned target",
+    );
+    assert(replayedA.operation === "upsert", "task A replay must keep the operation");
+    assert(replayedC.operation === "delete", "task C replay must keep the operation");
+    log("REPLAY", "same-page replay coalesced to the same jobs and planned targets");
+
+    // A later plan for the same task/destination must adopt its new target in
+    // the same pending row, and finishing the scan must still clear the claim.
+    const [replanClaim] = await claimScanQuery(sql, CLAIM_REPLAN, NOW_REPLAN);
+    assert(replanClaim.claimed === true, "the scan must be claimable after a replay");
+    const replanCommit = normalizeCommit(
+      commitDrafts({
+        claimToken: CLAIM_REPLAN,
+        nowIso: NOW_REPLAN,
+        scanComplete: true,
+        items: [
+          {
+            taskId: TASK_A,
+            outcome: "pending",
+            exclusionReason: null,
+            eventId: "event-a2",
+            payloadHash: "hash-a2",
+            errorMessage: null,
+          },
+          {
+            taskId: TASK_B,
+            outcome: "unchanged",
+            exclusionReason: null,
+            eventId: "event-b",
+            payloadHash: "hash-b",
+          },
+          {
+            taskId: TASK_C,
+            outcome: "pending",
+            exclusionReason: "archived",
+            eventId: "event-c",
+            payloadHash: null,
+            errorMessage: null,
+          },
+        ],
+        jobs: [
+          {
+            taskId: TASK_A,
+            operation: "upsert",
+            eventId: "event-a2",
+            generation: 3,
+            eventExists: false,
+            payloadHash: "hash-a2",
+            exclusionReason: null,
+            taskUpdatedAt: TASK_UPDATED_AT,
+          },
+          {
+            taskId: TASK_C,
+            operation: "delete",
+            eventId: "event-c",
+            generation: 1,
+            eventExists: true,
+            payloadHash: null,
+            exclusionReason: "archived",
+            taskUpdatedAt: TASK_UPDATED_AT,
+          },
+        ],
+      }),
+    );
+    const [replanned] = await commitQuery(sql, replanCommit);
+    assert(replanned.committed === true, "a re-planned page must commit");
+
+    const plannedJobs = await sql.unsafe(
+      `SELECT id, task_id, calendar_event_id, operation, generation, event_exists,
+              payload_hash
+       FROM public.calendar_sync_jobs
+       WHERE run_id = $1
+       ORDER BY task_id`,
+      [RUN],
+    );
+    assert(plannedJobs.length === 2, "re-planning must coalesce, not duplicate");
+    const plannedA = plannedJobs.find((row) => row.task_id === TASK_A);
+    const plannedC = plannedJobs.find((row) => row.task_id === TASK_C);
+    assert(plannedA?.id === jobA.id, "task A re-plan must keep the pending job id");
+    assert(plannedC?.id === jobC.id, "task C re-plan must keep the pending job id");
+    assert(
+      plannedA.calendar_event_id === "event-a2",
+      "coalescing must adopt the re-planned calendar_event_id",
+    );
+    assert(plannedA.operation === "upsert", "coalescing must adopt the re-planned operation");
+    assert(plannedA.generation === 3, "coalescing must adopt the re-planned generation");
+    assert(plannedA.event_exists === false, "coalescing must adopt event_exists");
+    assert(plannedA.payload_hash === "hash-a2", "coalescing must adopt the payload hash");
+    assert(
+      plannedC.calendar_event_id === "event-c",
+      "coalescing must preserve the unchanged delete target",
+    );
+    assert(plannedC.operation === "delete", "coalescing must keep the delete operation");
+
+    const [finishedRun] = await sql.unsafe(
+      `SELECT scan_cursor_task_id, scan_complete, scan_claim_token,
+              scan_lease_expires_at
+       FROM public.calendar_sync_runs WHERE id = $1`,
+      [RUN],
+    );
+    assert(finishedRun.scan_cursor_task_id === TASK_C, "scan cursor must stay current");
+    assert(finishedRun.scan_complete === true, "scan completion flag must persist");
+    assert(finishedRun.scan_claim_token === null, "the final commit must clear the claim");
+    assert(finishedRun.scan_lease_expires_at === null, "the final commit must clear the lease");
+    log("COALESCE", "re-planning adopted the new target on the same pending rows");
+
+    // The worker receives the normalized target only through the real claim
+    // path. Both a mapped update and a mapped delete must carry their event id.
+    const claimedJobs = await sql`
+      SELECT id, task_id, calendar_event_id, operation, status, attempts,
+             claim_token, generation, event_exists, destination_key
+      FROM public.calendar_sync_claim_jobs(
+        ${OWNER}::uuid,
+        ${DESTINATION_KEY}::text,
+        ${RUN}::uuid,
+        ${JOB_CLAIM}::uuid,
+        ${10}::integer,
+        ${JOB_CLAIM_AT}::timestamptz,
+        ${300}::integer
+      )
+    `;
+    assert(claimedJobs.length === 2, "both queued jobs must be claimable");
+    const claimedA = claimedJobs.find((row) => row.task_id === TASK_A);
+    const claimedC = claimedJobs.find((row) => row.task_id === TASK_C);
+    assert(claimedA?.status === "processing", "task A claim must be processing");
+    assert(claimedA?.claim_token === JOB_CLAIM, "task A claim must carry the claim token");
+    assert(claimedA?.attempts === 1, "task A claim must advance attempts once");
+    assert(claimedA?.operation === "upsert", "task A claim must expose the update operation");
+    assert(
+      claimedA?.calendar_event_id === "event-a2",
+      "Fix 2: a claimed mapped update must expose its planned target",
+    );
+    assert(claimedA?.event_exists === false, "task A claim must expose event_exists");
+    assert(claimedC?.status === "processing", "task C claim must be processing");
+    assert(claimedC?.claim_token === JOB_CLAIM, "task C claim must carry the claim token");
+    assert(claimedC?.attempts === 1, "task C claim must advance attempts once");
+    assert(claimedC?.operation === "delete", "task C claim must expose the delete operation");
+    assert(
+      claimedC?.calendar_event_id === "event-c",
+      "Fix 2: a claimed mapped delete must expose its planned target",
+    );
+    assert(claimedC?.destination_key === DESTINATION_KEY, "task C claim must stay destination-bound");
+    log("CLAIM", "claimed mapped update and delete jobs exposed their planned targets");
 
     console.log("CALENDAR-SYNC-COMMIT-SCAN-PAGE-VERIFY PASS");
   } finally {
