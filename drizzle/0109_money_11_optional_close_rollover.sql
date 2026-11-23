@@ -1028,3 +1028,62 @@ GRANT EXECUTE ON FUNCTION public.money_rollover_period(
   integer, date, text, text, text, jsonb, jsonb, text, text, text,
   text, text, text, text, integer, jsonb, jsonb, jsonb, timestamptz
 ) TO authenticated;
+--> statement-breakpoint
+-- Compatibility overload for the pre-MONEY-001-A 25-argument RPC. A fully
+-- closed source keeps working for existing callers; an unverified source is
+-- refused by the new function because this overload cannot carry the retained
+-- acknowledgment note. New callers should use the 27-argument signature.
+CREATE OR REPLACE FUNCTION public.money_rollover_period(
+  p_source_period_id uuid,
+  p_expected_version integer,
+  p_start_date date,
+  p_end_date date,
+  p_active_date date,
+  p_timezone text,
+  p_initialized text,
+  p_allow_uncovered_days boolean,
+  p_opening_amount_minor integer,
+  p_opening_cutoff_date date,
+  p_opening_evidence text,
+  p_opening_note text,
+  p_opening_create_fingerprint text,
+  p_provenance jsonb,
+  p_settings jsonb,
+  p_operation_id text,
+  p_request_fingerprint text,
+  p_opening_mode text,
+  p_unpaid_treatment text,
+  p_unpaid_reason text,
+  p_reconciliation_accepted_note text,
+  p_reconciliation jsonb,
+  p_occurrences jsonb,
+  p_carried_occurrences jsonb,
+  p_created_at timestamptz
+)
+RETURNS jsonb
+LANGUAGE sql
+SET search_path = ''
+AS $compat$
+  SELECT public.money_rollover_period(
+    p_source_period_id, p_expected_version, p_start_date, p_end_date,
+    p_active_date, p_timezone, p_initialized, p_allow_uncovered_days,
+    p_opening_amount_minor, p_opening_cutoff_date, p_opening_evidence,
+    p_opening_note, p_opening_create_fingerprint, p_provenance, p_settings,
+    p_operation_id, p_request_fingerprint, p_opening_mode, p_unpaid_treatment,
+    p_unpaid_reason, p_reconciliation_accepted_note,
+    NULL::text, 0::integer,
+    p_reconciliation, p_occurrences, p_carried_occurrences, p_created_at
+  );
+$compat$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION public.money_rollover_period(
+  uuid, integer, date, date, date, text, text, boolean,
+  integer, date, text, text, text, jsonb, jsonb, text, text, text,
+  text, text, text, jsonb, jsonb, jsonb, timestamptz
+) FROM PUBLIC, anon;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION public.money_rollover_period(
+  uuid, integer, date, date, date, text, text, boolean,
+  integer, date, text, text, text, jsonb, jsonb, text, text, text,
+  text, text, text, jsonb, jsonb, jsonb, timestamptz
+) TO authenticated;

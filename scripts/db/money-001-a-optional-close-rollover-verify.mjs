@@ -123,6 +123,23 @@ async function main() {
     }
     console.log(`[MIGRATE] ${tags.length} migrations through ${tags.at(-1)}`);
 
+    // The new reviewed-finalization signature is additive: the previous
+    // 25-argument RPC remains as a compatibility overload for fully closed
+    // sources, and cannot carry a fake unverified-day acknowledgment.
+    const rolloverOverloads = await sql.unsafe(
+      `SELECT pg_get_function_identity_arguments(p.oid) AS args
+       FROM pg_proc AS p
+       JOIN pg_namespace AS n ON n.oid = p.pronamespace
+       WHERE n.nspname = 'public' AND p.proname = 'money_rollover_period'
+       ORDER BY array_length(p.proargtypes, 1)`,
+    );
+    assert(
+      rolloverOverloads.length === 2 &&
+        rolloverOverloads[0].args.includes("p_unverified_days_note") === false &&
+        rolloverOverloads[1].args.includes("p_unverified_days_note") === true,
+      "the rollover RPC keeps a backward-compatible overload",
+    );
+
     for (const [clientId, profile, permissions] of [
       ["money-read", "personal_operations", READ],
       ["money-write", "personal_operations_writer", WRITE],
