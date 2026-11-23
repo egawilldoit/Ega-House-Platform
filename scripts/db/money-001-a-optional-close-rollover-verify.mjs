@@ -175,6 +175,26 @@ async function main() {
       "complete day-start baseline exists before the close",
     );
 
+    // SECURITY DEFINER is only an implementation detail: a read-only MCP grant
+    // must still be denied a settings/opening write through the definitions RPC.
+    const settingsWriteDenied = await user(
+      A,
+      tx =>
+        tx.unsafe(
+          `SELECT * FROM public.money_update_period(
+            $1,$2,NULL::date,'{"savingsTargetMinor":123}'::jsonb,NULL::integer,
+            NULL::text,NULL::text,NULL::jsonb,NULL::text,now()::timestamptz
+          )`,
+          [periodId, created[0].version],
+        ),
+      "money-read",
+    )
+      .then(() => false, error => error.code === "42501");
+    assert(
+      settingsWriteDenied,
+      "a read-only finance grant cannot write settings through money_update_period",
+    );
+
     const beforeClose = (
       await sql.unsafe("SELECT version FROM public.money_periods WHERE id=$1", [periodId])
     )[0];
@@ -270,6 +290,29 @@ async function main() {
       preseededInsertDenied,
       "a direct insert cannot pre-seed finalization evidence",
     );
+
+    for (const [label, lifecycle, extraColumns, extraValues] of [
+      ["ended lifecycle", "'ended'", "", ""],
+      ["successor link", "'tracking'", ",successor_period_id", ",gen_random_uuid()"],
+      ["rolled-over timestamp", "'tracking'", ",rolled_over_at", ",now()"],
+    ]) {
+      let denied = false;
+      try {
+        await user(A, tx =>
+          tx.unsafe(
+            `INSERT INTO public.money_periods
+             (owner_user_id,start_date,end_date,currency,timezone,active_date,
+              lifecycle,version${extraColumns})
+             VALUES ($1,'2027-04-01','2027-04-02','MAD','Africa/Casablanca',
+              '2027-04-01',${lifecycle},1${extraValues})`,
+            [A],
+          ),
+        );
+      } catch (error) {
+        denied = error.code === "23514";
+      }
+      assert(denied, `a direct insert cannot pre-seed ${label}`);
+    }
 
     // --- Skip Nov 21/22 and record Nov 23 -----------------------------------
     const advanced = await user(A, (tx) =>

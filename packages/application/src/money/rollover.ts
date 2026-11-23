@@ -377,13 +377,16 @@ async function prepareRollover(
     };
   }
 
+  const localToday = getLocalDateInTimezone(now, source.period.timezone);
   // A verified balance is evidence for a cutoff, not a promise about future
-  // days. While a tracking source still has unreached days, its verified
-  // opening cannot cover the source end without inventing future evidence.
+  // days. Before the source period has ended in the owner's calendar, its
+  // verified balance cannot cover the source end without inventing future
+  // evidence. A late tracking period (end date already passed) may use a
+  // verified balance covering the end even when its active date lagged.
   if (
     values.opening.mode === "verified_source" &&
     source.period.lifecycle === "tracking" &&
-    source.period.activeDate < source.period.endDate
+    localToday < source.period.endDate
   ) {
     return {
       ok: false,
@@ -392,7 +395,6 @@ async function prepareRollover(
         "A verified opening is only available after the source period ends. Use carry-forward for early finalization or wait until the period end.",
     };
   }
-  const localToday = getLocalDateInTimezone(now, source.period.timezone);
 
   let opening: MoneyOpeningInput | null = null;
   let initialized: "initialized" | "reconciled" = "initialized";

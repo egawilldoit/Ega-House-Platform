@@ -442,6 +442,13 @@ BEGIN
   IF v_owner IS NULL THEN
     RAISE EXCEPTION 'Authentication is required.' USING ERRCODE = '42501';
   END IF;
+  -- This function is SECURITY DEFINER so it can maintain the active-date
+  -- baseline after the column grant is revoked. It must still enforce the same
+  -- finance-write grant as the old RLS UPDATE path.
+  IF (SELECT auth.jwt()) ->> 'client_id' IS NOT NULL
+     AND NOT public.mcp_finance_grant_allows('personal_ops.write') THEN
+    RAISE EXCEPTION 'Finance write grant required' USING ERRCODE = '42501';
+  END IF;
 
   SELECT * INTO v_period
   FROM public.money_periods
@@ -699,6 +706,17 @@ BEGIN
      AND NULLIF(btrim(COALESCE(p_opening_evidence, '')), '') IS NULL THEN
     RAISE EXCEPTION 'A verified opening must retain its evidence.'
       USING ERRCODE = '23514';
+  END IF;
+  IF p_opening_mode = 'verified_source' THEN
+    IF p_opening_cutoff_date < v_source.end_date THEN
+      RAISE EXCEPTION 'A verified opening must cover the source period end (%).',
+        v_source.end_date
+        USING ERRCODE = '23514';
+    END IF;
+    IF p_opening_cutoff_date > (p_created_at AT TIME ZONE v_source.timezone)::date THEN
+      RAISE EXCEPTION 'A verified opening cannot be dated after its operation.'
+        USING ERRCODE = '23514';
+    END IF;
   END IF;
   IF p_settings IS NOT NULL AND jsonb_typeof(p_settings) <> 'object' THEN
     RAISE EXCEPTION 'Successor settings overrides must be a JSON object.'

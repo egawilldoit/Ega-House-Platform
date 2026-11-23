@@ -353,21 +353,33 @@ async function main() {
         [input.id, input.owner, input.start, input.end, input.lifecycle ?? "tracking"],
       );
     }
-    await asUser(sql, OWNER_A).run(async (tx) => {
-      await insertPeriod(tx, {
-        id: PERIOD_A,
-        owner: OWNER_A,
-        start: "2026-11-09",
-        end: "2026-11-30",
+    // This proof needs a pre-existing ended period as a fixture. Production
+    // writing always goes through money_create_period / the close and rollover
+    // definitions; disable only the new insert guard for this admin fixture.
+    await sql.unsafe(
+      'ALTER TABLE public.money_periods DISABLE TRIGGER money_periods_insert_guard',
+    );
+    try {
+      await asUser(sql, OWNER_A).run(async (tx) => {
+        await insertPeriod(tx, {
+          id: PERIOD_A,
+          owner: OWNER_A,
+          start: "2026-11-09",
+          end: "2026-11-30",
+        });
+        await insertPeriod(tx, {
+          id: PERIOD_JAN,
+          owner: OWNER_A,
+          start: "2027-01-01",
+          end: "2027-01-31",
+          lifecycle: "ended",
+        });
       });
-      await insertPeriod(tx, {
-        id: PERIOD_JAN,
-        owner: OWNER_A,
-        start: "2027-01-01",
-        end: "2027-01-31",
-        lifecycle: "ended",
-      });
-    });
+    } finally {
+      await sql.unsafe(
+        'ALTER TABLE public.money_periods ENABLE TRIGGER money_periods_insert_guard',
+      );
+    }
     await asUser(sql, OWNER_B).run((tx) =>
       insertPeriod(tx, {
         id: PERIOD_OWNER_B,
@@ -491,12 +503,23 @@ async function main() {
 
     // Finishing the tracking period keeps its plan readable but prevents new or
     // edited plans. A fresh tracking period is needed for the writer grant proof.
+    // Fixture-only transition: the production close/rollover definitions own
+    // real ended periods. Keep the guard enabled for every user-facing proof.
     await sql.unsafe(
-      `UPDATE public.money_periods
-          SET lifecycle = 'ended', version = version + 1, updated_at = now()
-        WHERE id = $1::uuid`,
-      [PERIOD_A],
+      'ALTER TABLE public.money_periods DISABLE TRIGGER money_periods_close_transition_guard',
     );
+    try {
+      await sql.unsafe(
+        `UPDATE public.money_periods
+            SET lifecycle = 'ended', version = version + 1, updated_at = now()
+          WHERE id = $1::uuid`,
+        [PERIOD_A],
+      );
+    } finally {
+      await sql.unsafe(
+        'ALTER TABLE public.money_periods ENABLE TRIGGER money_periods_close_transition_guard',
+      );
+    }
     await asUser(sql, OWNER_A).run((tx) =>
       insertPeriod(tx, {
         id: PERIOD_FEB,

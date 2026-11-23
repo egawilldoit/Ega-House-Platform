@@ -307,6 +307,9 @@ export default async function MoneyPage({ searchParams }: Props) {
             ? `History is scoped to ${moneyState.period.startDate}–${moneyState.period.endDate}.`
             : "History covers all recorded movements."
         }
+        canChangeBookingDate={
+          moneyState?.period ? moneyState.period.lifecycle === "tracking" : true
+        }
       />
 
       <section aria-labelledby="money-secondary-heading" className="mt-6 rounded-lg border border-ega-border p-5">

@@ -172,9 +172,16 @@ async function main() {
     const legacyPeriod = legacy[0].id;
     await sql.unsafe("DELETE FROM public.money_day_start_baselines WHERE owner_user_id=$1 AND period_id=$2", [C,legacyPeriod]);
     await sql.unsafe("DELETE FROM public.money_policy_versions WHERE owner_user_id=$1 AND period_id=$2", [C,legacyPeriod]);
-    await user(C, tx => tx.unsafe(`INSERT INTO public.money_budget_plans
-      (owner_user_id,period_id,savings_target_minor,emergency_target_minor)
-      VALUES ($1,$2,12000,3000)`, [C,legacyPeriod]));
+    // Simulate a pre-0101 legacy plan: it has no retained policy history yet.
+    // The new insert trigger would otherwise record that first plan correctly.
+    await sql.unsafe("ALTER TABLE public.money_budget_plans DISABLE TRIGGER money_budget_target_revision_insert");
+    try {
+      await user(C, tx => tx.unsafe(`INSERT INTO public.money_budget_plans
+        (owner_user_id,period_id,savings_target_minor,emergency_target_minor)
+        VALUES ($1,$2,12000,3000)`, [C,legacyPeriod]));
+    } finally {
+      await sql.unsafe("ALTER TABLE public.money_budget_plans ENABLE TRIGGER money_budget_target_revision_insert");
+    }
     await user(C, tx => tx.unsafe(`UPDATE public.money_budget_plans
       SET savings_target_minor=15000, emergency_target_minor=4500, version=2
       WHERE owner_user_id=$1 AND period_id=$2`, [C,legacyPeriod]));
@@ -209,7 +216,15 @@ async function main() {
       && retainedFunded[0].savings_funded_minor === 1000,
       "deleted savings funding is excluded from new baselines while earlier snapshots remain intact");
     console.log("[SAVINGS] deleted transfer excluded; earlier baseline preserved");
-    const endFirst = await user(A, tx => tx.unsafe("UPDATE public.money_periods SET lifecycle='ended', version=version+1 WHERE id=$1 RETURNING id", [period]));
+    // Fixture-only transition; production periods end through the final-day
+    // close or the explicit rollover definition.
+    await sql.unsafe("ALTER TABLE public.money_periods DISABLE TRIGGER money_periods_close_transition_guard");
+    let endFirst;
+    try {
+      endFirst = await user(A, tx => tx.unsafe("UPDATE public.money_periods SET lifecycle='ended', version=version+1 WHERE id=$1 RETURNING id", [period]));
+    } finally {
+      await sql.unsafe("ALTER TABLE public.money_periods ENABLE TRIGGER money_periods_close_transition_guard");
+    }
     assert(endFirst.length===1, "first period ends before creating the next tracking period");
     const endedRebaseDenied = await user(A, tx => tx.unsafe("SELECT * FROM public.money_rebase_day_start_baseline($1)", [period]))
       .then(() => false, e => e.code === "P0001");

@@ -16,7 +16,13 @@ import { updateMovementAction } from "../actions";
  * amount and a restated savings transfer restores the same cash/savings
  * invariants. Expense rows are edited by the existing expense controls.
  */
-export function MoneyMovementActions({ movement }: { movement: MoneyMovementDto }) {
+export function MoneyMovementActions({
+  movement,
+  canChangeBookingDate = true,
+}: {
+  movement: MoneyMovementDto;
+  canChangeBookingDate?: boolean;
+}) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [baseVersion, setBaseVersion] = useState(movement.version);
@@ -155,15 +161,26 @@ export function MoneyMovementActions({ movement }: { movement: MoneyMovementDto 
             />
           </div>
           <div className="space-y-1">
-            <label htmlFor={`movement-date-${movement.id}`} className="text-xs text-[color:var(--ega-text-secondary)]">Booking date</label>
-            <Input
-              id={`movement-date-${movement.id}`}
-              type="date"
-              value={bookingDate}
-              onChange={(event) => setBookingDate(event.target.value)}
-              disabled={pending}
-              className="h-9 w-40"
-            />
+            <span className="block text-xs text-[color:var(--ega-text-secondary)]">Booking date</span>
+            {canChangeBookingDate ? (
+              <Input
+                id={`movement-date-${movement.id}`}
+                aria-label="Booking date"
+                type="date"
+                value={bookingDate}
+                onChange={(event) => setBookingDate(event.target.value)}
+                disabled={pending}
+                className="h-9 w-40"
+              />
+            ) : (
+              <>
+                <p className="text-sm tabular-nums">{bookingDate}</p>
+                <p className="max-w-56 text-xs text-[color:var(--ega-text-secondary)]">
+                  Historical periods keep their original booking date. Record an explicit
+                  adjustment for a different date.
+                </p>
+              </>
+            )}
           </div>
           <div className="space-y-1">
             <label htmlFor={`movement-note-${movement.id}`} className="text-xs text-[color:var(--ega-text-secondary)]">Note</label>

@@ -20,6 +20,7 @@ type MoneyHistoryProps = {
   timezone: string;
   selectedPeriodLabel: string | null;
   historyScopeLabel: string;
+  canChangeBookingDate: boolean;
 };
 
 function toEditableExpense(row: MoneyLedgerRow): ExpenseDto | null {
@@ -70,6 +71,7 @@ export function MoneyHistory({
   timezone,
   selectedPeriodLabel,
   historyScopeLabel,
+  canChangeBookingDate,
 }: MoneyHistoryProps) {
   const pageHref = (nextOffset: number) => moneyHref({ periodId, offset: nextOffset, kind });
   return (
@@ -148,7 +150,9 @@ export function MoneyHistory({
         <div className="mt-4 rounded border border-ega-border p-4">
           <p className="text-[color:var(--ega-text-secondary)]">
             {kind
-              ? "No movements of this kind are recorded."
+              ? periodId
+                ? "No movements of this kind are recorded in this period."
+                : "No movements of this kind are recorded."
               : offset > 0
                 ? "No movements on this page."
                 : "No movements recorded yet. Opening cash appears here once a period is initialized."}
@@ -201,7 +205,10 @@ export function MoneyHistory({
                       ) : expense ? (
                         <MoneyRowActions ownerKey={ownerKey} expense={expense} />
                       ) : (
-                        <MoneyMovementActions movement={row} />
+                        <MoneyMovementActions
+                          movement={row}
+                          canChangeBookingDate={canChangeBookingDate}
+                        />
                       )}
                     </td>
                   </tr>

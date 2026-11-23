@@ -723,6 +723,29 @@ async function main() {
       createdFrom: "web",
     };
     verifiedArgs[14] = { savingsTargetMinor: null, emergencyTargetMinor: null };
+    verifiedArgs[26] = "2027-01-01T09:00:00.000Z";
+    const invalidCutoffArgs = [...verifiedArgs];
+    invalidCutoffArgs[9] = "2026-12-18";
+    invalidCutoffArgs[13] = {
+      ...verifiedArgs[13],
+      opening: {
+        ...verifiedArgs[13].opening,
+        cutoffDate: "2026-12-18",
+      },
+    };
+    invalidCutoffArgs[15] = "m10-invalid-verified-cutoff";
+    invalidCutoffArgs[16] = hex("5");
+    let cutoffDenied = false;
+    try {
+      await user(A, (tx) => callRollover(tx, invalidCutoffArgs));
+    } catch (error) {
+      cutoffDenied =
+        error.code === "23514" && /cover the source period end/.test(error.message);
+    }
+    assert(
+      cutoffDenied,
+      "a verified opening before the source end is rejected by the RPC",
+    );
     let restatedRolloverDenied = false;
     try {
       await user(A, (tx) => callRollover(tx, verifiedArgs));

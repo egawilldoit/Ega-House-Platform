@@ -300,6 +300,60 @@ test("early tracking verification cannot invent a future balance cutoff", async 
   assert.equal(fake.writes.length, 0);
 });
 
+test("a late tracking source may use a verified cutoff covering its end", async () => {
+  const fake = fakeRepository(
+    context({
+      period: endedPeriod({
+        lifecycle: "tracking",
+        activeDate: "2026-11-28",
+      }),
+    }),
+  );
+  const result = await rolloverMoneyPeriod(
+    actor,
+    { repository: fake.repository, obligations: noTemplates },
+    baseInput({
+      opening: {
+        mode: "verified_source",
+        amountMinor: 68_900,
+        cutoffDate: "2026-12-01",
+        evidence: "counted cash after month end",
+        note: null,
+      },
+    }),
+    "750e8400-e29b-41d4-a716-446655440015",
+    { now: new Date("2026-12-05T09:00:00.000Z") },
+  );
+  assert.equal(result.ok, true);
+  assert.equal(fake.writes.length, 1);
+  assert.equal(fake.writes[0].opening.mode, "verified_source");
+});
+
+test("a future verified cutoff is rejected even after the source end", async () => {
+  const fake = fakeRepository(context());
+  const result = await rolloverMoneyPeriod(
+    actor,
+    { repository: fake.repository, obligations: noTemplates },
+    baseInput({
+      opening: {
+        mode: "verified_source",
+        amountMinor: 68_900,
+        cutoffDate: "2026-12-10",
+        evidence: "future statement",
+        note: null,
+      },
+    }),
+    "750e8400-e29b-41d4-a716-446655440016",
+    { now: new Date("2026-12-05T09:00:00.000Z") },
+  );
+  assert.equal(result.ok, false);
+  assert.match(
+    !result.ok ? result.errorMessage : "",
+    /cannot be in the future/,
+  );
+  assert.equal(fake.writes.length, 0);
+});
+
 test("unverified days require a retained acknowledgment before the write", async () => {
   const snapshots = {
     available: true as const,
