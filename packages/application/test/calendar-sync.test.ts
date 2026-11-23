@@ -1326,13 +1326,15 @@ test("legacy saved event id is updated in place and acquires private metadata", 
       updatedAt: "2026-05-10T09:00:00.000Z",
     }),
   );
+  // The current destination's source-tagged listing is the positive evidence
+  // that this saved id belongs here; no mapping history is needed.
   provider.events.set("legacy-event-1", {
     id: "legacy-event-1",
     status: "confirmed",
     summary: "Old title",
     start: { dateTime: "2026-05-10T09:00:00.000Z" },
     end: { dateTime: "2026-05-10T10:00:00.000Z" },
-    privateProperties: {},
+    privateProperties: { source: "ega-house" },
     raw: {},
   });
 
@@ -1456,6 +1458,137 @@ test("a switched destination never adopts the previous destination's saved event
     ).length,
     0,
   );
+});
+
+test("a first sync under a new account never targets an absent legacy event id", async () => {
+  const repository = new FakeRepository();
+  const provider = new FakeProvider();
+  repository.connection = {
+    ...repository.connection,
+    accountSubject: "google-subject-2",
+    accountEmail: "new@example.com",
+    destinationKey: "new@example.com|primary",
+    updatedAt: "2026-05-11T00:00:00.000Z",
+  };
+  const accountAEventId = "account-a-legacy-event";
+  repository.addTask(task({ calendarEventId: accountAEventId }));
+  // Account A's event is absent from B's listing and the task has no mapping
+  // history. Neither fact proves the unscoped id belongs to B.
+
+  const result = await startCalendarSync(actor, buildDeps(repository, provider));
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+
+  assert.deepEqual(
+    {
+      create: provider.createCalls,
+      update: provider.updateCalls,
+      delete: provider.deleteCalls,
+    },
+    { create: 0, update: 0, delete: 0 },
+  );
+  assert.equal(provider.events.has(accountAEventId), false);
+  assert.equal(repository.jobs.size, 0);
+  assert.equal(repository.mappings.size, 0);
+  assert.equal(repository.tasks.get("task-1")?.calendarEventId, accountAEventId);
+  assert.equal(result.data.run?.counts.failed, 1);
+
+  const runB = [...repository.runs.values()].find(
+    (run) => run.destination.destinationKey === "new@example.com|primary",
+  );
+  assert.ok(runB);
+  const item = repository.items.get(runB.id)?.[0];
+  assert.equal(item?.outcome, "failed");
+  assert.equal(item?.eventId, null);
+  assert.match(String(item?.errorMessage), /different Google account or calendar/);
+});
+
+test("an excluded task never deletes another account's listed legacy event", async () => {
+  const repository = new FakeRepository();
+  const provider = new FakeProvider();
+  repository.connection = {
+    ...repository.connection,
+    accountSubject: "google-subject-2",
+    accountEmail: "new@example.com",
+    destinationKey: "new@example.com|primary",
+    updatedAt: "2026-05-11T00:00:00.000Z",
+  };
+  const accountAEventId = "account-a-excluded-event";
+  provider.events.set(accountAEventId, {
+    id: accountAEventId,
+    status: "confirmed",
+    summary: "Account A event",
+    start: { dateTime: "2026-05-10T09:00:00.000Z" },
+    end: { dateTime: "2026-05-10T10:00:00.000Z" },
+    privateProperties: {
+      source: "ega-house",
+      task_id: "task-1",
+      owner_user_id: actor.userId,
+      destination_key: "owner@example.com|primary",
+    },
+    raw: {},
+  });
+  repository.addTask(
+    task({ calendarEventId: accountAEventId, calendarSyncEnabled: false }),
+  );
+
+  const result = await startCalendarSync(actor, buildDeps(repository, provider));
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+
+  // The id exists in B's source-tagged listing, but its metadata says it
+  // belongs to A. Existence alone must not authorize a delete through B.
+  assert.equal(provider.deleteCalls, 0);
+  assert.equal(provider.createCalls, 0);
+  assert.equal(provider.updateCalls, 0);
+  assert.equal(provider.events.get(accountAEventId)?.summary, "Account A event");
+  assert.equal(repository.jobs.size, 0);
+  assert.equal(repository.tasks.get("task-1")?.calendarEventId, accountAEventId);
+  assert.equal(result.data.run?.counts.excluded, 1);
+});
+
+test("a saved event id is adopted when its metadata proves the current destination", async () => {
+  const repository = new FakeRepository();
+  const provider = new FakeProvider();
+  repository.connection = {
+    ...repository.connection,
+    accountSubject: "google-subject-2",
+    accountEmail: "new@example.com",
+    destinationKey: "new@example.com|primary",
+    updatedAt: "2026-05-11T00:00:00.000Z",
+  };
+  const ownedEventId = "account-b-owned-event";
+  provider.events.set(ownedEventId, {
+    id: ownedEventId,
+    status: "confirmed",
+    summary: "Old title",
+    start: { dateTime: "2026-05-10T09:00:00.000Z" },
+    end: { dateTime: "2026-05-10T10:00:00.000Z" },
+    privateProperties: {
+      source: "ega-house",
+      task_id: "task-1",
+      owner_user_id: actor.userId,
+      destination_key: "new@example.com|primary",
+      generation: "1",
+    },
+    raw: {},
+  });
+  repository.addTask(task({ calendarEventId: ownedEventId }));
+
+  const result = await startCalendarSync(actor, buildDeps(repository, provider));
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+
+  assert.equal(provider.createCalls, 0);
+  assert.equal(provider.updateCalls, 1);
+  assert.equal(provider.deleteCalls, 0);
+  const mapping = [...repository.mappings.values()][0];
+  assert.equal(mapping?.eventId, ownedEventId);
+  assert.equal(
+    mapping?.destination.destinationKey,
+    "new@example.com|primary",
+  );
+  assert.equal(provider.events.get(ownedEventId)?.privateProperties.task_id, "task-1");
 });
 
 test("recovery leaves another destination's queued job pending after an account switch", async () => {

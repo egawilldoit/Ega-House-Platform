@@ -390,20 +390,34 @@ function indexEntryFromDocument(
 }
 
 /**
- * `tasks.calendar_event_id` predates destination binding. It may be adopted
- * only when the current destination listing contains that event or when the
- * task has no mapping history for any other destination. Once the task was
- * synced under another destination, the unscoped id cannot prove provenance.
+ * `tasks.calendar_event_id` predates destination binding. Adopt it only when
+ * the current destination's completed listing positively ties that event to
+ * this task, owner and destination. An unscoped id is not proof by itself:
+ * neither the absence of mapping history nor the presence of an event with
+ * that id is enough when its metadata contradicts ownership. A first sync
+ * under a different account must not update, delete or adopt an event that
+ * belongs to the previous account.
  */
 function legacyEventProvenance(input: {
   task: CalendarTaskScanRecord;
+  destination: CalendarSyncDestination;
   hasCurrentMapping: boolean;
   hasOtherDestinationMapping: boolean;
   eventIndex: Map<string, CalendarEventIndexEntry>;
 }): LegacyEventProvenance {
   if (!input.task.calendarEventId || input.hasCurrentMapping) return "none";
-  if (input.eventIndex.has(input.task.calendarEventId)) return "verified";
-  return input.hasOtherDestinationMapping ? "unverified" : "verified";
+  // Mapping history for another destination already proves the unscoped id
+  // belongs elsewhere, even if a same-id event is now visible here.
+  if (input.hasOtherDestinationMapping) return "unverified";
+  const event = input.eventIndex.get(input.task.calendarEventId);
+  if (!event) return "unverified";
+  return checkIndexedEvent({
+    event,
+    task: input.task,
+    destination: input.destination,
+  }).kind === "ok"
+    ? "verified"
+    : "unverified";
 }
 
 type PlannedScanItem = Readonly<{
@@ -429,6 +443,7 @@ async function planTaskForScan(input: {
   const currentGeneration = mapping?.generation ?? nextGeneration;
   const provenance = legacyEventProvenance({
     task,
+    destination,
     hasCurrentMapping: Boolean(mapping),
     hasOtherDestinationMapping: input.hasOtherDestinationMapping,
     eventIndex,

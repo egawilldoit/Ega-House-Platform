@@ -5,7 +5,10 @@
 -- * Existing calendar_integration_settings rows keep their tokens and calendar.
 -- * Existing calendar_sync_jobs rows stay queue_version = 1 and are still
 --   processed by the legacy scheduled-sync drain.
--- * tasks.calendar_event_id is preserved and adopted as a legacy mapping.
+-- * tasks.calendar_event_id is preserved, but adopted only when the current
+--   destination positively proves it belongs to this task.
+-- * Legacy jobs whose original destination cannot be established stay
+--   unstamped and are rejected before any Google request.
 -- * No event is deleted by this migration.
 
 ALTER TABLE public.calendar_integration_settings
@@ -166,24 +169,35 @@ CREATE UNIQUE INDEX IF NOT EXISTS calendar_sync_jobs_one_pending_v2_unique
   WHERE status = 'pending' AND queue_version = 2;
 --> statement-breakpoint
 
--- Existing scheduled-sync jobs keep working. Stamp the destination they were
--- created under so a later account/calendar switch cannot silently redirect
--- them, and so the processing uniqueness guard applies across both queue
--- versions.
+-- Stamp a legacy scheduled-sync job only when the account identity in settings
+-- was already captured when the job was queued (`connected_at` changes on
+-- connect/reconnect, not on token refresh). That is positive evidence of the
+-- job's original destination. A connection switched before this upgrade cannot
+-- establish where older jobs' events live: leave those rows unstamped, so the
+-- legacy scheduled-sync worker rejects them before any Google request and the
+-- v2 recovery path never claims them. Jobs that already carry a destination
+-- are preserved untouched.
 UPDATE public.calendar_sync_jobs AS j
 SET
-  destination_key = COALESCE(
-    NULLIF(lower(s.google_account_email), ''),
-    NULLIF(s.google_account_subject, ''),
-    'unknown-account'
-  ) || '|' || COALESCE(NULLIF(s.calendar_id, ''), 'primary'),
+  destination_key =
+    COALESCE(
+      NULLIF(lower(trim(s.google_account_email)), ''),
+      NULLIF(trim(s.google_account_subject), ''),
+      'unknown-account'
+    ) || '|' || COALESCE(NULLIF(trim(s.calendar_id), ''), 'primary'),
   google_account_subject = s.google_account_subject,
   google_account_email = s.google_account_email,
-  calendar_id = COALESCE(NULLIF(s.calendar_id, ''), 'primary')
+  calendar_id = COALESCE(NULLIF(trim(s.calendar_id), ''), 'primary')
 FROM public.calendar_integration_settings AS s
 WHERE j.owner_user_id = s.owner_user_id
   AND s.provider = 'google'
-  AND j.destination_key = '';
+  AND j.destination_key = ''
+  AND s.connected_at IS NOT NULL
+  AND s.connected_at <= j.created_at
+  AND (
+    NULLIF(lower(trim(s.google_account_email)), '') IS NOT NULL
+    OR NULLIF(trim(s.google_account_subject), '') IS NOT NULL
+  );
 --> statement-breakpoint
 
 ALTER TABLE public.calendar_sync_runs ENABLE ROW LEVEL SECURITY;

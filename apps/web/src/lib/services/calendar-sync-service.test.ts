@@ -365,3 +365,55 @@ test("processPendingCalendarSyncJobs never writes a job without a destination st
     /could not be verified/,
   );
 });
+
+test("processPendingCalendarSyncJobs rejects a legacy job left unstamped by an account switch", async () => {
+  const mock = createCalendarSyncSupabaseMock();
+  // 0109 cannot establish the original destination of a job queued before a
+  // connection switch, so it leaves the job unstamped with no account columns.
+  mock.jobs.push({
+    id: "unknown-provenance-job",
+    owner_user_id: "owner-1",
+    task_id: "task-1",
+    calendar_event_id: "account-a-event",
+    operation: "delete",
+    status: "pending",
+    attempts: 0,
+    queue_version: 1,
+    created_at: "2026-05-01T08:00:00.000Z",
+    locked_at: null,
+    last_error: null,
+  });
+  mock.settings.google_account_email = "new@example.com";
+  mock.settings.calendar_id = "primary-b";
+  mock.tasks[0].calendar_event_id = "account-a-event";
+
+  const writes: string[] = [];
+  const result = await processPendingCalendarSyncJobs({
+    supabase: mock.supabase as never,
+    nowIso: "2026-05-10T09:00:00.000Z",
+    client: {
+      async createEvent() {
+        writes.push("create");
+        return { eventId: "wrong-account-event", errorMessage: null };
+      },
+      async patchEvent() {
+        writes.push("patch");
+        return { eventId: "wrong-account-event", errorMessage: null };
+      },
+      async deleteEvent() {
+        writes.push("delete");
+        return { ok: true, errorMessage: null };
+      },
+    },
+  });
+
+  assert.deepEqual(result, { ok: true, processed: 0, failed: 1 });
+  assert.deepEqual(writes, []);
+  assert.equal(mock.jobs[0]?.status, "failed");
+  assert.equal(mock.tasks[0]?.calendar_event_id, "account-a-event");
+  assert.equal(mock.tasks[0]?.calendar_sync_status, "failed");
+  assert.match(
+    String(mock.tasks[0]?.calendar_sync_failure_reason),
+    /could not be verified/,
+  );
+});
