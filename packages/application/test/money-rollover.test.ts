@@ -326,7 +326,7 @@ test("a late tracking source may use a verified cutoff covering its end", async 
   );
   assert.equal(result.ok, true);
   assert.equal(fake.writes.length, 1);
-  assert.equal(fake.writes[0].opening.mode, "verified_source");
+  assert.equal(fake.writes[0].opening.source, "verified_source");
 });
 
 test("a future verified cutoff is rejected even after the source end", async () => {
@@ -335,6 +335,9 @@ test("a future verified cutoff is rejected even after the source end", async () 
     actor,
     { repository: fake.repository, obligations: noTemplates },
     baseInput({
+      startDate: "2026-12-20",
+      endDate: "2027-01-19",
+      allowUncoveredDays: true,
       opening: {
         mode: "verified_source",
         amountMinor: 68_900,
