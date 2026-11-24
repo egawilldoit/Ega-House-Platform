@@ -259,10 +259,14 @@ class FakeRepository implements CalendarSyncRepository {
     return { ok: true, value: true };
   }
 
-  async markReconnectRequired(
+  async pauseForAuthorization(
     _actor: AuthenticatedActor,
-    input: Parameters<CalendarSyncRepository["markReconnectRequired"]>[1],
-  ): Promise<RepositoryResult<boolean>> {
+    input: Parameters<CalendarSyncRepository["pauseForAuthorization"]>[1],
+  ): Promise<
+    RepositoryResult<
+      Readonly<{ credentialsMarked: boolean; runPaused: boolean }>
+    >
+  > {
     if (
       this.connection.ownerUserId !== input.ownerUserId ||
       this.connection.updatedAt !== input.expectedUpdatedAt ||
@@ -270,14 +274,40 @@ class FakeRepository implements CalendarSyncRepository {
       this.connection.accessTokenEncrypted !== input.expectedAccessTokenEncrypted ||
       this.connection.refreshTokenEncrypted !== input.expectedRefreshTokenEncrypted
     ) {
-      return { ok: true, value: false };
+      return { ok: true, value: { credentialsMarked: false, runPaused: false } };
     }
     this.connection = {
       ...this.connection,
       reconnectRequiredAt: input.nowIso,
       updatedAt: input.nowIso,
     };
-    return { ok: true, value: true };
+    let runPaused = false;
+    if (input.runId) {
+      const run = this.runs.get(input.runId);
+      if (run && run.status === "active") {
+        const cursorMatches =
+          (run.scanCursorCreatedAt ?? null) ===
+            (input.expectedCursor?.createdAt ?? null) &&
+          (run.scanCursorTaskId ?? null) ===
+            (input.expectedCursor?.taskId ?? null);
+        const canPause = input.fenceListing
+          ? !run.scanComplete &&
+            !this.activeScanClaims.has(input.runId) &&
+            cursorMatches
+          : true;
+        if (canPause) {
+          this.runs.set(input.runId, {
+            ...run,
+            status: "paused",
+            lastError: input.message,
+            updatedAt: input.nowIso,
+          });
+          this.runRetryAt.delete(input.runId);
+          runPaused = true;
+        }
+      }
+    }
+    return { ok: true, value: { credentialsMarked: true, runPaused } };
   }
 
   async ensureRun(
@@ -611,7 +641,7 @@ class FakeRepository implements CalendarSyncRepository {
   async claimJobs(
     _actor: AuthenticatedActor,
     input: { runId: string | null; claimToken: string; limit: number },
-  ): Promise<{ ok: true; value: CalendarJobRecord[] }> {
+  ): Promise<RepositoryResult<CalendarJobRecord[]>> {
     const jobs = [...this.jobs.values()]
       .filter(
         (job) =>
@@ -2755,4 +2785,107 @@ test("recordListingFailure RPC errors surface to manual and scheduled callers wi
   const recoveryIncompleteBranch = await processCalendarRecovery(actor, deps);
   assert.equal(recoveryIncompleteBranch.ok, false);
   assert.equal(repository.runs.get(run.id)?.status, "active");
+});
+
+test("failed claimJobs reports an error for scan-complete runs and standalone destinations while empty claims stay successful", async () => {
+  // 1) Scan-complete active run with a due job: empty claim stays ok, DB claim error fails recovery and manual continue
+  const runRepo = new FakeRepository();
+  const runProvider = new FakeProvider();
+  runRepo.addTask(task());
+  const { value: run } = await runRepo.ensureRun(actor, {
+    destination,
+    retryMode: false,
+    nowIso: "2026-05-10T08:00:00.000Z",
+  });
+  runRepo.runs.set(run.id, { ...run, scanComplete: true });
+  runRepo.jobs.set("job-run-1", {
+    id: "job-run-1",
+    ownerUserId: actor.userId,
+    taskId: "task-1",
+    runId: run.id,
+    destination,
+    operation: "upsert",
+    status: "pending",
+    attempts: 0,
+    eventId: null,
+    generation: 1,
+    eventExists: false,
+    payloadHash: "hash-1",
+    claimToken: null,
+    permanentFailure: false,
+    exclusionReason: null,
+    lastError: null,
+    scheduledAt: "2026-05-10T08:00:00.000Z",
+    taskUpdatedAt: "2026-05-10T08:00:00.000Z",
+  });
+  runRepo.listActiveRuns = async () => ({
+    ok: true as const,
+    value: [runRepo.runs.get(run.id)!],
+  });
+  runRepo.listReadyDestinations = async () => ({ ok: true as const, value: [] });
+
+  const runDeps = buildDeps(runRepo, runProvider);
+
+  // Empty claim succeeds without error
+  runRepo.claimJobs = async () => ({ ok: true as const, value: [] });
+  const emptyRunRecovery = await processCalendarRecovery(actor, runDeps);
+  assert.equal(emptyRunRecovery.ok, true);
+  if (emptyRunRecovery.ok) {
+    assert.equal(emptyRunRecovery.data.runsProcessed, 1);
+  }
+
+  // Failed claim returns ok: false for both manual continue and scheduled recovery
+  runRepo.claimJobs = async () => ({
+    ok: false as const,
+    error: { code: "unknown" as const },
+  });
+  const failedManualContinue = await continueCalendarSync(actor, runDeps, run.id);
+  assert.equal(failedManualContinue.ok, false);
+  const failedRunRecovery = await processCalendarRecovery(actor, runDeps);
+  assert.equal(failedRunRecovery.ok, false);
+  assert.equal(runRepo.jobs.get("job-run-1")?.status, "pending");
+
+  // 2) Standalone destination queue: empty claim stays ok, DB claim error fails recovery
+  const standaloneRepo = new FakeRepository();
+  const standaloneProvider = new FakeProvider();
+  standaloneRepo.addTask(task());
+  standaloneRepo.jobs.set("job-standalone-1", {
+    id: "job-standalone-1",
+    ownerUserId: actor.userId,
+    taskId: "task-1",
+    runId: null,
+    destination,
+    operation: "upsert",
+    status: "pending",
+    attempts: 0,
+    eventId: null,
+    generation: 1,
+    eventExists: false,
+    payloadHash: "hash-1",
+    claimToken: null,
+    permanentFailure: false,
+    exclusionReason: null,
+    lastError: null,
+    scheduledAt: "2026-05-10T08:00:00.000Z",
+    taskUpdatedAt: "2026-05-10T08:00:00.000Z",
+  });
+  const standaloneDeps = buildDeps(standaloneRepo, standaloneProvider);
+
+  standaloneRepo.claimJobs = async () => ({ ok: true as const, value: [] });
+  const emptyStandaloneRecovery = await processCalendarRecovery(
+    actor,
+    standaloneDeps,
+  );
+  assert.equal(emptyStandaloneRecovery.ok, true);
+
+  standaloneRepo.claimJobs = async () => ({
+    ok: false as const,
+    error: { code: "unknown" as const },
+  });
+  const failedStandaloneRecovery = await processCalendarRecovery(
+    actor,
+    standaloneDeps,
+  );
+  assert.equal(failedStandaloneRecovery.ok, false);
+  assert.equal(standaloneRepo.jobs.get("job-standalone-1")?.status, "pending");
 });

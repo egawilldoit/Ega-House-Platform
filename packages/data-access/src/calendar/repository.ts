@@ -287,7 +287,7 @@ export class SupabaseCalendarSyncRepository implements CalendarSyncRepository {
     return { ok: true, value: Boolean(result.data) };
   }
 
-  async markReconnectRequired(
+  async pauseForAuthorization(
     _actor: AuthenticatedActor,
     input: {
       ownerUserId: string;
@@ -295,35 +295,42 @@ export class SupabaseCalendarSyncRepository implements CalendarSyncRepository {
       expectedConnectedAt: string | null;
       expectedAccessTokenEncrypted: string | null;
       expectedRefreshTokenEncrypted: string | null;
+      runId: string | null;
+      fenceListing: boolean;
+      expectedCursor: CalendarScanCursor | null;
       message: string;
       nowIso: string;
     },
-  ): Promise<RepositoryResult<boolean>> {
-    let query = this.supabase
-      .from("calendar_integration_settings")
-      .update({
-        reconnect_required_at: input.nowIso,
-        reconnect_required_reason: input.message.slice(0, 500),
-        updated_at: input.nowIso,
-      } as never)
-      .eq("owner_user_id", input.ownerUserId)
-      .eq("provider", "google")
-      .eq("updated_at", input.expectedUpdatedAt);
-    query =
-      input.expectedConnectedAt === null
-        ? query.is("connected_at", null)
-        : query.eq("connected_at", input.expectedConnectedAt);
-    query =
-      input.expectedAccessTokenEncrypted === null
-        ? query.is("access_token_encrypted", null)
-        : query.eq("access_token_encrypted", input.expectedAccessTokenEncrypted);
-    query =
-      input.expectedRefreshTokenEncrypted === null
-        ? query.is("refresh_token_encrypted", null)
-        : query.eq("refresh_token_encrypted", input.expectedRefreshTokenEncrypted);
-    const result = await query.select("id").maybeSingle();
+  ): Promise<
+    RepositoryResult<
+      Readonly<{ credentialsMarked: boolean; runPaused: boolean }>
+    >
+  > {
+    const result = await this.supabase.rpc(
+      "calendar_sync_pause_for_authorization",
+      {
+        p_owner_user_id: input.ownerUserId,
+        p_expected_updated_at: input.expectedUpdatedAt,
+        p_expected_connected_at: input.expectedConnectedAt,
+        p_expected_access_token_encrypted: input.expectedAccessTokenEncrypted,
+        p_expected_refresh_token_encrypted: input.expectedRefreshTokenEncrypted,
+        p_run_id: input.runId,
+        p_fence_listing: input.fenceListing,
+        p_expected_cursor_created_at: input.expectedCursor?.createdAt ?? null,
+        p_expected_cursor_task_id: input.expectedCursor?.taskId ?? null,
+        p_error: input.message,
+        p_now: input.nowIso,
+      },
+    );
     if (result.error) return failure(result.error);
-    return { ok: true, value: Boolean(result.data) };
+    const [row] = asRows(result.data);
+    return {
+      ok: true,
+      value: {
+        credentialsMarked: Boolean(row?.credentials_marked),
+        runPaused: Boolean(row?.run_paused),
+      },
+    };
   }
 
   async ensureRun(

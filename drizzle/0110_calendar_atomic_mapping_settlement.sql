@@ -756,15 +756,91 @@ AS $listing_fail$
 $listing_fail$;
 --> statement-breakpoint
 
+CREATE FUNCTION public.calendar_sync_pause_for_authorization(
+  p_owner_user_id uuid,
+  p_expected_updated_at timestamptz,
+  p_expected_connected_at timestamptz,
+  p_expected_access_token_encrypted text,
+  p_expected_refresh_token_encrypted text,
+  p_run_id uuid,
+  p_fence_listing boolean,
+  p_expected_cursor_created_at timestamptz,
+  p_expected_cursor_task_id uuid,
+  p_error text,
+  p_now timestamptz
+) RETURNS TABLE (
+  credentials_marked boolean,
+  run_paused boolean
+)
+LANGUAGE plpgsql VOLATILE SECURITY INVOKER SET search_path = ''
+AS $auth_pause$
+DECLARE
+  v_paused boolean := false;
+BEGIN
+  UPDATE public.calendar_integration_settings
+  SET reconnect_required_at = p_now,
+      reconnect_required_reason = left(p_error, 500),
+      updated_at = p_now
+  WHERE owner_user_id = p_owner_user_id
+    AND provider = 'google'
+    AND updated_at = p_expected_updated_at
+    AND connected_at IS NOT DISTINCT FROM p_expected_connected_at
+    AND access_token_encrypted IS NOT DISTINCT FROM p_expected_access_token_encrypted
+    AND refresh_token_encrypted IS NOT DISTINCT FROM p_expected_refresh_token_encrypted;
+
+  IF NOT FOUND THEN
+    RETURN QUERY SELECT false, false;
+    RETURN;
+  END IF;
+
+  IF p_run_id IS NOT NULL THEN
+    IF p_fence_listing THEN
+      UPDATE public.calendar_sync_runs
+      SET status = 'paused',
+          next_retry_at = NULL,
+          last_error = left(p_error, 500),
+          updated_at = p_now
+      WHERE id = p_run_id
+        AND owner_user_id = p_owner_user_id
+        AND status = 'active'
+        AND NOT scan_complete
+        AND scan_cursor_created_at IS NOT DISTINCT FROM p_expected_cursor_created_at
+        AND scan_cursor_task_id IS NOT DISTINCT FROM p_expected_cursor_task_id
+        AND (
+          scan_claim_token IS NULL
+          OR scan_lease_expires_at IS NULL
+          OR scan_lease_expires_at <= clock_timestamp()
+        );
+      v_paused := FOUND;
+    ELSE
+      UPDATE public.calendar_sync_runs
+      SET status = 'paused',
+          next_retry_at = NULL,
+          last_error = left(p_error, 500),
+          updated_at = p_now
+      WHERE id = p_run_id
+        AND owner_user_id = p_owner_user_id
+        AND status = 'active';
+      v_paused := FOUND;
+    END IF;
+  END IF;
+
+  RETURN QUERY SELECT true, v_paused;
+END;
+$auth_pause$;
+--> statement-breakpoint
+
 REVOKE ALL ON FUNCTION
   public.calendar_sync_enqueue_job(uuid, uuid, text, text, text, text, text, text, integer, boolean, timestamptz),
   public.calendar_sync_list_ready_destinations(uuid, integer),
-  public.calendar_sync_fail_unclaimed_listing(uuid, timestamptz, uuid, boolean, timestamptz, text, timestamptz)
+  public.calendar_sync_fail_unclaimed_listing(uuid, timestamptz, uuid, boolean, timestamptz, text, timestamptz),
+  public.calendar_sync_pause_for_authorization(uuid, timestamptz, timestamptz, text, text, uuid, boolean, timestamptz, uuid, text, timestamptz)
 FROM PUBLIC, anon;
 --> statement-breakpoint
 
 GRANT EXECUTE ON FUNCTION
   public.calendar_sync_enqueue_job(uuid, uuid, text, text, text, text, text, text, integer, boolean, timestamptz),
   public.calendar_sync_list_ready_destinations(uuid, integer),
-  public.calendar_sync_fail_unclaimed_listing(uuid, timestamptz, uuid, boolean, timestamptz, text, timestamptz)
+  public.calendar_sync_fail_unclaimed_listing(uuid, timestamptz, uuid, boolean, timestamptz, text, timestamptz),
+  public.calendar_sync_pause_for_authorization(uuid, timestamptz, timestamptz, text, text, uuid, boolean, timestamptz, uuid, text, timestamptz)
 TO authenticated, service_role;

@@ -286,60 +286,32 @@ async function pauseForAuthorization(
     nowIso: string;
   },
 ): Promise<AuthorizationPauseResult> {
-  const marked = await deps.repository.markReconnectRequired(actor, {
+  // Atomically check the credential revision, mark reconnect_required_at, and
+  // pause the run in a single database transaction that serializes with OAuth
+  // reconnect on the calendar_integration_settings row lock.
+  const paused = await deps.repository.pauseForAuthorization(actor, {
     ownerUserId: input.connection.ownerUserId,
     expectedUpdatedAt: input.connection.updatedAt,
     expectedConnectedAt: input.connection.connectedAt,
     expectedAccessTokenEncrypted: input.connection.accessTokenEncrypted,
     expectedRefreshTokenEncrypted: input.connection.refreshTokenEncrypted,
+    runId: input.runId,
+    fenceListing: Boolean(input.fenceListingPause),
+    expectedCursor: input.expectedListingCursor ?? null,
     message: input.message,
     nowIso: input.nowIso,
   });
-  if (!marked.ok) {
-    return {
-      ok: false,
-      message: "Unable to save Google Calendar reconnect status.",
-    };
-  }
-  if (!marked.value) {
-    // Credentials changed (for example, the user reconnected or refreshed
-    // tokens) after this request loaded the connection; do not disable the
-    // replacement connection or pause the run from a stale auth failure.
-    return { ok: true, applied: false, runPaused: false };
-  }
-  if (!input.runId) {
-    return { ok: true, applied: true, runPaused: false };
-  }
-  if (input.fenceListingPause) {
-    const paused = await deps.repository.recordListingFailure(actor, {
-      runId: input.runId,
-      expectedCursor: input.expectedListingCursor ?? null,
-      pause: true,
-      retryAt: null,
-      message: input.message,
-      nowIso: input.nowIso,
-    });
-    if (!paused.ok) {
-      return {
-        ok: false,
-        message: "Unable to save Calendar sync pause state.",
-      };
-    }
-    return { ok: true, applied: true, runPaused: paused.value };
-  }
-  const paused = await deps.repository.pauseRun(
-    actor,
-    input.runId,
-    input.message,
-    input.nowIso,
-  );
   if (!paused.ok) {
     return {
       ok: false,
-      message: "Unable to save Calendar sync pause state.",
+      message: "Unable to save Google Calendar authorization pause state.",
     };
   }
-  return { ok: true, applied: true, runPaused: true };
+  return {
+    ok: true,
+    applied: paused.value.credentialsMarked,
+    runPaused: paused.value.runPaused,
+  };
 }
 
 function eventIndexFor(
@@ -988,7 +960,14 @@ async function scanRun(
       nowIso: input.nowIso,
       leaseSeconds: config.leaseSeconds,
     });
-    if (!claimed.ok || !claimed.value) break;
+    if (!claimed.ok) {
+      return {
+        ok: false,
+        message: "Unable to claim the Calendar sync scan.",
+        persistenceFailure: true,
+      };
+    }
+    if (!claimed.value) break;
     run = claimed.value;
     const expectedCursor = run.scanCursorCreatedAt && run.scanCursorTaskId
       ? { createdAt: run.scanCursorCreatedAt, taskId: run.scanCursorTaskId }
@@ -1635,7 +1614,13 @@ async function drainRunJobs(
       leaseSeconds: config.leaseSeconds,
     });
 
-    if (!claimed.ok || claimed.value.length === 0) break;
+    if (!claimed.ok) {
+      return {
+        persistenceError: "Unable to claim Calendar sync jobs.",
+        refreshed,
+      };
+    }
+    if (claimed.value.length === 0) break;
 
     const jobs = claimed.value;
     let nextJob = 0;
@@ -1688,7 +1673,13 @@ async function processRunBatch(
     actor,
     run.ownerUserId,
   );
-  if (!connectionResult.ok || !connectionResult.value) {
+  if (!connectionResult.ok) {
+    return {
+      ok: false,
+      errorMessage: "Unable to load the Google Calendar connection.",
+    };
+  }
+  if (!connectionResult.value) {
     return {
       ok: true,
       status: withStatusMessage(
@@ -1999,10 +1990,16 @@ async function processRunBatch(
     return { ok: false, errorMessage: drained.persistenceError };
   }
 
-  await deps.repository.completeRunIfDrained(actor, {
+  const completedRun = await deps.repository.completeRunIfDrained(actor, {
     runId: run.id,
     nowIso,
   });
+  if (!completedRun.ok) {
+    return {
+      ok: false,
+      errorMessage: "Unable to finalize the Calendar sync run.",
+    };
+  }
 
   const status = await buildStatus(actor, deps, run.id);
   return {
@@ -2211,7 +2208,11 @@ export async function processCalendarRecovery(
       actor,
       queue.ownerUserId,
     );
-    if (!connection.ok || !connection.value || !isConnectionUsable(connection.value)) {
+    if (!connection.ok) {
+      recoveryErrorMessage ??= "Unable to load the Google Calendar connection.";
+      continue;
+    }
+    if (!connection.value || !isConnectionUsable(connection.value)) {
       continue;
     }
 
@@ -2236,7 +2237,11 @@ export async function processCalendarRecovery(
       nowIso,
       leaseSeconds: config.leaseSeconds,
     });
-    if (!claimed.ok || claimed.value.length === 0) continue;
+    if (!claimed.ok) {
+      recoveryErrorMessage ??= "Unable to claim Calendar sync jobs.";
+      continue;
+    }
+    if (claimed.value.length === 0) continue;
 
     let refreshed:
       | RefreshedCalendarCredentials

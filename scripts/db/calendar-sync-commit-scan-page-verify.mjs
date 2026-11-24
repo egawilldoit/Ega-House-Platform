@@ -1878,6 +1878,208 @@ async function main() {
       WHERE owner_user_id = ${OWNER}::uuid`;
     log("DESTINATIONS", "database filtering and per-destination deduplication verified");
 
+    // Atomic serialization proof for calendar_sync_pause_for_authorization:
+    // 1) A concurrent OAuth reconnect that holds the calendar_integration_settings row lock
+    //    and commits new credentials blocks calendar_sync_pause_for_authorization and causes it
+    //    to return (false, false) without marking the fresh credentials or pausing the active run.
+    const authConnInitialUpdatedAt = "2026-11-23T08:00:00.000Z";
+    const authConnInitialConnectedAt = "2026-11-23T08:00:00.000Z";
+    await sql`
+      UPDATE public.calendar_integration_settings
+      SET access_token_encrypted = 'enc-access-v1',
+          refresh_token_encrypted = 'enc-refresh-v1',
+          connected_at = ${authConnInitialConnectedAt}::timestamptz,
+          disconnected_at = NULL,
+          reconnect_required_at = NULL,
+          reconnect_required_reason = NULL,
+          updated_at = ${authConnInitialUpdatedAt}::timestamptz
+      WHERE owner_user_id = ${OWNER}::uuid AND provider = 'google'`;
+    const [authRaceRun] = await sql`
+      INSERT INTO public.calendar_sync_runs (
+        owner_user_id, destination_key, google_account_subject, calendar_id, status, scan_complete
+      ) VALUES (
+        ${OWNER}::uuid, 'proof-subject|auth-race', 'proof-subject', 'auth-race', 'active', false
+      ) RETURNING id`;
+
+    const connReconnect = postgres(url, { max: 1, onnotice: () => {} });
+    const connAuthPause = postgres(url, { max: 1, onnotice: () => {} });
+    try {
+      let markReconnectLocked;
+      const reconnectLocked = new Promise((resolve) => {
+        markReconnectLocked = resolve;
+      });
+      let commitReconnect;
+      const allowReconnectCommit = new Promise((resolve) => {
+        commitReconnect = resolve;
+      });
+      const reconnectTx = connReconnect.begin(async (tx) => {
+        await tx`
+          INSERT INTO public.calendar_integration_settings (
+            owner_user_id, provider, google_account_subject, calendar_id,
+            access_token_encrypted, refresh_token_encrypted,
+            connected_at, disconnected_at, reconnect_required_at, reconnect_required_reason, updated_at
+          ) VALUES (
+            ${OWNER}::uuid, 'google', 'proof-subject', 'primary',
+            'enc-access-v2', 'enc-refresh-v2',
+            '2026-11-23T08:05:00.000Z'::timestamptz, NULL, NULL, NULL, '2026-11-23T08:05:00.000Z'::timestamptz
+          )
+          ON CONFLICT (owner_user_id, provider) DO UPDATE SET
+            access_token_encrypted = EXCLUDED.access_token_encrypted,
+            refresh_token_encrypted = EXCLUDED.refresh_token_encrypted,
+            connected_at = EXCLUDED.connected_at,
+            disconnected_at = NULL,
+            reconnect_required_at = NULL,
+            reconnect_required_reason = NULL,
+            updated_at = EXCLUDED.updated_at`;
+        markReconnectLocked();
+        await allowReconnectCommit;
+      });
+      await reconnectLocked;
+
+      // Launch stale auth-pause while reconnect holds the row lock.
+      let authPauseResolved = false;
+      const stalePausePromise = connAuthPause`
+        SELECT credentials_marked, run_paused
+        FROM public.calendar_sync_pause_for_authorization(
+          ${OWNER}::uuid,
+          ${authConnInitialUpdatedAt}::timestamptz,
+          ${authConnInitialConnectedAt}::timestamptz,
+          'enc-access-v1',
+          'enc-refresh-v1',
+          ${authRaceRun.id}::uuid,
+          true,
+          NULL,
+          NULL,
+          'Stale Google token revoked',
+          '2026-11-23T08:05:01.000Z'::timestamptz
+        )`.then((rows) => {
+        authPauseResolved = true;
+        return rows[0];
+      });
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      assert(
+        !authPauseResolved,
+        "calendar_sync_pause_for_authorization must block on the calendar_integration_settings row lock while reconnect is in flight",
+      );
+
+      commitReconnect();
+      await reconnectTx;
+      const stalePause = await stalePausePromise;
+      const [afterReconnectSettings] = await sql`
+        SELECT reconnect_required_at, access_token_encrypted
+        FROM public.calendar_integration_settings
+        WHERE owner_user_id = ${OWNER}::uuid AND provider = 'google'`;
+      const [afterReconnectRun] = await sql`
+        SELECT status, last_error FROM public.calendar_sync_runs WHERE id = ${authRaceRun.id}::uuid`;
+      assert(
+        stalePause.credentials_marked === false &&
+          stalePause.run_paused === false &&
+          afterReconnectSettings.reconnect_required_at === null &&
+          afterReconnectSettings.access_token_encrypted === "enc-access-v2" &&
+          afterReconnectRun.status === "active",
+        "stale auth pause serialized after reconnect must leave replacement credentials and active run untouched",
+      );
+
+      // 2) Listing fence on matching credentials: live scan claim blocks pausing the run
+      //    while still marking the matching credentials reconnect_required.
+      await sql`UPDATE public.calendar_sync_runs
+        SET scan_claim_token = gen_random_uuid(),
+            scan_lease_expires_at = now() + interval '5 minutes'
+        WHERE id = ${authRaceRun.id}::uuid`;
+      const [fencedByClaim] = await sql`
+        SELECT credentials_marked, run_paused
+        FROM public.calendar_sync_pause_for_authorization(
+          ${OWNER}::uuid,
+          '2026-11-23T08:05:00.000Z'::timestamptz,
+          '2026-11-23T08:05:00.000Z'::timestamptz,
+          'enc-access-v2',
+          'enc-refresh-v2',
+          ${authRaceRun.id}::uuid,
+          true,
+          NULL,
+          NULL,
+          'Token revoked during claimed scan',
+          '2026-11-23T08:06:00.000Z'::timestamptz
+        )`;
+      const [claimedRunAfter] = await sql`
+        SELECT status FROM public.calendar_sync_runs WHERE id = ${authRaceRun.id}::uuid`;
+      assert(
+        fencedByClaim.credentials_marked === true &&
+          fencedByClaim.run_paused === false &&
+          claimedRunAfter.status === "active",
+        "listing auth pause must respect live scan claim fence",
+      );
+
+      // 3) Matching credentials + unclaimed matching cursor atomically marks credentials and pauses the run
+      //    under authenticated owner RLS as well, while MCP OAuth is rejected by RLS.
+      await sql`UPDATE public.calendar_sync_runs
+        SET scan_claim_token = NULL, scan_lease_expires_at = NULL
+        WHERE id = ${authRaceRun.id}::uuid`;
+      const [mcpBlockedAuthPause] = await sql.begin(async (tx) => {
+        await tx`GRANT SELECT, UPDATE ON public.calendar_integration_settings TO authenticated`;
+        await tx`SET LOCAL ROLE authenticated`;
+        await tx`SELECT set_config('request.jwt.claim.sub', ${OWNER}, true)`;
+        await tx`SELECT set_config('request.jwt.claims', '{"client_id":"mcp-proof"}', true)`;
+        return tx`
+          SELECT credentials_marked, run_paused
+          FROM public.calendar_sync_pause_for_authorization(
+            ${OWNER}::uuid,
+            '2026-11-23T08:06:00.000Z'::timestamptz,
+            '2026-11-23T08:05:00.000Z'::timestamptz,
+            'enc-access-v2',
+            'enc-refresh-v2',
+            ${authRaceRun.id}::uuid,
+            true,
+            NULL,
+            NULL,
+            'MCP should not pause',
+            '2026-11-23T08:07:00.000Z'::timestamptz
+          )`;
+      });
+      assert(
+        mcpBlockedAuthPause.credentials_marked === false &&
+          mcpBlockedAuthPause.run_paused === false,
+        "MCP OAuth session must not mark credentials or pause runs",
+      );
+      const [atomicAuthPause] = await sql.begin(async (tx) => {
+        await tx`SET LOCAL ROLE authenticated`;
+        await tx`SELECT set_config('request.jwt.claim.sub', ${OWNER}, true)`;
+        return tx`
+          SELECT credentials_marked, run_paused
+          FROM public.calendar_sync_pause_for_authorization(
+            ${OWNER}::uuid,
+            '2026-11-23T08:06:00.000Z'::timestamptz,
+            '2026-11-23T08:05:00.000Z'::timestamptz,
+            'enc-access-v2',
+            'enc-refresh-v2',
+            ${authRaceRun.id}::uuid,
+            true,
+            NULL,
+            NULL,
+            'Google token revoked',
+            '2026-11-23T08:07:00.000Z'::timestamptz
+          )`;
+      });
+      const [pausedAuthRun] = await sql`
+        SELECT status, last_error FROM public.calendar_sync_runs WHERE id = ${authRaceRun.id}::uuid`;
+      assert(
+        atomicAuthPause.credentials_marked === true &&
+          atomicAuthPause.run_paused === true &&
+          pausedAuthRun.status === "paused" &&
+          pausedAuthRun.last_error === "Google token revoked",
+        "matching authenticated auth pause must atomically mark credentials and pause unclaimed run",
+      );
+    } finally {
+      await connReconnect.end({ timeout: 5 });
+      await connAuthPause.end({ timeout: 5 });
+      await sql`DELETE FROM public.calendar_sync_runs WHERE id = ${authRaceRun.id}::uuid`;
+      await sql`
+        UPDATE public.calendar_integration_settings
+        SET reconnect_required_at = NULL, reconnect_required_reason = NULL
+        WHERE owner_user_id = ${OWNER}::uuid AND provider = 'google'`;
+    }
+    log("AUTH-PAUSE", "atomic reconnect serialization and listing-fence authorization pause verified");
+
     await sql`UPDATE public.projects SET status = 'archived', archived_at = now() WHERE id = ${PROJECT}::uuid`;
     await sql`
       INSERT INTO public.calendar_event_mappings (

@@ -329,7 +329,7 @@ export interface CalendarSyncRepository {
       nowIso: string;
     }>,
   ): Promise<RepositoryResult<boolean>>;
-  markReconnectRequired(
+  pauseForAuthorization(
     actor: AuthenticatedActor,
     input: Readonly<{
       ownerUserId: string;
@@ -337,10 +337,17 @@ export interface CalendarSyncRepository {
       expectedConnectedAt: string | null;
       expectedAccessTokenEncrypted: string | null;
       expectedRefreshTokenEncrypted: string | null;
+      runId: string | null;
+      fenceListing: boolean;
+      expectedCursor: CalendarScanCursor | null;
       message: string;
       nowIso: string;
     }>,
-  ): Promise<RepositoryResult<boolean>>;
+  ): Promise<
+    RepositoryResult<
+      Readonly<{ credentialsMarked: boolean; runPaused: boolean }>
+    >
+  >;
   ensureRun(
     actor: AuthenticatedActor,
     input: Readonly<{

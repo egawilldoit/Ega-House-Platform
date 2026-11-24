@@ -118,85 +118,55 @@ test("commitScanPage sends snake_case item and job payloads for a nonempty page"
   });
 });
 
-test("markReconnectRequired fences updates against the loaded credential revision", async () => {
-  const filters: Array<{ op: "eq" | "is"; column: string; value: unknown }> = [];
-  let updatedPayload: Record<string, unknown> | null = null;
-  let matchRow = true;
-
-  const builder = {
-    update(payload: Record<string, unknown>) {
-      updatedPayload = payload;
-      return builder;
-    },
-    eq(column: string, value: unknown) {
-      filters.push({ op: "eq", column, value });
-      return builder;
-    },
-    is(column: string, value: unknown) {
-      filters.push({ op: "is", column, value });
-      return builder;
-    },
-    select() {
-      return builder;
-    },
-    async maybeSingle() {
-      return { data: matchRow ? { id: "conn-1" } : null, error: null };
-    },
-  };
-
-  const fakeSupabase = {
-    from(table: string) {
-      assert.equal(table, "calendar_integration_settings");
-      return builder;
-    },
+test("pauseForAuthorization sends credential revision and listing fence args to the atomic RPC", async () => {
+  const fake = new FakeCalendarSupabase();
+  fake.rpc = async (name: string, args: Record<string, unknown>) => {
+    fake.rpcCalls.push({ name, args });
+    return {
+      data: [{ credentials_marked: true, run_paused: false }],
+      error: null,
+    } as never;
   };
 
   const repository = new SupabaseCalendarSyncRepository(
-    fakeSupabase as unknown as SupabaseClient,
+    fake as unknown as SupabaseClient,
   );
 
-  const matched = await repository.markReconnectRequired(ACTOR, {
+  const result = await repository.pauseForAuthorization(ACTOR, {
     ownerUserId: ACTOR.userId,
     expectedUpdatedAt: "2026-11-23T09:00:00.000Z",
     expectedConnectedAt: "2026-11-23T09:00:00.000Z",
     expectedAccessTokenEncrypted: "enc-access-1",
     expectedRefreshTokenEncrypted: "enc-refresh-1",
+    runId: RUN_ID,
+    fenceListing: true,
+    expectedCursor: {
+      createdAt: "2026-11-23T09:30:00.000Z",
+      taskId: JOB_TASK_ID,
+    },
     message: "Google token revoked.",
     nowIso: "2026-11-23T10:00:00.000Z",
   });
-  assert.deepEqual(matched, { ok: true, value: true });
-  assert.deepEqual(updatedPayload, {
-    reconnect_required_at: "2026-11-23T10:00:00.000Z",
-    reconnect_required_reason: "Google token revoked.",
-    updated_at: "2026-11-23T10:00:00.000Z",
-  });
-  assert.deepEqual(filters, [
-    { op: "eq", column: "owner_user_id", value: ACTOR.userId },
-    { op: "eq", column: "provider", value: "google" },
-    { op: "eq", column: "updated_at", value: "2026-11-23T09:00:00.000Z" },
-    { op: "eq", column: "connected_at", value: "2026-11-23T09:00:00.000Z" },
-    { op: "eq", column: "access_token_encrypted", value: "enc-access-1" },
-    { op: "eq", column: "refresh_token_encrypted", value: "enc-refresh-1" },
-  ]);
 
-  filters.length = 0;
-  matchRow = false;
-  const stale = await repository.markReconnectRequired(ACTOR, {
-    ownerUserId: ACTOR.userId,
-    expectedUpdatedAt: "2026-11-23T09:00:00.000Z",
-    expectedConnectedAt: null,
-    expectedAccessTokenEncrypted: null,
-    expectedRefreshTokenEncrypted: null,
-    message: "Google token revoked.",
-    nowIso: "2026-11-23T10:00:00.000Z",
+  assert.deepEqual(result, {
+    ok: true,
+    value: { credentialsMarked: true, runPaused: false },
   });
-  assert.deepEqual(stale, { ok: true, value: false });
-  assert.deepEqual(filters, [
-    { op: "eq", column: "owner_user_id", value: ACTOR.userId },
-    { op: "eq", column: "provider", value: "google" },
-    { op: "eq", column: "updated_at", value: "2026-11-23T09:00:00.000Z" },
-    { op: "is", column: "connected_at", value: null },
-    { op: "is", column: "access_token_encrypted", value: null },
-    { op: "is", column: "refresh_token_encrypted", value: null },
-  ]);
+  assert.equal(fake.rpcCalls.length, 1);
+  assert.deepEqual(fake.rpcCalls[0], {
+    name: "calendar_sync_pause_for_authorization",
+    args: {
+      p_owner_user_id: ACTOR.userId,
+      p_expected_updated_at: "2026-11-23T09:00:00.000Z",
+      p_expected_connected_at: "2026-11-23T09:00:00.000Z",
+      p_expected_access_token_encrypted: "enc-access-1",
+      p_expected_refresh_token_encrypted: "enc-refresh-1",
+      p_run_id: RUN_ID,
+      p_fence_listing: true,
+      p_expected_cursor_created_at: "2026-11-23T09:30:00.000Z",
+      p_expected_cursor_task_id: JOB_TASK_ID,
+      p_error: "Google token revoked.",
+      p_now: "2026-11-23T10:00:00.000Z",
+    },
+  });
 });

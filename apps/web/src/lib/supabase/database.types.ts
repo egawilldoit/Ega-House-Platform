@@ -1661,6 +1661,25 @@ export type Database = {
         }
         Returns: boolean
       }
+      calendar_sync_pause_for_authorization: {
+        Args: {
+          p_owner_user_id: string
+          p_expected_updated_at: string
+          p_expected_connected_at: string | null
+          p_expected_access_token_encrypted: string | null
+          p_expected_refresh_token_encrypted: string | null
+          p_run_id: string | null
+          p_fence_listing: boolean
+          p_expected_cursor_created_at: string | null
+          p_expected_cursor_task_id: string | null
+          p_error: string
+          p_now: string
+        }
+        Returns: {
+          credentials_marked: boolean
+          run_paused: boolean
+        }[]
+      }
       calendar_sync_upsert_mapping: {
         Args: {
           p_owner_user_id: string
