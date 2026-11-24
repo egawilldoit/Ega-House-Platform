@@ -165,6 +165,14 @@ export function TaskCalendarSyncPanel({
   const connected = status.connection.connected;
   const exclusions = run?.exclusions ?? [];
   const failures = run?.failures ?? [];
+  const statusReadErrors = [
+    status.statusErrors.connection,
+    status.statusErrors.run,
+    status.statusErrors.pausedRun,
+    run?.statusErrors.counts,
+    run?.statusErrors.exclusions,
+    run?.statusErrors.failures,
+  ].filter((message): message is string => Boolean(message));
 
   return (
     <Card className="overflow-hidden">
@@ -237,6 +245,17 @@ export function TaskCalendarSyncPanel({
         {status.message ? (
           <p className="feedback-block" role="status">
             {status.message}
+          </p>
+        ) : null}
+
+        {statusReadErrors.length > 0 ? (
+          <p
+            className="feedback-block"
+            role="status"
+            data-testid="calendar-sync-status-unavailable"
+          >
+            Some Calendar sync status could not be loaded:{" "}
+            {statusReadErrors.join(" ")} Details shown may be incomplete.
           </p>
         ) : null}
 
@@ -337,6 +356,10 @@ export function TaskCalendarSyncPanel({
               </div>
             ) : null}
           </>
+        ) : run ? (
+          <p className="text-[length:var(--text-meta)] text-ega-text-secondary">
+            Run details could not be loaded. Use Synchronize to resume this sync.
+          </p>
         ) : connected ? (
           <p className="text-[length:var(--text-meta)] text-ega-text-secondary">
             No Calendar sync run yet. Synchronize to publish eligible tasks and

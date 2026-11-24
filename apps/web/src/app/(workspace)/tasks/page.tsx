@@ -85,6 +85,14 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
           pausedRun: null,
           message: null,
           continuationBlocked: false,
+          statusErrors: {
+            connection:
+              calendarStatusResult?.ok === false
+                ? calendarStatusResult.errorMessage
+                : null,
+            run: null,
+            pausedRun: null,
+          },
         };
   const calendarOAuthNotice = resolvedSearchParams.error
     ? { tone: "error" as const, message: resolvedSearchParams.error.slice(0, 180) }

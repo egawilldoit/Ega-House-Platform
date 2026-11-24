@@ -216,6 +216,15 @@ class FakeRepository implements CalendarSyncRepository {
   jobs = new Map<string, CalendarJobRecord>();
   failNextOrphanDeleteCommit = false;
   failNextCompletion = false;
+  statusReadFailures = {
+    connection: false,
+    getRun: false,
+    getLatestRun: false,
+    getPausedRun: false,
+    getRunCounts: false,
+    listExclusionCounts: false,
+    listRunFailures: false,
+  };
   private jobCounter = 0;
 
   addTask(row: CalendarTaskScanRecord) {
@@ -230,7 +239,10 @@ class FakeRepository implements CalendarSyncRepository {
     return this.items.get(runId) ?? [];
   }
 
-  async getConnection(): Promise<{ ok: true; value: CalendarConnectionRecord }> {
+  async getConnection(): Promise<RepositoryResult<CalendarConnectionRecord>> {
+    if (this.statusReadFailures.connection) {
+      return { ok: false as const, error: { code: "unknown" as const } };
+    }
     return { ok: true, value: this.connection };
   }
 
@@ -352,10 +364,16 @@ class FakeRepository implements CalendarSyncRepository {
   }
 
   async getRun(_actor: AuthenticatedActor, runId: string) {
+    if (this.statusReadFailures.getRun) {
+      return { ok: false as const, error: { code: "unknown" as const } };
+    }
     return { ok: true as const, value: this.runs.get(runId) ?? null };
   }
 
   async getLatestRun(_actor: AuthenticatedActor, destinationKey: string) {
+    if (this.statusReadFailures.getLatestRun) {
+      return { ok: false as const, error: { code: "unknown" as const } };
+    }
     const runs = [...this.runs.values()]
       .filter((run) => run.destination.destinationKey === destinationKey)
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
@@ -363,6 +381,9 @@ class FakeRepository implements CalendarSyncRepository {
   }
 
   async getPausedRun(_actor: AuthenticatedActor, destinationKey: string) {
+    if (this.statusReadFailures.getPausedRun) {
+      return { ok: false as const, error: { code: "unknown" as const } };
+    }
     const run = [...this.runs.values()].find(
       (candidate) =>
         candidate.status === "paused" &&
@@ -449,6 +470,9 @@ class FakeRepository implements CalendarSyncRepository {
   }
 
   async getRunCounts(_actor: AuthenticatedActor, runId: string) {
+    if (this.statusReadFailures.getRunCounts) {
+      return { ok: false as const, error: { code: "unknown" as const } };
+    }
     const items = this.runItems(runId);
     const count = (outcome: CalendarSyncItemOutcome) =>
       items.filter((item) => item.outcome === outcome).length;
@@ -482,7 +506,10 @@ class FakeRepository implements CalendarSyncRepository {
   async listExclusionCounts(
     _actor: AuthenticatedActor,
     runId: string,
-  ): Promise<{ ok: true; value: CalendarRunExclusionCount[] }> {
+  ): Promise<RepositoryResult<CalendarRunExclusionCount[]>> {
+    if (this.statusReadFailures.listExclusionCounts) {
+      return { ok: false as const, error: { code: "unknown" as const } };
+    }
     const counts = new Map<string, number>();
     for (const item of this.runItems(runId)) {
       if (!item.exclusionReason) continue;
@@ -490,15 +517,27 @@ class FakeRepository implements CalendarSyncRepository {
     }
     return {
       ok: true,
-      value: [...counts.entries()].map(([reason, count]) => ({
+      value: [...counts?.entries()].map(([reason, count]) => ({
         reason: reason as CalendarRunExclusionCount["reason"],
         count,
       })),
     };
   }
 
-  async listRunFailures(): Promise<{ ok: true; value: CalendarRunFailure[] }> {
-    return { ok: true, value: [] };
+  async listRunFailures(): Promise<RepositoryResult<CalendarRunFailure[]>> {
+    if (this.statusReadFailures.listRunFailures) {
+      return { ok: false as const, error: { code: "unknown" as const } };
+    }
+    const failures = [...this.items.values()]
+      .flat()
+      .filter((item) => item.outcome === "failed");
+    return {
+      ok: true as const,
+      value: failures.map((item) => ({
+        taskId: item.taskId,
+        message: item.errorMessage ?? "Calendar sync failed.",
+      })),
+    };
   }
 
   async claimScan(_actor: AuthenticatedActor, { runId }: { runId: string }) {
@@ -1061,7 +1100,7 @@ test("manual sync publishes deterministic once and reports unchanged on repeat",
 
   assert.equal(provider.createCalls, 1);
   assert.equal(provider.updateCalls, 0);
-  assert.equal(first.data.run?.counts.created, 1);
+  assert.equal(first.data.run?.counts?.created, 1);
   assert.equal(provider.events.size, 1);
 
   const event = [...provider.events.values()][0];
@@ -1075,7 +1114,7 @@ test("manual sync publishes deterministic once and reports unchanged on repeat",
 
   assert.equal(provider.createCalls, 1);
   assert.equal(provider.updateCalls, 0);
-  assert.equal(second.data.run?.counts.unchanged, 1);
+  assert.equal(second.data.run?.counts?.unchanged, 1);
   assert.equal(provider.events.size, 1);
 });
 
@@ -1102,7 +1141,7 @@ test("manual sync removes a completed task event and keeps zero active events", 
 
   assert.equal(provider.deleteCalls, 1);
   assert.equal(provider.events.size, 0);
-  assert.equal(result.data.run?.counts.removed, 1);
+  assert.equal(result.data.run?.counts?.removed, 1);
 });
 
 test("archived task removal retires the mapping, then republishes one new generation", async () => {
@@ -1128,7 +1167,7 @@ test("archived task removal retires the mapping, then republishes one new genera
   if (!removed.ok) return;
   assert.equal(provider.deleteCalls, 1);
   assert.equal(provider.events.size, 0);
-  assert.equal(removed.data.run?.counts.removed, 1);
+  assert.equal(removed.data.run?.counts?.removed, 1);
   assert.equal(
     [...repository.mappings.values()][0]?.status,
     "removed",
@@ -1143,7 +1182,7 @@ test("archived task removal retires the mapping, then republishes one new genera
     1,
     "an archived task with no active mapping must not queue another delete",
   );
-  assert.equal(stillArchived.data.run?.counts.excluded, 1);
+  assert.equal(stillArchived.data.run?.counts?.excluded, 1);
 
   repository.addTask(task({ updatedAt: "2026-05-10T12:00:00.000Z" }));
   const republished = await startCalendarSync(actor, deps);
@@ -1188,7 +1227,7 @@ test("failed orphan enqueue keeps the mapping active and a retry removes the eve
   assert.equal(provider.deleteCalls, 1);
   assert.equal(provider.events.size, 0);
   assert.equal([...repository.mappings.values()][0]?.status, "removed");
-  assert.equal(retried.data.run?.counts.removed, 1);
+  assert.equal(retried.data.run?.counts?.removed, 1);
 });
 
 test("a stale delete completion cannot retire a newer mapping generation", async () => {
@@ -1274,7 +1313,7 @@ test("manual sync excludes deadline-only tasks with a visible reason", async () 
   assert.equal(result.ok, true);
   if (!result.ok) return;
 
-  assert.equal(result.data.run?.counts.excluded, 1);
+  assert.equal(result.data.run?.counts?.excluded, 1);
   assert.deepEqual(result.data.run?.exclusions, [
     { reason: "deadline_only", count: 1 },
   ]);
@@ -1361,7 +1400,7 @@ test("status hydration exposes the current run and paused destination message", 
   if (!status.ok) return;
 
   assert.equal(status.data.connection.connected, true);
-  assert.equal(status.data.run?.counts.created, 1);
+  assert.equal(status.data.run?.counts?.created, 1);
   assert.equal(status.data.run?.hasMore, false);
 });
 
@@ -1386,7 +1425,7 @@ test("external deletion advances the generation and leaves exactly one replaceme
   const replacement = [...provider.events.values()][0];
   assert.notEqual(replacement.id, original.id);
   assert.equal(replacement.privateProperties.generation, "2");
-  assert.equal(result.data.run?.counts.created, 1);
+  assert.equal(result.data.run?.counts?.created, 1);
 });
 
 test("a live mapped event with a missing source tag keeps its id and generation", async () => {
@@ -1407,7 +1446,7 @@ test("a live mapped event with a missing source tag keeps its id and generation"
   assert.equal(result.ok, true);
   if (!result.ok) return;
 
-  assert.equal(result.data.run?.counts.updated, 1);
+  assert.equal(result.data.run?.counts?.updated, 1);
   assert.equal(provider.events.size, 1, "no duplicate event may be created");
   const repaired = provider.events.get(original.id);
   assert.equal(repaired?.privateProperties.source, "ega-house");
@@ -1424,7 +1463,7 @@ test("a live mapped event with a missing source tag keeps its id and generation"
   const stable = await startCalendarSync(actor, deps);
   assert.equal(stable.ok, true);
   if (!stable.ok) return;
-  assert.equal(stable.data.run?.counts.unchanged, 1);
+  assert.equal(stable.data.run?.counts?.unchanged, 1);
   assert.equal(provider.createCalls, 1);
   assert.equal(provider.updateCalls, 1);
 });
@@ -1450,7 +1489,7 @@ for (const kind of ["retryable", "permanent", "authorization"] as const) {
     assert.equal(result.ok, true);
     if (!result.ok) return;
 
-    assert.equal(result.data.run?.counts.failed, kind === "permanent" ? 1 : 0);
+    assert.equal(result.data.run?.counts?.failed, kind === "permanent" ? 1 : 0);
     if (kind !== "permanent") {
       assert.equal(result.data.run?.scanComplete, false);
       assert.equal(result.data.continuationBlocked, true);
@@ -1561,7 +1600,7 @@ test("legacy saved event id is updated in place and acquires private metadata", 
   assert.equal(second.ok, true);
   assert.equal(provider.updateCalls, 1);
   if (!second.ok) return;
-  assert.equal(second.data.run?.counts.unchanged, 1);
+  assert.equal(second.data.run?.counts?.unchanged, 1);
 });
 
 test("a source-only event tag never adopts an unscoped saved event id for an update", async () => {
@@ -1605,7 +1644,7 @@ test("a source-only event tag never adopts an unscoped saved event id for an upd
     repository.tasks.get("task-1")?.calendarEventId,
     "source-only-event",
   );
-  assert.equal(result.data.run?.counts.failed, 1);
+  assert.equal(result.data.run?.counts?.failed, 1);
 
   const item = [...repository.items.values()].flat()[0];
   assert.equal(item?.eventId, null);
@@ -1642,7 +1681,7 @@ test("a source-only event tag never deletes an unscoped saved event id", async (
   assert.equal(provider.updateCalls, 0);
   assert.equal(provider.events.has("source-only-excluded-event"), true);
   assert.equal(repository.jobs.size, 0);
-  assert.equal(result.data.run?.counts.excluded, 1);
+  assert.equal(result.data.run?.counts?.excluded, 1);
 });
 
 test("unmapped deterministic-id conflict is reported and the foreign event is untouched", async () => {
@@ -1679,7 +1718,7 @@ test("unmapped deterministic-id conflict is reported and the foreign event is un
   assert.equal(result.ok, true);
   if (!result.ok) return;
 
-  assert.equal(result.data.run?.counts.failed, 1);
+  assert.equal(result.data.run?.counts?.failed, 1);
   assert.equal(provider.events.get(eventId)?.summary, "Someone else's event");
   assert.equal(provider.updateCalls, 0);
 });
@@ -1733,7 +1772,7 @@ test("a switched destination never adopts the previous destination's saved event
     writesBefore,
   );
   assert.equal(repository.tasks.get("task-1")?.calendarEventId, savedEventId);
-  assert.equal(switched.data.run?.counts.failed, 1);
+  assert.equal(switched.data.run?.counts?.failed, 1);
 
   const runB = [...repository.runs.values()].find(
     (run) => run.destination.destinationKey === "new@example.com|primary",
@@ -1781,7 +1820,7 @@ test("a first sync under a new account never targets an absent legacy event id",
   assert.equal(repository.jobs.size, 0);
   assert.equal(repository.mappings.size, 0);
   assert.equal(repository.tasks.get("task-1")?.calendarEventId, accountAEventId);
-  assert.equal(result.data.run?.counts.failed, 1);
+  assert.equal(result.data.run?.counts?.failed, 1);
 
   const runB = [...repository.runs.values()].find(
     (run) => run.destination.destinationKey === "new@example.com|primary",
@@ -1834,7 +1873,7 @@ test("an excluded task never deletes another account's listed legacy event", asy
   assert.equal(provider.events.get(accountAEventId)?.summary, "Account A event");
   assert.equal(repository.jobs.size, 0);
   assert.equal(repository.tasks.get("task-1")?.calendarEventId, accountAEventId);
-  assert.equal(result.data.run?.counts.excluded, 1);
+  assert.equal(result.data.run?.counts?.excluded, 1);
 });
 
 test("a saved event id is adopted when its metadata proves the current destination", async () => {
@@ -2085,14 +2124,14 @@ test("an exhausted transient failure can be retried without listing the calendar
   provider.nextCreateFailure = { kind: "retryable", message: "Google unavailable" };
   const exhausted = await continueCalendarSync(actor, deps, started.data.run.id);
   assert.ok(exhausted.ok);
-  assert.equal(exhausted.data.run?.counts.failed, 1);
+  assert.equal(exhausted.data.run?.counts?.failed, 1);
   assert.equal(repository.jobs.get(job.id)?.permanentFailure, false);
   assert.equal(repository.jobs.get(job.id)?.attempts, 8);
 
   const retried = await retryCalendarSync(actor, deps);
   assert.ok(retried.ok);
-  assert.equal(retried.data.run?.counts.created, 1);
-  assert.equal(retried.data.run?.counts.failed, 0);
+  assert.equal(retried.data.run?.counts?.created, 1);
+  assert.equal(retried.data.run?.counts?.failed, 0);
   assert.equal(repository.jobs.get(job.id)?.attempts, 1);
   assert.equal(provider.listCalls, 1);
 });
@@ -2125,7 +2164,7 @@ test("a batch persists a second token refresh against the updated connection", a
   const result = await startCalendarSync(actor, buildDeps(repository, provider));
 
   assert.ok(result.ok);
-  assert.equal(result.data.run?.counts.created, 1);
+  assert.equal(result.data.run?.counts?.created, 1);
   assert.equal(repository.connection.accessTokenEncrypted, "created");
   assert.equal(repository.connection.refreshTokenEncrypted, "refresh");
 });
@@ -2222,7 +2261,7 @@ test("an unfinished orphan scan cannot close the run when the request budget exp
   const recovered = await continueCalendarSync(actor, deps, interrupted.data.run.id);
   assert.ok(recovered.ok);
   assert.equal(recovered.data.run?.status, "completed");
-  assert.equal(recovered.data.run?.counts.removed, 1);
+  assert.equal(recovered.data.run?.counts?.removed, 1);
   assert.equal(provider.deleteCalls, 1);
 });
 
@@ -2888,4 +2927,266 @@ test("failed claimJobs reports an error for scan-complete runs and standalone de
   );
   assert.equal(failedStandaloneRecovery.ok, false);
   assert.equal(standaloneRepo.jobs.get("job-standalone-1")?.status, "pending");
+});
+
+test("getRunCounts failure is reported without fabricating zero counts", async () => {
+  const repository = new FakeRepository();
+  const provider = new FakeProvider();
+  repository.addTask(task());
+  const deps = buildDeps(repository, provider);
+
+  await startCalendarSync(actor, deps);
+  const healthy = await getCalendarSyncStatus(actor, deps);
+  assert.equal(healthy.ok, true);
+  if (healthy.ok) {
+    assert.equal(healthy.data.run?.counts?.created, 1);
+    assert.equal(healthy.data.run?.counts?.total, 1);
+  }
+
+  repository.statusReadFailures.getRunCounts = true;
+  const status = await getCalendarSyncStatus(actor, deps);
+  assert.equal(status.ok, true);
+  if (!status.ok) return;
+  // The run is still reported; its counts are null, not fabricated zeroes.
+  assert.equal(status.data.run?.id, healthy.ok ? healthy.data.run?.id : undefined);
+  assert.equal(status.data.run?.counts, null);
+  assert.equal(status.data.run?.hasMore, false);
+  assert.ok(status.data.run?.statusErrors.counts);
+  assert.equal(status.data.run?.statusErrors.exclusions, null);
+  assert.equal(status.data.run?.statusErrors.failures, null);
+
+  repository.statusReadFailures.getRunCounts = false;
+  const recovered = await getCalendarSyncStatus(actor, deps);
+  assert.equal(recovered.ok, true);
+  if (recovered.ok) {
+    assert.equal(recovered.data.run?.counts?.created, 1);
+    assert.equal(recovered.data.run?.statusErrors.counts, null);
+  }
+});
+
+test("listExclusionCounts failure is distinguishable from a genuinely empty exclusion list", async () => {
+  const repository = new FakeRepository();
+  const provider = new FakeProvider();
+  const deps = buildDeps(repository, provider);
+
+  const { value: run } = await repository.ensureRun(actor, {
+    destination,
+    retryMode: false,
+    nowIso: "2026-05-10T08:00:00.000Z",
+  });
+  repository.items.set(run.id, [
+    {
+      taskId: "task-excluded",
+      outcome: "excluded",
+      exclusionReason: "deadline_only",
+      eventId: null,
+      payloadHash: null,
+      runId: run.id,
+    },
+  ]);
+
+  const healthy = await getCalendarSyncStatus(actor, deps);
+  assert.equal(healthy.ok, true);
+  if (healthy.ok) {
+    assert.deepEqual(healthy.data.run?.exclusions, [
+      { reason: "deadline_only", count: 1 },
+    ]);
+    assert.equal(healthy.data.run?.statusErrors.exclusions, null);
+  }
+
+  repository.statusReadFailures.listExclusionCounts = true;
+  const status = await getCalendarSyncStatus(actor, deps);
+  assert.equal(status.ok, true);
+  if (!status.ok) return;
+  // Failure surfaces as null, not an empty list that could look like "no exclusions".
+  assert.equal(status.data.run?.exclusions, null);
+  assert.ok(status.data.run?.statusErrors.exclusions);
+});
+
+test("listRunFailures failure does not report persisted failures as absent", async () => {
+  const repository = new FakeRepository();
+  const provider = new FakeProvider();
+  const deps = buildDeps(repository, provider);
+
+  const { value: run } = await repository.ensureRun(actor, {
+    destination,
+    retryMode: false,
+    nowIso: "2026-05-10T08:00:00.000Z",
+  });
+  repository.items.set(run.id, [
+    {
+      taskId: "task-failed",
+      outcome: "failed",
+      exclusionReason: null,
+      eventId: null,
+      payloadHash: null,
+      errorMessage: "Google Calendar denied access.",
+      runId: run.id,
+    },
+  ]);
+
+  const healthy = await getCalendarSyncStatus(actor, deps);
+  assert.equal(healthy.ok, true);
+  if (healthy.ok) {
+    assert.equal(healthy.data.run?.failures?.length, 1);
+    assert.equal(healthy.data.run?.statusErrors.failures, null);
+  }
+
+  repository.statusReadFailures.listRunFailures = true;
+  const status = await getCalendarSyncStatus(actor, deps);
+  assert.equal(status.ok, true);
+  if (!status.ok) return;
+  assert.equal(status.data.run?.failures, null);
+  assert.ok(status.data.run?.statusErrors.failures);
+});
+
+test("a failed Calendar connection read fails instead of reporting a connected or disconnected account", async () => {
+  const repository = new FakeRepository();
+  const provider = new FakeProvider();
+  const deps = buildDeps(repository, provider);
+
+  repository.statusReadFailures.connection = true;
+  const status = await getCalendarSyncStatus(actor, deps);
+  assert.equal(status.ok, false);
+  assert.match(status.ok ? "" : status.errorMessage, /Unable to load Calendar connection/);
+});
+
+test("a failed getRun read fails honestly instead of reporting the run missing", async () => {
+  const repository = new FakeRepository();
+  const provider = new FakeProvider();
+  const deps = buildDeps(repository, provider);
+
+  const { value: run } = await repository.ensureRun(actor, {
+    destination,
+    retryMode: false,
+    nowIso: "2026-05-10T08:00:00.000Z",
+  });
+  repository.statusReadFailures.getRun = true;
+
+  const failedContinue = await continueCalendarSync(actor, deps, run.id);
+  assert.equal(failedContinue.ok, false);
+  // The run is not fabricated as missing; it is still present and active.
+  assert.equal(repository.runs.get(run.id)?.status, "active");
+
+  repository.statusReadFailures.getRun = false;
+  const continueResult = await continueCalendarSync(actor, deps, run.id);
+  assert.equal(continueResult.ok, true);
+});
+
+test("a failed getLatestRun read is flagged instead of hiding an existing sync", async () => {
+  const repository = new FakeRepository();
+  const provider = new FakeProvider();
+  repository.addTask(task());
+  const deps = buildDeps(repository, provider);
+
+  await startCalendarSync(actor, deps);
+  repository.statusReadFailures.getLatestRun = true;
+
+  const status = await getCalendarSyncStatus(actor, deps);
+  assert.equal(status.ok, true);
+  if (!status.ok) return;
+  assert.equal(status.data.connection.connected, true);
+  assert.equal(status.data.run, null);
+  assert.ok(status.data.statusErrors.run);
+  // Committed Google work is not undone by the status read failure.
+  assert.equal(provider.events.size, 1);
+});
+
+test("a failed getPausedRun read is flagged instead of discarding the paused run", async () => {
+  const repository = new FakeRepository();
+  const provider = new FakeProvider();
+  const deps = buildDeps(repository, provider);
+
+  const otherDestination = {
+    accountSubject: "other-subject",
+    accountEmail: "other@example.com",
+    calendarId: "other",
+    destinationKey: "other@example.com|other",
+  };
+  const { value: pausedRun } = await repository.ensureRun(actor, {
+    destination: otherDestination,
+    retryMode: false,
+    nowIso: "2026-05-10T08:00:00.000Z",
+  });
+  repository.runs.set(pausedRun.id, {
+    ...pausedRun,
+    status: "paused",
+    lastError: "Google Calendar denied access.",
+  });
+
+  repository.statusReadFailures.getPausedRun = true;
+  const status = await getCalendarSyncStatus(actor, deps);
+  assert.equal(status.ok, true);
+  if (!status.ok) return;
+  assert.equal(status.data.pausedRun, null);
+  assert.ok(status.data.statusErrors.pausedRun);
+
+  repository.statusReadFailures.getPausedRun = false;
+  const recovered = await getCalendarSyncStatus(actor, deps);
+  assert.equal(recovered.ok, true);
+  if (recovered.ok) {
+    assert.equal(recovered.data.pausedRun?.id, pausedRun.id);
+    assert.equal(recovered.data.statusErrors.pausedRun, null);
+  }
+});
+
+test("a status read failure after a successful sync does not undo committed Google writes", async () => {
+  const repository = new FakeRepository();
+  const provider = new FakeProvider();
+  repository.addTask(task());
+  const deps = buildDeps(repository, provider);
+
+  await startCalendarSync(actor, deps);
+  const committedEvents = provider.events.size;
+  assert.equal(committedEvents, 1);
+
+  repository.statusReadFailures.getRunCounts = true;
+  repository.statusReadFailures.listExclusionCounts = true;
+  repository.statusReadFailures.listRunFailures = true;
+  const status = await getCalendarSyncStatus(actor, deps);
+  assert.equal(status.ok, true);
+  if (!status.ok) return;
+  assert.equal(provider.events.size, committedEvents);
+  assert.equal(status.data.run?.counts, null);
+  assert.ok(status.data.run?.statusErrors.counts);
+});
+
+test("a flagged status read recovers real values when the repository is available again", async () => {
+  const repository = new FakeRepository();
+  const provider = new FakeProvider();
+  repository.addTask(task());
+  const deps = buildDeps(repository, provider);
+
+  await startCalendarSync(actor, deps);
+  const healthy = await getCalendarSyncStatus(actor, deps);
+  assert.equal(healthy.ok, true);
+
+  repository.statusReadFailures.getRunCounts = true;
+  const failing = await getCalendarSyncStatus(actor, deps);
+  assert.equal(failing.ok, true);
+  if (failing.ok) assert.equal(failing.data.run?.counts, null);
+
+  repository.statusReadFailures.getRunCounts = false;
+  const recovered = await getCalendarSyncStatus(actor, deps);
+  assert.equal(recovered.ok, true);
+  if (recovered.ok) {
+    assert.equal(recovered.data.run?.counts?.total, 1);
+    assert.equal(recovered.data.run?.statusErrors.counts, null);
+  }
+  assert.equal(provider.events.size, 1);
+});
+
+test("a genuinely empty status response keeps null read errors", async () => {
+  const repository = new FakeRepository();
+  const provider = new FakeProvider();
+  const deps = buildDeps(repository, provider);
+
+  const status = await getCalendarSyncStatus(actor, deps);
+  assert.equal(status.ok, true);
+  if (!status.ok) return;
+  assert.equal(status.data.run, null);
+  assert.equal(status.data.pausedRun, null);
+  assert.equal(status.data.statusErrors.connection, null);
+  assert.equal(status.data.statusErrors.run, null);
+  assert.equal(status.data.statusErrors.pausedRun, null);
 });

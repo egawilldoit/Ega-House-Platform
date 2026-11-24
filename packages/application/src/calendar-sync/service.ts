@@ -65,18 +65,16 @@ export type CalendarSyncConnectionView = Readonly<{
   destinationKey: string;
 }>;
 
-export type CalendarSyncRunView = Readonly<{
-  id: string;
-  status: CalendarRunRecord["status"];
-  retryMode: boolean;
-  scanComplete: boolean;
-  counts: CalendarRunCounts;
-  exclusions: CalendarRunExclusionCount[];
-  failures: CalendarRunFailure[];
-  hasMore: boolean;
-  lastError: string | null;
-  startedAt: string;
-  completedAt: string | null;
+/**
+ * Read failures from the repository calls that build the status view. Null
+ * means the read succeeded and returned a legitimately empty value; a string
+ * flags the corresponding status information as unavailable. A successful
+ * read with zero counts is still a real `CalendarRunCounts`, never null.
+ */
+export type CalendarSyncRunReadErrors = Readonly<{
+  counts: string | null;
+  exclusions: string | null;
+  failures: string | null;
 }>;
 
 export type CalendarSyncStatusView = Readonly<{
@@ -85,6 +83,26 @@ export type CalendarSyncStatusView = Readonly<{
   pausedRun: CalendarRunRecord | null;
   message: string | null;
   continuationBlocked: boolean;
+  statusErrors: Readonly<{
+    connection: string | null;
+    run: string | null;
+    pausedRun: string | null;
+  }>;
+}>;
+
+export type CalendarSyncRunView = Readonly<{
+  id: string;
+  status: CalendarRunRecord["status"];
+  retryMode: boolean;
+  scanComplete: boolean;
+  counts: CalendarRunCounts | null;
+  exclusions: CalendarRunExclusionCount[] | null;
+  failures: CalendarRunFailure[] | null;
+  hasMore: boolean;
+  lastError: string | null;
+  startedAt: string;
+  completedAt: string | null;
+  statusErrors: CalendarSyncRunReadErrors;
 }>;
 
 export type CalendarSyncProcessResult =
@@ -98,20 +116,6 @@ export type CalendarSyncProcessResult =
       ok: false;
       errorMessage: string;
     }>;
-
-const EMPTY_COUNTS: CalendarRunCounts = Object.freeze({
-  total: 0,
-  created: 0,
-  updated: 0,
-  removed: 0,
-  unchanged: 0,
-  excluded: 0,
-  failed: 0,
-  pending: 0,
-  retrying: 0,
-  processing: 0,
-  ready: 0,
-});
 
 function requireActor(actor: AuthenticatedActor) {
   if (!actor?.userId) return applicationFailure("Authentication required.");
@@ -184,6 +188,21 @@ function connectionView(
   };
 }
 
+function statusReadFailed(label: string): string {
+  return `Unable to load the Calendar sync ${label}. The status may be out of date.`;
+}
+
+function statusMessageFor(
+  run: CalendarSyncRunView | null,
+  pausedRun: CalendarRunRecord | null,
+): string | null {
+  return run?.status === "paused" && run.lastError
+    ? run.lastError
+    : pausedRun
+      ? `Sync for ${pausedRun.destination.calendarId} is paused. Events already published there remain in that calendar.`
+      : null;
+}
+
 async function loadRunView(
   actor: AuthenticatedActor,
   deps: CalendarSyncDependencies,
@@ -197,23 +216,30 @@ async function loadRunView(
     deps.repository.listRunFailures(actor, run.id, 8),
   ]);
 
-  const safeCounts = counts.ok ? counts.value : EMPTY_COUNTS;
+  // A failed read is not an empty result: counts, exclusions and failures are
+  // null and flagged via statusErrors. A successful read with zero counts is
+  // still a real CalendarRunCounts, so hasMore stays correct on real data.
   const hasMore =
     run.status === "active" &&
-    (!run.scanComplete || safeCounts.ready > 0);
+    (!run.scanComplete || (counts.ok && counts.value.ready > 0));
 
   return {
     id: run.id,
     status: run.status,
     retryMode: run.retryMode,
     scanComplete: run.scanComplete,
-    counts: safeCounts,
-    exclusions: exclusions.ok ? exclusions.value : [],
-    failures: failures.ok ? failures.value : [],
+    counts: counts.ok ? counts.value : null,
+    exclusions: exclusions.ok ? exclusions.value : null,
+    failures: failures.ok ? failures.value : null,
     hasMore,
     lastError: run.lastError,
     startedAt: run.createdAt,
     completedAt: run.completedAt,
+    statusErrors: {
+      counts: counts.ok ? null : statusReadFailed("run counts"),
+      exclusions: exclusions.ok ? null : statusReadFailed("exclusion counts"),
+      failures: failures.ok ? null : statusReadFailed("failure records"),
+    },
   };
 }
 
@@ -238,15 +264,11 @@ export async function getCalendarSyncStatus(
         calendarId: "primary",
       });
 
-  const latestRunResult = await deps.repository.getLatestRun(
-    actor,
-    destination.destinationKey,
-  );
+  const [latestRunResult, pausedRunResult] = await Promise.all([
+    deps.repository.getLatestRun(actor, destination.destinationKey),
+    deps.repository.getPausedRun(actor, destination.destinationKey),
+  ]);
   const latestRun = latestRunResult.ok ? latestRunResult.value : null;
-  const pausedRunResult = await deps.repository.getPausedRun(
-    actor,
-    destination.destinationKey,
-  );
   const pausedRun = pausedRunResult.ok ? pausedRunResult.value : null;
   const run = await loadRunView(actor, deps, latestRun);
 
@@ -254,13 +276,15 @@ export async function getCalendarSyncStatus(
     connection: connectionView(connection),
     run,
     pausedRun,
-    message:
-      run?.status === "paused" && run.lastError
-        ? run.lastError
-        : pausedRun
-          ? `Sync for ${pausedRun.destination.calendarId} is paused. Events already published there remain in that calendar.`
-          : null,
+    message: statusMessageFor(run, pausedRun),
     continuationBlocked: false,
+    statusErrors: {
+      connection: null,
+      run: latestRunResult.ok ? null : "Unable to load the latest Calendar sync run.",
+      pausedRun: pausedRunResult.ok
+        ? null
+        : "Unable to load a paused Calendar sync run.",
+    },
   });
 }
 
@@ -2057,13 +2081,21 @@ async function buildStatus(
     connection: connectionView(connection),
     run,
     pausedRun,
-    message:
-      run?.status === "paused" && run.lastError
-        ? run.lastError
-        : pausedRun
-          ? `Sync for ${pausedRun.destination.calendarId} is paused. Events already published there remain in that calendar.`
-          : null,
+    message: statusMessageFor(run, pausedRun),
     continuationBlocked: false,
+    statusErrors: {
+      connection: connectionResult.ok
+        ? null
+        : "Unable to load the Calendar connection.",
+      run: runResult.ok
+        ? null
+        : runId
+          ? "Unable to load the Calendar sync run."
+          : "Unable to load the latest Calendar sync run.",
+      pausedRun: pausedRunResult.ok
+        ? null
+        : "Unable to load a paused Calendar sync run.",
+    },
   };
 }
 

@@ -42,10 +42,12 @@ function status(
       lastError: null,
       startedAt: "2026-05-10T08:00:00.000Z",
       completedAt: "2026-05-10T08:01:00.000Z",
+      statusErrors: { counts: null, exclusions: null, failures: null },
     },
     pausedRun: null,
     message: null,
     continuationBlocked: false,
+    statusErrors: { connection: null, run: null, pausedRun: null },
     ...overrides,
   };
 }
@@ -111,14 +113,39 @@ test("Calendar sync panel surfaces reconnect and paused destination messaging", 
 
 test("Calendar sync panel offers Retry retryable during backoff", () => {
   const initialStatus = status();
-  assert.ok(initialStatus.run);
+  const run = initialStatus.run;
+  assert.ok(run);
+  assert.ok(run.counts);
   const markup = renderToStaticMarkup(
     React.createElement(TaskCalendarSyncPanel, {
       initialStatus: {
         ...initialStatus,
-        run: { ...initialStatus.run, counts: { ...initialStatus.run.counts, retrying: 1 } },
+        run: { ...run, counts: { ...run.counts, retrying: 1 } },
       },
     }),
   );
   assert.match(markup, /Retry retryable/);
+});
+
+test("Calendar sync panel flags status unavailability instead of showing fabricated counts", () => {
+  const initialStatus = status();
+  const markup = renderToStaticMarkup(
+    React.createElement(TaskCalendarSyncPanel, {
+      initialStatus: {
+        ...initialStatus,
+        run: initialStatus.run ? { ...initialStatus.run, counts: null } : null,
+        statusErrors: {
+          connection: null,
+          run: "Unable to load the Calendar sync run.",
+          pausedRun: null,
+        },
+      },
+    }),
+  );
+
+  assert.match(markup, /calendar-sync-status-unavailable/);
+  assert.match(markup, /Some Calendar sync status could not be loaded/);
+  assert.match(markup, /Unable to load the Calendar sync run/);
+  assert.doesNotMatch(markup, /calendar-sync-counts/);
+  assert.match(markup, /Run details could not be loaded/);
 });
