@@ -8,6 +8,7 @@ import {
   type ExpenseListValues,
   type PersonalExpense,
 } from "@ega/domain/expenses";
+import { MONEY_DEFAULT_TIMEZONE } from "@ega/domain/money";
 import { getLocalDateInTimezone } from "@ega/domain/time-context";
 
 import type { AuthenticatedActor } from "../auth/actor";
@@ -107,7 +108,8 @@ export type CreateExpenseOptions = Readonly<{
    * inclusive range. Accounts with no period keep the existing behavior; an
    * ended/rolled-over account must use the explicit historical correction path.
    */
-  periods?: Pick<MoneyPeriodRepository, "findTracking" | "list">;
+  periods?: Pick<MoneyPeriodRepository, "findTracking" | "list"> &
+    Partial<Pick<MoneyPeriodRepository, "findById">>;
 }>;
 
 /**
@@ -119,7 +121,7 @@ async function routineEntryGuard(
   actor: AuthenticatedActor,
   periods: NonNullable<CreateExpenseOptions["periods"]>,
   entry: Readonly<{ occurredAt?: string; bookingDate?: string }>,
-): Promise<ApplicationResult<never> | null> {
+): Promise<ApplicationResult<{ periodId: string | null }> | null> {
   const tracking = await periods.findTracking(actor);
   if (!tracking.ok) {
     return failureFor(
@@ -128,19 +130,22 @@ async function routineEntryGuard(
     );
   }
   if (tracking.value) {
-    // A date-only edit supplies the booking day directly; a timestamped one is
-    // resolved in the same timezone the entry guard uses.
-    const bookingDate =
-      entry.bookingDate ??
-      (entry.occurredAt
-        ? getLocalDateInTimezone(
-            new Date(entry.occurredAt),
-            tracking.value.timezone,
-          )
-        : null);
-    if (bookingDate === null) return null;
+    // A timestamped edit is resolved in the period timezone and must not be
+    // overridden by an explicit stale bookingDate. The DB derives the day from
+    // the timestamp, so the guard must do the same.
+    const bookingDate = entry.occurredAt
+      ? getLocalDateInTimezone(
+          new Date(entry.occurredAt),
+          tracking.value.timezone,
+        )
+      : (entry.bookingDate ?? null);
+    if (bookingDate === null) {
+      return applicationSuccess({ periodId: tracking.value.id });
+    }
     const guardMessage = routineEntryGuardFailure(tracking.value, bookingDate);
-    return guardMessage ? applicationFailure(guardMessage, "validation") : null;
+    return guardMessage
+      ? applicationFailure(guardMessage, "validation")
+      : applicationSuccess({ periodId: tracking.value.id });
   }
   const existing = await periods.list(actor, 1);
   if (!existing.ok) {
@@ -155,7 +160,7 @@ async function routineEntryGuard(
       "validation",
     );
   }
-  return null;
+  return applicationSuccess({ periodId: null });
 }
 
 export async function createExpense(
@@ -180,16 +185,24 @@ export async function createExpense(
   }
   if (existing.value) return replayOutcome(existing.value, createFingerprint);
 
+  let periodId: string | null = null;
   if (options.periods) {
     const guard = await routineEntryGuard(
       actor,
       options.periods,
       { occurredAt: values.occurredAt },
     );
-    if (guard) return guard;
+    if (guard) {
+      if (!guard.ok) return guard;
+      periodId = guard.data.periodId;
+    }
   }
 
-  const created = await repository.create(actor, { values, createFingerprint });
+  const created = await repository.create(actor, {
+    values,
+    createFingerprint,
+    periodId,
+  });
   if (created.ok) {
     return applicationSuccess({ expense: created.value, replayed: false });
   }
@@ -284,16 +297,81 @@ export async function updateExpense(
 
   // Moving a purchase to another day must obey the same tracking-period gate
   // as creating it, whether the caller supplies an instant or a date-only
-  // booking day.
+  // booking day. Historical expenses keep their date; amount/classification
+  // edits do not enter this branch.
   if (
     options.periods
     && (changes.occurredAt !== undefined || changes.bookingDate !== undefined)
   ) {
+    const current = await repository.get(actor, validId);
+    if (!current.ok) {
+      return failureFor(
+        current.error.code,
+        "Unable to load the expense right now.",
+      );
+    }
+    if (!current.value) return applicationFailure(NOT_FOUND, "notFound");
+    const existing = current.value;
+
+    const tracking = await options.periods.findTracking(actor);
+    if (!tracking.ok) {
+      return failureFor(
+        tracking.error.code,
+        "Unable to check the tracking period right now.",
+      );
+    }
+
+    let timezone: string = tracking.value?.timezone ?? MONEY_DEFAULT_TIMEZONE;
+    if (existing.periodId !== null && options.periods.findById) {
+      const period = await options.periods.findById(actor, existing.periodId);
+      if (period.ok && period.value) timezone = period.value.timezone;
+    }
+
+    let effectiveDate = changes.bookingDate ?? null;
+    if (changes.occurredAt) {
+      const derived = getLocalDateInTimezone(
+        new Date(changes.occurredAt),
+        timezone,
+      );
+      if (changes.bookingDate !== undefined && changes.bookingDate !== derived) {
+        return applicationFailure(
+          "Booking date must match the supplied occurrence time.",
+          "validation",
+        );
+      }
+      effectiveDate = derived;
+    }
+
+    if (effectiveDate !== null && effectiveDate !== existing.bookingDate) {
+      const trackingId = tracking.value?.id ?? null;
+      if (existing.periodId !== null && existing.periodId !== trackingId) {
+        return applicationFailure(
+          "Historical period expenses keep their original booking date. Record an explicit adjustment instead of moving the date.",
+          "validation",
+        );
+      }
+      // Ordinary quick-expense rows historically have no period_id. Treat a
+      // pre-period/gap booking date as historical rather than letting it move
+      // into the live tracking window.
+      if (
+        existing.periodId === null
+        && tracking.value
+        && (existing.bookingDate < tracking.value.startDate
+          || existing.bookingDate > tracking.value.endDate)
+      ) {
+        return applicationFailure(
+          "Historical period expenses keep their original booking date. Record an explicit adjustment instead of moving the date.",
+          "validation",
+        );
+      }
+    }
+
     const guard = await routineEntryGuard(actor, options.periods, {
-      occurredAt: changes.occurredAt,
-      bookingDate: changes.bookingDate,
+      bookingDate: effectiveDate ?? undefined,
     });
-    if (guard) return guard;
+    if (guard) {
+      if (!guard.ok) return guard;
+    }
   }
 
   return fromRepository(

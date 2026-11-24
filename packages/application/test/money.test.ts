@@ -342,7 +342,9 @@ function makeRepository(options: { periods?: MoneyPeriod[] } = {}) {
       }
       return { ok: true, value: { inflowsMinor, outflowsMinor, recordCount, truncated: false } };
     },
-    findById: UNUSED,
+    async findById(_actor, id) {
+      return { ok: true, value: periods.find((candidate) => candidate.id === id) ?? null };
+    },
     findByExactRange: UNUSED,
     findOverlapping: UNUSED,
     create: UNUSED,
@@ -784,6 +786,42 @@ test("a historical movement date cannot be moved into a different period", async
   if (!moved.ok) {
     assert.equal(moved.code, "validation");
     assert.match(moved.errorMessage, /original booking date/);
+  }
+});
+
+test("an occurredAt change cannot smuggle an old bookingDate past the guard", async () => {
+  const period = periodRecord({
+    id: "historical-period",
+    lifecycle: "rolled_over",
+    activeDate: "2026-11-30",
+  });
+  const { repository, periodRepository, rows } = makeRepository({ periods: [period] });
+  const historical = movement({
+    kind: "income",
+    direction: "in",
+    category: null,
+    needVsWant: null,
+    countsInDaily: false,
+    bookingDate: "2026-11-10",
+    periodId: "historical-period",
+    idempotencyKey: "historical-dual-date",
+  });
+  rows.push(historical);
+
+  const moved = await updateMovement(
+    ACTOR,
+    repository,
+    historical.id,
+    {
+      version: 1,
+      bookingDate: "2026-11-10",
+      occurredAt: "2026-12-05T12:00:00.000Z",
+    },
+    { periods: periodRepository },
+  );
+  assert.equal(moved.ok, false);
+  if (!moved.ok) {
+    assert.equal(moved.code, "validation");
   }
 });
 

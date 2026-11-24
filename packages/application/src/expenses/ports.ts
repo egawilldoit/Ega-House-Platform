@@ -46,6 +46,8 @@ export type ExpenseIdempotencyReceipt = Readonly<{
 export type ExpenseCreateRecordInput = Readonly<{
   values: ExpenseCreateValues;
   createFingerprint: string;
+  /** Tracking period resolved by the application guard; null for legacy/no-period writes. */
+  periodId?: string | null;
 }>;
 
 export type ExpenseUpdateRecordInput = Readonly<{

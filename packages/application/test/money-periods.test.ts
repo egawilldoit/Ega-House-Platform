@@ -6,6 +6,7 @@ import {
   createExpense,
   createMoneyPeriod,
   getMoneyState,
+  updateExpense,
   rebaseMoneyDayStartBaseline,
   routineEntryGuardFailure,
   updateMoneySettings,
@@ -861,7 +862,7 @@ function expenseRepository() {
         paymentMethod: input.values.paymentMethod,
         purpose: null,
         countsInDaily: true,
-        periodId: null,
+        periodId: input.periodId ?? null,
         idempotencyKey: input.values.idempotencyKey,
         version: 1,
         deletedAt: null,
@@ -928,6 +929,9 @@ test("routine expense creation is guarded by the tracking period date", async ()
     { periods: money.repository },
   );
   assert.equal(inRange.ok, true);
+  if (inRange.ok) {
+    assert.equal(inRange.data.expense.periodId, created.data.period.id);
+  }
 
   const outOfRange = await createExpense(
     ACTOR,
@@ -956,6 +960,47 @@ test("routine expense creation is guarded by the tracking period date", async ()
   assert.equal(afterRollover.ok, false);
   if (!afterRollover.ok) {
     assert.match(afterRollover.errorMessage, /historical correction path/);
+  }
+});
+
+test("a pre-period expense cannot move its booking date into the tracking window", async () => {
+  const money = makeRepository();
+  const expenses = expenseRepository();
+  const createdPeriod = await createMoneyPeriod(ACTOR, money.repository, CREATE_BODY, {
+    now: NOW,
+    timezone: "Africa/Casablanca",
+  });
+  assert.equal(createdPeriod.ok, true);
+  if (!createdPeriod.ok) return;
+
+  const seeded = await expenses.repository.create(ACTOR, {
+    values: {
+      occurredAt: "2026-11-07T09:30:00.000Z",
+      bookingDate: "2026-11-07",
+      amountMinor: 1_100,
+      category: "coffee",
+      note: null,
+      merchant: null,
+      needVsWant: "want",
+      paymentMethod: null,
+      idempotencyKey: "pre-period-expense",
+    },
+    createFingerprint: "f".repeat(64),
+    periodId: null,
+  });
+  assert.equal(seeded.ok, true);
+  if (!seeded.ok) return;
+
+  const moved = await updateExpense(
+    ACTOR,
+    expenses.repository,
+    seeded.value.id,
+    { version: 1, bookingDate: "2026-11-10" },
+    { periods: money.repository },
+  );
+  assert.equal(moved.ok, false);
+  if (!moved.ok) {
+    assert.match(moved.errorMessage, /original booking date/);
   }
 });
 

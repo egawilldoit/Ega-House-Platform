@@ -143,7 +143,7 @@ function toInsertPayload(
     payment_method: values.paymentMethod,
     purpose: null,
     counts_in_daily: true,
-    period_id: null,
+    period_id: input.periodId ?? null,
     idempotency_key: values.idempotencyKey,
     create_fingerprint: input.createFingerprint,
   };

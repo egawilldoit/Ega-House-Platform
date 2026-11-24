@@ -1,5 +1,6 @@
 import { getLocalDateInTimezone } from "@ega/domain/time-context";
 import {
+  MONEY_DEFAULT_TIMEZONE,
   canonicalMovementCreatePayload,
   isMoneyDirection,
   parseCreateMovementInput,
@@ -65,7 +66,8 @@ export type MovementTotalsOutcome = Readonly<{
  * silently moved.
  */
 export type MovementWriteOptions = Readonly<{
-  periods: Pick<MoneyPeriodRepository, "findTracking" | "list">;
+  periods: Pick<MoneyPeriodRepository, "findTracking" | "list"> &
+    Partial<Pick<MoneyPeriodRepository, "findById">>;
 }>;
 
 export function movementReceiptFingerprint(values: MoneyCreateValues): string {
@@ -273,18 +275,36 @@ export async function updateMovement(
   // as creating it. A timestamp-only change is re-derived in the tracking
   // timezone so the DB trigger cannot quietly move the booking day.
   let bookingDate = changes.bookingDate;
-  if (!bookingDate && changes.occurredAt) {
-    const tracking = await options.periods.findTracking(actor);
-    if (!tracking.ok) {
-      return failureFor(
-        tracking.error.code,
-        "Unable to check the tracking period right now.",
+  if (changes.occurredAt) {
+    // The DB derives the booking date from the timestamp in the movement's
+    // period timezone. Derive the same day here and reject an inconsistent
+    // explicit date; otherwise a caller could send the old date beside a new
+    // timestamp and bypass the period guard.
+    let timezone: string = MONEY_DEFAULT_TIMEZONE;
+    if (movement.periodId !== null && options.periods.findById) {
+      const period = await options.periods.findById(actor, movement.periodId);
+      if (period.ok && period.value) timezone = period.value.timezone;
+    } else {
+      const tracking = await options.periods.findTracking(actor);
+      if (!tracking.ok) {
+        return failureFor(
+          tracking.error.code,
+          "Unable to check the tracking period right now.",
+        );
+      }
+      timezone = tracking.value?.timezone ?? MONEY_DEFAULT_TIMEZONE;
+    }
+    const derived = getLocalDateInTimezone(
+      new Date(changes.occurredAt),
+      timezone,
+    );
+    if (bookingDate !== undefined && bookingDate !== derived) {
+      return applicationFailure(
+        "Booking date must match the supplied occurrence time.",
+        "validation",
       );
     }
-    bookingDate = getLocalDateInTimezone(
-      new Date(changes.occurredAt),
-      tracking.value?.timezone ?? "UTC",
-    );
+    bookingDate = derived;
   }
   // A correction that keeps the original booking date is a historical edit,
   // not a new routine entry. It must remain possible after the source period
