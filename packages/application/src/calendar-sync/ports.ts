@@ -280,6 +280,9 @@ export type CalendarProviderResult<T> =
   | Readonly<{ ok: false; error: CalendarProviderFailure }>;
 
 export interface CalendarEventProvider {
+  isCalendarAccessible(
+    connection: CalendarConnectionRecord,
+  ): Promise<CalendarProviderResult<boolean>>;
   listManagedEvents(
     connection: CalendarConnectionRecord,
   ): Promise<

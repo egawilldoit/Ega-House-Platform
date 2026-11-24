@@ -80,9 +80,22 @@ class FakeProvider implements CalendarEventProvider {
   getCalls = 0;
   nextListFailure: { kind: "authorization" | "retryable" | "permanent"; message: string } | null = null;
   nextGetFailure: { kind: "authorization" | "retryable" | "permanent"; message: string } | null = null;
+  nextCalendarAccessFailure: { kind: "authorization" | "retryable" | "permanent"; message: string } | null = null;
+  calendarAccessible = true;
 
   private result<T>(value: T): CalendarProviderResult<T> {
     return { ok: true, value, refreshedCredentials: undefined };
+  }
+
+  async isCalendarAccessible(
+    _connection?: CalendarConnectionRecord,
+  ): Promise<CalendarProviderResult<boolean>> {
+    if (this.nextCalendarAccessFailure) {
+      const failure = this.nextCalendarAccessFailure;
+      this.nextCalendarAccessFailure = null;
+      return { ok: false, error: failure };
+    }
+    return this.result(this.calendarAccessible);
   }
 
   async listManagedEvents(

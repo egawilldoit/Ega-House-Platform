@@ -742,6 +742,29 @@ async function planTaskForScan(input: {
     // mapping generation, so a crash before the job is durable cannot hide an
     // event that still exists. A legacy mapping gets one bounded update
     // attempt, which repairs or advances the generation.
+    // A 404 can also mean the calendar became inaccessible. Verify reachability
+    // before treating absence as a confirmed deletion.
+    if (liveCheck.kind === "missing" && mapping.metadataVerified) {
+      const accessible = await input.deps.provider.isCalendarAccessible(
+        input.connection,
+      );
+      if (!accessible.ok || !accessible.value) {
+        return {
+          item: {
+            taskId: task.id,
+            outcome: "failed",
+            exclusionReason: null,
+            eventId: mapping.eventId,
+            payloadHash: null,
+            errorMessage: accessible.ok
+              ? "Google Calendar is inaccessible. Reconnect and retry."
+              : accessible.error.message,
+          },
+          job: null,
+          refreshedCredentials,
+        };
+      }
+    }
     if (mapping.metadataVerified) {
       const eventId = deterministicCalendarEventId({
         ownerUserId,
@@ -1096,7 +1119,7 @@ async function completeJobOutcome(
     taskSyncStatus: "synced" | "failed" | "skipped";
     lastError?: string | null;
   },
-) {
+): Promise<{ settled: boolean; dbFailed: boolean }> {
   const completed = await deps.repository.completeJob(actor, {
     job: input.job,
     claimToken: input.job.claimToken as string,
@@ -1114,11 +1137,16 @@ async function completeJobOutcome(
     nowIso: input.nowIso,
   });
 
-  if (!completed.ok || !completed.value) {
+  if (!completed.ok) {
+    // The database settlement itself failed. Surface it so recovery does not
+    // count this job as processed.
+    return { settled: false, dbFailed: true };
+  }
+  if (!completed.value) {
     // Another worker reclaimed this lease. Do not mutate mappings, run items or
     // task state from an expired claim; the settlement is atomic in the
     // repository and leaves the mapping active for the newer claim.
-    return false;
+    return { settled: false, dbFailed: false };
   }
 
   const task = await deps.repository.getTask(actor, {
@@ -1135,7 +1163,7 @@ async function completeJobOutcome(
     });
   }
 
-  return true;
+  return { settled: true, dbFailed: false };
 }
 
 async function failJob(
@@ -1239,6 +1267,7 @@ async function processJob(
   authFailure?: boolean;
   staleAuth?: boolean;
   persistenceError?: string;
+  settlementFailed?: boolean;
 }> {
   const { job, connection, nowIso, now } = input;
   const config = getConfig(deps);
@@ -1390,14 +1419,50 @@ async function processJob(
         return { refreshedCredentials };
       }
       refreshedCredentials = deleted.refreshedCredentials ?? refreshedCredentials;
+
+      if (deleted.value.alreadyRemoved) {
+        const accessible = await deps.provider.isCalendarAccessible(connection);
+        if (!accessible.ok) {
+          await failJob(actor, deps, {
+            job,
+            message: accessible.error.message,
+            permanent: false,
+            nowIso,
+            now,
+          });
+          return { refreshedCredentials };
+        }
+        if (!accessible.value) {
+          const paused = await pauseForAuthorization(actor, deps, {
+            runId: job.runId,
+            connection,
+            message: "Google Calendar is inaccessible. Reconnect and retry.",
+            nowIso,
+          });
+          if (!paused.ok) {
+            return { persistenceError: paused.message, refreshedCredentials };
+          }
+          return {
+            authFailure: true,
+            staleAuth: !paused.applied,
+            refreshedCredentials,
+          };
+        }
+      }
     }
 
-    await completeJobOutcome(actor, deps, {
+    const settled = await completeJobOutcome(actor, deps, {
       job, connection, outcome: eventId ? "removed" : "excluded",
       eventId: null, payloadHash: null, generation: removalGeneration, exclusionReason,
       mappingRemoval: eventId ? { eventId, generation: removalGeneration } : null,
       nowIso, taskSyncStatus: "skipped",
     });
+    if (settled.dbFailed) {
+      return {
+        persistenceError: "Unable to settle the Calendar sync job.",
+        settlementFailed: true,
+      };
+    }
     return { refreshedCredentials };
   }
 
@@ -1558,7 +1623,7 @@ async function processJob(
   if (!(await claimStillCurrent(actor, deps, job))) {
     return { refreshedCredentials };
   }
-  await completeJobOutcome(actor, deps, {
+  const settled = await completeJobOutcome(actor, deps, {
     job,
     connection,
     outcome: updating ? "updated" : "created",
@@ -1569,6 +1634,12 @@ async function processJob(
     nowIso,
     taskSyncStatus: "synced",
   });
+  if (settled.dbFailed) {
+    return {
+      persistenceError: "Unable to settle the Calendar sync job.",
+      settlementFailed: true,
+    };
+  }
 
   return { refreshedCredentials };
 }
@@ -1659,6 +1730,20 @@ async function drainRunJobs(
         });
         refreshed = result.refreshedCredentials ?? refreshed;
         if (result.persistenceError) {
+          if (result.settlementFailed) {
+            // Keep the failed job claimed (processing) so it is not counted as
+            // processed; release only the not-yet-started jobs in this batch.
+            const remainingIds = jobs.slice(nextJob).map((job) => job.id);
+            if (remainingIds.length > 0) {
+              await deps.repository.releaseJobs(actor, {
+                jobIds: remainingIds,
+                claimToken,
+                nowIso: input.nowIso,
+              }).catch(() => undefined);
+            }
+            nextJob = jobs.length;
+            return { persistenceError: result.persistenceError, refreshed };
+          }
           nextJob -= 1;
           return { persistenceError: result.persistenceError, refreshed };
         }
@@ -1957,11 +2042,15 @@ async function processRunBatch(
 
     eventIndex = eventIndexFor(listing.value.events);
   }
+  // The Google listing above is awaited in full and can consume most of the
+  // request budget. Give the task scan its own fresh budget so a slow listing
+  // cannot starve scanning on every retry and stall the run indefinitely.
+  const scanDeadline = Date.now() + config.requestBudgetMs;
   const scanResult = await scanRun(actor, deps, {
     run,
     connection,
     eventIndex,
-    deadline,
+    deadline: scanDeadline,
     nowIso,
   });
 
@@ -2292,7 +2381,19 @@ export async function processCalendarRecovery(
         });
         refreshed = result.refreshedCredentials ?? refreshed;
         if (result.persistenceError) {
-          nextJob -= 1;
+          if (result.settlementFailed) {
+            const remainingIds = jobs.slice(nextJob).map((job) => job.id);
+            if (remainingIds.length > 0) {
+              await deps.repository.releaseJobs(actor, {
+                jobIds: remainingIds,
+                claimToken,
+                nowIso,
+              }).catch(() => undefined);
+            }
+            nextJob = jobs.length;
+          } else {
+            nextJob -= 1;
+          }
           destinationFailed = true;
           recoveryErrorMessage ??= result.persistenceError;
           break;

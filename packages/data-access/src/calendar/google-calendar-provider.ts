@@ -649,6 +649,28 @@ export class GoogleCalendarEventProvider implements CalendarEventProvider {
     };
   }
 
+  async isCalendarAccessible(
+    connection: CalendarConnectionRecord,
+  ): Promise<CalendarProviderResult<boolean>> {
+    const result = await this.authorizedFetch(connection, "", { method: "GET" });
+    if (!result.ok) return result;
+    if (result.response.status === 404 || result.response.status === 403) {
+      return {
+        ok: true,
+        value: false,
+        refreshedCredentials: result.refreshedCredentials,
+      };
+    }
+    if (!result.response.ok) {
+      return { ok: false, error: await this.failureFromResponse(result.response) };
+    }
+    return {
+      ok: true,
+      value: true,
+      refreshedCredentials: result.refreshedCredentials,
+    };
+  }
+
   async getEvent(
     connection: CalendarConnectionRecord,
     eventId: string,

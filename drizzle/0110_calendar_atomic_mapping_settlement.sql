@@ -257,6 +257,7 @@ BEGIN
       WHERE job.run_id = p_run_id AND job.destination_key = p_destination_key
         AND job.queue_version = 2 AND NOT job.permanent_failure
         AND (job.status = 'failed' OR (job.status = 'pending' AND job.attempts > 0))
+        AND job.scheduled_at <= p_now
         AND EXISTS (
           SELECT 1 FROM public.calendar_sync_run_items AS item
           WHERE item.run_id = p_run_id AND item.job_id = job.id
