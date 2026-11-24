@@ -33,6 +33,7 @@ import type {
   CalendarRunFailure,
   CalendarRunRecord,
   CalendarScanCommit,
+  CalendarScanCursor,
   RefreshedCalendarCredentials,
   CalendarScanJobDraft,
   CalendarRunItemDraft,
@@ -86,11 +87,17 @@ export type CalendarSyncStatusView = Readonly<{
   continuationBlocked: boolean;
 }>;
 
-export type CalendarSyncProcessResult = Readonly<{
-  status: CalendarSyncStatusView;
-  authFailure: boolean;
-  retryable: boolean;
-}>;
+export type CalendarSyncProcessResult =
+  | Readonly<{
+      ok: true;
+      status: CalendarSyncStatusView;
+      authFailure: boolean;
+      retryable: boolean;
+    }>
+  | Readonly<{
+      ok: false;
+      errorMessage: string;
+    }>;
 
 const EMPTY_COUNTS: CalendarRunCounts = Object.freeze({
   total: 0,
@@ -263,29 +270,76 @@ function isAuthorizationFailure(
   return error?.kind === "authorization";
 }
 
+type AuthorizationPauseResult =
+  | Readonly<{ ok: true; applied: boolean; runPaused: boolean }>
+  | Readonly<{ ok: false; message: string }>;
+
 async function pauseForAuthorization(
   actor: AuthenticatedActor,
   deps: CalendarSyncDependencies,
   input: {
     runId: string | null;
     connection: CalendarConnectionRecord;
+    expectedListingCursor?: CalendarScanCursor | null;
+    fenceListingPause?: boolean;
     message: string;
     nowIso: string;
   },
-) {
-  await deps.repository.markReconnectRequired(actor, {
+): Promise<AuthorizationPauseResult> {
+  const marked = await deps.repository.markReconnectRequired(actor, {
     ownerUserId: input.connection.ownerUserId,
+    expectedUpdatedAt: input.connection.updatedAt,
+    expectedConnectedAt: input.connection.connectedAt,
+    expectedAccessTokenEncrypted: input.connection.accessTokenEncrypted,
+    expectedRefreshTokenEncrypted: input.connection.refreshTokenEncrypted,
     message: input.message,
     nowIso: input.nowIso,
   });
-  if (input.runId) {
-    await deps.repository.pauseRun(
-      actor,
-      input.runId,
-      input.message,
-      input.nowIso,
-    );
+  if (!marked.ok) {
+    return {
+      ok: false,
+      message: "Unable to save Google Calendar reconnect status.",
+    };
   }
+  if (!marked.value) {
+    // Credentials changed (for example, the user reconnected or refreshed
+    // tokens) after this request loaded the connection; do not disable the
+    // replacement connection or pause the run from a stale auth failure.
+    return { ok: true, applied: false, runPaused: false };
+  }
+  if (!input.runId) {
+    return { ok: true, applied: true, runPaused: false };
+  }
+  if (input.fenceListingPause) {
+    const paused = await deps.repository.recordListingFailure(actor, {
+      runId: input.runId,
+      expectedCursor: input.expectedListingCursor ?? null,
+      pause: true,
+      retryAt: null,
+      message: input.message,
+      nowIso: input.nowIso,
+    });
+    if (!paused.ok) {
+      return {
+        ok: false,
+        message: "Unable to save Calendar sync pause state.",
+      };
+    }
+    return { ok: true, applied: true, runPaused: paused.value };
+  }
+  const paused = await deps.repository.pauseRun(
+    actor,
+    input.runId,
+    input.message,
+    input.nowIso,
+  );
+  if (!paused.ok) {
+    return {
+      ok: false,
+      message: "Unable to save Calendar sync pause state.",
+    };
+  }
+  return { ok: true, applied: true, runPaused: true };
 }
 
 function eventIndexFor(
@@ -763,7 +817,14 @@ async function scanRun(
       run: CalendarRunRecord;
       refreshedCredentials?: RefreshedCalendarCredentials;
     }
-  | { ok: false; message: string; authFailure?: boolean; retryable?: boolean }
+  | {
+      ok: false;
+      message: string;
+      authFailure?: boolean;
+      staleAuth?: boolean;
+      persistenceFailure?: boolean;
+      retryable?: boolean;
+    }
 > {
   const config = getConfig(deps);
   let run = input.run;
@@ -856,12 +917,30 @@ async function scanRun(
         });
         const authFailure = planned.lookupFailure.kind === "authorization";
         if (authFailure) {
-          await pauseForAuthorization(actor, deps, {
+          const paused = await pauseForAuthorization(actor, deps, {
             runId: run.id,
             connection: input.connection,
+            expectedListingCursor: expectedCursor,
+            fenceListingPause: true,
             message: planned.lookupFailure.message,
             nowIso: input.nowIso,
           });
+          if (!paused.ok) {
+            return {
+              ok: false,
+              message: paused.message,
+              persistenceFailure: true,
+            };
+          }
+          if (!paused.applied) {
+            return {
+              ok: false,
+              message: planned.lookupFailure.message,
+              authFailure: false,
+              staleAuth: true,
+              retryable: false,
+            };
+          }
         }
         return { ok: false, message: planned.lookupFailure.message, authFailure, retryable: !authFailure };
       }
@@ -1155,6 +1234,8 @@ async function processJob(
 ): Promise<{
   refreshedCredentials?: RefreshedCalendarCredentials;
   authFailure?: boolean;
+  staleAuth?: boolean;
+  persistenceError?: string;
 }> {
   const { job, connection, nowIso, now } = input;
   const config = getConfig(deps);
@@ -1244,10 +1325,13 @@ async function processJob(
       const lookup = await deps.provider.getEvent(connection, plannedEventId);
       if (!lookup.ok) {
         if (lookup.error.kind === "authorization") {
-          await pauseForAuthorization(actor, deps, {
+          const paused = await pauseForAuthorization(actor, deps, {
             runId: job.runId, connection, message: lookup.error.message, nowIso,
           });
-          return { authFailure: true };
+          if (!paused.ok) {
+            return { persistenceError: paused.message };
+          }
+          return { authFailure: true, staleAuth: !paused.applied };
         }
         await failJob(actor, deps, {
           job, message: lookup.error.message, permanent: lookup.error.kind === "permanent",
@@ -1284,10 +1368,17 @@ async function processJob(
       const deleted = await deps.provider.deleteEvent(connection, eventId);
       if (!deleted.ok) {
         if (deleted.error.kind === "authorization") {
-          await pauseForAuthorization(actor, deps, {
+          const paused = await pauseForAuthorization(actor, deps, {
             runId: job.runId, connection, message: deleted.error.message, nowIso,
           });
-          return { authFailure: true, refreshedCredentials };
+          if (!paused.ok) {
+            return { persistenceError: paused.message, refreshedCredentials };
+          }
+          return {
+            authFailure: true,
+            staleAuth: !paused.applied,
+            refreshedCredentials,
+          };
         }
         await failJob(actor, deps, {
           job, message: deleted.error.message, permanent: deleted.error.kind === "permanent",
@@ -1436,13 +1527,16 @@ async function processJob(
 
   if (!writeResult.ok) {
     if (writeResult.error.kind === "authorization") {
-      await pauseForAuthorization(actor, deps, {
+      const paused = await pauseForAuthorization(actor, deps, {
         runId: job.runId,
         connection,
         message: writeResult.error.message,
         nowIso,
       });
-      return { authFailure: true };
+      if (!paused.ok) {
+        return { persistenceError: paused.message };
+      }
+      return { authFailure: true, staleAuth: !paused.applied };
     }
 
     await failJob(actor, deps, {
@@ -1515,6 +1609,8 @@ async function drainRunJobs(
   },
 ): Promise<{
   authFailure?: boolean;
+  staleAuth?: boolean;
+  persistenceError?: string;
   refreshed?: RefreshedCalendarCredentials;
 }> {
   const config = getConfig(deps);
@@ -1553,11 +1649,15 @@ async function drainRunJobs(
           now: input.now,
         });
         refreshed = result.refreshedCredentials ?? refreshed;
-        processed += 1;
+        if (result.persistenceError) {
+          nextJob -= 1;
+          return { persistenceError: result.persistenceError, refreshed };
+        }
         if (result.authFailure) {
           nextJob -= 1;
-          return { authFailure: true, refreshed };
+          return { authFailure: true, staleAuth: result.staleAuth, refreshed };
         }
+        processed += 1;
       }
     } finally {
       if (nextJob < jobs.length) {
@@ -1590,6 +1690,7 @@ async function processRunBatch(
   );
   if (!connectionResult.ok || !connectionResult.value) {
     return {
+      ok: true,
       status: withStatusMessage(
         await buildStatus(actor, deps, run.id),
         "The Google Calendar connection is unavailable. Reconnect and retry.",
@@ -1603,36 +1704,58 @@ async function processRunBatch(
   const destination = destinationOfConnection(connection);
 
   if (!isConnectionUsable(connection)) {
-    await pauseForAuthorization(actor, deps, {
+    const message =
+      "Google Calendar needs to be reconnected before sync can continue.";
+    const paused = await pauseForAuthorization(actor, deps, {
       runId: run.id,
       connection,
-      message:
-        "Google Calendar needs to be reconnected before sync can continue.",
+      message,
       nowIso,
     });
+    if (!paused.ok) {
+      return { ok: false, errorMessage: paused.message };
+    }
+    const currentStatus = await buildStatus(actor, deps, run.id);
+    if (!paused.applied) {
+      return {
+        ok: true,
+        status: currentStatus,
+        authFailure: false,
+        retryable: false,
+      };
+    }
     return {
-      status: withStatusMessage(
-        await buildStatus(actor, deps, run.id),
-        "Google Calendar needs to be reconnected before sync can continue.",
-      ),
+      ok: true,
+      status: withStatusMessage(currentStatus, message),
       authFailure: true,
       retryable: false,
     };
   }
 
   if (!isVerifiedCalendarDestination(destination)) {
-    await pauseForAuthorization(actor, deps, {
+    const message =
+      "Google Calendar account identity could not be verified. Reconnect Google Calendar before sync can continue.";
+    const paused = await pauseForAuthorization(actor, deps, {
       runId: run.id,
       connection,
-      message:
-        "Google Calendar account identity could not be verified. Reconnect Google Calendar before sync can continue.",
+      message,
       nowIso,
     });
+    if (!paused.ok) {
+      return { ok: false, errorMessage: paused.message };
+    }
+    const currentStatus = await buildStatus(actor, deps, run.id);
+    if (!paused.applied) {
+      return {
+        ok: true,
+        status: currentStatus,
+        authFailure: false,
+        retryable: false,
+      };
+    }
     return {
-      status: withStatusMessage(
-        await buildStatus(actor, deps, run.id),
-        "Google Calendar account identity could not be verified. Reconnect Google Calendar before sync can continue.",
-      ),
+      ok: true,
+      status: withStatusMessage(currentStatus, message),
       authFailure: true,
       retryable: false,
     };
@@ -1641,8 +1764,15 @@ async function processRunBatch(
   if (!isVerifiedCalendarDestination(run.destination)) {
     const message =
       "This Calendar sync run predates verified account binding. Reconnect Google Calendar and start a new sync.";
-    await deps.repository.pauseRun(actor, run.id, message, nowIso);
+    const paused = await deps.repository.pauseRun(actor, run.id, message, nowIso);
+    if (!paused.ok) {
+      return {
+        ok: false,
+        errorMessage: "Unable to save Calendar sync pause state.",
+      };
+    }
     return {
+      ok: true,
       status: withStatusMessage(
         await buildStatus(actor, deps, run.id),
         message,
@@ -1653,13 +1783,20 @@ async function processRunBatch(
   }
 
   if (!sameVerifiedCalendarDestination(destination, run.destination)) {
-    await deps.repository.pauseRun(
+    const paused = await deps.repository.pauseRun(
       actor,
       run.id,
       `The Calendar destination changed to ${destination.calendarId}. Events already published to ${run.destination.calendarId} remain there.`,
       nowIso,
     );
+    if (!paused.ok) {
+      return {
+        ok: false,
+        errorMessage: "Unable to save Calendar sync pause state.",
+      };
+    }
     return {
+      ok: true,
       status: withStatusMessage(
         await buildStatus(actor, deps, run.id),
         `The Calendar destination changed. Events sent to ${run.destination.calendarId} remain there and were not moved.`,
@@ -1678,17 +1815,29 @@ async function processRunBatch(
     const listing = await deps.provider.listManagedEvents(connection);
     if (!listing.ok) {
       if (isAuthorizationFailure(listing.error)) {
-        await pauseForAuthorization(actor, deps, {
+        const paused = await pauseForAuthorization(actor, deps, {
           runId: run.id,
           connection,
+          expectedListingCursor: observedCursor,
+          fenceListingPause: true,
           message: listing.error.message,
           nowIso,
         });
+        if (!paused.ok) {
+          return { ok: false, errorMessage: paused.message };
+        }
+        const currentStatus = await buildStatus(actor, deps, run.id);
+        if (!paused.applied || !paused.runPaused) {
+          return {
+            ok: true,
+            status: currentStatus,
+            authFailure: paused.applied,
+            retryable: false,
+          };
+        }
         return {
-          status: withStatusMessage(
-            await buildStatus(actor, deps, run.id),
-            listing.error.message,
-          ),
+          ok: true,
+          status: withStatusMessage(currentStatus, listing.error.message),
           authFailure: true,
           retryable: false,
         };
@@ -1716,9 +1865,16 @@ async function processRunBatch(
           : listing.error.message || retryMessage,
         nowIso,
       });
-      const currentStatus = await buildStatus(actor, deps, run.id);
-      if (recorded.ok && !recorded.value) {
+      if (!recorded.ok) {
         return {
+          ok: false,
+          errorMessage: "Unable to save Calendar listing failure state.",
+        };
+      }
+      const currentStatus = await buildStatus(actor, deps, run.id);
+      if (!recorded.value) {
+        return {
+          ok: true,
           status: currentStatus,
           authFailure: false,
           retryable: false,
@@ -1726,6 +1882,7 @@ async function processRunBatch(
       }
 
       return {
+        ok: true,
         status: withStatusMessage(
           currentStatus,
           terminalListingFailure ? listing.error.message : retryMessage,
@@ -1752,15 +1909,23 @@ async function processRunBatch(
         message: incompleteMessage,
         nowIso,
       });
-      const currentStatus = await buildStatus(actor, deps, run.id);
-      if (recorded.ok && !recorded.value) {
+      if (!recorded.ok) {
         return {
+          ok: false,
+          errorMessage: "Unable to save Calendar listing retry state.",
+        };
+      }
+      const currentStatus = await buildStatus(actor, deps, run.id);
+      if (!recorded.value) {
+        return {
+          ok: true,
           status: currentStatus,
           authFailure: false,
           retryable: false,
         };
       }
       return {
+        ok: true,
         status: withStatusMessage(currentStatus, incompleteMessage),
         authFailure: false,
         retryable: true,
@@ -1786,11 +1951,21 @@ async function processRunBatch(
   });
 
   if (!scanResult.ok) {
+    if (scanResult.persistenceFailure) {
+      return { ok: false, errorMessage: scanResult.message };
+    }
+    const currentStatus = await buildStatus(actor, deps, run.id);
+    if (scanResult.staleAuth) {
+      return {
+        ok: true,
+        status: currentStatus,
+        authFailure: false,
+        retryable: false,
+      };
+    }
     return {
-      status: withStatusMessage(
-        await buildStatus(actor, deps, run.id),
-        scanResult.message,
-      ),
+      ok: true,
+      status: withStatusMessage(currentStatus, scanResult.message),
       authFailure: Boolean(scanResult.authFailure),
       retryable: scanResult.retryable ?? false,
     };
@@ -1820,6 +1995,10 @@ async function processRunBatch(
     });
   }
 
+  if (drained.persistenceError) {
+    return { ok: false, errorMessage: drained.persistenceError };
+  }
+
   await deps.repository.completeRunIfDrained(actor, {
     runId: run.id,
     nowIso,
@@ -1827,13 +2006,15 @@ async function processRunBatch(
 
   const status = await buildStatus(actor, deps, run.id);
   return {
-    status: drained.authFailure
-      ? withStatusMessage(
-          status,
-          "Google Calendar authorization expired. Reconnect and retry.",
-        )
-      : status,
-    authFailure: Boolean(drained.authFailure),
+    ok: true,
+    status:
+      drained.authFailure && !drained.staleAuth
+        ? withStatusMessage(
+            status,
+            "Google Calendar authorization expired. Reconnect and retry.",
+          )
+        : status,
+    authFailure: Boolean(drained.authFailure && !drained.staleAuth),
     retryable: false,
   };
 }
@@ -1937,6 +2118,9 @@ export async function startCalendarSync(
   }
 
   const result = await processRunBatch(actor, deps, runResult.value);
+  if (!result.ok) {
+    return applicationFailure(result.errorMessage);
+  }
   return applicationSuccess(result.status);
 }
 
@@ -1961,6 +2145,9 @@ export async function continueCalendarSync(
   }
 
   const result = await processRunBatch(actor, deps, runResult.value);
+  if (!result.ok) {
+    return applicationFailure(result.errorMessage);
+  }
   return applicationSuccess(result.status);
 }
 
@@ -1992,9 +2179,14 @@ export async function processCalendarRecovery(
   }
 
   let runsProcessed = 0;
+  let recoveryErrorMessage: string | null = null;
   for (const run of runs.value) {
     if (Date.now() >= deadline) break;
-    await processRunBatch(actor, deps, run, deadline);
+    const batch = await processRunBatch(actor, deps, run, deadline);
+    if (!batch.ok) {
+      recoveryErrorMessage ??= batch.errorMessage;
+      continue;
+    }
     runsProcessed += 1;
   }
 
@@ -2049,6 +2241,7 @@ export async function processCalendarRecovery(
     let refreshed:
       | RefreshedCalendarCredentials
       | undefined;
+    let destinationFailed = false;
     const jobs = claimed.value;
     let nextJob = 0;
     try {
@@ -2061,11 +2254,17 @@ export async function processCalendarRecovery(
           now,
         });
         refreshed = result.refreshedCredentials ?? refreshed;
-        jobsProcessed += 1;
+        if (result.persistenceError) {
+          nextJob -= 1;
+          destinationFailed = true;
+          recoveryErrorMessage ??= result.persistenceError;
+          break;
+        }
         if (result.authFailure) {
           nextJob -= 1;
           break;
         }
+        jobsProcessed += 1;
       }
     } finally {
       if (nextJob < jobs.length) {
@@ -2083,7 +2282,13 @@ export async function processCalendarRecovery(
         nowIso,
       });
     }
-    destinationsProcessed += 1;
+    if (!destinationFailed) {
+      destinationsProcessed += 1;
+    }
+  }
+
+  if (recoveryErrorMessage) {
+    return applicationFailure(recoveryErrorMessage);
   }
 
   return applicationSuccess({

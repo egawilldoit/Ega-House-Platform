@@ -333,10 +333,14 @@ export interface CalendarSyncRepository {
     actor: AuthenticatedActor,
     input: Readonly<{
       ownerUserId: string;
+      expectedUpdatedAt: string;
+      expectedConnectedAt: string | null;
+      expectedAccessTokenEncrypted: string | null;
+      expectedRefreshTokenEncrypted: string | null;
       message: string;
       nowIso: string;
     }>,
-  ): Promise<RepositoryResult<void>>;
+  ): Promise<RepositoryResult<boolean>>;
   ensureRun(
     actor: AuthenticatedActor,
     input: Readonly<{

@@ -6,6 +6,7 @@ import {
   planCalendarTaskEvent,
 } from "@ega/domain";
 import type { AuthenticatedActor } from "@ega/application/auth/actor";
+import type { RepositoryResult } from "@ega/application";
 import type {
   CalendarConnectionRecord,
   CalendarEventDocument,
@@ -258,9 +259,25 @@ class FakeRepository implements CalendarSyncRepository {
     return { ok: true, value: true };
   }
 
-  async markReconnectRequired(): Promise<{ ok: true; value: undefined }> {
-    this.connection = { ...this.connection, reconnectRequiredAt: new Date().toISOString() };
-    return { ok: true, value: undefined };
+  async markReconnectRequired(
+    _actor: AuthenticatedActor,
+    input: Parameters<CalendarSyncRepository["markReconnectRequired"]>[1],
+  ): Promise<RepositoryResult<boolean>> {
+    if (
+      this.connection.ownerUserId !== input.ownerUserId ||
+      this.connection.updatedAt !== input.expectedUpdatedAt ||
+      this.connection.connectedAt !== input.expectedConnectedAt ||
+      this.connection.accessTokenEncrypted !== input.expectedAccessTokenEncrypted ||
+      this.connection.refreshTokenEncrypted !== input.expectedRefreshTokenEncrypted
+    ) {
+      return { ok: true, value: false };
+    }
+    this.connection = {
+      ...this.connection,
+      reconnectRequiredAt: input.nowIso,
+      updatedAt: input.nowIso,
+    };
+    return { ok: true, value: true };
   }
 
   async ensureRun(
@@ -351,7 +368,7 @@ class FakeRepository implements CalendarSyncRepository {
       message: string;
       nowIso: string;
     },
-  ) {
+  ): Promise<RepositoryResult<boolean>> {
     const run = this.runs.get(input.runId);
     if (
       !run ||
@@ -2574,4 +2591,168 @@ test("reloading status surfaces the persisted error for a paused run on the curr
     assert.equal(rehydrated.data.run?.status, "paused");
     assert.equal(rehydrated.data.message, "Google Calendar denied access.");
   }
+});
+
+test("stale authorization failure arriving after reconnect cannot disable the replacement connection or pause the run", async () => {
+  const repository = new FakeRepository();
+  const provider = new FakeProvider();
+  repository.addTask(task());
+
+  const { value: run } = await repository.ensureRun(actor, {
+    destination,
+    retryMode: false,
+    nowIso: "2026-05-10T08:00:00.000Z",
+  });
+
+  let markListingStarted!: () => void;
+  const listingStarted = new Promise<void>((resolve) => {
+    markListingStarted = resolve;
+  });
+  let releaseStaleListing!: () => void;
+  const staleListingGate = new Promise<void>((resolve) => {
+    releaseStaleListing = resolve;
+  });
+  const realList = provider.listManagedEvents.bind(provider);
+  let listCalls = 0;
+  provider.listManagedEvents = async (conn) => {
+    listCalls += 1;
+    if (listCalls === 1) {
+      markListingStarted();
+      await staleListingGate;
+      return {
+        ok: false,
+        error: {
+          kind: "authorization",
+          message: "Google token revoked for previous credentials.",
+        },
+      };
+    }
+    return realList(conn);
+  };
+
+  const deps = buildDeps(repository, provider);
+  const staleRequest = continueCalendarSync(actor, deps, run.id);
+  await listingStarted;
+
+  // User reconnects Google Calendar while the stale listing is still in flight.
+  repository.connection = {
+    ...repository.connection,
+    accessTokenEncrypted: "enc-access-fresh",
+    refreshTokenEncrypted: "enc-refresh-fresh",
+    connectedAt: "2026-05-10T08:00:05.000Z",
+    reconnectRequiredAt: null,
+    updatedAt: "2026-05-10T08:00:05.000Z",
+  };
+
+  releaseStaleListing();
+  const staleResult = await staleRequest;
+  assert.equal(staleResult.ok, true);
+  assert.equal(repository.connection.reconnectRequiredAt, null);
+  assert.equal(repository.runs.get(run.id)?.status, "active");
+  if (staleResult.ok) {
+    assert.equal(staleResult.data.connection.needsReconnect, false);
+    assert.equal(staleResult.data.run?.status, "active");
+    assert.equal(staleResult.data.message, null);
+  }
+
+  // Subsequent pass with the freshly reconnected credentials completes cleanly.
+  const freshResult = await continueCalendarSync(actor, deps, run.id);
+  assert.equal(freshResult.ok, true);
+  assert.equal(repository.runs.get(run.id)?.status, "completed");
+  assert.equal(provider.events.size, 1);
+});
+
+test("late authorization failure on current credentials cannot pause a completed or actively claimed scan", async () => {
+  const repository = new FakeRepository();
+  const provider = new FakeProvider();
+  repository.addTask(task());
+
+  const { value: run } = await repository.ensureRun(actor, {
+    destination,
+    retryMode: false,
+    nowIso: "2026-05-10T08:00:00.000Z",
+  });
+
+  let markListingStarted!: () => void;
+  const listingStarted = new Promise<void>((resolve) => {
+    markListingStarted = resolve;
+  });
+  let releaseLateAuth!: () => void;
+  const lateAuthGate = new Promise<void>((resolve) => {
+    releaseLateAuth = resolve;
+  });
+  const realList = provider.listManagedEvents.bind(provider);
+  let listCalls = 0;
+  provider.listManagedEvents = async (conn) => {
+    listCalls += 1;
+    if (listCalls === 1) {
+      markListingStarted();
+      await lateAuthGate;
+      return {
+        ok: false,
+        error: { kind: "authorization", message: "Google token revoked." },
+      };
+    }
+    return realList(conn);
+  };
+
+  const deps = buildDeps(repository, provider);
+  const firstRequest = continueCalendarSync(actor, deps, run.id);
+  await listingStarted;
+  const secondResult = await continueCalendarSync(actor, deps, run.id);
+  assert.equal(secondResult.ok, true);
+  assert.equal(repository.runs.get(run.id)?.status, "completed");
+
+  releaseLateAuth();
+  const firstResult = await firstRequest;
+  assert.equal(firstResult.ok, true);
+  assert.equal(repository.runs.get(run.id)?.status, "completed");
+  assert.ok(repository.connection.reconnectRequiredAt);
+  if (firstResult.ok) {
+    assert.equal(firstResult.data.run?.status, "completed");
+    assert.equal(firstResult.data.connection.needsReconnect, true);
+  }
+});
+
+test("recordListingFailure RPC errors surface to manual and scheduled callers without counting the run as processed", async () => {
+  const repository = new FakeRepository();
+  const provider = new FakeProvider();
+  const { value: run } = await repository.ensureRun(actor, {
+    destination,
+    retryMode: false,
+    nowIso: "2026-05-10T08:00:00.000Z",
+  });
+
+  repository.listActiveRuns = async () => ({
+    ok: true as const,
+    value: [...repository.runs.values()].filter((row) => row.status === "active"),
+  });
+  repository.recordListingFailure = async () => ({
+    ok: false as const,
+    error: { code: "unknown" as const },
+  });
+
+  const deps = buildDeps(repository, provider);
+
+  // Branch 1: provider listing failure (permanent/retryable)
+  provider.listManagedEvents = async () => ({
+    ok: false,
+    error: { kind: "permanent", message: "Google Calendar denied access." },
+  });
+  const manualErrorBranch = await continueCalendarSync(actor, deps, run.id);
+  assert.equal(manualErrorBranch.ok, false);
+  const recoveryErrorBranch = await processCalendarRecovery(actor, deps);
+  assert.equal(recoveryErrorBranch.ok, false);
+  assert.equal(repository.runs.get(run.id)?.status, "active");
+
+  // Branch 2: incomplete listing
+  provider.listManagedEvents = async () => ({
+    ok: true,
+    value: { complete: false, events: [] },
+  });
+  const manualIncompleteBranch = await continueCalendarSync(actor, deps, run.id);
+  assert.equal(manualIncompleteBranch.ok, false);
+  const recoveryIncompleteBranch = await processCalendarRecovery(actor, deps);
+  assert.equal(recoveryIncompleteBranch.ok, false);
+  assert.equal(repository.runs.get(run.id)?.status, "active");
 });

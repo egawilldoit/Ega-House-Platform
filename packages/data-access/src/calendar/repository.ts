@@ -289,9 +289,17 @@ export class SupabaseCalendarSyncRepository implements CalendarSyncRepository {
 
   async markReconnectRequired(
     _actor: AuthenticatedActor,
-    input: { ownerUserId: string; message: string; nowIso: string },
-  ): Promise<RepositoryResult<void>> {
-    const result = await this.supabase
+    input: {
+      ownerUserId: string;
+      expectedUpdatedAt: string;
+      expectedConnectedAt: string | null;
+      expectedAccessTokenEncrypted: string | null;
+      expectedRefreshTokenEncrypted: string | null;
+      message: string;
+      nowIso: string;
+    },
+  ): Promise<RepositoryResult<boolean>> {
+    let query = this.supabase
       .from("calendar_integration_settings")
       .update({
         reconnect_required_at: input.nowIso,
@@ -299,9 +307,23 @@ export class SupabaseCalendarSyncRepository implements CalendarSyncRepository {
         updated_at: input.nowIso,
       } as never)
       .eq("owner_user_id", input.ownerUserId)
-      .eq("provider", "google");
+      .eq("provider", "google")
+      .eq("updated_at", input.expectedUpdatedAt);
+    query =
+      input.expectedConnectedAt === null
+        ? query.is("connected_at", null)
+        : query.eq("connected_at", input.expectedConnectedAt);
+    query =
+      input.expectedAccessTokenEncrypted === null
+        ? query.is("access_token_encrypted", null)
+        : query.eq("access_token_encrypted", input.expectedAccessTokenEncrypted);
+    query =
+      input.expectedRefreshTokenEncrypted === null
+        ? query.is("refresh_token_encrypted", null)
+        : query.eq("refresh_token_encrypted", input.expectedRefreshTokenEncrypted);
+    const result = await query.select("id").maybeSingle();
     if (result.error) return failure(result.error);
-    return { ok: true, value: undefined };
+    return { ok: true, value: Boolean(result.data) };
   }
 
   async ensureRun(
