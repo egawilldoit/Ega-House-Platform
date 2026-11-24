@@ -1687,10 +1687,43 @@ async function processRunBatch(
         };
       }
 
+      if (
+        listing.error.kind === "permanent" ||
+        listing.error.kind === "not_found"
+      ) {
+        await deps.repository.pauseRun(
+          actor,
+          run.id,
+          listing.error.message,
+          nowIso,
+        );
+        return {
+          status: withStatusMessage(
+            await buildStatus(actor, deps, run.id),
+            listing.error.message,
+          ),
+          authFailure: false,
+          retryable: false,
+        };
+      }
+
+      const retryMessage =
+        "Google Calendar events could not be verified. No removals were attempted; retry to continue.";
+      await deps.repository.scheduleRunRetry(actor, {
+        runId: run.id,
+        retryAt: nextCalendarRetryAtIso({
+          jobId: run.id,
+          attempts: 1,
+          now,
+          retryAfterSeconds: listing.error.retryAfterSeconds,
+        }),
+        message: listing.error.message || retryMessage,
+        nowIso,
+      });
       return {
         status: withStatusMessage(
           await buildStatus(actor, deps, run.id),
-          "Google Calendar events could not be verified. No removals were attempted; retry to continue.",
+          retryMessage,
         ),
         authFailure: false,
         retryable: true,
@@ -1700,10 +1733,22 @@ async function processRunBatch(
     if (!listing.value.complete) {
       // An incomplete event listing is not proof that any managed event was
       // deleted, so the scan intentionally refuses to infer removals.
+      const incompleteMessage =
+        "The Calendar event listing was incomplete. No removals were attempted; retry to continue.";
+      await deps.repository.scheduleRunRetry(actor, {
+        runId: run.id,
+        retryAt: nextCalendarRetryAtIso({
+          jobId: run.id,
+          attempts: 1,
+          now,
+        }),
+        message: incompleteMessage,
+        nowIso,
+      });
       return {
         status: withStatusMessage(
           await buildStatus(actor, deps, run.id),
-          "The Calendar event listing was incomplete. No removals were attempted; retry to continue.",
+          incompleteMessage,
         ),
         authFailure: false,
         retryable: true,
@@ -1943,11 +1988,7 @@ export async function processCalendarRecovery(
     options?.destinationLimit ?? 5,
   );
   if (!destinations.ok) {
-    return applicationSuccess({
-      runsProcessed,
-      destinationsProcessed: 0,
-      jobsProcessed: 0,
-    });
+    return applicationFailure("Unable to load ready Calendar sync destinations.");
   }
 
   let destinationsProcessed = 0;

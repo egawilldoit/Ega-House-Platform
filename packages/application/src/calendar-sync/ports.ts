@@ -363,6 +363,15 @@ export interface CalendarSyncRepository {
     message: string,
     nowIso: string,
   ): Promise<RepositoryResult<void>>;
+  scheduleRunRetry(
+    actor: AuthenticatedActor,
+    input: Readonly<{
+      runId: string;
+      retryAt: string;
+      message: string;
+      nowIso: string;
+    }>,
+  ): Promise<RepositoryResult<void>>;
   getRunCounts(
     actor: AuthenticatedActor,
     runId: string,

@@ -440,10 +440,30 @@ export class SupabaseCalendarSyncRepository implements CalendarSyncRepository {
       .from("calendar_sync_runs")
       .update({
         status: "paused",
+        next_retry_at: null,
         last_error: message.slice(0, 500),
         updated_at: nowIso,
       } as never)
       .eq("id", runId);
+    if (this.scope === "owner") query = query.eq("owner_user_id", _actor.userId);
+    const result = await query;
+    if (result.error) return failure(result.error);
+    return { ok: true, value: undefined };
+  }
+
+  async scheduleRunRetry(
+    _actor: AuthenticatedActor,
+    input: { runId: string; retryAt: string; message: string; nowIso: string },
+  ): Promise<RepositoryResult<void>> {
+    let query = this.supabase
+      .from("calendar_sync_runs")
+      .update({
+        next_retry_at: input.retryAt,
+        last_error: input.message.slice(0, 500),
+        updated_at: input.nowIso,
+      } as never)
+      .eq("id", input.runId)
+      .eq("status", "active");
     if (this.scope === "owner") query = query.eq("owner_user_id", _actor.userId);
     const result = await query;
     if (result.error) return failure(result.error);

@@ -283,7 +283,7 @@ BEGIN
 
   RETURN QUERY UPDATE public.calendar_sync_runs
   SET status = 'active', retry_mode = p_retry_mode, last_error = NULL,
-      completed_at = NULL, updated_at = p_now
+      next_retry_at = NULL, completed_at = NULL, updated_at = p_now
   WHERE id = p_run_id
   RETURNING *;
 END
@@ -390,24 +390,25 @@ TO authenticated, service_role;
 
 CREATE FUNCTION public.calendar_sync_list_actionable_runs(p_limit integer)
 RETURNS SETOF public.calendar_sync_runs
-LANGUAGE sql STABLE SECURITY INVOKER SET search_path = ''
+LANGUAGE sql VOLATILE SECURITY INVOKER SET search_path = ''
 AS $actionable$
   SELECT run.*
   FROM public.calendar_sync_runs AS run
   WHERE run.status = 'active'
     AND (
-      NOT run.scan_complete
+      (NOT run.scan_complete
+        AND (run.next_retry_at IS NULL OR run.next_retry_at <= clock_timestamp()))
       OR EXISTS (
         SELECT 1 FROM public.calendar_sync_jobs AS job
         WHERE job.run_id = run.id
           AND ((job.status = 'pending' AND job.attempts < 8 AND NOT job.permanent_failure
-                 AND job.scheduled_at <= now())
-               OR (job.status = 'processing' AND job.lease_expires_at <= now()))
+                 AND job.scheduled_at <= clock_timestamp())
+               OR (job.status = 'processing' AND job.lease_expires_at <= clock_timestamp()))
       )
-      OR NOT EXISTS (
+      OR (run.scan_complete AND NOT EXISTS (
         SELECT 1 FROM public.calendar_sync_jobs AS job
         WHERE job.run_id = run.id AND job.status IN ('pending', 'processing')
-      )
+      ))
     )
   ORDER BY run.updated_at, run.id
   LIMIT greatest(p_limit, 1);

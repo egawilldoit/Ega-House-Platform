@@ -1686,7 +1686,41 @@ async function main() {
     assert((await actionable()).length === 1, "a drained run must stay actionable until completion");
     const drained = await sql`SELECT id FROM public.calendar_sync_complete_run_if_drained(${RUN_REMOVAL}::uuid, now())`;
     assert(drained.length === 1, "fully scanned and drained run must complete");
-    log("CLAIM-RETRY", "expired mutation guards, retry settlement and drained run completion verified");
+
+    // Five older unfinished runs backed off via next_retry_at or paused must not
+    // starve a sixth healthy unfinished run at limit 5.
+    const backedOffRuns = [];
+    for (let i = 1; i <= 6; i += 1) {
+      const [insertedRun] = await sql`
+        INSERT INTO public.calendar_sync_runs (
+          owner_user_id, destination_key, calendar_id, status, scan_complete,
+          next_retry_at, updated_at
+        ) VALUES (
+          gen_random_uuid(), ${`starve-dest-${i}|primary`}, 'primary',
+          ${i <= 2 ? "paused" : "active"}, false,
+          ${i >= 3 && i <= 5 ? sql`now() + interval '5 minutes'` : null},
+          now() - make_interval(mins => ${10 - i})
+        ) RETURNING id`;
+      backedOffRuns.push(insertedRun.id);
+    }
+    const actionableSixth = await sql`
+      SELECT id FROM public.calendar_sync_list_actionable_runs(5)`;
+    assert(
+      actionableSixth.some((row) => row.id === backedOffRuns[5]) &&
+        !actionableSixth.some((row) => backedOffRuns.slice(0, 5).includes(row.id)),
+      "backed-off and paused failing runs must not starve a sixth healthy run",
+    );
+    await sql`UPDATE public.calendar_sync_runs
+      SET next_retry_at = now() - interval '1 second'
+      WHERE id = ${backedOffRuns[2]}::uuid`;
+    const dueRetryRuns = await sql`
+      SELECT id FROM public.calendar_sync_list_actionable_runs(5)`;
+    assert(
+      dueRetryRuns.some((row) => row.id === backedOffRuns[2]),
+      "a backed-off unfinished run must become actionable once next_retry_at passes",
+    );
+    await sql`DELETE FROM public.calendar_sync_runs WHERE id = ANY(${backedOffRuns}::uuid[])`;
+    log("CLAIM-RETRY", "expired mutation guards, retry settlement, run backoff and drained run completion verified");
 
     const [newTask] = await sql`SELECT gen_random_uuid() AS id`;
     const enqueueGeneration = (generation, eventId, operation) => sql`

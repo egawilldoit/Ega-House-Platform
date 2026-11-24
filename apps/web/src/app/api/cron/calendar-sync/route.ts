@@ -1,4 +1,5 @@
-import { authorizeCronRequest, runCronOperation } from "@/lib/cron/route-runtime";
+import { executeCalendarSyncCron } from "@/lib/cron/calendar-sync-cron";
+import { authorizeCronRequest } from "@/lib/cron/route-runtime";
 import { processPendingCalendarSyncJobs } from "@/lib/services/calendar-sync-service";
 import { runWebCalendarRecovery } from "@/lib/services/calendar-sync-engine";
 import { getSupabaseServiceClient } from "@/lib/supabase/service";
@@ -13,22 +14,11 @@ export async function POST(request: Request) {
   if (unauthorized) return unauthorized;
 
   const origin = new URL(request.url).origin;
-
-  return runCronOperation(
-    async () => {
-      const recovery = await runWebCalendarRecovery(origin);
-      const legacy = await processPendingCalendarSyncJobs({
+  return executeCalendarSyncCron(origin, {
+    runRecovery: runWebCalendarRecovery,
+    processLegacy: () =>
+      processPendingCalendarSyncJobs({
         supabase: getSupabaseServiceClient() as never,
-      });
-
-      return {
-        ok: recovery.ok && legacy.ok,
-        recovery: recovery.ok
-          ? recovery.data
-          : { error: recovery.errorMessage },
-        legacy,
-      };
-    },
-    "Failed to process Calendar sync jobs.",
-  );
+      }),
+  });
 }

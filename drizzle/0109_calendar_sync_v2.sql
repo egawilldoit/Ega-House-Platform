@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS public.calendar_sync_runs (
   scan_complete boolean NOT NULL DEFAULT false,
   scan_claim_token uuid,
   scan_lease_expires_at timestamptz,
+  next_retry_at timestamptz,
   last_error text,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
@@ -428,6 +429,7 @@ BEGIN
       scan_complete = p_scan_complete,
       scan_claim_token = NULL,
       scan_lease_expires_at = NULL,
+      next_retry_at = NULL,
       updated_at = p_now
   WHERE id = p_run_id;
 

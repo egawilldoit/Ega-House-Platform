@@ -390,6 +390,7 @@ export const calendarSyncRuns = pgTable(
     scanComplete: boolean("scan_complete").notNull().default(false),
     scanClaimToken: uuid("scan_claim_token"),
     scanLeaseExpiresAt: timestamp("scan_lease_expires_at", { withTimezone: true }),
+    nextRetryAt: timestamp("next_retry_at", { withTimezone: true }),
     lastError: text("last_error"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()

@@ -84,7 +84,9 @@ class FakeProvider implements CalendarEventProvider {
     return { ok: true, value, refreshedCredentials: undefined };
   }
 
-  async listManagedEvents(): Promise<
+  async listManagedEvents(
+    _connection?: CalendarConnectionRecord,
+  ): Promise<
     CalendarProviderResult<{ complete: boolean; events: CalendarEventIndexEntry[] }>
   > {
     this.listCalls += 1;
@@ -231,7 +233,10 @@ class FakeRepository implements CalendarSyncRepository {
     return { ok: true, value: this.connection };
   }
 
-  async getConnectionForOwner(): Promise<{ ok: true; value: CalendarConnectionRecord }> {
+  async getConnectionForOwner(
+    _actor?: AuthenticatedActor,
+    _ownerUserId?: string,
+  ): Promise<{ ok: true; value: CalendarConnectionRecord }> {
     return { ok: true, value: this.connection };
   }
 
@@ -319,6 +324,8 @@ class FakeRepository implements CalendarSyncRepository {
     return { ok: true as const, value: run ?? null };
   }
 
+  runRetryAt = new Map<string, string>();
+
   async pauseRun(
     _actor: AuthenticatedActor,
     runId: string,
@@ -328,6 +335,23 @@ class FakeRepository implements CalendarSyncRepository {
     const run = this.runs.get(runId);
     if (run) {
       this.runs.set(runId, { ...run, status: "paused", lastError: message, updatedAt: nowIso });
+      this.runRetryAt.delete(runId);
+    }
+    return { ok: true as const, value: undefined };
+  }
+
+  async scheduleRunRetry(
+    _actor: AuthenticatedActor,
+    input: { runId: string; retryAt: string; message: string; nowIso: string },
+  ) {
+    const run = this.runs.get(input.runId);
+    if (run && run.status === "active") {
+      this.runs.set(input.runId, {
+        ...run,
+        lastError: input.message,
+        updatedAt: input.nowIso,
+      });
+      this.runRetryAt.set(input.runId, input.retryAt);
     }
     return { ok: true as const, value: undefined };
   }
@@ -410,7 +434,7 @@ class FakeRepository implements CalendarSyncRepository {
 
   async loadTaskPage(
     _actor: AuthenticatedActor,
-    input: { cursor: CalendarScanCursor | null; limit: number },
+    input: { ownerUserId?: string; cursor: CalendarScanCursor | null; limit: number },
   ): Promise<{ ok: true; value: CalendarTaskPage }> {
     const sorted = [...this.tasks.values()].sort((a, b) =>
       a.createdAt === b.createdAt
@@ -852,11 +876,17 @@ class FakeRepository implements CalendarSyncRepository {
     return { ok: true as const, value: completed };
   }
 
-  async listActiveRuns() {
+  async listActiveRuns(
+    _actor?: AuthenticatedActor,
+    _limit?: number,
+  ): ReturnType<CalendarSyncRepository["listActiveRuns"]> {
     return { ok: true as const, value: [] as CalendarRunRecord[] };
   }
 
-  async listReadyDestinations(): Promise<{ ok: true; value: CalendarReadyQueue[] }> {
+  async listReadyDestinations(
+    _actor?: AuthenticatedActor,
+    _limit?: number,
+  ): ReturnType<CalendarSyncRepository["listReadyDestinations"]> {
     const destinations = new Map<string, CalendarReadyQueue>();
     for (const job of this.jobs.values()) {
       if (job.status !== "pending") continue;
@@ -2322,4 +2352,127 @@ test("post-header create timeout after remote write recovers via 409 without dup
   assert.equal(repository.jobs.get("scheduled")?.status, "succeeded");
   assert.equal(provider.events.size, 1);
   assert.equal(repository.mappings.size, 1);
+});
+
+test("five older runs with permanent or transient listing failures do not starve a sixth healthy run", async () => {
+  const repository = new FakeRepository();
+  const provider = new FakeProvider();
+  const nowIso = "2026-05-10T08:00:00.000Z";
+  const connections = new Map<string, CalendarConnectionRecord>();
+
+  for (let i = 1; i <= 6; i += 1) {
+    const ownerId = `owner-${i}`;
+    const calId = `cal-${i}`;
+    const dest: CalendarSyncDestination = {
+      accountSubject: `sub-${i}`,
+      accountEmail: `user-${i}@example.com`,
+      calendarId: calId,
+      destinationKey: `user-${i}@example.com|${calId}`,
+    };
+    connections.set(ownerId, {
+      ...repository.connection,
+      ownerUserId: ownerId,
+      ...dest,
+    });
+    repository.runs.set(`run-${i}`, {
+      id: `run-${i}`,
+      ownerUserId: ownerId,
+      destination: dest,
+      status: "active",
+      retryMode: false,
+      scanComplete: false,
+      scanCursorCreatedAt: null,
+      scanCursorTaskId: null,
+      lastError: null,
+      createdAt: `2026-05-10T07:0${i}:00.000Z`,
+      updatedAt: `2026-05-10T07:0${i}:00.000Z`,
+      completedAt: null,
+    });
+  }
+
+  const healthyTask = task({ id: "task-owner-6", ownerUserId: "owner-6" });
+  repository.tasks.set(healthyTask.id, healthyTask);
+  repository.getConnectionForOwner = async (_actor, ownerId) => ({
+    ok: true as const,
+    value: connections.get(ownerId ?? "")!,
+  });
+  repository.loadTaskPage = async (_actor, input) => ({
+    ok: true as const,
+    value: {
+      tasks: [...repository.tasks.values()].filter((row) => row.ownerUserId === input.ownerUserId),
+      nextCursor: null,
+      complete: true,
+    },
+  });
+  repository.listActiveRuns = async (_actor, limit = 5) => {
+    const eligible = [...repository.runs.values()]
+      .filter((run) => {
+        if (run.status !== "active") return false;
+        const retryAt = repository.runRetryAt.get(run.id);
+        return !retryAt || retryAt <= nowIso;
+      })
+      .sort((a, b) => a.updatedAt.localeCompare(b.updatedAt) || a.id.localeCompare(b.id))
+      .slice(0, limit);
+    return { ok: true as const, value: eligible };
+  };
+
+  provider.listManagedEvents = async (conn) => {
+    if (conn?.calendarId === "cal-1" || conn?.calendarId === "cal-2") {
+      return {
+        ok: false,
+        error: { kind: "not_found", message: "Google Calendar was deleted." },
+      };
+    }
+    if (conn?.calendarId === "cal-3") {
+      return {
+        ok: false,
+        error: { kind: "permanent", message: "Google Calendar denied access." },
+      };
+    }
+    if (conn?.calendarId === "cal-4" || conn?.calendarId === "cal-5") {
+      return {
+        ok: false,
+        error: { kind: "retryable", message: "Rate limit exceeded.", retryAfterSeconds: 60 },
+      };
+    }
+    return { ok: true, value: { complete: true, events: [] } };
+  };
+
+  const deps = buildDeps(repository, provider);
+  const firstPass = await processCalendarRecovery(actor, deps, { runLimit: 5 });
+  assert.equal(firstPass.ok, true);
+  assert.equal(repository.runs.get("run-1")?.status, "paused");
+  assert.equal(repository.runs.get("run-2")?.status, "paused");
+  assert.equal(repository.runs.get("run-3")?.status, "paused");
+  assert.equal(repository.runs.get("run-4")?.status, "active");
+  assert.equal(repository.runs.get("run-5")?.status, "active");
+  assert.ok((repository.runRetryAt.get("run-4") ?? "") > nowIso);
+  assert.ok((repository.runRetryAt.get("run-5") ?? "") > nowIso);
+  assert.equal(repository.runs.get("run-6")?.scanComplete, false);
+
+  const secondPass = await processCalendarRecovery(actor, deps, { runLimit: 5 });
+  assert.equal(secondPass.ok, true);
+  assert.equal(repository.runs.get("run-6")?.status, "completed");
+  assert.equal(provider.events.size, 1);
+});
+
+test("processCalendarRecovery propagates active-run and ready-destination discovery failures", async () => {
+  const repository = new FakeRepository();
+  const provider = new FakeProvider();
+  const deps = buildDeps(repository, provider);
+
+  repository.listActiveRuns = async () => ({
+    ok: false as const,
+    error: { code: "unknown" as const },
+  });
+  const activeRunFailure = await processCalendarRecovery(actor, deps);
+  assert.equal(activeRunFailure.ok, false);
+
+  repository.listActiveRuns = async () => ({ ok: true as const, value: [] });
+  repository.listReadyDestinations = async () => ({
+    ok: false as const,
+    error: { code: "unknown" as const },
+  });
+  const destinationFailure = await processCalendarRecovery(actor, deps);
+  assert.equal(destinationFailure.ok, false);
 });

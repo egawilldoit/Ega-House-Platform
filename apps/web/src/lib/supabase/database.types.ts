@@ -364,6 +364,7 @@ export type Database = {
           scan_complete: boolean
           scan_claim_token: string | null
           scan_lease_expires_at: string | null
+          next_retry_at: string | null
           last_error: string | null
           created_at: string
           updated_at: string
@@ -383,6 +384,7 @@ export type Database = {
           scan_complete?: boolean
           scan_claim_token?: string | null
           scan_lease_expires_at?: string | null
+          next_retry_at?: string | null
           last_error?: string | null
           created_at?: string
           updated_at?: string
@@ -402,6 +404,7 @@ export type Database = {
           scan_complete?: boolean
           scan_claim_token?: string | null
           scan_lease_expires_at?: string | null
+          next_retry_at?: string | null
           last_error?: string | null
           created_at?: string
           updated_at?: string
