@@ -74,7 +74,7 @@ const CLAIM_EDIT_RELEASE = "16161616-1616-4616-8616-161616161616";
 const JOB_CLAIM_RELEASE = "17171717-1717-4717-8717-171717171717";
 const JOB_CLAIM_RETRY = "18181818-1818-4818-8818-181818181818";
 const DESTINATION_KEY = "proof-subject|primary";
-const proofClock = Date.now();
+const proofClock = Date.now() - 3 * 60 * 60_000;
 function proofTime(fixtureTime) {
   return new Date(proofClock + Date.parse(fixtureTime) - Date.parse("2026-11-23T09:00:00Z")).toISOString();
 }
@@ -85,12 +85,11 @@ const NOW = proofTime("2026-11-23T10:01:00+00:00");
 const NOW_REPLAY = proofTime("2026-11-23T10:02:00+00:00");
 const NOW_REPLAN = proofTime("2026-11-23T10:03:00+00:00");
 const JOB_CLAIM_AT = proofTime("2026-11-23T10:04:00+00:00");
-const LEASE_UNTIL = proofTime("2026-11-23T10:06:00+00:00");
 const NOW_EDIT = proofTime("2026-11-23T10:05:00+00:00");
 const NOW_RECOVER = proofTime("2026-11-23T10:10:00+00:00");
 const NOW_EDIT_RELEASE = proofTime("2026-11-23T10:11:00+00:00");
 const NOW_RELEASE = proofTime("2026-11-23T10:12:00+00:00");
-const RETRY_AT = proofTime("2026-11-23T10:13:00+00:00");
+const RETRY_AT = new Date(Date.now() + 60 * 60_000).toISOString();
 const OWNER_REMOVAL = "21212121-2121-4121-8121-212121212121";
 const RUN_REMOVAL = "22222222-2222-4222-8222-222222222222";
 const TASK_REMOVAL = "23232323-2323-4323-8323-232323232323";
@@ -302,13 +301,13 @@ function normalizeCommit(drafts) {
   };
 }
 
-function claimScanQuery(sql, claimToken, nowIso) {
-  return sql`SELECT public.calendar_sync_claim_run_scan(
-    ${RUN}::uuid,
+function claimScanQuery(sql, claimToken, nowIso, runId = RUN) {
+  return sql`SELECT * FROM public.calendar_sync_claim_run_scan(
+    ${runId}::uuid,
     ${claimToken}::uuid,
     ${nowIso}::timestamptz,
     ${300}::integer
-  ) AS claimed`;
+  )`;
 }
 
 function commitQuery(sql, commit) {
@@ -320,7 +319,9 @@ function commitQuery(sql, commit) {
     ${commit.scanComplete}::boolean,
     ${sql.json(commit.items)}::jsonb,
     ${sql.json(commit.jobs)}::jsonb,
-    ${commit.nowIso}::timestamptz
+    ${commit.nowIso}::timestamptz,
+    ${commit.expectedCursor?.createdAt ?? null}::timestamptz,
+    ${commit.expectedCursor?.taskId ?? null}::uuid
   ) AS committed`;
 }
 
@@ -428,7 +429,7 @@ function editDrafts(input) {
     runId: RUN,
     claimToken: input.claimToken,
     nextCursor: { createdAt: CURSOR_CREATED_AT, taskId: TASK_C },
-    scanComplete: true,
+    scanComplete: false,
     items: [
       {
         taskId: TASK_A,
@@ -451,6 +452,7 @@ function editDrafts(input) {
         taskUpdatedAt: input.taskUpdatedAt,
       },
     ],
+    expectedCursor: { createdAt: CURSOR_CREATED_AT, taskId: TASK_C },
     nowIso: input.nowIso,
   });
 }
@@ -508,8 +510,8 @@ async function main() {
          scan_lease_expires_at
        )
        VALUES ($1, $2, $3, 'proof-subject', 'proof@example.test', 'primary',
-               'active', $4, $5::timestamptz)`,
-      [RUN, OWNER, DESTINATION_KEY, CLAIM, LEASE_UNTIL],
+               'active', $4, clock_timestamp() + interval '5 minutes')`,
+      [RUN, OWNER, DESTINATION_KEY, CLAIM],
     );
     log("SEED", "active run, scan claim, project and three tasks ready");
 
@@ -615,9 +617,25 @@ async function main() {
     // A crash replays the same page. Re-claim the run and commit the identical
     // page: the pending jobs must coalesce by id and keep the same target.
     const [replayClaim] = await claimScanQuery(sql, CLAIM_REPLAY, NOW_REPLAY);
-    assert(replayClaim.claimed === true, "a replayed scan page must be claimable");
+    assert(replayClaim?.scan_cursor_task_id === TASK_C &&
+      new Date(replayClaim.scan_cursor_created_at).toISOString() === CURSOR_CREATED_AT,
+      "claim must return the cursor advanced by the first continuation");
+    const [staleCursor] = await commitQuery(sql, normalizeCommit(commitDrafts({
+      claimToken: CLAIM_REPLAY, nextCursor: null,
+    })));
+    assert(!staleCursor.committed, "a second continuation with the older cursor must not rewind the run");
+    const currentCursor = { createdAt: CURSOR_CREATED_AT, taskId: TASK_C };
+    await sql`UPDATE public.calendar_sync_runs
+      SET scan_lease_expires_at = clock_timestamp() - interval '1 second'
+      WHERE id = ${RUN}::uuid`;
+    const [expiredScan] = await commitQuery(sql, normalizeCommit(commitDrafts({
+      claimToken: CLAIM_REPLAY, expectedCursor: currentCursor,
+    })));
+    assert(!expiredScan.committed, "actual lease expiry must reject the stale caller clock");
+    assert((await claimScanQuery(sql, CLAIM_REPLAY, NOW_REPLAY)).length === 1,
+      "actual lease expiry must allow the scan to be reclaimed");
     const replayCommit = normalizeCommit(
-      commitDrafts({ claimToken: CLAIM_REPLAY, nowIso: NOW_REPLAY }),
+      commitDrafts({ claimToken: CLAIM_REPLAY, nowIso: NOW_REPLAY, expectedCursor: currentCursor }),
     );
     const [replayed] = await commitQuery(sql, replayCommit);
     assert(replayed.committed === true, "an identical replay must commit");
@@ -649,10 +667,11 @@ async function main() {
     // A later plan for the same task/destination must adopt its new target in
     // the same pending row, and finishing the scan must still clear the claim.
     const [replanClaim] = await claimScanQuery(sql, CLAIM_REPLAN, NOW_REPLAN);
-    assert(replanClaim.claimed === true, "the scan must be claimable after a replay");
+    assert(replanClaim?.id === RUN, "the scan must be claimable after a replay");
     const replanCommit = normalizeCommit(
       commitDrafts({
         claimToken: CLAIM_REPLAN,
+        expectedCursor: currentCursor,
         nowIso: NOW_REPLAN,
         scanComplete: true,
         items: [
@@ -749,6 +768,8 @@ async function main() {
     assert(finishedRun.scan_complete === true, "scan completion flag must persist");
     assert(finishedRun.scan_claim_token === null, "the final commit must clear the claim");
     assert(finishedRun.scan_lease_expires_at === null, "the final commit must clear the lease");
+    assert((await claimScanQuery(sql, CLAIM_EDIT, NOW_EDIT)).length === 0,
+      "a completed scan must never be claimable");
     log("COALESCE", "re-planning adopted the new target on the same pending rows");
 
     // The worker receives the normalized target only through the real claim
@@ -812,8 +833,10 @@ async function main() {
     // A newer edit is planned while task A's earlier claim is still processing.
     // The scan commit cannot coalesce into a processing row, so it inserts a
     // second pending row for the same task and destination.
+    // Reopen the fixture to exercise a second page while a claim is in flight.
+    await sql`UPDATE public.calendar_sync_runs SET scan_complete = false WHERE id = ${RUN}::uuid`;
     const [editClaim] = await claimScanQuery(sql, CLAIM_EDIT, NOW_EDIT);
-    assert(editClaim.claimed === true, "the run must be scannable while a job is processing");
+    assert(editClaim?.id === RUN, "the run must be scannable while a job is processing");
     const [editCommitted] = await commitQuery(
       sql,
       editDrafts({
@@ -844,15 +867,15 @@ async function main() {
     `;
     await sql`
       UPDATE public.calendar_sync_jobs
-      SET generation = 4, calendar_event_id = 'ambiguous-newer-event'
+      SET generation = 4, calendar_event_id = 'ambiguous-newer-event',
+          lease_expires_at = clock_timestamp() - interval '1 second'
       WHERE id = ${jobA.id}::uuid
     `;
     const [overlap] = await sql`SELECT public.calendar_sync_run_counts(${RUN}::uuid) AS counts`;
     assert(overlap.counts.pending === 1 && overlap.counts.ready === 1,
-      "one processing plus one pending job must count once, including a skewed first attempt");
+      "one processing plus one pending job must count once");
 
-    // The earlier claim lease (10:09) is expired at 10:10. The claim must fold the
-    // expired processing row into the newer pending row atomically.
+    // The expired database lease is reclaimable even with a caller clock hours behind.
     const recoveredJobs = await claimJobsQuery(sql, JOB_CLAIM_RECOVER, NOW_RECOVER);
     assert(recoveredJobs.length === 1, "only the newer pending edit must be claimable");
     const recoveredA = recoveredJobs[0];
@@ -958,7 +981,7 @@ async function main() {
     // first supersedes the release: the newest intent stays pending, the older
     // claim is removed, and its failure is not recorded against newer work.
     const [releaseEditClaim] = await claimScanQuery(sql, CLAIM_EDIT_RELEASE, NOW_EDIT_RELEASE);
-    assert(releaseEditClaim.claimed === true, "the run must be scannable during the release scenario");
+    assert(releaseEditClaim?.id === RUN, "the run must be scannable during the release scenario");
     const [releaseEditCommitted] = await commitQuery(
       sql,
       editDrafts({
@@ -1056,9 +1079,11 @@ async function main() {
     const tooEarlyJobs = await claimJobsQuery(
       sql,
       "19191919-1919-4919-8919-191919191919",
-      NOW_RELEASE,
+      RETRY_AT,
     );
     assert(tooEarlyJobs.length === 0, "a retry backoff must not be claimable early");
+    await sql`UPDATE public.calendar_sync_jobs SET scheduled_at = clock_timestamp() - interval '1 second'
+      WHERE id = ${claimedReleaseA.id}::uuid`;
     const retriedJobs = await claimJobsQuery(sql, JOB_CLAIM_RETRY, RETRY_AT);
     assert(retriedJobs.length === 1, "the retry must be claimable at its backoff time");
     assert(retriedJobs[0].id === claimedReleaseA.id, "the retry must keep the same job row");
@@ -1132,15 +1157,8 @@ async function main() {
       ],
     );
 
-    const [removalScanClaim] = await sql`
-      SELECT public.calendar_sync_claim_run_scan(
-        ${RUN_REMOVAL}::uuid,
-        ${ORPHAN_SCAN_CLAIM}::uuid,
-        ${NOW_REMOVAL}::timestamptz,
-        ${300}::integer
-      ) AS claimed
-    `;
-    assert(removalScanClaim.claimed === true, "the removal run must be scannable");
+    const [removalScanClaim] = await claimScanQuery(sql, ORPHAN_SCAN_CLAIM, NOW_REMOVAL, RUN_REMOVAL);
+    assert(removalScanClaim?.id === RUN_REMOVAL, "the removal run must be scannable");
 
     // A mapping with an active processing job is already represented in the
     // queue. Listing it again would enqueue duplicate orphan work.
@@ -1603,10 +1621,43 @@ async function main() {
       WHERE run_id = ${RUN_REMOVAL}::uuid AND task_id = ${TASK_ORPHAN}::uuid`;
     assert(failedItem.outcome === "failed" && failedItem.error_message === "exhausted",
       "exhaustion must atomically settle the job and item");
-    const [retry] = await sql`SELECT public.calendar_sync_requeue_retryable_jobs(
-      ${RUN_REMOVAL}::uuid, ${DESTINATION_REMOVAL}, now()
-    ) AS count`;
-    assert(retry.count === 1, "retry must restore the exhausted job");
+    const resumeRetry = (db) => db`SELECT status, scan_complete, retry_mode, completed_at
+      FROM public.calendar_sync_resume_run_for_retry(
+        ${RUN_REMOVAL}::uuid, ${DESTINATION_REMOVAL}, true, now()
+      )`;
+    let competingCompletion;
+    // Start completion while retry holds the row lock. Completion must read the
+    // newly queued work after it acquires the lock and before changing the run.
+    try {
+      await sql.begin(async (tx) => {
+        await tx`SELECT id FROM public.calendar_sync_runs WHERE id = ${RUN_REMOVAL}::uuid FOR UPDATE`;
+        competingCompletion = sql`/* proof-competing-completion */ SELECT id
+          FROM public.calendar_sync_complete_run_if_drained(${RUN_REMOVAL}::uuid, now())`.execute();
+        let waiting = false;
+        for (let i = 0; i < 50 && !waiting; i += 1) {
+          await tx`SELECT pg_stat_clear_snapshot()`;
+          const [activity] = await tx`SELECT EXISTS (
+            SELECT 1 FROM pg_stat_activity
+            WHERE query LIKE '/* proof-competing-completion */%' AND wait_event_type = 'Lock'
+          ) AS waiting`;
+          waiting = activity.waiting;
+          if (!waiting) await tx`SELECT pg_sleep(0.02)`;
+        }
+        assert(waiting, "completion must wait for the run lock");
+        const [retry] = await resumeRetry(tx);
+        assert(retry?.status === "active" && retry.scan_complete && retry.retry_mode,
+          "retry must atomically requeue work under the run lock");
+      });
+    } finally {
+      if (competingCompletion) {
+        assert((await competingCompletion).length === 0, "waiting completion must see requeued work");
+      }
+    }
+    await sql`UPDATE public.calendar_sync_runs SET status = 'completed', completed_at = now()
+      WHERE id = ${RUN_REMOVAL}::uuid`;
+    const [retry] = await resumeRetry(sql);
+    assert(retry?.status === "active" && retry.scan_complete && retry.retry_mode && retry.completed_at === null,
+      "retry must resume a completed run without reopening the scan");
     const [retried] = await sql`
       SELECT job.attempts, job.status, job.last_error, item.outcome, item.error_message
       FROM public.calendar_sync_jobs AS job JOIN public.calendar_sync_run_items AS item ON item.job_id = job.id
@@ -1637,20 +1688,112 @@ async function main() {
     assert(drained.length === 1, "fully scanned and drained run must complete");
     log("CLAIM-RETRY", "expired mutation guards, retry settlement and drained run completion verified");
 
+    const [newTask] = await sql`SELECT gen_random_uuid() AS id`;
+    const enqueueGeneration = (generation, eventId, operation) => sql`
+      SELECT public.calendar_sync_enqueue_job(
+        ${OWNER}::uuid, ${newTask.id}::uuid, ${eventId}, ${operation},
+        ${DESTINATION_KEY}, 'proof-subject', NULL, 'primary', ${generation},
+        ${generation === 1}, now()
+      )`;
+    await sql`
+      INSERT INTO public.calendar_event_mappings (
+        owner_user_id, task_id, destination_key, google_account_subject,
+        calendar_id, event_id, generation, status, metadata_verified
+      ) VALUES (${OWNER}::uuid, ${newTask.id}::uuid, ${DESTINATION_KEY}, 'proof-subject',
+        'primary', 'generation-one', 1, 'active', true)`;
+    const claimDetached = async (token) => {
+      const rows = await sql`
+        SELECT id FROM public.calendar_sync_claim_jobs(
+          ${OWNER}::uuid, ${DESTINATION_KEY}, NULL, ${token}::uuid, 10,
+          '2000-01-01'::timestamptz, 60
+        ) WHERE task_id = ${newTask.id}::uuid`;
+      assert(rows.length === 1, "database time must allow a due detached claim");
+      return rows[0].id;
+    };
+    await enqueueGeneration(2, "generation-two", "upsert");
+    const newJobId = await claimDetached(JOB_CLAIM);
+    await sql`ALTER TABLE public.calendar_sync_jobs ADD CONSTRAINT proof_fail_settlement
+      CHECK (calendar_event_id IS DISTINCT FROM 'generation-two' OR status <> 'succeeded') NOT VALID`;
+    try {
+      await completeJobQuery(sql, {
+        jobId: newJobId, claimToken: JOB_CLAIM, outcome: "created",
+        eventId: "generation-two", generation: 2, payloadHash: "accepted", nowIso: NOW,
+      });
+      assert(false, "settlement should have failed after Google accepted generation two");
+    } catch (error) {
+      assert(error.constraint_name === "proof_fail_settlement", "expected injected settlement failure");
+    }
+    await sql`ALTER TABLE public.calendar_sync_jobs DROP CONSTRAINT proof_fail_settlement`;
+    await sql`UPDATE public.calendar_sync_jobs SET lease_expires_at = now() - interval '1 second'
+      WHERE id = ${newJobId}::uuid`;
+    assert(await claimDetached(JOB_CLAIM_RECOVER) === newJobId, "expired work must be reclaimed");
+    await releaseJobsQuery(sql, [newJobId], JOB_CLAIM_RECOVER, NOW);
+    await enqueueGeneration(1, "generation-one", "delete");
+    const [coalesced] = await sql`
+      SELECT job.generation, job.calendar_event_id, job.event_exists, job.operation,
+        job.status, job.attempts, mapping.generation AS mapped_generation
+      FROM public.calendar_sync_jobs AS job
+      JOIN public.calendar_event_mappings AS mapping USING (owner_user_id, task_id, destination_key)
+      WHERE job.id = ${newJobId}::uuid`;
+    assert(coalesced?.generation === 2 && coalesced.calendar_event_id === "generation-two" &&
+      !coalesced.event_exists && coalesced.operation === "delete" && coalesced.status === "pending" &&
+      coalesced.attempts === 0 && coalesced.mapped_generation === 1,
+    "a stale enqueue must preserve the unverified higher-generation target");
+    log("AD-HOC-ENQUEUE", "recovered generation survives a conflicting lower-generation delete");
+
+    await sql`
+      INSERT INTO public.calendar_integration_settings (
+        owner_user_id, provider, google_account_subject, calendar_id, access_token_encrypted,
+        connected_at, updated_at
+      ) VALUES
+        (${OWNER}::uuid, 'google', 'proof-subject', 'primary', 'token',
+          now() - interval '2 hours', now() - interval '1 hour'),
+        (${OWNER_REMOVAL}::uuid, 'google', 'switched-subject', 'primary', 'token',
+          now() - interval '2 hours', now() - interval '1 hour')`;
+    await sql`
+      INSERT INTO public.calendar_sync_jobs (
+        owner_user_id, task_id, operation, status, queue_version, destination_key,
+        google_account_subject, calendar_id, scheduled_at
+      )
+      SELECT ${OWNER_REMOVAL}::uuid, gen_random_uuid(), 'upsert', 'pending', 2,
+        ${DESTINATION_REMOVAL}, 'proof-removal', 'primary', now() - interval '2 days'
+      FROM generate_series(1, 120)`;
+    const ready = (owner = null) => sql`
+      SELECT * FROM public.calendar_sync_list_ready_destinations(${owner}::uuid, 1)`;
+    const [healthyDestination] = await ready();
+    assert(healthyDestination?.owner_user_id === OWNER && healthyDestination.destination_key === DESTINATION_KEY,
+      "a switched owner's backlog must not hide a healthy destination at limit 1");
+    assert((await ready(OWNER_REMOVAL)).length === 0, "the switched destination must be ineligible");
+    await sql`UPDATE public.calendar_integration_settings
+      SET google_account_subject = 'proof-removal', disconnected_at = now()
+      WHERE owner_user_id = ${OWNER_REMOVAL}::uuid`;
+    assert((await ready())[0]?.owner_user_id === OWNER, "a disconnected owner's backlog must not hide ready work");
+    const [unavailable] = await sql`SELECT count(*)::int AS count FROM public.calendar_sync_jobs
+      WHERE owner_user_id = ${OWNER_REMOVAL}::uuid AND run_id IS NULL AND status = 'pending'`;
+    assert(unavailable.count === 120, "discovery must leave unavailable work untouched");
+    log("DESTINATIONS", "database filtering exposes healthy work behind switched and disconnected backlogs");
+
     await sql`UPDATE public.projects SET status = 'archived', archived_at = now() WHERE id = ${PROJECT}::uuid`;
     await sql`
       INSERT INTO public.calendar_event_mappings (
         owner_user_id, task_id, destination_key, google_account_subject, google_account_email,
         calendar_id, event_id, generation, status, metadata_verified
-      ) VALUES (${OWNER}::uuid, ${TASK_B}::uuid, ${DESTINATION_KEY}, 'purge-subject',
-        'owner@example.com', 'primary', 'purged-event', 3, 'active', true)`;
+      ) VALUES (${OWNER}::uuid, ${TASK_B}::uuid, ${DESTINATION_KEY}, 'proof-subject',
+        NULL, 'primary', 'purged-event', 3, 'active', true)`;
+    await sql`UPDATE public.tasks
+      SET calendar_event_id = 'legacy-' || id::text,
+        updated_at = CASE WHEN id = ${TASK_C}::uuid THEN now() - interval '3 hours' ELSE now() END
+      WHERE id IN (${TASK_A}::uuid, ${TASK_B}::uuid, ${TASK_C}::uuid)`;
     await sql.begin(async (tx) => {
       await tx`SET LOCAL ROLE authenticated`;
       await tx`SELECT set_config('request.jwt.claim.sub', ${OWNER}, true)`;
-      const [purge] = await tx`
+      const purgeProject = () => tx`
         SELECT public.purge_archived_project(${PROJECT}::uuid, 'Calendar commit proof', 3, 0) AS result`;
-      assert(purge.result.status === "purged" && purge.result.calendar_delete_jobs_enqueued === 1,
-        "purge must queue one scoped cleanup job");
+      const [purge] = await purgeProject();
+      assert(purge.result.status === "purged" && purge.result.calendar_delete_jobs_enqueued === 3,
+        "purge must queue one mapped delete and two legacy deletes");
+      const [repeat] = await purgeProject();
+      assert(repeat.result.status === "not_found", "repeated purge must not enqueue again");
     });
     const [purgeJob] = await sql`
       SELECT id, run_id, queue_version, operation, destination_key, calendar_event_id, generation, event_exists
@@ -1658,6 +1801,18 @@ async function main() {
     assert(purgeJob?.queue_version === 2 && purgeJob.run_id === null && purgeJob.operation === "delete" &&
       purgeJob.destination_key === DESTINATION_KEY && purgeJob.calendar_event_id === "purged-event" &&
       purgeJob.generation === 3 && purgeJob.event_exists, "purge must retain the verified event identity");
+    const legacyPurgeJobs = await sql`
+      SELECT task_id, destination_key, google_account_subject, calendar_id, event_exists
+      FROM public.calendar_sync_jobs
+      WHERE queue_version = 1 AND operation = 'delete'
+        AND task_id IN (${TASK_A}::uuid, ${TASK_B}::uuid, ${TASK_C}::uuid)`;
+    const verifiedLegacy = legacyPurgeJobs.find((job) => job.task_id === TASK_A);
+    const unboundLegacy = legacyPurgeJobs.find((job) => job.task_id === TASK_C);
+    assert(legacyPurgeJobs.length === 2 && verifiedLegacy?.destination_key === DESTINATION_KEY &&
+      verifiedLegacy.google_account_subject === "proof-subject" && verifiedLegacy.calendar_id === "primary" &&
+      verifiedLegacy.event_exists, "verified legacy cleanup must retain the proven destination");
+    assert(unboundLegacy?.destination_key === "" && unboundLegacy.google_account_subject === null &&
+      unboundLegacy.calendar_id === null, "unproven legacy cleanup must remain unbound");
     await sql`
       UPDATE public.calendar_sync_jobs
       SET status = 'processing', attempts = 8, claim_token = ${ORPHAN_JOB_CLAIM}::uuid,
@@ -1668,7 +1823,7 @@ async function main() {
         ${OWNER}::uuid, ${DESTINATION_KEY}, NULL, ${JOB_CLAIM_RECOVER}::uuid, 5, now(), 60
       ) WHERE id = ${purgeJob.id}::uuid`;
     assert(reclaimedPurge?.attempts === 8, "a final-attempt runless lease must be recoverable");
-    log("PURGE", "purging enqueues a scoped v2 delete and an expired runless lease is recoverable");
+    log("PURGE", "mapped and legacy cleanup, repeated purge, and expired runless recovery verified");
 
     console.log("CALENDAR-SYNC-COMMIT-SCAN-PAGE-VERIFY PASS");
   } finally {

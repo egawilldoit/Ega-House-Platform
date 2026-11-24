@@ -203,18 +203,13 @@ test("permanent failJob settles through the lease-guarded terminal function", as
   assert.equal(fake.updateCalls.length, 0);
 });
 
-test("ready destinations include expired runless leases and exclude pending jobs in backoff", async () => {
+test("ready destination discovery sends owner scope and limit to the database", async () => {
   const supabase = createClient("https://calendar-proof.example", "test-key", {
     auth: { persistSession: false, autoRefreshToken: false },
     global: {
-      fetch: async (url) => {
-        const { pathname, searchParams } = new URL(String(url));
-        assert.equal(pathname, "/rest/v1/calendar_sync_jobs");
-        assert.equal(searchParams.get("run_id"), "is.null");
-        assert.equal(searchParams.get("queue_version"), "eq.2");
-        assert.equal(searchParams.get("permanent_failure"), "eq.false");
-        assert.match(searchParams.get("or") ?? "", /pending,attempts\.lt\.8,or\(attempts\.eq\.0,scheduled_at\.lte\./);
-        assert.match(searchParams.get("or") ?? "", /processing,lease_expires_at\.lte\./);
+      fetch: async (url, init) => {
+        assert.equal(new URL(String(url)).pathname, "/rest/v1/rpc/calendar_sync_list_ready_destinations");
+        assert.deepEqual(JSON.parse(String(init?.body)), { p_owner: ACTOR.userId, p_limit: 5 });
         return Response.json([{
           owner_user_id: ACTOR.userId,
           destination_key: JOB.destination.destinationKey,

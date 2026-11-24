@@ -277,68 +277,20 @@ export async function enqueueCalendarSyncJob(
     return { errorMessage: "Unable to mark task Calendar sync pending." };
   }
 
-  const jobPayload = {
-    owner_user_id: ownerUserId,
-    task_id: taskId,
-    calendar_event_id: eventId,
-    operation,
-    status: "pending",
-    attempts: 0,
-    queue_version: 2,
-    run_id: null,
-    destination_key: destinationKey,
-    google_account_subject: settings.google_account_subject ?? null,
-    google_account_email: settings.google_account_email ?? null,
-    calendar_id: settings.calendar_id?.trim() || "primary",
-    generation,
-    event_exists: eventExists,
-    scheduled_at: nowIso,
-    updated_at: nowIso,
-  };
-
-  const { error } = await supabase.from("calendar_sync_jobs").insert(jobPayload);
-
-  if (error) {
-    const isCoalesceConflict =
-      error.code === "23505";
-    if (isCoalesceConflict) {
-      const { data: updatedJob, error: updateError } = await supabase
-        .from("calendar_sync_jobs")
-        .update({
-          calendar_event_id: eventId,
-          operation,
-          generation,
-          event_exists: eventExists,
-          last_error: null,
-          permanent_failure: false,
-          scheduled_at: nowIso,
-          updated_at: nowIso,
-        } as never)
-        .eq("owner_user_id", ownerUserId)
-        .eq("task_id", taskId)
-        .eq("destination_key", destinationKey)
-        .eq("status", "pending")
-        .eq("queue_version", 2)
-        .select("id")
-        .maybeSingle();
-
-      if (updateError) {
-        return { errorMessage: "Unable to enqueue Calendar sync job." };
-      }
-
-      if (!updatedJob) {
-        const retried = await supabase.from("calendar_sync_jobs").insert(jobPayload);
-        if (retried.error) {
-          return { errorMessage: "Unable to enqueue Calendar sync job." };
-        }
-      }
-      return { errorMessage: null };
-    }
-
-    return { errorMessage: "Unable to enqueue Calendar sync job." };
-  }
-
-  return { errorMessage: null };
+  const { error } = await supabase.rpc("calendar_sync_enqueue_job", {
+    p_owner_user_id: ownerUserId,
+    p_task_id: taskId,
+    p_calendar_event_id: eventId,
+    p_operation: operation,
+    p_destination_key: destinationKey,
+    p_google_account_subject: settings.google_account_subject ?? null,
+    p_google_account_email: settings.google_account_email ?? null,
+    p_calendar_id: settings.calendar_id?.trim() || "primary",
+    p_generation: generation,
+    p_event_exists: eventExists,
+    p_now: nowIso,
+  });
+  return { errorMessage: error ? "Unable to enqueue Calendar sync job." : null };
 }
 
 async function persistRefreshedAccessToken(
@@ -380,6 +332,7 @@ async function claimPendingCalendarSyncJobs(
     .select(
       "id, owner_user_id, task_id, calendar_event_id, operation, attempts, queue_version, destination_key, google_account_subject, google_account_email, calendar_id, event_exists, generation",
     )
+    .eq("queue_version", 1)
     .in("status", ["pending", "failed"])
     .lt("attempts", MAX_CALENDAR_SYNC_ATTEMPTS)
     .order("created_at", { ascending: true })

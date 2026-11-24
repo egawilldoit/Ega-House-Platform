@@ -334,7 +334,7 @@ class FakeRepository implements CalendarSyncRepository {
 
   async requeueRetryableJobs(
     _actor: AuthenticatedActor,
-    { runId, destinationKey, nowIso }: Parameters<CalendarSyncRepository["requeueRetryableJobs"]>[1],
+    { runId, destinationKey, nowIso }: { runId: string; destinationKey: string; nowIso: string },
   ) {
     let requeued = 0;
     for (const job of this.jobs.values()) {
@@ -403,8 +403,9 @@ class FakeRepository implements CalendarSyncRepository {
     return { ok: true, value: [] };
   }
 
-  async claimScan(): Promise<{ ok: true; value: boolean }> {
-    return { ok: true, value: true };
+  async claimScan(_actor: AuthenticatedActor, { runId }: { runId: string }) {
+    const run = this.runs.get(runId);
+    return { ok: true as const, value: run && !run.scanComplete ? run : null };
   }
 
   async loadTaskPage(
@@ -2170,4 +2171,117 @@ test("a task restored after Google deletion but before settlement publishes a ne
   assert.notEqual(restored.id, original.id);
   assert.equal(restored.privateProperties.generation, "2");
   assert.equal(repository.jobs.get(interrupted.id)?.status, "succeeded");
+});
+
+for (const state of ["restored", "archived", "missing"] as const) {
+  test(`a claimed archive delete respects a ${state} task at load time`, async () => {
+    const repository = new FakeRepository();
+    const provider = new FakeProvider();
+    const deps = buildDeps(repository, provider);
+    repository.addTask(task());
+    await startCalendarSync(actor, deps);
+    const [original] = provider.events.values();
+    assert.ok(original);
+
+    repository.addTask(task({ archivedAt: "2026-05-10T08:30:00.000Z" }));
+    repository.jobs.set("scheduled", queuedJob({
+      operation: "delete", eventId: original.id, eventExists: true,
+    }));
+    const claimJobs = repository.claimJobs.bind(repository);
+    repository.claimJobs = async (...args) => {
+      const result = await claimJobs(...args);
+      if (state === "restored") repository.addTask(task({ title: "Restored" }));
+      if (state === "missing") repository.tasks.delete("task-1");
+      return result;
+    };
+
+    await processCalendarRecovery(actor, deps);
+
+    assert.equal(repository.jobs.get("scheduled")?.status, "succeeded");
+    assert.equal(provider.deleteCalls, state === "restored" ? 0 : 1);
+    assert.equal(provider.events.get(original.id)?.summary, state === "restored" ? "Restored" : undefined);
+  });
+}
+
+test("transport timeouts record backoff, recover on retry, and exhaust the retry budget", async () => {
+  const repository = new FakeRepository();
+  const provider = new FakeProvider();
+  const deps = buildDeps(repository, provider);
+  repository.addTask(task());
+  repository.jobs.set("scheduled", queuedJob());
+  const timeout = { kind: "retryable", message: "Google Calendar request timed out." } as const;
+
+  provider.nextCreateFailure = timeout;
+  await processCalendarRecovery(actor, deps);
+  const retry = repository.jobs.get("scheduled");
+  assert.equal(retry?.status, "pending");
+  assert.equal(retry?.attempts, 1);
+  assert.equal(retry?.lastError, timeout.message);
+  assert.ok(retry.scheduledAt > deps.now().toISOString());
+
+  await processCalendarRecovery(actor, { ...deps, now: () => new Date(retry.scheduledAt) });
+  assert.equal(repository.jobs.get("scheduled")?.status, "succeeded");
+
+  provider.events.clear();
+  repository.mappings.clear();
+  repository.jobs.set("scheduled", queuedJob({ attempts: 7 }));
+  provider.nextCreateFailure = timeout;
+  await processCalendarRecovery(actor, deps);
+  const exhausted = repository.jobs.get("scheduled");
+  assert.equal(exhausted?.status, "failed");
+  assert.equal(exhausted?.attempts, 8);
+  assert.equal(exhausted?.permanentFailure, false);
+  assert.equal(exhausted?.lastError, `${timeout.message} Retry limit reached.`);
+});
+
+test("an unexpected worker error releases every unstarted detached claim", async () => {
+  const repository = new FakeRepository();
+  const provider = new FakeProvider();
+  repository.addTask(task());
+  repository.jobs.set("scheduled", queuedJob());
+  repository.jobs.set("next", queuedJob({ id: "next", taskId: "task-2" }));
+  provider.createEvent = async () => { throw new Error("unexpected calendar worker failure"); };
+
+  await assert.rejects(processCalendarRecovery(actor, buildDeps(repository, provider)), /unexpected calendar worker failure/);
+
+  assert.equal(repository.jobs.get("scheduled")?.status, "processing");
+  assert.equal(repository.jobs.get("next")?.status, "pending");
+  assert.equal(repository.jobs.get("next")?.claimToken, null);
+});
+
+test("a continuation scans and commits from the cursor returned by its lease claim", async () => {
+  const repository = new FakeRepository();
+  const provider = new FakeProvider();
+  const firstTask = task({ id: "task-a" });
+  const nextTask = task({ id: "task-b" });
+  repository.addTask(firstTask);
+  repository.addTask(nextTask);
+  const { value: run } = await repository.ensureRun(actor, {
+    destination, retryMode: false, nowIso: firstTask.createdAt,
+  });
+  const liveCursor = { createdAt: firstTask.createdAt, taskId: firstTask.id };
+  const claimScan = repository.claimScan.bind(repository);
+  repository.claimScan = async (actingUser, input) => {
+    const current = repository.runs.get(run.id);
+    if (current && !current.scanCursorTaskId) {
+      repository.runs.set(run.id, {
+        ...current,
+        scanCursorCreatedAt: liveCursor.createdAt,
+        scanCursorTaskId: liveCursor.taskId,
+      });
+    }
+    return claimScan(actingUser, input);
+  };
+  const commitScanPage = repository.commitScanPage.bind(repository);
+  const commits: CalendarScanCommit[] = [];
+  repository.commitScanPage = (actingUser, commit) => {
+    commits.push(commit);
+    return commitScanPage(actingUser, commit);
+  };
+
+  const continued = await continueCalendarSync(actor, buildDeps(repository, provider), run.id);
+
+  assert.equal(continued.ok, true);
+  assert.deepEqual(commits[0]?.expectedCursor, liveCursor);
+  assert.deepEqual(commits[0]?.items.map((item) => item.taskId), [nextTask.id]);
 });

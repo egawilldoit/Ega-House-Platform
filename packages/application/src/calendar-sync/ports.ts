@@ -157,6 +157,7 @@ export type CalendarScanJobDraft = Readonly<{
 export type CalendarScanCommit = Readonly<{
   runId: string;
   claimToken: string;
+  expectedCursor: CalendarScanCursor | null;
   nextCursor: CalendarScanCursor | null;
   scanComplete: boolean;
   items: CalendarRunItemDraft[];
@@ -362,14 +363,6 @@ export interface CalendarSyncRepository {
     message: string,
     nowIso: string,
   ): Promise<RepositoryResult<void>>;
-  requeueRetryableJobs(
-    actor: AuthenticatedActor,
-    input: Readonly<{
-      runId: string;
-      destinationKey: string;
-      nowIso: string;
-    }>,
-  ): Promise<RepositoryResult<number>>;
   getRunCounts(
     actor: AuthenticatedActor,
     runId: string,
@@ -391,7 +384,7 @@ export interface CalendarSyncRepository {
       nowIso: string;
       leaseSeconds: number;
     }>,
-  ): Promise<RepositoryResult<boolean>>;
+  ): Promise<RepositoryResult<CalendarRunRecord | null>>;
   loadTaskPage(
     actor: AuthenticatedActor,
     input: Readonly<{

@@ -234,52 +234,74 @@ REVOKE ALL ON FUNCTION public.calendar_sync_prepare_removal(uuid, uuid, text, ti
 GRANT EXECUTE ON FUNCTION public.calendar_sync_prepare_removal(uuid, uuid, text, timestamptz) TO authenticated, service_role;
 --> statement-breakpoint
 
-CREATE FUNCTION public.calendar_sync_requeue_retryable_jobs(
-  p_run_id uuid, p_destination_key text, p_now timestamptz
-) RETURNS integer
-LANGUAGE sql SECURITY INVOKER SET search_path = ''
+CREATE FUNCTION public.calendar_sync_resume_run_for_retry(
+  p_run_id uuid, p_destination_key text, p_retry_mode boolean, p_now timestamptz
+) RETURNS SETOF public.calendar_sync_runs
+LANGUAGE plpgsql SECURITY INVOKER SET search_path = ''
 AS $retry$
-  WITH requeued AS (
-    UPDATE public.calendar_sync_jobs AS job
-    SET status = 'pending', attempts = 0, scheduled_at = LEAST(p_now, now()),
-        last_error = NULL, claim_token = NULL, lease_expires_at = NULL,
-        updated_at = p_now
-    WHERE job.run_id = p_run_id AND job.destination_key = p_destination_key
-      AND job.queue_version = 2 AND NOT job.permanent_failure
-      AND (job.status = 'failed' OR (job.status = 'pending' AND job.attempts > 0))
-      AND EXISTS (
-        SELECT 1 FROM public.calendar_sync_run_items AS item
-        WHERE item.run_id = p_run_id AND item.job_id = job.id
-          AND item.outcome IN ('failed', 'pending')
-      )
-      AND NOT EXISTS (
-        SELECT 1 FROM public.calendar_sync_jobs AS other
-        WHERE other.owner_user_id = job.owner_user_id AND other.task_id = job.task_id
-          AND other.destination_key = job.destination_key AND other.queue_version = 2
-          AND (
-            other.status = 'processing'
-            OR (job.status = 'failed' AND other.status = 'pending')
-            OR (job.status = 'failed' AND other.status = 'failed'
-                AND NOT other.permanent_failure AND other.run_id = p_run_id
-                AND (other.updated_at, other.id) > (job.updated_at, job.id))
-          )
-      )
-    RETURNING job.id, job.task_id
-  ), reset_items AS (
+BEGIN
+  PERFORM 1 FROM public.calendar_sync_runs
+  WHERE id = p_run_id AND destination_key = p_destination_key
+    AND (status IN ('active', 'paused') OR (p_retry_mode AND status = 'completed'))
+  FOR UPDATE;
+  IF NOT FOUND THEN
+    RETURN;
+  END IF;
+
+  IF p_retry_mode THEN
+    WITH requeued AS (
+      UPDATE public.calendar_sync_jobs AS job
+      SET status = 'pending', attempts = 0, scheduled_at = LEAST(p_now, now()),
+          last_error = NULL, claim_token = NULL, lease_expires_at = NULL,
+          updated_at = p_now
+      WHERE job.run_id = p_run_id AND job.destination_key = p_destination_key
+        AND job.queue_version = 2 AND NOT job.permanent_failure
+        AND (job.status = 'failed' OR (job.status = 'pending' AND job.attempts > 0))
+        AND EXISTS (
+          SELECT 1 FROM public.calendar_sync_run_items AS item
+          WHERE item.run_id = p_run_id AND item.job_id = job.id
+            AND item.outcome IN ('failed', 'pending')
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM public.calendar_sync_jobs AS other
+          WHERE other.owner_user_id = job.owner_user_id AND other.task_id = job.task_id
+            AND other.destination_key = job.destination_key AND other.queue_version = 2
+            AND (
+              other.status = 'processing'
+              OR (job.status = 'failed' AND other.status = 'pending')
+              OR (job.status = 'failed' AND other.status = 'failed'
+                  AND NOT other.permanent_failure AND other.run_id = p_run_id
+                  AND (other.updated_at, other.id) > (job.updated_at, job.id))
+            )
+        )
+      RETURNING job.id, job.task_id
+    )
     UPDATE public.calendar_sync_run_items AS item
     SET outcome = 'pending', error_message = NULL, job_id = requeued.id, updated_at = p_now
-    FROM requeued WHERE item.run_id = p_run_id AND item.task_id = requeued.task_id
-  )
-  SELECT count(*)::integer FROM requeued;
+    FROM requeued WHERE item.run_id = p_run_id AND item.task_id = requeued.task_id;
+  END IF;
+
+  RETURN QUERY UPDATE public.calendar_sync_runs
+  SET status = 'active', retry_mode = p_retry_mode, last_error = NULL,
+      completed_at = NULL, updated_at = p_now
+  WHERE id = p_run_id
+  RETURNING *;
+END
 $retry$;
 --> statement-breakpoint
 
 CREATE FUNCTION public.calendar_sync_complete_run_if_drained(
   p_run_id uuid, p_now timestamptz
 ) RETURNS SETOF public.calendar_sync_runs
-LANGUAGE sql SECURITY INVOKER SET search_path = ''
+LANGUAGE plpgsql SECURITY INVOKER SET search_path = ''
 AS $drained$
-  UPDATE public.calendar_sync_runs AS run
+BEGIN
+  PERFORM 1 FROM public.calendar_sync_runs WHERE id = p_run_id FOR UPDATE;
+  IF NOT FOUND THEN
+    RETURN;
+  END IF;
+
+  RETURN QUERY UPDATE public.calendar_sync_runs AS run
   SET status = 'completed', completed_at = p_now, updated_at = p_now
   WHERE run.id = p_run_id AND run.status = 'active' AND run.scan_complete
     AND NOT EXISTS (
@@ -287,6 +309,7 @@ AS $drained$
       WHERE run_id = run.id AND status IN ('pending', 'processing')
     )
   RETURNING run.*;
+END
 $drained$;
 --> statement-breakpoint
 
@@ -348,7 +371,7 @@ $fail$;
 --> statement-breakpoint
 
 REVOKE ALL ON FUNCTION
-  public.calendar_sync_requeue_retryable_jobs(uuid, text, timestamptz),
+  public.calendar_sync_resume_run_for_retry(uuid, text, boolean, timestamptz),
   public.calendar_sync_complete_run_if_drained(uuid, timestamptz),
   public.calendar_sync_claim_is_current(uuid, uuid),
   public.calendar_sync_advance_generation(uuid, uuid, integer, text, text, timestamptz),
@@ -357,7 +380,7 @@ FROM PUBLIC, anon;
 --> statement-breakpoint
 
 GRANT EXECUTE ON FUNCTION
-  public.calendar_sync_requeue_retryable_jobs(uuid, text, timestamptz),
+  public.calendar_sync_resume_run_for_retry(uuid, text, boolean, timestamptz),
   public.calendar_sync_complete_run_if_drained(uuid, timestamptz),
   public.calendar_sync_claim_is_current(uuid, uuid),
   public.calendar_sync_advance_generation(uuid, uuid, integer, text, text, timestamptz),
@@ -378,7 +401,7 @@ AS $actionable$
         SELECT 1 FROM public.calendar_sync_jobs AS job
         WHERE job.run_id = run.id
           AND ((job.status = 'pending' AND job.attempts < 8 AND NOT job.permanent_failure
-                 AND (job.attempts = 0 OR job.scheduled_at <= now()))
+                 AND job.scheduled_at <= now())
                OR (job.status = 'processing' AND job.lease_expires_at <= now()))
       )
       OR NOT EXISTS (
@@ -422,6 +445,7 @@ DECLARE
   v_external_refs_deleted integer := 0;
   v_notifications_deleted integer := 0;
   v_calendar_jobs_enqueued integer := 0;
+  v_legacy_jobs_enqueued integer := 0;
 BEGIN
   -- Direct authenticated user sessions only. Identity always comes from the
   -- verified JWT; the function accepts no owner/user id argument.
@@ -526,6 +550,48 @@ BEGIN
     updated_at = now();
   GET DIAGNOSTICS v_calendar_jobs_enqueued = ROW_COUNT;
 
+  -- Retain legacy cleanup evidence even when the old destination cannot be proven.
+  INSERT INTO public.calendar_sync_jobs (
+    owner_user_id, task_id, calendar_event_id, operation, status, attempts,
+    destination_key, google_account_subject, google_account_email, calendar_id, event_exists
+  )
+  SELECT v_actor, task_record.id, task_record.calendar_event_id, 'delete', 'pending', 0,
+    CASE WHEN settings.owner_user_id IS NULL THEN ''
+      ELSE COALESCE(NULLIF(lower(trim(settings.google_account_email)), ''),
+                    NULLIF(trim(settings.google_account_subject), ''))
+           || '|' || COALESCE(NULLIF(trim(settings.calendar_id), ''), 'primary')
+    END,
+    settings.google_account_subject, settings.google_account_email,
+    CASE WHEN settings.owner_user_id IS NOT NULL
+      THEN COALESCE(NULLIF(trim(settings.calendar_id), ''), 'primary')
+    END,
+    settings.owner_user_id IS NOT NULL
+  FROM public.tasks AS task_record
+  LEFT JOIN public.calendar_integration_settings AS settings
+    ON settings.owner_user_id = v_actor AND settings.provider = 'google'
+    AND settings.connected_at <= task_record.updated_at
+    AND settings.updated_at <= task_record.updated_at
+    AND COALESCE(lower(trim(settings.google_account_email)), '') <> 'unknown-account'
+    AND COALESCE(trim(settings.google_account_subject), '') <> 'unknown-account'
+    AND COALESCE(NULLIF(trim(settings.google_account_email), ''),
+                 NULLIF(trim(settings.google_account_subject), '')) IS NOT NULL
+  WHERE task_record.owner_user_id = v_actor AND task_record.id = ANY (v_task_ids)
+    AND task_record.calendar_event_id IS NOT NULL
+    AND NOT EXISTS (
+      SELECT 1 FROM public.calendar_event_mappings AS mapping
+      WHERE mapping.owner_user_id = v_actor AND mapping.task_id = task_record.id
+        AND mapping.status = 'active'
+    )
+    AND NOT EXISTS (
+      SELECT 1 FROM public.calendar_sync_jobs AS existing_job
+      WHERE existing_job.owner_user_id = v_actor AND existing_job.task_id = task_record.id
+        AND existing_job.operation = 'delete'
+        AND (existing_job.status IN ('pending', 'processing')
+          OR (existing_job.status = 'failed' AND existing_job.attempts < 5))
+    );
+  GET DIAGNOSTICS v_legacy_jobs_enqueued = ROW_COUNT;
+  v_calendar_jobs_enqueued := v_calendar_jobs_enqueued + v_legacy_jobs_enqueued;
+
   -- Task-targeted notifications first; their deliveries follow the existing
   -- notification CASCADE. Audit events and proposals are never touched.
   DELETE FROM public.notifications AS notification_record
@@ -575,3 +641,93 @@ BEGIN
   );
 END;
 $$;
+--> statement-breakpoint
+
+CREATE FUNCTION public.calendar_sync_enqueue_job(
+  p_owner_user_id uuid, p_task_id uuid, p_calendar_event_id text, p_operation text,
+  p_destination_key text, p_google_account_subject text, p_google_account_email text,
+  p_calendar_id text, p_generation integer, p_event_exists boolean, p_now timestamptz
+) RETURNS void
+LANGUAGE sql SECURITY INVOKER SET search_path = ''
+AS $enqueue$
+  INSERT INTO public.calendar_sync_jobs (
+    owner_user_id, task_id, calendar_event_id, operation, status, attempts,
+    queue_version, destination_key, google_account_subject, google_account_email,
+    calendar_id, generation, event_exists, scheduled_at, updated_at
+  ) VALUES (
+    p_owner_user_id, p_task_id, p_calendar_event_id, p_operation, 'pending', 0,
+    2, p_destination_key, p_google_account_subject, p_google_account_email,
+    p_calendar_id, p_generation, p_event_exists, LEAST(p_now, now()), p_now
+  )
+  ON CONFLICT (owner_user_id, task_id, destination_key)
+    WHERE (status = 'pending' AND queue_version = 2)
+  DO UPDATE SET
+    operation = EXCLUDED.operation,
+    calendar_event_id = CASE WHEN calendar_sync_jobs.generation > EXCLUDED.generation
+      THEN COALESCE(calendar_sync_jobs.calendar_event_id, EXCLUDED.calendar_event_id)
+      ELSE EXCLUDED.calendar_event_id END,
+    generation = CASE WHEN calendar_sync_jobs.calendar_event_id IS NOT NULL
+      THEN greatest(calendar_sync_jobs.generation, EXCLUDED.generation)
+      ELSE EXCLUDED.generation END,
+    event_exists = EXCLUDED.event_exists AND
+      (EXCLUDED.generation >= calendar_sync_jobs.generation OR calendar_sync_jobs.calendar_event_id IS NULL),
+    attempts = 0,
+    scheduled_at = LEAST(calendar_sync_jobs.scheduled_at, p_now, now()),
+    last_error = NULL,
+    permanent_failure = false,
+    updated_at = p_now;
+$enqueue$;
+--> statement-breakpoint
+
+CREATE FUNCTION public.calendar_sync_list_ready_destinations(p_owner uuid, p_limit integer)
+RETURNS TABLE (
+  owner_user_id uuid, destination_key text, google_account_subject text,
+  google_account_email text, calendar_id text
+)
+LANGUAGE sql SECURITY INVOKER SET search_path = ''
+AS $ready$
+  SELECT job.owner_user_id, job.destination_key, job.google_account_subject,
+    job.google_account_email, job.calendar_id
+  FROM public.calendar_sync_jobs AS job
+  JOIN public.calendar_integration_settings AS settings
+    ON settings.owner_user_id = job.owner_user_id AND settings.provider = 'google'
+  CROSS JOIN LATERAL (
+    SELECT NULLIF(lower(trim(job.google_account_email)), '') AS job_email,
+      NULLIF(trim(job.google_account_subject), '') AS job_subject,
+      NULLIF(lower(trim(settings.google_account_email)), '') AS settings_email,
+      NULLIF(trim(settings.google_account_subject), '') AS settings_subject
+  ) AS identity
+  WHERE (p_owner IS NULL OR job.owner_user_id = p_owner)
+    AND job.queue_version = 2 AND job.run_id IS NULL AND NOT job.permanent_failure
+    AND ((job.status = 'pending' AND job.attempts < 8 AND job.scheduled_at <= clock_timestamp())
+      OR (job.status = 'processing' AND job.lease_expires_at <= clock_timestamp()))
+    AND settings.connected_at IS NOT NULL AND settings.disconnected_at IS NULL
+    AND settings.reconnect_required_at IS NULL
+    AND (settings.access_token_encrypted IS NOT NULL OR settings.refresh_token_encrypted IS NOT NULL)
+    AND NULLIF(trim(job.calendar_id), '') = COALESCE(NULLIF(trim(settings.calendar_id), ''), 'primary')
+    AND COALESCE(identity.job_email, '') <> 'unknown-account'
+    AND COALESCE(identity.job_subject, '') <> 'unknown-account'
+    AND COALESCE(identity.settings_email, '') <> 'unknown-account'
+    AND COALESCE(identity.settings_subject, '') <> 'unknown-account'
+    AND CASE WHEN identity.job_email IS NOT NULL AND identity.settings_email IS NOT NULL
+      THEN identity.job_email = identity.settings_email
+      ELSE identity.job_subject = identity.settings_subject
+    END
+  GROUP BY job.owner_user_id, job.destination_key, job.google_account_subject,
+    job.google_account_email, job.calendar_id
+  ORDER BY min(job.scheduled_at), job.owner_user_id, job.destination_key,
+    job.google_account_subject, job.google_account_email, job.calendar_id
+  LIMIT greatest(p_limit, 1);
+$ready$;
+--> statement-breakpoint
+
+REVOKE ALL ON FUNCTION
+  public.calendar_sync_enqueue_job(uuid, uuid, text, text, text, text, text, text, integer, boolean, timestamptz),
+  public.calendar_sync_list_ready_destinations(uuid, integer)
+FROM PUBLIC, anon;
+--> statement-breakpoint
+
+GRANT EXECUTE ON FUNCTION
+  public.calendar_sync_enqueue_job(uuid, uuid, text, text, text, text, text, text, integer, boolean, timestamptz),
+  public.calendar_sync_list_ready_destinations(uuid, integer)
+TO authenticated, service_role;

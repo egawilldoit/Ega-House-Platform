@@ -301,6 +301,14 @@ function writtenEvent(
     : null;
 }
 
+const GOOGLE_TRANSPORT_FAILURE = {
+  ok: false,
+  error: {
+    kind: "retryable",
+    message: "Google Calendar request timed out or could not be reached. Sync will retry.",
+  },
+} as const;
+
 export class GoogleCalendarEventProvider implements CalendarEventProvider {
   private readonly fetchImpl: typeof fetch;
   private readonly now: () => Date;
@@ -382,16 +390,22 @@ export class GoogleCalendarEventProvider implements CalendarEventProvider {
     const refresh = (async (): Promise<
       CalendarProviderResult<{ accessToken: string }>
     > => {
-      const response = await this.fetchImpl("https://oauth2.googleapis.com/token", {
-        method: "POST",
-        headers: { "content-type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({
-          client_id: this.clientId as string,
-          client_secret: this.clientSecret as string,
-          refresh_token: refreshToken,
-          grant_type: "refresh_token",
-        }),
-      });
+      let response: Response;
+      try {
+        response = await this.fetchImpl("https://oauth2.googleapis.com/token", {
+          method: "POST",
+          signal: AbortSignal.timeout(this.requestTimeoutMs),
+          headers: { "content-type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({
+            client_id: this.clientId as string,
+            client_secret: this.clientSecret as string,
+            refresh_token: refreshToken,
+            grant_type: "refresh_token",
+          }),
+        });
+      } catch {
+        return GOOGLE_TRANSPORT_FAILURE;
+      }
       const payload = (await response.json().catch(() => ({}))) as GoogleTokenResponse;
 
       if (!response.ok || !payload.access_token) {
@@ -443,7 +457,9 @@ export class GoogleCalendarEventProvider implements CalendarEventProvider {
         value: { accessToken: payload.access_token },
         refreshedCredentials: credentials,
       };
-    })();
+    })().finally(() => {
+      if (this.refreshTokens.get(key) === refresh) this.refreshTokens.delete(key);
+    });
 
     this.refreshTokens.set(key, refresh);
     return refresh;
@@ -465,7 +481,6 @@ export class GoogleCalendarEventProvider implements CalendarEventProvider {
       }
     }
 
-    this.refreshTokens.delete(key);
     return this.refreshAccessToken(connection);
   }
 
@@ -500,7 +515,12 @@ export class GoogleCalendarEventProvider implements CalendarEventProvider {
         },
       );
 
-    let response = await send(tokenResult.value.accessToken);
+    let response: Response;
+    try {
+      response = await send(tokenResult.value.accessToken);
+    } catch {
+      return GOOGLE_TRANSPORT_FAILURE;
+    }
     let refreshed = tokenResult.refreshedCredentials;
 
     if (
@@ -508,11 +528,15 @@ export class GoogleCalendarEventProvider implements CalendarEventProvider {
       retryOnAuthorization &&
       connection.refreshTokenEncrypted
     ) {
-      this.refreshTokens.delete(this.connectionKey(connection));
+      this.accessTokens.delete(this.connectionKey(connection));
       tokenResult = await this.refreshAccessToken(connection);
       if (!tokenResult.ok) return { ok: false, error: tokenResult.error };
       refreshed = tokenResult.refreshedCredentials ?? refreshed;
-      response = await send(tokenResult.value.accessToken);
+      try {
+        response = await send(tokenResult.value.accessToken);
+      } catch {
+        return GOOGLE_TRANSPORT_FAILURE;
+      }
     }
 
     return { ok: true, response, refreshedCredentials: refreshed };

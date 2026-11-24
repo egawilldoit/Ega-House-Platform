@@ -428,3 +428,65 @@ test("PATCH clears opposite boundary fields and rejects mixed responses", async 
     }
   }
 });
+
+test("Calendar GET and create transport errors are retryable results", async () => {
+  const provider = providerWith(async (_url, request) => {
+    if (request?.method === "POST") throw new TypeError("network unavailable");
+    throw new DOMException("timeout", "TimeoutError");
+  });
+  const payload: CalendarEventPayload = {
+    eventId: "planned-event",
+    summary: "Task",
+    description: "",
+    start: { date: "2026-05-10" },
+    end: { date: "2026-05-11" },
+    reminderMinutes: 10,
+    privateProperties: {},
+  };
+
+  for (const result of [
+    await provider.getEvent(connection, payload.eventId),
+    await provider.createEvent(connection, payload),
+  ]) {
+    assert.equal(result.ok, false);
+    assert.equal(!result.ok && result.error.kind, "retryable");
+  }
+});
+
+test("a timed-out token refresh can be retried on the same provider", async () => {
+  let refreshAttempts = 0;
+  const provider = providerWith(async (url, request) => {
+    if (String(url) === "https://oauth2.googleapis.com/token") {
+      assert.ok(request?.signal);
+      refreshAttempts += 1;
+      if (refreshAttempts === 1) throw new DOMException("timeout", "TimeoutError");
+      return Response.json({ access_token: "refreshed", expires_in: 3600 });
+    }
+    return new Response(null, { status: 404 });
+  });
+  const expired = { ...connection, tokenExpiresAt: "2026-05-09T00:00:00.000Z" };
+
+  const first = await provider.getEvent(expired, "event-1");
+  assert.equal(!first.ok && first.error.kind, "retryable");
+
+  const second = await provider.getEvent(expired, "event-1");
+  assert.ok(second.ok);
+  assert.equal(second.value, null);
+  assert.equal(refreshAttempts, 2);
+});
+
+test("a network error on the 401 retry remains retryable", async () => {
+  let calendarRequests = 0;
+  const provider = providerWith(async (url) => {
+    if (String(url) === "https://oauth2.googleapis.com/token") {
+      return Response.json({ access_token: "refreshed", expires_in: 3600 });
+    }
+    calendarRequests += 1;
+    if (calendarRequests === 1) return new Response(null, { status: 401 });
+    throw new TypeError("network unavailable");
+  });
+
+  const result = await provider.getEvent(connection, "event-1");
+  assert.equal(!result.ok && result.error.kind, "retryable");
+  assert.equal(calendarRequests, 2);
+});

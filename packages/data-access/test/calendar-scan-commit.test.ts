@@ -16,6 +16,7 @@ const UNCHANGED_TASK_ID = "55555555-5555-4555-8555-555555555555";
 const COMMIT: CalendarScanCommit = {
   runId: RUN_ID,
   claimToken: CLAIM_TOKEN,
+  expectedCursor: null,
   nextCursor: {
     createdAt: "2026-11-23T10:00:00+00:00",
     taskId: "33333333-3333-4333-8333-333333333333",
@@ -78,6 +79,8 @@ test("commitScanPage sends snake_case item and job payloads for a nonempty page"
   assert.deepEqual(call.args, {
     p_run_id: RUN_ID,
     p_claim_token: CLAIM_TOKEN,
+    p_expected_cursor_created_at: null,
+    p_expected_cursor_task_id: null,
     p_next_cursor_created_at: "2026-11-23T10:00:00+00:00",
     p_next_cursor_task_id: "33333333-3333-4333-8333-333333333333",
     p_scan_complete: false,

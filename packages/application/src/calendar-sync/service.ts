@@ -787,15 +787,13 @@ async function scanRun(
       };
     }
 
+    run = claimed.value;
+    const expectedCursor = run.scanCursorCreatedAt && run.scanCursorTaskId
+      ? { createdAt: run.scanCursorCreatedAt, taskId: run.scanCursorTaskId }
+      : null;
     const pageResult = await deps.repository.loadTaskPage(actor, {
       ownerUserId: run.ownerUserId,
-      cursor:
-        run.scanCursorCreatedAt && run.scanCursorTaskId
-          ? {
-              createdAt: run.scanCursorCreatedAt,
-              taskId: run.scanCursorTaskId,
-            }
-          : null,
+      cursor: expectedCursor,
       limit: config.scanPageSize,
     });
     if (!pageResult.ok) {
@@ -846,9 +844,8 @@ async function scanRun(
         await deps.repository.commitScanPage(actor, {
           runId: run.id,
           claimToken,
-          nextCursor: run.scanCursorCreatedAt && run.scanCursorTaskId
-            ? { createdAt: run.scanCursorCreatedAt, taskId: run.scanCursorTaskId }
-            : null,
+          expectedCursor,
+          nextCursor: expectedCursor,
           scanComplete: false,
           items: [],
           jobs: [],
@@ -874,11 +871,8 @@ async function scanRun(
     const commit: CalendarScanCommit = {
       runId: run.id,
       claimToken,
-      nextCursor: page.nextCursor ?? (
-        run.scanCursorCreatedAt && run.scanCursorTaskId
-          ? { createdAt: run.scanCursorCreatedAt, taskId: run.scanCursorTaskId }
-          : null
-      ),
+      expectedCursor,
+      nextCursor: page.nextCursor ?? expectedCursor,
       scanComplete: false,
       items,
       jobs,
@@ -913,6 +907,10 @@ async function scanRun(
       leaseSeconds: config.leaseSeconds,
     });
     if (!claimed.ok || !claimed.value) break;
+    run = claimed.value;
+    const expectedCursor = run.scanCursorCreatedAt && run.scanCursorTaskId
+      ? { createdAt: run.scanCursorCreatedAt, taskId: run.scanCursorTaskId }
+      : null;
 
     const orphans = await deps.repository.listOrphanMappings(actor, {
       ownerUserId: run.ownerUserId,
@@ -926,13 +924,8 @@ async function scanRun(
       const completed = await deps.repository.commitScanPage(actor, {
         runId: run.id,
         claimToken,
-        nextCursor:
-          run.scanCursorCreatedAt && run.scanCursorTaskId
-            ? {
-                createdAt: run.scanCursorCreatedAt,
-                taskId: run.scanCursorTaskId,
-              }
-            : null,
+        expectedCursor,
+        nextCursor: expectedCursor,
         scanComplete: true,
         items: [],
         jobs: [],
@@ -976,13 +969,8 @@ async function scanRun(
     const committed = await deps.repository.commitScanPage(actor, {
       runId: run.id,
       claimToken,
-      nextCursor:
-        run.scanCursorCreatedAt && run.scanCursorTaskId
-          ? {
-              createdAt: run.scanCursorCreatedAt,
-              taskId: run.scanCursorTaskId,
-            }
-          : null,
+      expectedCursor,
+      nextCursor: expectedCursor,
       scanComplete: false,
       items,
       jobs,
@@ -1218,7 +1206,7 @@ async function processJob(
       })
     : null;
 
-  if (!task || built?.plan.kind === "excluded" || job.operation === "delete") {
+  if (!task || built?.plan.kind === "excluded") {
     const exclusionReason = built?.plan.kind === "excluded"
       ? built.plan.exclusionReason
       : job.exclusionReason;
@@ -1551,31 +1539,30 @@ async function drainRunJobs(
     if (!claimed.ok || claimed.value.length === 0) break;
 
     const jobs = claimed.value;
-    for (let index = 0; index < jobs.length; index += 1) {
-      if (Date.now() >= input.deadline) {
-        await deps.repository.releaseJobs(actor, {
-          jobIds: jobs.slice(index).map((job) => job.id),
-          claimToken,
+    let nextJob = 0;
+    try {
+      while (nextJob < jobs.length && Date.now() < input.deadline) {
+        const job = jobs[nextJob++];
+        const result = await processJob(actor, deps, {
+          job,
+          connection: input.connection,
           nowIso: input.nowIso,
+          now: input.now,
         });
-        break;
+        refreshed = result.refreshedCredentials ?? refreshed;
+        processed += 1;
+        if (result.authFailure) {
+          nextJob -= 1;
+          return { authFailure: true, refreshed };
+        }
       }
-
-      const result = await processJob(actor, deps, {
-        job: jobs[index],
-        connection: input.connection,
-        nowIso: input.nowIso,
-        now: input.now,
-      });
-      refreshed = result.refreshedCredentials ?? refreshed;
-      processed += 1;
-      if (result.authFailure) {
+    } finally {
+      if (nextJob < jobs.length) {
         await deps.repository.releaseJobs(actor, {
-          jobIds: jobs.slice(index).map((job) => job.id),
+          jobIds: jobs.slice(nextJob).map((job) => job.id),
           claimToken,
           nowIso: input.nowIso,
-        });
-        return { authFailure: true, refreshed };
+        }).catch(() => undefined);
       }
     }
   }
@@ -2006,30 +1993,31 @@ export async function processCalendarRecovery(
     let refreshed:
       | RefreshedCalendarCredentials
       | undefined;
-    for (const [index, job] of claimed.value.entries()) {
-      if (Date.now() >= deadline) {
-        await deps.repository.releaseJobs(actor, {
-          jobIds: claimed.value.slice(index).map((remaining) => remaining.id),
-          claimToken,
+    const jobs = claimed.value;
+    let nextJob = 0;
+    try {
+      while (nextJob < jobs.length && Date.now() < deadline) {
+        const job = jobs[nextJob++];
+        const result = await processJob(actor, deps, {
+          job,
+          connection: connection.value,
           nowIso,
+          now,
         });
-        break;
+        refreshed = result.refreshedCredentials ?? refreshed;
+        jobsProcessed += 1;
+        if (result.authFailure) {
+          nextJob -= 1;
+          break;
+        }
       }
-      const result = await processJob(actor, deps, {
-        job,
-        connection: connection.value,
-        nowIso,
-        now,
-      });
-      refreshed = result.refreshedCredentials ?? refreshed;
-      jobsProcessed += 1;
-      if (result.authFailure) {
+    } finally {
+      if (nextJob < jobs.length) {
         await deps.repository.releaseJobs(actor, {
-          jobIds: claimed.value.slice(index).map((remaining) => remaining.id),
+          jobIds: jobs.slice(nextJob).map((job) => job.id),
           claimToken,
           nowIso,
-        });
-        break;
+        }).catch(() => undefined);
       }
     }
     if (refreshed) {

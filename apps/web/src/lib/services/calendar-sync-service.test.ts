@@ -6,7 +6,7 @@ import {
   processPendingCalendarSyncJobs,
 } from "./calendar-sync-service";
 
-function createCalendarSyncSupabaseMock(options?: { settingsLoadError?: boolean; claimBeforeCoalesce?: boolean }) {
+function createCalendarSyncSupabaseMock(options?: { settingsLoadError?: boolean }) {
   const tasks = [
     {
       id: "task-1",
@@ -24,8 +24,8 @@ function createCalendarSyncSupabaseMock(options?: { settingsLoadError?: boolean;
     },
   ];
   const jobs: Array<Record<string, unknown>> = [];
-  let claimBeforeCoalesce = options?.claimBeforeCoalesce;
   const mappings: Array<Record<string, unknown>> = [];
+  const enqueueCalls: Array<Record<string, unknown>> = [];
   const settings = {
     owner_user_id: "owner-1",
     provider: "google",
@@ -141,6 +141,33 @@ function createCalendarSyncSupabaseMock(options?: { settingsLoadError?: boolean;
       },
     },
     async rpc(name: string, args: Record<string, unknown>) {
+      if (name === "calendar_sync_enqueue_job") {
+        enqueueCalls.push(args);
+        if (jobs.some((job) => job.task_id === args.p_task_id && job.status === "pending" &&
+          job.queue_version === 2 && job.destination_key === args.p_destination_key)) {
+          return { data: null, error: null };
+        }
+        jobs.push({
+          id: `job-${jobs.length + 1}`,
+          owner_user_id: args.p_owner_user_id,
+          task_id: args.p_task_id,
+          calendar_event_id: args.p_calendar_event_id,
+          operation: args.p_operation,
+          status: "pending",
+          attempts: 0,
+          queue_version: 2,
+          run_id: null,
+          destination_key: args.p_destination_key,
+          google_account_subject: args.p_google_account_subject,
+          google_account_email: args.p_google_account_email,
+          calendar_id: args.p_calendar_id,
+          generation: args.p_generation,
+          event_exists: args.p_event_exists,
+          scheduled_at: args.p_now,
+          updated_at: args.p_now,
+        });
+        return { data: null, error: null };
+      }
       if (name === "calendar_sync_promote_legacy_job") {
         const job = jobs.find((row) => row.id === args.p_job_id && row.claim_token === args.p_claim_token && row.status === "processing");
         if (!job) return { data: false, error: null };
@@ -181,28 +208,12 @@ function createCalendarSyncSupabaseMock(options?: { settingsLoadError?: boolean;
         update(payload: Record<string, unknown>) {
           return createQuery(table, "update", payload);
         },
-        async insert(payload: Record<string, unknown>) {
-          if (claimBeforeCoalesce) {
-            claimBeforeCoalesce = false;
-            const pending = jobs.find((job) => job.status === "pending");
-            assert.ok(pending);
-            pending.status = "processing";
-            return { data: null, error: { code: "23505" } };
-          }
-          jobs.push({
-            id: `job-${jobs.length + 1}`,
-            created_at: "2026-05-10T08:00:00.000Z",
-            locked_at: null,
-            last_error: null,
-            ...payload,
-          });
-          return { data: null, error: null };
-        },
+
       };
     },
   };
 
-  return { jobs, mappings, settings, supabase, tasks };
+  return { enqueueCalls, jobs, mappings, settings, supabase, tasks };
 }
 
 test("enqueueCalendarSyncJob marks task pending and inserts an outbox row", async () => {
@@ -657,19 +668,44 @@ test("returning to account A uses its active mapping even when account B also ha
   assert.equal(mock.jobs[0]?.run_id, null);
 });
 
-test("an edit is reinserted when the conflicting pending row is claimed before coalescing", async () => {
-  const mock = createCalendarSyncSupabaseMock({ claimBeforeCoalesce: true });
+test("a full window of v2 jobs cannot hide a legacy delete", async () => {
+  const mock = createCalendarSyncSupabaseMock();
+  await enqueueCalendarSyncJob({ taskId: "task-1" }, { supabase: mock.supabase as never });
   mock.jobs.push({
-    id: "original-job", owner_user_id: "owner-1", task_id: "task-1",
-    destination_key: "owner@example.com|primary", status: "pending", queue_version: 2,
+    ...mock.jobs[0],
+    id: "legacy-delete",
+    queue_version: 1,
+    operation: "delete",
+    destination_key: "",
+    google_account_email: null,
+    calendar_id: null,
   });
 
+  await processPendingCalendarSyncJobs({ limit: 1, supabase: mock.supabase as never });
+  assert.equal(mock.jobs[0]?.status, "pending");
+  assert.equal(mock.jobs[1]?.status, "failed");
+  assert.equal(mock.jobs[1]?.attempts, 1);
+});
+
+test("a delete based on an older mapping delegates the pending conflict to one RPC", async () => {
+  const mock = createCalendarSyncSupabaseMock();
+  await enqueueCalendarSyncJob({ taskId: "task-1" }, { supabase: mock.supabase as never });
+  Object.assign(mock.jobs[0]!, { generation: 2, calendar_event_id: "generation-two" });
+  mock.mappings.push({
+    owner_user_id: "owner-1", task_id: "task-1", destination_key: "owner@example.com|primary",
+    generation: 1, event_id: "generation-one", status: "active",
+  });
+  mock.enqueueCalls.length = 0;
+
   const result = await enqueueCalendarSyncJob(
-    { taskId: "task-1", operation: "upsert" },
+    { taskId: "task-1", operation: "delete" },
     { supabase: mock.supabase as never },
   );
-
   assert.equal(result.errorMessage, null);
-  assert.deepEqual(mock.jobs.map((job) => job.status), ["processing", "pending"]);
-  assert.equal(mock.jobs[1]?.run_id, null);
+  assert.equal(mock.enqueueCalls.length, 1);
+  assert.equal(mock.enqueueCalls[0]?.p_operation, "delete");
+  assert.equal(mock.enqueueCalls[0]?.p_generation, 1);
+  assert.equal(mock.enqueueCalls[0]?.p_calendar_event_id, "generation-one");
+  assert.equal(mock.jobs.length, 1);
+  assert.equal(mock.jobs[0]?.calendar_event_id, "generation-two");
 });

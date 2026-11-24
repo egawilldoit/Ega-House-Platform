@@ -268,29 +268,25 @@ CREATE OR REPLACE FUNCTION public.calendar_sync_claim_run_scan(
   p_claim_token uuid,
   p_now timestamptz,
   p_lease_seconds integer
-) RETURNS boolean
-LANGUAGE plpgsql
+) RETURNS SETOF public.calendar_sync_runs
+LANGUAGE sql
 SECURITY INVOKER
 SET search_path = ''
 AS $claim$
-DECLARE
-  v_updated integer := 0;
-BEGIN
   UPDATE public.calendar_sync_runs
   SET scan_claim_token = p_claim_token,
-      scan_lease_expires_at = p_now + make_interval(secs => greatest(p_lease_seconds, 30)),
+      scan_lease_expires_at = clock_timestamp() + make_interval(secs => greatest(p_lease_seconds, 30)),
       updated_at = p_now
   WHERE id = p_run_id
     AND status = 'active'
+    AND NOT scan_complete
     AND (
       scan_claim_token IS NULL
       OR scan_lease_expires_at IS NULL
-      OR scan_lease_expires_at <= p_now
+      OR scan_lease_expires_at <= clock_timestamp()
       OR scan_claim_token = p_claim_token
-    );
-  GET DIAGNOSTICS v_updated = ROW_COUNT;
-  RETURN v_updated > 0;
-END
+    )
+  RETURNING *;
 $claim$;
 --> statement-breakpoint
 
@@ -306,7 +302,9 @@ CREATE OR REPLACE FUNCTION public.calendar_sync_commit_scan_page(
   p_scan_complete boolean,
   p_items jsonb,
   p_jobs jsonb,
-  p_now timestamptz
+  p_now timestamptz,
+  p_expected_cursor_created_at timestamptz DEFAULT NULL,
+  p_expected_cursor_task_id uuid DEFAULT NULL
 ) RETURNS boolean
 LANGUAGE plpgsql
 SECURITY INVOKER
@@ -329,7 +327,11 @@ BEGIN
   IF v_run.scan_claim_token IS DISTINCT FROM p_claim_token THEN
     RETURN false;
   END IF;
-  IF v_run.scan_lease_expires_at IS NULL OR v_run.scan_lease_expires_at <= p_now THEN
+  IF v_run.scan_complete
+    OR v_run.scan_lease_expires_at IS NULL
+    OR v_run.scan_lease_expires_at <= clock_timestamp()
+    OR v_run.scan_cursor_created_at IS DISTINCT FROM p_expected_cursor_created_at
+    OR v_run.scan_cursor_task_id IS DISTINCT FROM p_expected_cursor_task_id THEN
     RETURN false;
   END IF;
 
@@ -472,7 +474,7 @@ BEGIN
     AND queue_version = 1
     AND run_id IS NULL
     AND lease_expires_at IS NOT NULL
-    AND lease_expires_at <= p_now
+    AND lease_expires_at <= clock_timestamp()
     AND (p_owner IS NULL OR owner_user_id = p_owner)
     AND (p_destination_key IS NULL OR destination_key = p_destination_key);
 
@@ -481,7 +483,7 @@ BEGIN
     WHERE job.status = 'processing'
       AND job.queue_version = 2
       AND job.lease_expires_at IS NOT NULL
-      AND job.lease_expires_at <= p_now
+      AND job.lease_expires_at <= clock_timestamp()
       AND (
         job.run_id IS NOT DISTINCT FROM p_run_id
         OR EXISTS (
@@ -552,7 +554,7 @@ BEGIN
     FROM public.calendar_sync_jobs AS job
     WHERE job.queue_version = 2
       AND job.status = 'pending'
-      AND (job.attempts = 0 OR job.scheduled_at <= p_now)
+      AND job.scheduled_at <= clock_timestamp()
       AND job.attempts < 8
       AND job.permanent_failure = false
       AND (p_owner IS NULL OR job.owner_user_id = p_owner)
@@ -566,7 +568,7 @@ BEGIN
           AND lease.destination_key = job.destination_key
           AND lease.status = 'processing'
           AND lease.lease_expires_at IS NOT NULL
-          AND lease.lease_expires_at > p_now
+          AND lease.lease_expires_at > clock_timestamp()
       )
     ORDER BY job.scheduled_at, job.created_at
     FOR UPDATE SKIP LOCKED
@@ -575,7 +577,7 @@ BEGIN
   UPDATE public.calendar_sync_jobs AS job
   SET status = 'processing',
       claim_token = p_claim_token,
-      lease_expires_at = p_now + make_interval(secs => greatest(p_lease_seconds, 30)),
+      lease_expires_at = clock_timestamp() + make_interval(secs => greatest(p_lease_seconds, 30)),
       attempts = job.attempts + 1,
       updated_at = p_now
   FROM candidates
@@ -854,7 +856,7 @@ AS $counts$
   WITH job_state AS (
     SELECT task_id,
       bool_or(status = 'processing') AS processing,
-      bool_or(status = 'processing' OR attempts = 0 OR scheduled_at <= now()) AS ready
+      bool_or(status = 'processing' OR scheduled_at <= now()) AS ready
     FROM public.calendar_sync_jobs
     WHERE run_id = p_run_id AND status IN ('pending', 'processing')
     GROUP BY task_id
@@ -964,7 +966,7 @@ $upsert_mapping$;
 --> statement-breakpoint
 
 REVOKE ALL ON FUNCTION public.calendar_sync_claim_run_scan(uuid, uuid, timestamptz, integer) FROM PUBLIC, anon;
-REVOKE ALL ON FUNCTION public.calendar_sync_commit_scan_page(uuid, uuid, timestamptz, uuid, boolean, jsonb, jsonb, timestamptz) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.calendar_sync_commit_scan_page(uuid, uuid, timestamptz, uuid, boolean, jsonb, jsonb, timestamptz, timestamptz, uuid) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.calendar_sync_claim_jobs(uuid, text, uuid, uuid, integer, timestamptz, integer) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.calendar_sync_release_claimed_jobs(uuid[], uuid, timestamptz, boolean, text, varchar, text, timestamptz) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.calendar_sync_complete_job(uuid, uuid, varchar, text, integer, text, text, text, boolean, boolean, text, integer, timestamptz) FROM PUBLIC, anon;
@@ -974,7 +976,7 @@ REVOKE ALL ON FUNCTION public.calendar_sync_run_exclusions(uuid) FROM PUBLIC, an
 REVOKE ALL ON FUNCTION public.calendar_sync_run_failures(uuid, integer) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.calendar_sync_upsert_mapping(uuid, uuid, text, text, text, text, text, integer, text, timestamptz) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.calendar_sync_claim_run_scan(uuid, uuid, timestamptz, integer) TO authenticated, service_role;
-GRANT EXECUTE ON FUNCTION public.calendar_sync_commit_scan_page(uuid, uuid, timestamptz, uuid, boolean, jsonb, jsonb, timestamptz) TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.calendar_sync_commit_scan_page(uuid, uuid, timestamptz, uuid, boolean, jsonb, jsonb, timestamptz, timestamptz, uuid) TO authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.calendar_sync_claim_jobs(uuid, text, uuid, uuid, integer, timestamptz, integer) TO authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.calendar_sync_release_claimed_jobs(uuid[], uuid, timestamptz, boolean, text, varchar, text, timestamptz) TO authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.calendar_sync_complete_job(uuid, uuid, varchar, text, integer, text, text, text, boolean, boolean, text, integer, timestamptz) TO authenticated, service_role;

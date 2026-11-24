@@ -337,29 +337,15 @@ export class SupabaseCalendarSyncRepository implements CalendarSyncRepository {
         latestRun.status === "paused" ||
         (input.retryMode && latestRun.status === "completed"))
     ) {
-      const resumed = await this.supabase
-        .from("calendar_sync_runs")
-        .update({
-          status: "active",
-          retry_mode: input.retryMode,
-          last_error: null,
-          updated_at: input.nowIso,
-          completed_at: null,
-        } as never)
-        .eq("id", latestRun.id)
-        .select(RUN_COLUMNS)
-        .maybeSingle();
+      const resumed = await this.supabase.rpc("calendar_sync_resume_run_for_retry", {
+        p_run_id: latestRun.id,
+        p_destination_key: latestRun.destination.destinationKey,
+        p_retry_mode: input.retryMode,
+        p_now: input.nowIso,
+      });
       if (resumed.error) return failure(resumed.error);
-      const run = resumed.data ? mapRun(asRow(resumed.data)) : latestRun;
-      if (input.retryMode) {
-        const requeued = await this.requeueRetryableJobs(_actor, {
-          runId: run.id,
-          destinationKey: run.destination.destinationKey,
-          nowIso: input.nowIso,
-        });
-        if (!requeued.ok) return requeued;
-      }
-      return { ok: true, value: run };
+      const [run] = asRows(resumed.data);
+      if (run) return { ok: true, value: mapRun(run) };
     }
 
     const inserted = await this.supabase
@@ -464,19 +450,6 @@ export class SupabaseCalendarSyncRepository implements CalendarSyncRepository {
     return { ok: true, value: undefined };
   }
 
-  async requeueRetryableJobs(
-    _actor: AuthenticatedActor,
-    input: { runId: string; destinationKey: string; nowIso: string },
-  ): Promise<RepositoryResult<number>> {
-    const result = await this.supabase.rpc("calendar_sync_requeue_retryable_jobs", {
-      p_run_id: input.runId,
-      p_destination_key: input.destinationKey,
-      p_now: input.nowIso,
-    });
-    if (result.error) return failure(result.error);
-    return { ok: true, value: Number(result.data) };
-  }
-
   async getRunCounts(
     _actor: AuthenticatedActor,
     runId: string,
@@ -549,7 +522,7 @@ export class SupabaseCalendarSyncRepository implements CalendarSyncRepository {
       nowIso: string;
       leaseSeconds: number;
     },
-  ): Promise<RepositoryResult<boolean>> {
+  ): Promise<RepositoryResult<CalendarRunRecord | null>> {
     const result = await this.supabase.rpc("calendar_sync_claim_run_scan", {
       p_run_id: input.runId,
       p_claim_token: input.claimToken,
@@ -557,7 +530,8 @@ export class SupabaseCalendarSyncRepository implements CalendarSyncRepository {
       p_lease_seconds: input.leaseSeconds,
     });
     if (result.error) return failure(result.error);
-    return { ok: true, value: Boolean(result.data) };
+    const [run] = asRows(result.data);
+    return { ok: true, value: run ? mapRun(run) : null };
   }
 
   async loadTaskPage(
@@ -639,6 +613,8 @@ export class SupabaseCalendarSyncRepository implements CalendarSyncRepository {
     const result = await this.supabase.rpc("calendar_sync_commit_scan_page", {
       p_run_id: commit.runId,
       p_claim_token: commit.claimToken,
+      p_expected_cursor_created_at: commit.expectedCursor?.createdAt ?? null,
+      p_expected_cursor_task_id: commit.expectedCursor?.taskId ?? null,
       p_next_cursor_created_at: commit.nextCursor?.createdAt ?? null,
       p_next_cursor_task_id: commit.nextCursor?.taskId ?? null,
       p_scan_complete: commit.scanComplete,
@@ -960,35 +936,18 @@ export class SupabaseCalendarSyncRepository implements CalendarSyncRepository {
     actor: AuthenticatedActor,
     limit: number,
   ): Promise<RepositoryResult<CalendarReadyQueue[]>> {
-    const nowIso = new Date().toISOString();
-    let query = this.supabase
-      .from("calendar_sync_jobs")
-      .select(
-        "owner_user_id, destination_key, google_account_subject, google_account_email, calendar_id",
-      )
-      .eq("queue_version", 2)
-      .is("run_id", null)
-      .eq("permanent_failure", false)
-      .or(
-        `and(status.eq.pending,attempts.lt.8,or(attempts.eq.0,scheduled_at.lte.${nowIso})),and(status.eq.processing,lease_expires_at.lte.${nowIso})`,
-      )
-      .order("scheduled_at", { ascending: true })
-      .limit(Math.max(limit * 20, 50));
-    if (this.scope === "owner") query = query.eq("owner_user_id", actor.userId);
-    const result = await query;
+    const result = await this.supabase.rpc("calendar_sync_list_ready_destinations", {
+      p_owner: this.scope === "owner" ? actor.userId : null,
+      p_limit: limit,
+    });
     if (result.error) return failure(result.error);
-
-    const destinations = new Map<string, CalendarReadyQueue>();
-    for (const row of asRows(result.data)) {
-      const destination = destinationFromRow(row);
-      const ownerUserId = String(row.owner_user_id);
-      const key = `${ownerUserId}|${destination.destinationKey}`;
-      if (!destinations.has(key)) {
-        destinations.set(key, { ownerUserId, destination });
-      }
-      if (destinations.size >= limit) break;
-    }
-    return { ok: true, value: [...destinations.values()] };
+    return {
+      ok: true,
+      value: asRows(result.data).map((row) => ({
+        ownerUserId: String(row.owner_user_id),
+        destination: destinationFromRow(row),
+      })),
+    };
   }
 }
 

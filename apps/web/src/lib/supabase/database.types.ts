@@ -1572,9 +1572,54 @@ export type Database = {
         Args: { p_limit: number }
         Returns: Database["public"]["Tables"]["calendar_sync_runs"]["Row"][]
       }
-      calendar_sync_requeue_retryable_jobs: {
-        Args: { p_run_id: string; p_destination_key: string; p_now: string }
-        Returns: number
+      calendar_sync_claim_run_scan: {
+        Args: { p_run_id: string; p_claim_token: string; p_now: string; p_lease_seconds: number }
+        Returns: Database["public"]["Tables"]["calendar_sync_runs"]["Row"][]
+      }
+      calendar_sync_commit_scan_page: {
+        Args: {
+          p_run_id: string
+          p_claim_token: string
+          p_next_cursor_created_at: string | null
+          p_next_cursor_task_id: string | null
+          p_scan_complete: boolean
+          p_items: Json
+          p_jobs: Json
+          p_now: string
+          p_expected_cursor_created_at?: string | null
+          p_expected_cursor_task_id?: string | null
+        }
+        Returns: boolean
+      }
+      calendar_sync_resume_run_for_retry: {
+        Args: { p_run_id: string; p_destination_key: string; p_retry_mode: boolean; p_now: string }
+        Returns: Database["public"]["Tables"]["calendar_sync_runs"]["Row"][]
+      }
+      calendar_sync_enqueue_job: {
+        Args: {
+          p_owner_user_id: string
+          p_task_id: string
+          p_calendar_event_id: string
+          p_operation: string
+          p_destination_key: string
+          p_google_account_subject: string | null
+          p_google_account_email: string | null
+          p_calendar_id: string
+          p_generation: number
+          p_event_exists: boolean
+          p_now: string
+        }
+        Returns: undefined
+      }
+      calendar_sync_list_ready_destinations: {
+        Args: { p_owner: string | null; p_limit: number }
+        Returns: {
+          owner_user_id: string
+          destination_key: string
+          google_account_subject: string | null
+          google_account_email: string | null
+          calendar_id: string
+        }[]
       }
       calendar_sync_complete_legacy_job: {
         Args: { p_job_id: string; p_claim_token: string; p_status: string; p_task_status: string; p_event_id: string | null; p_failure_reason: string | null; p_update_task: boolean; p_now: string }

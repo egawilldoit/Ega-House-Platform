@@ -320,6 +320,11 @@ async function main() {
     await applyFile(sql, UPGRADE_MIGRATION);
     log("MIGRATE", `${UPGRADE_MIGRATION} applied over seeded legacy rows`);
 
+    for (const tag of tags.slice(upgradeIndex + 1)) {
+      await applyFile(sql, tag);
+    }
+    log("MIGRATE", `${tags.length} journal migrations applied`);
+
     const beforeSwitch = await assertJob(sql, JOB_BEFORE_SWITCH);
     assert(
       beforeSwitch.destination_key === "" &&
