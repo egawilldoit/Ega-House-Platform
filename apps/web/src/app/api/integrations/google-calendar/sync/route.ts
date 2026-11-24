@@ -1,3 +1,4 @@
+import type { CalendarSyncStatusView } from "@ega/application/calendar-sync/service";
 import { NextResponse } from "next/server";
 
 import {
@@ -15,6 +16,20 @@ function jsonResponse(body: unknown, status = 200) {
   });
 }
 
+function statusResponse(status: CalendarSyncStatusView) {
+  const hasReadError =
+    Object.values(status.statusErrors).some(Boolean) ||
+    (status.run && Object.values(status.run.statusErrors).some(Boolean));
+
+  if (hasReadError) {
+    return jsonResponse(
+      { ok: false, error: "Calendar sync status is temporarily unavailable. Retry or reload Tasks." },
+      503,
+    );
+  }
+  return jsonResponse({ ok: true, status });
+}
+
 export async function GET(request: Request) {
   const origin = new URL(request.url).origin;
   const result = await getWebCalendarSyncStatus(origin);
@@ -23,7 +38,7 @@ export async function GET(request: Request) {
     return jsonResponse({ ok: false, error: result.errorMessage }, result.status);
   }
 
-  return jsonResponse({ ok: true, status: result.data });
+  return statusResponse(result.data);
 }
 
 export async function POST(request: Request) {
@@ -47,7 +62,7 @@ export async function POST(request: Request) {
     if (!result.ok) {
       return jsonResponse({ ok: false, error: result.errorMessage }, result.status);
     }
-    return jsonResponse({ ok: true, status: result.data });
+    return statusResponse(result.data);
   }
 
   if (action === "start" || action === "retry") {
@@ -64,7 +79,7 @@ export async function POST(request: Request) {
         result.status,
       );
     }
-    return jsonResponse({ ok: true, status: result.data });
+    return statusResponse(result.data);
   }
 
   return jsonResponse(
