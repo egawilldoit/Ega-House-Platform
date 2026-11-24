@@ -364,13 +364,13 @@ export async function updateExpense(
           "validation",
         );
       }
-    }
 
-    const guard = await routineEntryGuard(actor, options.periods, {
-      bookingDate: effectiveDate ?? undefined,
-    });
-    if (guard) {
-      if (!guard.ok) return guard;
+      const guard = await routineEntryGuard(actor, options.periods, {
+        bookingDate: effectiveDate,
+      });
+      if (guard) {
+        if (!guard.ok) return guard;
+      }
     }
   }
 
