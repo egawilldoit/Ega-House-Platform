@@ -8,7 +8,10 @@ import {
   type ExpenseListValues,
   type PersonalExpense,
 } from "@ega/domain/expenses";
-import { MONEY_DEFAULT_TIMEZONE } from "@ega/domain/money";
+import {
+  MONEY_DEFAULT_TIMEZONE,
+  moneyBookingDateEditable,
+} from "@ega/domain/money";
 import { getLocalDateInTimezone } from "@ega/domain/time-context";
 
 import type { AuthenticatedActor } from "../auth/actor";
@@ -343,21 +346,18 @@ export async function updateExpense(
     }
 
     if (effectiveDate !== null && effectiveDate !== existing.bookingDate) {
-      const trackingId = tracking.value?.id ?? null;
-      if (existing.periodId !== null && existing.periodId !== trackingId) {
-        return applicationFailure(
-          "Historical period expenses keep their original booking date. Record an explicit adjustment instead of moving the date.",
-          "validation",
-        );
-      }
-      // Ordinary quick-expense rows historically have no period_id. Treat a
-      // pre-period/gap booking date as historical rather than letting it move
-      // into the live tracking window.
       if (
-        existing.periodId === null
-        && tracking.value
-        && (existing.bookingDate < tracking.value.startDate
-          || existing.bookingDate > tracking.value.endDate)
+        !moneyBookingDateEditable({
+          periodId: existing.periodId,
+          bookingDate: existing.bookingDate,
+          trackingPeriod: tracking.value
+            ? {
+                id: tracking.value.id,
+                startDate: tracking.value.startDate,
+                endDate: tracking.value.endDate,
+              }
+            : null,
+        })
       ) {
         return applicationFailure(
           "Historical period expenses keep their original booking date. Record an explicit adjustment instead of moving the date.",

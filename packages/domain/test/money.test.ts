@@ -15,6 +15,7 @@ import {
   classifyDateInPeriod,
   defaultCountsInDaily,
   isMoneyAmountMinor,
+  moneyBookingDateEditable,
   moneyTimezoneOrDefault,
   parseCreateMoneyPeriodInput,
   parseCreateMovementInput,
@@ -34,6 +35,54 @@ test("MONEY-08 protects disjoint reserves and releases matched funding once", ()
   assert.equal(before.safeFlexibleMinor, 33_900);
   assert.equal(calculateMoneyReserves({ recordedCashMinor: 58_900, unpaidCommitmentsMinor: 0, savingsTargetMinor: 20_000, savingsFundedMinor: 0, emergencyTargetMinor: 5_000, emergencyUsedMinor: 0 }).safeFlexibleMinor, 33_900);
   assert.equal(calculateMoneyReserves({ recordedCashMinor: 48_900, unpaidCommitmentsMinor: 10_000, savingsTargetMinor: 20_000, savingsFundedMinor: 20_000, emergencyTargetMinor: 5_000, emergencyUsedMinor: 0 }).safeFlexibleMinor, 33_900);
+});
+
+test("booking-date editability follows one tracking-period rule", () => {
+  const trackingPeriod = {
+    id: "period-tracking",
+    startDate: "2026-11-01",
+    endDate: "2026-11-30",
+  };
+  assert.equal(
+    moneyBookingDateEditable({
+      periodId: "period-tracking",
+      bookingDate: "2026-11-10",
+      trackingPeriod,
+    }),
+    true,
+  );
+  assert.equal(
+    moneyBookingDateEditable({
+      periodId: "period-ended",
+      bookingDate: "2026-10-10",
+      trackingPeriod,
+    }),
+    false,
+  );
+  assert.equal(
+    moneyBookingDateEditable({
+      periodId: null,
+      bookingDate: "2026-11-10",
+      trackingPeriod,
+    }),
+    true,
+  );
+  assert.equal(
+    moneyBookingDateEditable({
+      periodId: null,
+      bookingDate: "2026-10-10",
+      trackingPeriod,
+    }),
+    false,
+  );
+  assert.equal(
+    moneyBookingDateEditable({
+      periodId: null,
+      bookingDate: "2026-10-10",
+      trackingPeriod: null,
+    }),
+    true,
+  );
 });
 
 test("MONEY-08 daily reference floors centimes and subtracts counted spending once", () => {

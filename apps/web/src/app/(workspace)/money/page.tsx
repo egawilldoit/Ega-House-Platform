@@ -259,9 +259,9 @@ export default async function MoneyPage({ searchParams }: Props) {
       ).catch(() => null);
   const summary = summaryResult?.ok ? summaryResult.data : null;
   const lifecycle = moneyState?.period?.lifecycle ?? null;
-  const trackingPeriodId =
-    moneyState?.history.find((entry) => entry.lifecycle === "tracking")?.id ??
-    (moneyState?.period?.lifecycle === "tracking" ? moneyState.period.id : null);
+  const trackingPeriod =
+    moneyState?.history.find((entry) => entry.lifecycle === "tracking") ??
+    (moneyState?.period?.lifecycle === "tracking" ? moneyState.period : null);
   const totalsCutoff =
     moneyState?.cash.cutoffDate ?? moneyState?.dateResolution.resolvedDate ?? localToday;
   const selectedPeriodLabel = moneyState?.period
@@ -314,7 +314,15 @@ export default async function MoneyPage({ searchParams }: Props) {
               : "History covers all recorded movements."
         }
         scope={scope}
-        trackingPeriodId={trackingPeriodId}
+        trackingPeriod={
+          trackingPeriod
+            ? {
+                id: trackingPeriod.id,
+                startDate: trackingPeriod.startDate,
+                endDate: trackingPeriod.endDate,
+              }
+            : null
+        }
       />
 
       <section aria-labelledby="money-secondary-heading" className="mt-6 rounded-lg border border-ega-border p-5">

@@ -1,6 +1,10 @@
 import { movementEffect, type MoneyMovementTotals } from "@ega/application";
 import type { ExpenseDto } from "@ega/contracts/expenses";
-import type { MoneyLedgerRow, MoneyKind } from "@ega/domain/money";
+import {
+  moneyBookingDateEditable,
+  type MoneyLedgerRow,
+  type MoneyKind,
+} from "@ega/domain/money";
 
 import { formatMad, movementKindLabel } from "./money-format";
 import { moneyHref, MONEY_PAGE_SIZE, type MoneyHistoryKind } from "../pagination";
@@ -22,7 +26,11 @@ type MoneyHistoryProps = {
   historyScopeLabel: string;
   scope: "period" | "all";
   /** The one tracking period; rows from other periods keep their date locked. */
-  trackingPeriodId: string | null;
+  trackingPeriod: Readonly<{
+    id: string;
+    startDate: string;
+    endDate: string;
+  }> | null;
 };
 
 function toEditableExpense(row: MoneyLedgerRow): ExpenseDto | null {
@@ -74,7 +82,7 @@ export function MoneyHistory({
   selectedPeriodLabel,
   historyScopeLabel,
   scope,
-  trackingPeriodId,
+  trackingPeriod,
 }: MoneyHistoryProps) {
   const pageHref = (nextOffset: number) =>
     moneyHref({ periodId, offset: nextOffset, kind, scope });
@@ -197,8 +205,11 @@ export function MoneyHistory({
               {movements.map((row) => {
                 const effect = movementEffect(row);
                 const expense = toEditableExpense(row);
-                const canChangeBookingDate =
-                  row.periodId === null || row.periodId === trackingPeriodId;
+                const canChangeBookingDate = moneyBookingDateEditable({
+                  periodId: row.periodId,
+                  bookingDate: row.bookingDate,
+                  trackingPeriod,
+                });
                 return (
                   <tr key={row.id} className="border-t border-ega-border" data-testid={`money-history-row-${row.id}`}>
                     <td className="p-3 tabular-nums">

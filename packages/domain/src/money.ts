@@ -465,6 +465,36 @@ export type MoneyDayCloseTransitionFailure =
   | "date_not_active"
   | "date_after_active";
 
+/** The one tracking period a date-edit rule may compare against. */
+export type MoneyTrackingPeriodWindow = Readonly<{
+  id: string;
+  startDate: string;
+  endDate: string;
+}>;
+
+/**
+ * Whether an existing movement/expense may change its booking date. A row
+ * assigned to a period may move only while that same period is tracking. A
+ * legacy null-period row may move only when its current booking date is inside
+ * the live tracking window; with no configured period it keeps the legacy
+ * free-edit behavior. The web UI and both write use cases consume this one
+ * rule instead of re-deriving it.
+ */
+export function moneyBookingDateEditable(input: Readonly<{
+  periodId: string | null;
+  bookingDate: string;
+  trackingPeriod: MoneyTrackingPeriodWindow | null;
+}>): boolean {
+  if (input.periodId !== null) {
+    return input.periodId === input.trackingPeriod?.id;
+  }
+  if (input.trackingPeriod === null) return true;
+  return (
+    input.bookingDate >= input.trackingPeriod.startDate &&
+    input.bookingDate <= input.trackingPeriod.endDate
+  );
+}
+
 export type MoneyActiveDateMoveFailure =
   | "period_not_tracking"
   | "invalid_date"
