@@ -1649,6 +1649,18 @@ export type Database = {
         Args: { p_subtask_id: string; p_new_task_id: string }
         Returns: boolean
       }
+      calendar_sync_fail_unclaimed_listing: {
+        Args: {
+          p_run_id: string
+          p_expected_cursor_created_at: string | null
+          p_expected_cursor_task_id: string | null
+          p_pause: boolean
+          p_retry_at: string | null
+          p_error: string
+          p_now: string
+        }
+        Returns: boolean
+      }
       calendar_sync_upsert_mapping: {
         Args: {
           p_owner_user_id: string

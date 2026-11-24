@@ -1719,8 +1719,49 @@ async function main() {
       dueRetryRuns.some((row) => row.id === backedOffRuns[2]),
       "a backed-off unfinished run must become actionable once next_retry_at passes",
     );
+
+    // Fencing check for calendar_sync_fail_unclaimed_listing:
+    // 1) Refuses when a live scan claim is held
+    await sql`UPDATE public.calendar_sync_runs
+      SET scan_claim_token = gen_random_uuid(),
+          scan_lease_expires_at = now() + interval '5 minutes'
+      WHERE id = ${backedOffRuns[5]}::uuid`;
+    const [blockedByClaim] = await sql`
+      SELECT public.calendar_sync_fail_unclaimed_listing(
+        ${backedOffRuns[5]}::uuid, NULL, NULL, true, NULL, 'late failure', now()
+      ) AS recorded`;
+    assert(!blockedByClaim.recorded, "listing failure must not interrupt a live scan claim");
+    // 2) Refuses when cursor already advanced
+    await sql`UPDATE public.calendar_sync_runs
+      SET scan_claim_token = NULL, scan_lease_expires_at = NULL,
+          scan_cursor_created_at = now(), scan_cursor_task_id = ${TASK_A}::uuid
+      WHERE id = ${backedOffRuns[5]}::uuid`;
+    const [blockedByCursor] = await sql`
+      SELECT public.calendar_sync_fail_unclaimed_listing(
+        ${backedOffRuns[5]}::uuid, NULL, NULL, true, NULL, 'late failure', now()
+      ) AS recorded`;
+    assert(!blockedByCursor.recorded, "listing failure must not apply against a stale cursor");
+    // 3) Refuses on a completed run
+    const [blockedByCompleted] = await sql`
+      SELECT public.calendar_sync_fail_unclaimed_listing(
+        ${RUN_REMOVAL}::uuid, NULL, NULL, true, NULL, 'late failure', now()
+      ) AS recorded`;
+    assert(!blockedByCompleted.recorded, "listing failure must never overwrite a completed run");
+    // 4) Succeeds when active, unclaimed, incomplete, and cursor matches
+    const [allowedPause] = await sql`
+      SELECT public.calendar_sync_fail_unclaimed_listing(
+        ${backedOffRuns[2]}::uuid, NULL, NULL, true, NULL, 'Calendar deleted', now()
+      ) AS recorded`;
+    const [pausedRow] = await sql`
+      SELECT status, last_error, next_retry_at FROM public.calendar_sync_runs
+      WHERE id = ${backedOffRuns[2]}::uuid`;
+    assert(
+      allowedPause.recorded && pausedRow.status === "paused" &&
+        pausedRow.last_error === "Calendar deleted" && pausedRow.next_retry_at === null,
+      "unclaimed matching listing failure must pause cleanly",
+    );
     await sql`DELETE FROM public.calendar_sync_runs WHERE id = ANY(${backedOffRuns}::uuid[])`;
-    log("CLAIM-RETRY", "expired mutation guards, retry settlement, run backoff and drained run completion verified");
+    log("CLAIM-RETRY", "expired mutation guards, retry settlement, fenced listing failures and drained run completion verified");
 
     const [newTask] = await sql`SELECT gen_random_uuid() AS id`;
     const enqueueGeneration = (generation, eventId, operation) => sql`

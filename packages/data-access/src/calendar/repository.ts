@@ -444,30 +444,36 @@ export class SupabaseCalendarSyncRepository implements CalendarSyncRepository {
         last_error: message.slice(0, 500),
         updated_at: nowIso,
       } as never)
-      .eq("id", runId);
+      .eq("id", runId)
+      .eq("status", "active");
     if (this.scope === "owner") query = query.eq("owner_user_id", _actor.userId);
     const result = await query;
     if (result.error) return failure(result.error);
     return { ok: true, value: undefined };
   }
 
-  async scheduleRunRetry(
+  async recordListingFailure(
     _actor: AuthenticatedActor,
-    input: { runId: string; retryAt: string; message: string; nowIso: string },
-  ): Promise<RepositoryResult<void>> {
-    let query = this.supabase
-      .from("calendar_sync_runs")
-      .update({
-        next_retry_at: input.retryAt,
-        last_error: input.message.slice(0, 500),
-        updated_at: input.nowIso,
-      } as never)
-      .eq("id", input.runId)
-      .eq("status", "active");
-    if (this.scope === "owner") query = query.eq("owner_user_id", _actor.userId);
-    const result = await query;
+    input: {
+      runId: string;
+      expectedCursor: CalendarScanCursor | null;
+      pause: boolean;
+      retryAt: string | null;
+      message: string;
+      nowIso: string;
+    },
+  ): Promise<RepositoryResult<boolean>> {
+    const result = await this.supabase.rpc("calendar_sync_fail_unclaimed_listing", {
+      p_run_id: input.runId,
+      p_expected_cursor_created_at: input.expectedCursor?.createdAt ?? null,
+      p_expected_cursor_task_id: input.expectedCursor?.taskId ?? null,
+      p_pause: input.pause,
+      p_retry_at: input.retryAt,
+      p_error: input.message,
+      p_now: input.nowIso,
+    });
     if (result.error) return failure(result.error);
-    return { ok: true, value: undefined };
+    return { ok: true, value: Boolean(result.data) };
   }
 
   async getRunCounts(

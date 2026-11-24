@@ -723,13 +723,48 @@ AS $ready$
 $ready$;
 --> statement-breakpoint
 
+CREATE FUNCTION public.calendar_sync_fail_unclaimed_listing(
+  p_run_id uuid,
+  p_expected_cursor_created_at timestamptz,
+  p_expected_cursor_task_id uuid,
+  p_pause boolean,
+  p_retry_at timestamptz,
+  p_error text,
+  p_now timestamptz
+) RETURNS boolean
+LANGUAGE sql VOLATILE SECURITY INVOKER SET search_path = ''
+AS $listing_fail$
+  WITH updated AS (
+    UPDATE public.calendar_sync_runs
+    SET status = CASE WHEN p_pause THEN 'paused' ELSE status END,
+        next_retry_at = CASE WHEN p_pause THEN NULL ELSE p_retry_at END,
+        last_error = left(p_error, 500),
+        updated_at = p_now
+    WHERE id = p_run_id
+      AND status = 'active'
+      AND NOT scan_complete
+      AND scan_cursor_created_at IS NOT DISTINCT FROM p_expected_cursor_created_at
+      AND scan_cursor_task_id IS NOT DISTINCT FROM p_expected_cursor_task_id
+      AND (
+        scan_claim_token IS NULL
+        OR scan_lease_expires_at IS NULL
+        OR scan_lease_expires_at <= clock_timestamp()
+      )
+    RETURNING id
+  )
+  SELECT EXISTS (SELECT 1 FROM updated);
+$listing_fail$;
+--> statement-breakpoint
+
 REVOKE ALL ON FUNCTION
   public.calendar_sync_enqueue_job(uuid, uuid, text, text, text, text, text, text, integer, boolean, timestamptz),
-  public.calendar_sync_list_ready_destinations(uuid, integer)
+  public.calendar_sync_list_ready_destinations(uuid, integer),
+  public.calendar_sync_fail_unclaimed_listing(uuid, timestamptz, uuid, boolean, timestamptz, text, timestamptz)
 FROM PUBLIC, anon;
 --> statement-breakpoint
 
 GRANT EXECUTE ON FUNCTION
   public.calendar_sync_enqueue_job(uuid, uuid, text, text, text, text, text, text, integer, boolean, timestamptz),
-  public.calendar_sync_list_ready_destinations(uuid, integer)
+  public.calendar_sync_list_ready_destinations(uuid, integer),
+  public.calendar_sync_fail_unclaimed_listing(uuid, timestamptz, uuid, boolean, timestamptz, text, timestamptz)
 TO authenticated, service_role;

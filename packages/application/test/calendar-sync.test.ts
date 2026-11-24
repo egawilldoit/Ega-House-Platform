@@ -325,6 +325,7 @@ class FakeRepository implements CalendarSyncRepository {
   }
 
   runRetryAt = new Map<string, string>();
+  activeScanClaims = new Set<string>();
 
   async pauseRun(
     _actor: AuthenticatedActor,
@@ -333,27 +334,53 @@ class FakeRepository implements CalendarSyncRepository {
     nowIso: string,
   ) {
     const run = this.runs.get(runId);
-    if (run) {
+    if (run && run.status === "active") {
       this.runs.set(runId, { ...run, status: "paused", lastError: message, updatedAt: nowIso });
       this.runRetryAt.delete(runId);
     }
     return { ok: true as const, value: undefined };
   }
 
-  async scheduleRunRetry(
+  async recordListingFailure(
     _actor: AuthenticatedActor,
-    input: { runId: string; retryAt: string; message: string; nowIso: string },
+    input: {
+      runId: string;
+      expectedCursor: CalendarScanCursor | null;
+      pause: boolean;
+      retryAt: string | null;
+      message: string;
+      nowIso: string;
+    },
   ) {
     const run = this.runs.get(input.runId);
-    if (run && run.status === "active") {
-      this.runs.set(input.runId, {
-        ...run,
-        lastError: input.message,
-        updatedAt: input.nowIso,
-      });
+    if (
+      !run ||
+      run.status !== "active" ||
+      run.scanComplete ||
+      this.activeScanClaims.has(input.runId)
+    ) {
+      return { ok: true as const, value: false };
+    }
+    const currentCursorCreatedAt = run.scanCursorCreatedAt ?? null;
+    const currentCursorTaskId = run.scanCursorTaskId ?? null;
+    if (
+      currentCursorCreatedAt !== (input.expectedCursor?.createdAt ?? null) ||
+      currentCursorTaskId !== (input.expectedCursor?.taskId ?? null)
+    ) {
+      return { ok: true as const, value: false };
+    }
+    this.runs.set(input.runId, {
+      ...run,
+      status: input.pause ? "paused" : run.status,
+      lastError: input.message,
+      updatedAt: input.nowIso,
+    });
+    if (input.pause) {
+      this.runRetryAt.delete(input.runId);
+    } else if (input.retryAt) {
       this.runRetryAt.set(input.runId, input.retryAt);
     }
-    return { ok: true as const, value: undefined };
+    return { ok: true as const, value: true };
   }
 
   async requeueRetryableJobs(
@@ -2475,4 +2502,76 @@ test("processCalendarRecovery propagates active-run and ready-destination discov
   });
   const destinationFailure = await processCalendarRecovery(actor, deps);
   assert.equal(destinationFailure.ok, false);
+});
+
+test("a late permanent listing failure cannot overwrite a completed run or interrupt a claimed scan", async () => {
+  const repository = new FakeRepository();
+  const provider = new FakeProvider();
+  repository.addTask(task());
+
+  const { value: run } = await repository.ensureRun(actor, {
+    destination,
+    retryMode: false,
+    nowIso: "2026-05-10T08:00:00.000Z",
+  });
+
+  let releaseLateListing!: () => void;
+  const lateListingGate = new Promise<void>((resolve) => {
+    releaseLateListing = resolve;
+  });
+  let listCall = 0;
+  const realList = provider.listManagedEvents.bind(provider);
+  provider.listManagedEvents = async (conn) => {
+    listCall += 1;
+    if (listCall === 1) {
+      await lateListingGate;
+      return {
+        ok: false,
+        error: { kind: "not_found", message: "Google Calendar was deleted." },
+      };
+    }
+    return realList(conn);
+  };
+
+  const deps = buildDeps(repository, provider);
+  const firstRequest = continueCalendarSync(actor, deps, run.id);
+  const secondResult = await continueCalendarSync(actor, deps, run.id);
+  assert.equal(secondResult.ok, true);
+  assert.equal(repository.runs.get(run.id)?.status, "completed");
+  assert.equal(provider.events.size, 1);
+
+  releaseLateListing();
+  const firstResult = await firstRequest;
+  assert.equal(firstResult.ok, true);
+  assert.equal(repository.runs.get(run.id)?.status, "completed");
+  if (firstResult.ok) {
+    assert.equal(firstResult.data.run?.status, "completed");
+    assert.equal(firstResult.data.message, null);
+  }
+});
+
+test("reloading status surfaces the persisted error for a paused run on the current destination", async () => {
+  const repository = new FakeRepository();
+  const provider = new FakeProvider();
+  const deps = buildDeps(repository, provider);
+
+  const { value: run } = await repository.ensureRun(actor, {
+    destination,
+    retryMode: false,
+    nowIso: "2026-05-10T08:00:00.000Z",
+  });
+  provider.listManagedEvents = async () => ({
+    ok: false,
+    error: { kind: "permanent", message: "Google Calendar denied access." },
+  });
+
+  await continueCalendarSync(actor, deps, run.id);
+  assert.equal(repository.runs.get(run.id)?.status, "paused");
+
+  const rehydrated = await getCalendarSyncStatus(actor, deps);
+  assert.equal(rehydrated.ok, true);
+  if (rehydrated.ok) {
+    assert.equal(rehydrated.data.run?.status, "paused");
+    assert.equal(rehydrated.data.message, "Google Calendar denied access.");
+  }
 });

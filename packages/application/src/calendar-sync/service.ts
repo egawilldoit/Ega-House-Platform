@@ -247,9 +247,12 @@ export async function getCalendarSyncStatus(
     connection: connectionView(connection),
     run,
     pausedRun,
-    message: pausedRun
-      ? `Sync for ${pausedRun.destination.calendarId} is paused. Events already published there remain in that calendar.`
-      : null,
+    message:
+      run?.status === "paused" && run.lastError
+        ? run.lastError
+        : pausedRun
+          ? `Sync for ${pausedRun.destination.calendarId} is paused. Events already published there remain in that calendar.`
+          : null,
     continuationBlocked: false,
   });
 }
@@ -1668,6 +1671,10 @@ async function processRunBatch(
 
   let eventIndex = new Map<string, CalendarEventIndexEntry>();
   if (!run.scanComplete) {
+    const observedCursor =
+      run.scanCursorCreatedAt && run.scanCursorTaskId
+        ? { createdAt: run.scanCursorCreatedAt, taskId: run.scanCursorTaskId }
+        : null;
     const listing = await deps.provider.listManagedEvents(connection);
     if (!listing.ok) {
       if (isAuthorizationFailure(listing.error)) {
@@ -1687,46 +1694,44 @@ async function processRunBatch(
         };
       }
 
-      if (
+      const terminalListingFailure =
         listing.error.kind === "permanent" ||
-        listing.error.kind === "not_found"
-      ) {
-        await deps.repository.pauseRun(
-          actor,
-          run.id,
-          listing.error.message,
-          nowIso,
-        );
+        listing.error.kind === "not_found";
+      const retryMessage =
+        "Google Calendar events could not be verified. No removals were attempted; retry to continue.";
+      const recorded = await deps.repository.recordListingFailure(actor, {
+        runId: run.id,
+        expectedCursor: observedCursor,
+        pause: terminalListingFailure,
+        retryAt: terminalListingFailure
+          ? null
+          : nextCalendarRetryAtIso({
+              jobId: run.id,
+              attempts: 1,
+              now,
+              retryAfterSeconds: listing.error.retryAfterSeconds,
+            }),
+        message: terminalListingFailure
+          ? listing.error.message
+          : listing.error.message || retryMessage,
+        nowIso,
+      });
+      const currentStatus = await buildStatus(actor, deps, run.id);
+      if (recorded.ok && !recorded.value) {
         return {
-          status: withStatusMessage(
-            await buildStatus(actor, deps, run.id),
-            listing.error.message,
-          ),
+          status: currentStatus,
           authFailure: false,
           retryable: false,
         };
       }
 
-      const retryMessage =
-        "Google Calendar events could not be verified. No removals were attempted; retry to continue.";
-      await deps.repository.scheduleRunRetry(actor, {
-        runId: run.id,
-        retryAt: nextCalendarRetryAtIso({
-          jobId: run.id,
-          attempts: 1,
-          now,
-          retryAfterSeconds: listing.error.retryAfterSeconds,
-        }),
-        message: listing.error.message || retryMessage,
-        nowIso,
-      });
       return {
         status: withStatusMessage(
-          await buildStatus(actor, deps, run.id),
-          retryMessage,
+          currentStatus,
+          terminalListingFailure ? listing.error.message : retryMessage,
         ),
         authFailure: false,
-        retryable: true,
+        retryable: !terminalListingFailure,
       };
     }
 
@@ -1735,8 +1740,10 @@ async function processRunBatch(
       // deleted, so the scan intentionally refuses to infer removals.
       const incompleteMessage =
         "The Calendar event listing was incomplete. No removals were attempted; retry to continue.";
-      await deps.repository.scheduleRunRetry(actor, {
+      const recorded = await deps.repository.recordListingFailure(actor, {
         runId: run.id,
+        expectedCursor: observedCursor,
+        pause: false,
         retryAt: nextCalendarRetryAtIso({
           jobId: run.id,
           attempts: 1,
@@ -1745,11 +1752,16 @@ async function processRunBatch(
         message: incompleteMessage,
         nowIso,
       });
+      const currentStatus = await buildStatus(actor, deps, run.id);
+      if (recorded.ok && !recorded.value) {
+        return {
+          status: currentStatus,
+          authFailure: false,
+          retryable: false,
+        };
+      }
       return {
-        status: withStatusMessage(
-          await buildStatus(actor, deps, run.id),
-          incompleteMessage,
-        ),
+        status: withStatusMessage(currentStatus, incompleteMessage),
         authFailure: false,
         retryable: true,
       };
@@ -1867,9 +1879,12 @@ async function buildStatus(
     connection: connectionView(connection),
     run,
     pausedRun,
-    message: pausedRun
-      ? `Sync for ${pausedRun.destination.calendarId} is paused. Events already published there remain in that calendar.`
-      : null,
+    message:
+      run?.status === "paused" && run.lastError
+        ? run.lastError
+        : pausedRun
+          ? `Sync for ${pausedRun.destination.calendarId} is paused. Events already published there remain in that calendar.`
+          : null,
     continuationBlocked: false,
   };
 }
