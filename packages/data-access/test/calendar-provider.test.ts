@@ -490,3 +490,44 @@ test("a network error on the 401 retry remains retryable", async () => {
   assert.equal(!result.ok && result.error.kind, "retryable");
   assert.equal(calendarRequests, 2);
 });
+
+test("post-header body read timeouts are retryable for refresh, create, and update", async () => {
+  const abortingOkResponse = () =>
+    ({
+      ok: true,
+      status: 200,
+      headers: new Headers(),
+      json: async () => {
+        throw new DOMException("body read timeout", "TimeoutError");
+      },
+    }) as unknown as Response;
+
+  const payload: CalendarEventPayload = {
+    eventId: "planned-event",
+    summary: "Task",
+    description: "",
+    start: { date: "2026-05-10" },
+    end: { date: "2026-05-11" },
+    reminderMinutes: 10,
+    privateProperties: { source: "ega-house" },
+  };
+
+  const refreshProvider = providerWith(async () => abortingOkResponse());
+  const expired = { ...connection, tokenExpiresAt: "2026-05-09T00:00:00.000Z" };
+  const refreshResult = await refreshProvider.getEvent(expired, "event-1");
+  assert.equal(refreshResult.ok, false);
+  assert.equal(!refreshResult.ok && refreshResult.error.kind, "retryable");
+
+  const writeProvider = providerWith(async () => abortingOkResponse());
+  const createResult = await writeProvider.createEvent(connection, payload);
+  assert.equal(createResult.ok, false);
+  assert.equal(!createResult.ok && createResult.error.kind, "retryable");
+
+  const updateResult = await writeProvider.updateEvent(
+    connection,
+    payload.eventId,
+    payload,
+  );
+  assert.equal(updateResult.ok, false);
+  assert.equal(!updateResult.ok && updateResult.error.kind, "retryable");
+});

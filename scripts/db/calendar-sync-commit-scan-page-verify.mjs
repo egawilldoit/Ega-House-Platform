@@ -1771,7 +1771,37 @@ async function main() {
     const [unavailable] = await sql`SELECT count(*)::int AS count FROM public.calendar_sync_jobs
       WHERE owner_user_id = ${OWNER_REMOVAL}::uuid AND run_id IS NULL AND status = 'pending'`;
     assert(unavailable.count === 120, "discovery must leave unavailable work untouched");
-    log("DESTINATIONS", "database filtering exposes healthy work behind switched and disconnected backlogs");
+
+    // Two ready jobs for the same (owner, destination_key) with different stored
+    // identity fields (subject NULL vs set) must occupy only one recovery slot.
+    await sql`UPDATE public.calendar_integration_settings
+      SET google_account_email = 'owner@example.com'
+      WHERE owner_user_id = ${OWNER}::uuid`;
+    await sql`UPDATE public.calendar_integration_settings
+      SET google_account_subject = 'proof-removal', google_account_email = 'removal@example.com',
+          disconnected_at = NULL
+      WHERE owner_user_id = ${OWNER_REMOVAL}::uuid`;
+    await sql`
+      INSERT INTO public.calendar_sync_jobs (
+        owner_user_id, task_id, operation, status, queue_version, destination_key,
+        google_account_subject, google_account_email, calendar_id, scheduled_at
+      ) VALUES
+        (${OWNER}::uuid, gen_random_uuid(), 'upsert', 'pending', 2,
+          ${DESTINATION_KEY}, NULL, 'owner@example.com', 'primary', now() - interval '3 days'),
+        (${OWNER}::uuid, gen_random_uuid(), 'upsert', 'pending', 2,
+          ${DESTINATION_KEY}, 'proof-subject', 'owner@example.com', 'primary', now() - interval '3 days')`;
+    const dedupedTwo = await sql`
+      SELECT * FROM public.calendar_sync_list_ready_destinations(NULL::uuid, 2)`;
+    assert(
+      dedupedTwo.length === 2 &&
+        dedupedTwo.some((row) => row.owner_user_id === OWNER && row.destination_key === DESTINATION_KEY) &&
+        dedupedTwo.some((row) => row.owner_user_id === OWNER_REMOVAL && row.destination_key === DESTINATION_REMOVAL),
+      "identity variants for one destination must deduplicate to a single recovery slot",
+    );
+    await sql`UPDATE public.calendar_integration_settings
+      SET google_account_email = NULL
+      WHERE owner_user_id = ${OWNER}::uuid`;
+    log("DESTINATIONS", "database filtering and per-destination deduplication verified");
 
     await sql`UPDATE public.projects SET status = 'archived', archived_at = now() WHERE id = ${PROJECT}::uuid`;
     await sql`
@@ -1780,6 +1810,9 @@ async function main() {
         calendar_id, event_id, generation, status, metadata_verified
       ) VALUES (${OWNER}::uuid, ${TASK_B}::uuid, ${DESTINATION_KEY}, 'proof-subject',
         NULL, 'primary', 'purged-event', 3, 'active', true)`;
+    // Simulate a calendar switch followed by editing TASK_A (advancing tasks.updated_at)
+    // and leaving TASK_C older than settings: neither unmapped legacy task may be bound
+    // to whichever calendar happens to be connected now.
     await sql`UPDATE public.tasks
       SET calendar_event_id = 'legacy-' || id::text,
         updated_at = CASE WHEN id = ${TASK_C}::uuid THEN now() - interval '3 hours' ELSE now() END
@@ -1791,7 +1824,7 @@ async function main() {
         SELECT public.purge_archived_project(${PROJECT}::uuid, 'Calendar commit proof', 3, 0) AS result`;
       const [purge] = await purgeProject();
       assert(purge.result.status === "purged" && purge.result.calendar_delete_jobs_enqueued === 3,
-        "purge must queue one mapped delete and two legacy deletes");
+        "purge must queue one mapped delete and two unbound legacy deletes");
       const [repeat] = await purgeProject();
       assert(repeat.result.status === "not_found", "repeated purge must not enqueue again");
     });
@@ -1802,17 +1835,28 @@ async function main() {
       purgeJob.destination_key === DESTINATION_KEY && purgeJob.calendar_event_id === "purged-event" &&
       purgeJob.generation === 3 && purgeJob.event_exists, "purge must retain the verified event identity");
     const legacyPurgeJobs = await sql`
-      SELECT task_id, destination_key, google_account_subject, calendar_id, event_exists
+      SELECT task_id, destination_key, google_account_subject, google_account_email, calendar_id, event_exists
       FROM public.calendar_sync_jobs
       WHERE queue_version = 1 AND operation = 'delete'
         AND task_id IN (${TASK_A}::uuid, ${TASK_B}::uuid, ${TASK_C}::uuid)`;
-    const verifiedLegacy = legacyPurgeJobs.find((job) => job.task_id === TASK_A);
-    const unboundLegacy = legacyPurgeJobs.find((job) => job.task_id === TASK_C);
-    assert(legacyPurgeJobs.length === 2 && verifiedLegacy?.destination_key === DESTINATION_KEY &&
-      verifiedLegacy.google_account_subject === "proof-subject" && verifiedLegacy.calendar_id === "primary" &&
-      verifiedLegacy.event_exists, "verified legacy cleanup must retain the proven destination");
-    assert(unboundLegacy?.destination_key === "" && unboundLegacy.google_account_subject === null &&
-      unboundLegacy.calendar_id === null, "unproven legacy cleanup must remain unbound");
+    const editedAfterSwitch = legacyPurgeJobs.find((job) => job.task_id === TASK_A);
+    const olderLegacy = legacyPurgeJobs.find((job) => job.task_id === TASK_C);
+    assert(
+      legacyPurgeJobs.length === 2 &&
+        editedAfterSwitch?.destination_key === "" &&
+        editedAfterSwitch.google_account_subject === null &&
+        editedAfterSwitch.google_account_email === null &&
+        editedAfterSwitch.calendar_id === null &&
+        editedAfterSwitch.event_exists === false,
+      "legacy task edited after a calendar switch must remain unbound instead of targeting the new calendar",
+    );
+    assert(
+      olderLegacy?.destination_key === "" &&
+        olderLegacy.google_account_subject === null &&
+        olderLegacy.calendar_id === null &&
+        olderLegacy.event_exists === false,
+      "unmapped legacy cleanup must remain unbound",
+    );
     await sql`
       UPDATE public.calendar_sync_jobs
       SET status = 'processing', attempts = 8, claim_token = ${ORPHAN_JOB_CLAIM}::uuid,

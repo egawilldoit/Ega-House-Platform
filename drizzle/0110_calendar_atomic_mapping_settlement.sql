@@ -550,31 +550,18 @@ BEGIN
     updated_at = now();
   GET DIAGNOSTICS v_calendar_jobs_enqueued = ROW_COUNT;
 
-  -- Retain legacy cleanup evidence even when the old destination cannot be proven.
+  -- Retain legacy cleanup evidence without guessing a destination. Tasks without
+  -- an active destination-bound mapping have no durable proof of which account
+  -- or calendar owns tasks.calendar_event_id (a later edit advances
+  -- tasks.updated_at even after a calendar switch), so keep the row unbound for
+  -- reconciliation rather than risking deletion in the wrong calendar.
   INSERT INTO public.calendar_sync_jobs (
     owner_user_id, task_id, calendar_event_id, operation, status, attempts,
     destination_key, google_account_subject, google_account_email, calendar_id, event_exists
   )
   SELECT v_actor, task_record.id, task_record.calendar_event_id, 'delete', 'pending', 0,
-    CASE WHEN settings.owner_user_id IS NULL THEN ''
-      ELSE COALESCE(NULLIF(lower(trim(settings.google_account_email)), ''),
-                    NULLIF(trim(settings.google_account_subject), ''))
-           || '|' || COALESCE(NULLIF(trim(settings.calendar_id), ''), 'primary')
-    END,
-    settings.google_account_subject, settings.google_account_email,
-    CASE WHEN settings.owner_user_id IS NOT NULL
-      THEN COALESCE(NULLIF(trim(settings.calendar_id), ''), 'primary')
-    END,
-    settings.owner_user_id IS NOT NULL
+    '', NULL, NULL, NULL, false
   FROM public.tasks AS task_record
-  LEFT JOIN public.calendar_integration_settings AS settings
-    ON settings.owner_user_id = v_actor AND settings.provider = 'google'
-    AND settings.connected_at <= task_record.updated_at
-    AND settings.updated_at <= task_record.updated_at
-    AND COALESCE(lower(trim(settings.google_account_email)), '') <> 'unknown-account'
-    AND COALESCE(trim(settings.google_account_subject), '') <> 'unknown-account'
-    AND COALESCE(NULLIF(trim(settings.google_account_email), ''),
-                 NULLIF(trim(settings.google_account_subject), '')) IS NOT NULL
   WHERE task_record.owner_user_id = v_actor AND task_record.id = ANY (v_task_ids)
     AND task_record.calendar_event_id IS NOT NULL
     AND NOT EXISTS (
@@ -686,37 +673,51 @@ RETURNS TABLE (
 )
 LANGUAGE sql SECURITY INVOKER SET search_path = ''
 AS $ready$
-  SELECT job.owner_user_id, job.destination_key, job.google_account_subject,
-    job.google_account_email, job.calendar_id
-  FROM public.calendar_sync_jobs AS job
-  JOIN public.calendar_integration_settings AS settings
-    ON settings.owner_user_id = job.owner_user_id AND settings.provider = 'google'
-  CROSS JOIN LATERAL (
-    SELECT NULLIF(lower(trim(job.google_account_email)), '') AS job_email,
-      NULLIF(trim(job.google_account_subject), '') AS job_subject,
-      NULLIF(lower(trim(settings.google_account_email)), '') AS settings_email,
-      NULLIF(trim(settings.google_account_subject), '') AS settings_subject
-  ) AS identity
-  WHERE (p_owner IS NULL OR job.owner_user_id = p_owner)
-    AND job.queue_version = 2 AND job.run_id IS NULL AND NOT job.permanent_failure
-    AND ((job.status = 'pending' AND job.attempts < 8 AND job.scheduled_at <= clock_timestamp())
-      OR (job.status = 'processing' AND job.lease_expires_at <= clock_timestamp()))
-    AND settings.connected_at IS NOT NULL AND settings.disconnected_at IS NULL
-    AND settings.reconnect_required_at IS NULL
-    AND (settings.access_token_encrypted IS NOT NULL OR settings.refresh_token_encrypted IS NOT NULL)
-    AND NULLIF(trim(job.calendar_id), '') = COALESCE(NULLIF(trim(settings.calendar_id), ''), 'primary')
-    AND COALESCE(identity.job_email, '') <> 'unknown-account'
-    AND COALESCE(identity.job_subject, '') <> 'unknown-account'
-    AND COALESCE(identity.settings_email, '') <> 'unknown-account'
-    AND COALESCE(identity.settings_subject, '') <> 'unknown-account'
-    AND CASE WHEN identity.job_email IS NOT NULL AND identity.settings_email IS NOT NULL
-      THEN identity.job_email = identity.settings_email
-      ELSE identity.job_subject = identity.settings_subject
-    END
-  GROUP BY job.owner_user_id, job.destination_key, job.google_account_subject,
-    job.google_account_email, job.calendar_id
-  ORDER BY min(job.scheduled_at), job.owner_user_id, job.destination_key,
-    job.google_account_subject, job.google_account_email, job.calendar_id
+  WITH matched AS (
+    SELECT job.owner_user_id, job.destination_key,
+      COALESCE(NULLIF(trim(settings.google_account_subject), ''), job.google_account_subject) AS google_account_subject,
+      COALESCE(NULLIF(lower(trim(settings.google_account_email)), ''), job.google_account_email) AS google_account_email,
+      COALESCE(NULLIF(trim(settings.calendar_id), ''), 'primary') AS calendar_id,
+      job.scheduled_at
+    FROM public.calendar_sync_jobs AS job
+    JOIN public.calendar_integration_settings AS settings
+      ON settings.owner_user_id = job.owner_user_id AND settings.provider = 'google'
+    CROSS JOIN LATERAL (
+      SELECT NULLIF(lower(trim(job.google_account_email)), '') AS job_email,
+        NULLIF(trim(job.google_account_subject), '') AS job_subject,
+        NULLIF(lower(trim(settings.google_account_email)), '') AS settings_email,
+        NULLIF(trim(settings.google_account_subject), '') AS settings_subject
+    ) AS identity
+    WHERE (p_owner IS NULL OR job.owner_user_id = p_owner)
+      AND job.queue_version = 2 AND job.run_id IS NULL AND NOT job.permanent_failure
+      AND ((job.status = 'pending' AND job.attempts < 8 AND job.scheduled_at <= clock_timestamp())
+        OR (job.status = 'processing' AND job.lease_expires_at <= clock_timestamp()))
+      AND settings.connected_at IS NOT NULL AND settings.disconnected_at IS NULL
+      AND settings.reconnect_required_at IS NULL
+      AND (settings.access_token_encrypted IS NOT NULL OR settings.refresh_token_encrypted IS NOT NULL)
+      AND NULLIF(trim(job.calendar_id), '') = COALESCE(NULLIF(trim(settings.calendar_id), ''), 'primary')
+      AND COALESCE(identity.job_email, '') <> 'unknown-account'
+      AND COALESCE(identity.job_subject, '') <> 'unknown-account'
+      AND COALESCE(identity.settings_email, '') <> 'unknown-account'
+      AND COALESCE(identity.settings_subject, '') <> 'unknown-account'
+      AND CASE WHEN identity.job_email IS NOT NULL AND identity.settings_email IS NOT NULL
+        THEN identity.job_email = identity.settings_email
+        ELSE identity.job_subject = identity.settings_subject
+      END
+  ),
+  deduped AS (
+    SELECT DISTINCT ON (matched.owner_user_id, matched.destination_key)
+      matched.owner_user_id, matched.destination_key,
+      matched.google_account_subject, matched.google_account_email,
+      matched.calendar_id, matched.scheduled_at
+    FROM matched
+    ORDER BY matched.owner_user_id, matched.destination_key, matched.scheduled_at,
+      matched.google_account_subject NULLS LAST, matched.google_account_email NULLS LAST
+  )
+  SELECT deduped.owner_user_id, deduped.destination_key,
+    deduped.google_account_subject, deduped.google_account_email, deduped.calendar_id
+  FROM deduped
+  ORDER BY deduped.scheduled_at, deduped.owner_user_id, deduped.destination_key
   LIMIT greatest(p_limit, 1);
 $ready$;
 --> statement-breakpoint

@@ -2285,3 +2285,41 @@ test("a continuation scans and commits from the cursor returned by its lease cla
   assert.deepEqual(commits[0]?.expectedCursor, liveCursor);
   assert.deepEqual(commits[0]?.items.map((item) => item.taskId), [nextTask.id]);
 });
+
+test("post-header create timeout after remote write recovers via 409 without duplicating events", async () => {
+  const repository = new FakeRepository();
+  const provider = new FakeProvider();
+  const scheduled = task();
+  repository.addTask(scheduled);
+  repository.jobs.set("scheduled", queuedJob());
+
+  const realCreate = provider.createEvent.bind(provider);
+  let abortedOnce = false;
+  provider.createEvent = async (conn, payload) => {
+    if (!abortedOnce) {
+      abortedOnce = true;
+      // Remote write succeeds in Google, then response body streaming aborts.
+      await realCreate(conn, payload);
+      return {
+        ok: false,
+        error: {
+          kind: "retryable",
+          message: "Google Calendar request timed out or could not be reached. Sync will retry.",
+        },
+      };
+    }
+    return realCreate(conn, payload);
+  };
+
+  const deps = buildDeps(repository, provider);
+  await processCalendarRecovery(actor, deps);
+  const retry = repository.jobs.get("scheduled");
+  assert.equal(retry?.status, "pending");
+  assert.equal(retry?.permanentFailure, false);
+  assert.equal(provider.events.size, 1);
+
+  await processCalendarRecovery(actor, { ...deps, now: () => new Date(retry!.scheduledAt) });
+  assert.equal(repository.jobs.get("scheduled")?.status, "succeeded");
+  assert.equal(provider.events.size, 1);
+  assert.equal(repository.mappings.size, 1);
+});

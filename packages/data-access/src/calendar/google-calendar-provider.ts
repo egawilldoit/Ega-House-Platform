@@ -406,7 +406,15 @@ export class GoogleCalendarEventProvider implements CalendarEventProvider {
       } catch {
         return GOOGLE_TRANSPORT_FAILURE;
       }
-      const payload = (await response.json().catch(() => ({}))) as GoogleTokenResponse;
+      let payload: GoogleTokenResponse;
+      try {
+        payload = (await response.json()) as GoogleTokenResponse;
+      } catch (error) {
+        if (!(error instanceof SyntaxError)) {
+          return GOOGLE_TRANSPORT_FAILURE;
+        }
+        payload = {};
+      }
 
       if (!response.ok || !payload.access_token) {
         const failure = classifyGoogleFailure({
@@ -542,10 +550,24 @@ export class GoogleCalendarEventProvider implements CalendarEventProvider {
     return { ok: true, response, refreshedCredentials: refreshed };
   }
 
+  private async readJsonBody(
+    response: Response,
+  ): Promise<{ ok: true; value: unknown } | { ok: false; transport: boolean }> {
+    try {
+      return { ok: true, value: await response.json() };
+    } catch (error) {
+      return { ok: false, transport: !(error instanceof SyntaxError) };
+    }
+  }
+
   private async failureFromResponse(
     response: Response,
   ): Promise<CalendarProviderFailure> {
-    const payload = (await response.json().catch(() => ({}))) as GoogleEventResource;
+    const body = await this.readJsonBody(response);
+    if (!body.ok && body.transport && response.status !== 401 && response.status !== 409) {
+      return GOOGLE_TRANSPORT_FAILURE.error;
+    }
+    const payload = (body.ok ? body.value : {}) as GoogleEventResource;
     return classifyGoogleFailure({
       status: response.status,
       message:
@@ -591,10 +613,11 @@ export class GoogleCalendarEventProvider implements CalendarEventProvider {
         return { ok: false, error: await this.failureFromResponse(result.response) };
       }
 
-      const payload: unknown = await result.response
-        .json()
-        .catch(() => undefined);
-      const page = managedEventPage(payload);
+      const body = await this.readJsonBody(result.response);
+      if (!body.ok && body.transport) {
+        return GOOGLE_TRANSPORT_FAILURE;
+      }
+      const page = managedEventPage(body.ok ? body.value : undefined);
       if (!page) {
         // A successful status with a body we cannot trust is not proof that the
         // listing is empty or complete. Refuse the whole listing so the scan
@@ -646,10 +669,11 @@ export class GoogleCalendarEventProvider implements CalendarEventProvider {
     if (!result.response.ok) {
       return { ok: false, error: await this.failureFromResponse(result.response) };
     }
-    const payload: unknown = await result.response
-      .json()
-      .catch(() => undefined);
-    const document = eventDocument(payload, eventId);
+    const body = await this.readJsonBody(result.response);
+    if (!body.ok && body.transport) {
+      return GOOGLE_TRANSPORT_FAILURE;
+    }
+    const document = eventDocument(body.ok ? body.value : undefined, eventId);
     if (!document) {
       return {
         ok: false,
@@ -676,8 +700,11 @@ export class GoogleCalendarEventProvider implements CalendarEventProvider {
     if (!result.response.ok) {
       return { ok: false, error: await this.failureFromResponse(result.response) };
     }
-    const resource: unknown = await result.response.json().catch(() => null);
-    const document = writtenEvent(resource, payload.eventId, payload);
+    const body = await this.readJsonBody(result.response);
+    if (!body.ok && body.transport) {
+      return GOOGLE_TRANSPORT_FAILURE;
+    }
+    const document = writtenEvent(body.ok ? body.value : null, payload.eventId, payload);
     if (!document) {
       return {
         ok: false,
@@ -722,8 +749,11 @@ export class GoogleCalendarEventProvider implements CalendarEventProvider {
     if (!result.response.ok) {
       return { ok: false, error: await this.failureFromResponse(result.response) };
     }
-    const resource: unknown = await result.response.json().catch(() => null);
-    const document = writtenEvent(resource, eventId, payload);
+    const parsedBody = await this.readJsonBody(result.response);
+    if (!parsedBody.ok && parsedBody.transport) {
+      return GOOGLE_TRANSPORT_FAILURE;
+    }
+    const document = writtenEvent(parsedBody.ok ? parsedBody.value : null, eventId, payload);
     if (!document) {
       return {
         ok: false,

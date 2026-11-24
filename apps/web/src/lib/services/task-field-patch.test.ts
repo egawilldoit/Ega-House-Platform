@@ -145,6 +145,12 @@ function stubClient(
     auth: {
       getUser: async () => ({ data: { user: userId ? { id: userId } : null }, error: null }),
     },
+    async rpc(name: string) {
+      if (name === "calendar_sync_enqueue_job") {
+        return { data: null, error: null };
+      }
+      throw new Error(`Unexpected RPC call in task-field-patch test: ${name}`);
+    },
     from(table: string) {
       if (table !== "tasks") {
         // Post-write side effects (calendar sync queue) are outside this test.
