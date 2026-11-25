@@ -32,20 +32,26 @@ export function CalendarIntegrationCard({
         <CardContent className="flex flex-col gap-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-3">
-              <Badge tone={settings.connected ? "active" : "muted"}>
-                {settings.connected ? "Connected" : "Disconnected"}
+              <Badge tone={settings.connected && !settings.needsReconnect ? "active" : "muted"}>
+                {settings.needsReconnect
+                  ? "Reconnect needed"
+                  : settings.connected ? "Connected" : "Disconnected"}
               </Badge>
               <p className="min-w-0 truncate text-[length:var(--text-body)] text-ega-text-secondary">
-                {settings.googleAccountEmail ?? "No Google account connected."}
+                {settings.googleAccountEmail ?? (
+                  settings.needsReconnect
+                    ? "Reconnect to verify your Google account."
+                    : settings.connected ? "Google account connected." : "No Google account connected."
+                )}
               </p>
             </div>
-            {settings.connected ? null : (
-              <form action="/api/integrations/google-calendar/connect" method="get">
-                <Button type="submit" size="sm">
-                  Connect Google Calendar
-                </Button>
-              </form>
-            )}
+            <form action="/api/integrations/google-calendar/connect" method="get">
+              <Button type="submit" size="sm">
+                {settings.needsReconnect
+                  ? "Reconnect Google Calendar"
+                  : settings.connected ? "Change Google account" : "Connect Google Calendar"}
+              </Button>
+            </form>
           </div>
         </CardContent>
       </Card>

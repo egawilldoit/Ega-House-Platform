@@ -58,11 +58,11 @@ test("Google Calendar connect redirect includes required OAuth params", () => {
     url.searchParams.get("redirect_uri"),
     "https://app.example.com/api/integrations/google-calendar/callback",
   );
-  assert.equal(url.searchParams.get("scope"), "https://www.googleapis.com/auth/calendar.events");
+  assert.equal(url.searchParams.get("scope"), "https://www.googleapis.com/auth/calendar.events openid email");
   assert.equal(url.searchParams.get("state"), "state-123");
   assert.equal(url.searchParams.get("access_type"), "offline");
   assert.equal(url.searchParams.get("include_granted_scopes"), "true");
-  assert.equal(url.searchParams.get("prompt"), "consent");
+  assert.equal(url.searchParams.get("prompt"), "consent select_account");
   assert.equal(url.searchParams.get("response_type"), "code");
 });
 

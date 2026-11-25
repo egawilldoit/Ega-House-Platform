@@ -146,6 +146,18 @@ export async function GET(request: Request) {
         subject: identity.subject ?? profile.subject,
       };
     }
+    if (!identity.subject && !identity.email) {
+      logGoogleCalendarOAuthFailure("account_identity_unavailable", { step: "account_identity" });
+      return redirectToReturn(
+        request,
+        returnPath,
+        "error",
+        getGoogleCalendarOAuthFailureMessage("account_identity_unavailable") ??
+          "Google Calendar did not provide an account identity.",
+        "account_identity_unavailable",
+      );
+    }
+
     const storeResult = await connectGoogleCalendarWithTokens({
       accessToken: tokenResult.data.access_token,
       refreshToken: tokenResult.data.refresh_token,

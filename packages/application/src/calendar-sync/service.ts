@@ -172,16 +172,18 @@ function connectionView(
         calendarId: "primary",
       });
 
+  const connected = Boolean(
+    connection?.connectedAt &&
+      !connection.disconnectedAt &&
+      connection.provider === "google",
+  );
+
   return {
-    connected: Boolean(
-      connection &&
-        connection.connectedAt &&
-        !connection.disconnectedAt &&
-        connection.provider === "google",
-    ),
-    needsReconnect: Boolean(
-      connection?.reconnectRequiredAt ||
-        (connection && !connection.refreshTokenEncrypted),
+    connected,
+    needsReconnect: connected && (
+      Boolean(connection?.reconnectRequiredAt) ||
+      !connection?.refreshTokenEncrypted ||
+      !isVerifiedCalendarDestination(destination)
     ),
     accountEmail: connection?.accountEmail ?? null,
     calendarId: destination.calendarId,
