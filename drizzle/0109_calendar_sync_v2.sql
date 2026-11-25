@@ -858,7 +858,10 @@ AS $counts$
   WITH job_state AS (
     SELECT task_id,
       bool_or(status = 'processing') AS processing,
-      bool_or(status = 'processing' OR scheduled_at <= now()) AS ready
+      bool_or(
+        (status = 'pending' AND scheduled_at <= now())
+        OR (status = 'processing' AND (lease_expires_at IS NULL OR lease_expires_at <= now()))
+      ) AS ready
     FROM public.calendar_sync_jobs
     WHERE run_id = p_run_id AND status IN ('pending', 'processing')
     GROUP BY task_id
