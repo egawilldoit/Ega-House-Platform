@@ -1243,14 +1243,15 @@ async function claimStillCurrent(
   actor: AuthenticatedActor,
   deps: CalendarSyncDependencies,
   job: CalendarJobRecord,
-) {
-  if (!job.claimToken) return false;
+): Promise<{ ok: boolean; current: boolean }> {
+  if (!job.claimToken) return { ok: true, current: false };
   const result = await deps.repository.isJobClaimCurrent(
     actor,
     job.id,
     job.claimToken,
   );
-  return result.ok && result.value;
+  if (!result.ok) return { ok: false, current: false };
+  return { ok: true, current: result.value };
 }
 
 async function processJob(
@@ -1411,7 +1412,9 @@ async function processJob(
     }
 
     if (eventId) {
-      if (!(await claimStillCurrent(actor, deps, job))) return { refreshedCredentials };
+      const _claim1 = await claimStillCurrent(actor, deps, job);
+      if (!_claim1.ok) return { persistenceError: "Unable to verify the job claim." };
+      if (!_claim1.current) return { refreshedCredentials };
       const deleted = await deps.provider.deleteEvent(connection, eventId);
       if (!deleted.ok) {
         if (deleted.error.kind === "authorization") {
@@ -1532,7 +1535,7 @@ async function processJob(
   }
 
   async function rotateEvent(nextGeneration: number) {
-    if (!job.claimToken) return false;
+    if (!job.claimToken) return { ok: false, dbFailed: false };
     const eventId = deterministicCalendarEventId({
       ownerUserId: job.ownerUserId,
       taskId: job.taskId,
@@ -1547,16 +1550,23 @@ async function processJob(
       payloadHash,
       nowIso,
     });
-    if (!advanced.ok || !advanced.value) return false;
+    if (!advanced.ok) {
+      return { ok: false, dbFailed: true };
+    }
+    if (!advanced.value) {
+      return { ok: false, dbFailed: false };
+    }
     targetEvent(eventId, nextGeneration);
     updating = false;
-    return true;
+    return { ok: true, dbFailed: false };
   }
 
   let needsMappingLookup = false;
   if (mapping && mapping.generation >= generation) {
     if (mapping.status === "removed") {
-      if (!(await rotateEvent(mapping.generation + 1))) return {};
+      const _rotA = await rotateEvent(mapping.generation + 1);
+      if (_rotA.dbFailed) return { persistenceError: "Unable to advance the Calendar job generation." };
+      if (!_rotA.ok) return {};
     } else {
       needsMappingLookup = !updating || job.eventId !== mapping.eventId;
       targetEvent(mapping.eventId, mapping.generation);
@@ -1570,11 +1580,15 @@ async function processJob(
     if (!existing.ok) {
       lookupFailure = existing.error;
     } else if (!existing.value || existing.value.status === "cancelled") {
-      if (!(await rotateEvent(generation + 1))) return {};
+      const _rotB = await rotateEvent(generation + 1);
+      if (_rotB.dbFailed) return { persistenceError: "Unable to advance the Calendar job generation." };
+      if (!_rotB.ok) return {};
     }
   }
 
-  if (!(await claimStillCurrent(actor, deps, job))) return {};
+  const _claim2 = await claimStillCurrent(actor, deps, job);
+  if (!_claim2.ok) return { persistenceError: "Unable to verify the job claim." };
+  if (!_claim2.current) return {};
 
   let writeResult = lookupFailure
     ? { ok: false as const, error: lookupFailure }
@@ -1583,7 +1597,9 @@ async function processJob(
       : await deps.provider.createEvent(connection, payload);
 
   if (!writeResult.ok && writeResult.error.kind === "not_found" && updating) {
-    if (!(await rotateEvent(generation + 1))) return {};
+    const _rotC = await rotateEvent(generation + 1);
+    if (_rotC.dbFailed) return { persistenceError: "Unable to advance the Calendar job generation." };
+    if (!_rotC.ok) return {};
     writeResult = await deps.provider.createEvent(connection, payload);
   }
   if (!writeResult.ok && writeResult.error.kind === "conflict") {
@@ -1603,10 +1619,14 @@ async function processJob(
         const verifiedGeneration = metadataMatches && Number.isSafeInteger(existingGeneration)
           ? existingGeneration
           : 0;
-        if (!(await rotateEvent(Math.max(generation, verifiedGeneration, mapping?.generation ?? 0) + 1))) return {};
+        const _rotD = await rotateEvent(Math.max(generation, verifiedGeneration, mapping?.generation ?? 0) + 1);
+        if (_rotD.dbFailed) return { persistenceError: "Unable to advance the Calendar job generation." };
+        if (!_rotD.ok) return {};
         writeResult = await deps.provider.createEvent(connection, payload);
       } else if (metadataMatches && existing.value.status !== "cancelled") {
-        if (!(await claimStillCurrent(actor, deps, job))) return {};
+        const _claim2 = await claimStillCurrent(actor, deps, job);
+  if (!_claim2.ok) return { persistenceError: "Unable to verify the job claim." };
+  if (!_claim2.current) return {};
         writeResult = await deps.provider.updateEvent(connection, payload.eventId, payload);
       } else {
         writeResult = {
@@ -1650,7 +1670,9 @@ async function processJob(
 
   refreshedCredentials = writeResult.refreshedCredentials;
   const eventId = writeResult.value.id;
-  if (!(await claimStillCurrent(actor, deps, job))) {
+  const _claim4 = await claimStillCurrent(actor, deps, job);
+  if (!_claim4.ok) return { persistenceError: "Unable to verify the job claim." };
+  if (!_claim4.current) {
     return { refreshedCredentials };
   }
   const settled = await completeJobOutcome(actor, deps, {
