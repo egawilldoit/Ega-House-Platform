@@ -877,7 +877,7 @@ AS $counts$
     'pending', count(*) FILTER (WHERE outcome = 'pending' AND ready IS DISTINCT FROM false),
     'processing', count(*) FILTER (WHERE processing),
     'ready', count(*) FILTER (WHERE ready),
-    'retrying', count(*) FILTER (WHERE outcome = 'pending' AND NOT ready)
+    'retrying', count(*) FILTER (WHERE outcome = 'pending' AND NOT ready AND NOT processing)
   )
   FROM public.calendar_sync_run_items AS item
   LEFT JOIN job_state USING (task_id)
