@@ -80,7 +80,7 @@ export async function getWebCalendarSyncStatus(origin: string) {
     buildDependencies(supabase, { origin, scope: "owner" }),
   );
   if (!result.ok) {
-    const status = /unable to load|unable to claim|unable to save|unable to start|unable to continue/i.test(
+    const status = /unable to load|unable to claim|unable to save|unable to start|unable to continue|unable to settle|unable to finalize|unable to advance|unable to verify|unable to record/i.test(
       result.errorMessage,
     )
       ? 503
@@ -115,7 +115,7 @@ export async function startWebCalendarSync(
     : await startCalendarSync(actor, deps);
 
   if (!result.ok) {
-    const isOperational = /unable to load|unable to claim|unable to save|unable to start/i.test(
+    const isOperational = /unable to load|unable to claim|unable to save|unable to start|unable to settle|unable to finalize|unable to advance|unable to verify|unable to record/i.test(
       result.errorMessage,
     );
     return {
@@ -151,7 +151,7 @@ export async function continueWebCalendarSync(origin: string, runId: string) {
   );
 
   if (!result.ok) {
-    const isOperational = /unable to load|unable to claim|unable to save/i.test(
+    const isOperational = /unable to load|unable to claim|unable to save|unable to settle|unable to finalize|unable to advance|unable to verify|unable to record/i.test(
       result.errorMessage,
     );
     return {

@@ -1583,13 +1583,16 @@ async function processJob(
       const accessible = await deps.provider.isCalendarAccessible(connection);
       if (!accessible.ok || !accessible.value) {
         if (!accessible.ok) {
-          await failJob(actor, deps, {
+          const _recorded = await failJob(actor, deps, {
             job,
             message: accessible.error.message,
             permanent: false,
             nowIso,
-            now,
+            now: getNow(deps),
           });
+          if (!_recorded) {
+            return { persistenceError: "Unable to record the Calendar sync failure." };
+          }
         } else {
           const paused = await pauseForAuthorization(actor, deps, {
             runId: job.runId,

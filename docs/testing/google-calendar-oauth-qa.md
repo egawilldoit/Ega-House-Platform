@@ -40,7 +40,8 @@ Server logs use `google_calendar_oauth_callback_failed` with step-level diagnost
 
 ## Manual task sync (issue #428)
 
-Manual sync requires `drizzle/0109_calendar_sync_v2.sql` plus the existing
+Manual sync requires `drizzle/0109_calendar_sync_v2.sql` and
+`drizzle/0110_calendar_atomic_mapping_settlement.sql` plus the existing
 OAuth variables. The GitHub Actions workflow `ega-calendar-sync.yml` calls
 `POST /api/cron/calendar-sync` with the same `APP_URL` and `CRON_SECRET` secrets
 as weekly reviews. It is the durable recovery path; keep it enabled before

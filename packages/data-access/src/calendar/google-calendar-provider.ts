@@ -660,7 +660,14 @@ export class GoogleCalendarEventProvider implements CalendarEventProvider {
   async isCalendarAccessible(
     connection: CalendarConnectionRecord,
   ): Promise<CalendarProviderResult<boolean>> {
-    const result = await this.authorizedFetch(connection, "", { method: "GET" });
+    // Use an events-scoped probe (the same grant as the documented
+    // calendar.events scope) rather than calendars.get, which requires the
+    // broader calendar scope and would force a reconnect loop.
+    const result = await this.authorizedFetch(
+      connection,
+      "/events?maxResults=1&fields=items(id)",
+      { method: "GET" },
+    );
     if (!result.ok) return result;
     if (result.response.status === 404 || result.response.status === 403) {
       return {
