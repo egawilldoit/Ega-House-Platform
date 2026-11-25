@@ -356,6 +356,9 @@ export const calendarSyncJobs = pgTable(
     index("calendar_sync_jobs_destination_ready_idx")
       .on(table.destinationKey, table.scheduledAt, table.createdAt)
       .where(sql`${table.queueVersion} = 2 and ${table.status} in ('pending', 'processing')`),
+    index("calendar_sync_jobs_failed_cooldown_idx")
+      .on(table.ownerUserId, table.taskId, table.destinationKey, table.scheduledAt)
+      .where(sql`${table.queueVersion} = 2 and ${table.status} = 'failed' and not ${table.permanentFailure}`),
     uniqueIndex("calendar_sync_jobs_one_processing_unique")
       .on(table.ownerUserId, table.taskId, table.destinationKey)
       .where(sql`${table.status} = 'processing'`),

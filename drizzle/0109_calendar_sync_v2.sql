@@ -443,6 +443,30 @@ END
 $commit$;
 --> statement-breakpoint
 
+CREATE INDEX calendar_sync_jobs_failed_cooldown_idx
+  ON public.calendar_sync_jobs (owner_user_id, task_id, destination_key, scheduled_at)
+  WHERE queue_version = 2 AND status = 'failed' AND NOT permanent_failure;
+--> statement-breakpoint
+
+CREATE FUNCTION public.calendar_sync_job_has_cooldown(
+  p_owner_user_id uuid, p_task_id uuid, p_destination_key text, p_now timestamptz
+) RETURNS boolean
+LANGUAGE sql STABLE SECURITY INVOKER SET search_path = ''
+AS $cooldown$
+  SELECT EXISTS (
+    SELECT 1 FROM public.calendar_sync_jobs AS failed
+    WHERE failed.owner_user_id = p_owner_user_id AND failed.task_id = p_task_id
+      AND failed.destination_key = p_destination_key AND failed.queue_version = 2
+      AND failed.status = 'failed' AND NOT failed.permanent_failure
+      AND failed.scheduled_at > p_now
+  );
+$cooldown$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION public.calendar_sync_job_has_cooldown(uuid, uuid, text, timestamptz) FROM PUBLIC, anon;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION public.calendar_sync_job_has_cooldown(uuid, uuid, text, timestamptz) TO authenticated, service_role;
+--> statement-breakpoint
+
 -- Atomic claim with FOR UPDATE SKIP LOCKED. An expired lease is returned to
 -- pending first. A pending job is never claimed while another valid processing
 -- lease exists for the same task and destination.
@@ -561,6 +585,9 @@ BEGIN
     WHERE job.queue_version = 2
       AND job.status = 'pending'
       AND job.scheduled_at <= clock_timestamp()
+      AND NOT public.calendar_sync_job_has_cooldown(
+        job.owner_user_id, job.task_id, job.destination_key, clock_timestamp()
+      )
       AND job.attempts < 8
       AND job.permanent_failure = false
       AND (p_owner IS NULL OR job.owner_user_id = p_owner)
@@ -877,8 +904,9 @@ AS $counts$
     SELECT task_id,
       bool_or(status = 'processing') AS processing,
       bool_or(
-        (status = 'pending' AND scheduled_at <= now())
-        OR (status = 'processing' AND (lease_expires_at IS NULL OR lease_expires_at <= now()))
+        ((status = 'pending' AND scheduled_at <= now())
+          OR (status = 'processing' AND (lease_expires_at IS NULL OR lease_expires_at <= now())))
+        AND NOT public.calendar_sync_job_has_cooldown(owner_user_id, task_id, destination_key, now())
       ) AS ready
     FROM public.calendar_sync_jobs
     WHERE run_id = p_run_id AND status IN ('pending', 'processing')

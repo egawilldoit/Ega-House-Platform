@@ -434,6 +434,9 @@ AS $actionable$
       OR EXISTS (
         SELECT 1 FROM public.calendar_sync_jobs AS job
         WHERE job.run_id = run.id
+          AND NOT public.calendar_sync_job_has_cooldown(
+            job.owner_user_id, job.task_id, job.destination_key, clock_timestamp()
+          )
           AND ((job.status = 'pending' AND job.attempts < 8 AND NOT job.permanent_failure
                  AND job.scheduled_at <= clock_timestamp())
                OR (job.status = 'processing' AND job.lease_expires_at <= clock_timestamp()))
@@ -725,6 +728,9 @@ AS $ready$
     ) AS identity
     WHERE (p_owner IS NULL OR job.owner_user_id = p_owner)
       AND job.queue_version = 2 AND job.run_id IS NULL AND NOT job.permanent_failure
+      AND NOT public.calendar_sync_job_has_cooldown(
+        job.owner_user_id, job.task_id, job.destination_key, clock_timestamp()
+      )
       AND ((job.status = 'pending' AND job.attempts < 8 AND job.scheduled_at <= clock_timestamp())
         OR (job.status = 'processing' AND job.lease_expires_at <= clock_timestamp()))
       AND settings.connected_at IS NOT NULL AND settings.disconnected_at IS NULL

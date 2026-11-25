@@ -1656,10 +1656,23 @@ async function main() {
           "terminal settlement must retain cooldown and propagate it to the pending edit");
         await tx`DELETE FROM public.calendar_sync_jobs WHERE id = ${pending.id}::uuid`;
         await tx`SELECT public.calendar_sync_resume_run_for_retry(
-          ${RUN_REMOVAL}::uuid, ${DESTINATION_KEY}, true, now())`;
+          ${RUN_REMOVAL}::uuid, ${DESTINATION_REMOVAL}, true, now())`;
         const [manualRetry] = await tx`SELECT status FROM public.calendar_sync_jobs
           WHERE id = ${claimedOrphan.id}::uuid`;
         assert(manualRetry.status === "failed", "manual Retry must not bypass the final-attempt cooldown");
+        await tx`SELECT public.calendar_sync_enqueue_job(
+          ${OWNER_REMOVAL}::uuid, ${TASK_ORPHAN}::uuid, NULL, 'delete', ${DESTINATION_REMOVAL},
+          'proof-subject', NULL, 'primary', 1, false, now())`;
+        const tooEarlyEdit = await tx`SELECT id FROM public.calendar_sync_claim_jobs(
+          ${OWNER_REMOVAL}::uuid, ${DESTINATION_REMOVAL}, NULL, gen_random_uuid(), 10, now(), 60
+        ) WHERE task_id = ${TASK_ORPHAN}::uuid`;
+        assert(tooEarlyEdit.length === 0, "new work enqueued after exhaustion must honor the final-attempt cooldown");
+        await tx`UPDATE public.calendar_sync_jobs SET scheduled_at = now() - interval '1 second'
+          WHERE id = ${claimedOrphan.id}::uuid`;
+        const dueEdit = await tx`SELECT id FROM public.calendar_sync_claim_jobs(
+          ${OWNER_REMOVAL}::uuid, ${DESTINATION_REMOVAL}, NULL, gen_random_uuid(), 10, now(), 60
+        ) WHERE task_id = ${TASK_ORPHAN}::uuid`;
+        assert(dueEdit.length === 1, "new work must be claimable once the final-attempt cooldown expires");
         throw rollbackCooldown;
       });
     } catch (error) {
