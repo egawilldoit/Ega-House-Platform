@@ -1188,7 +1188,7 @@ async function failJob(
     : nextCalendarRetryAtIso({
         jobId: input.job.id,
         attempts,
-        now: input.now,
+        now: getNow(deps),
         retryAfterSeconds: input.retryAfterSeconds,
       });
 

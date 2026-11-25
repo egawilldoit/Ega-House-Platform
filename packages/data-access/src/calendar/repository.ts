@@ -360,8 +360,19 @@ export class SupabaseCalendarSyncRepository implements CalendarSyncRepository {
     if (latest.error) return failure(latest.error);
     const latestRun = latest.data ? mapRun(asRow(latest.data)) : null;
 
+    // Do not resume a run bound to a different Google subject, even when the
+    // destination key (email-first) matches. A replacement account with the
+    // same email must start its own run.
+    const subjectConflict =
+      Boolean(
+        latestRun?.destination.accountSubject &&
+          input.destination.accountSubject &&
+          latestRun.destination.accountSubject !== input.destination.accountSubject,
+      );
+
     if (
       latestRun &&
+      !subjectConflict &&
       (latestRun.status === "active" ||
         latestRun.status === "paused" ||
         (input.retryMode && latestRun.status === "completed"))
