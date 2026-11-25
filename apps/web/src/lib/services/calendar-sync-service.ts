@@ -327,8 +327,12 @@ async function claimPendingCalendarSyncJobs(
   supabase: SupabaseServerClient,
   input: { limit: number; nowIso: string },
 ) {
-  // Reclaim expired or leaseless v1 processing rows independently of the v2
-  // engine, so an in-flight v1 job is not stranded during/after migration.
+  // Reclaim v1 processing rows only after a drain window, so an in-flight row
+  // owned by a pre-cutover worker is not stolen mid-flight.
+  const drainCutoff = new Date(
+    new Date(input.nowIso).getTime() - 5 * 60_000,
+  ).toISOString();
+
   await supabase
     .from("calendar_sync_jobs")
     .update({
@@ -339,7 +343,8 @@ async function claimPendingCalendarSyncJobs(
     } as never)
     .eq("queue_version", 1)
     .eq("status", "processing")
-    .is("lease_expires_at", null);
+    .is("lease_expires_at", null)
+    .lte("updated_at", drainCutoff);
 
   await supabase
     .from("calendar_sync_jobs")

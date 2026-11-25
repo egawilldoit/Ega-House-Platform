@@ -1580,6 +1580,34 @@ async function processJob(
     if (!existing.ok) {
       lookupFailure = existing.error;
     } else if (!existing.value || existing.value.status === "cancelled") {
+      const accessible = await deps.provider.isCalendarAccessible(connection);
+      if (!accessible.ok || !accessible.value) {
+        if (!accessible.ok) {
+          await failJob(actor, deps, {
+            job,
+            message: accessible.error.message,
+            permanent: false,
+            nowIso,
+            now,
+          });
+        } else {
+          const paused = await pauseForAuthorization(actor, deps, {
+            runId: job.runId,
+            connection,
+            message: "Google Calendar is inaccessible. Reconnect and retry.",
+            nowIso,
+          });
+          if (!paused.ok) {
+            return { persistenceError: paused.message, refreshedCredentials };
+          }
+          return {
+            authFailure: true,
+            staleAuth: !paused.applied,
+            refreshedCredentials,
+          };
+        }
+        return { refreshedCredentials };
+      }
       const _rotB = await rotateEvent(generation + 1);
       if (_rotB.dbFailed) return { persistenceError: "Unable to advance the Calendar job generation." };
       if (!_rotB.ok) return {};
@@ -2018,7 +2046,7 @@ async function processRunBatch(
           : nextCalendarRetryAtIso({
               jobId: run.id,
               attempts: 1,
-              now,
+              now: getNow(deps),
               retryAfterSeconds: listing.error.retryAfterSeconds,
             }),
         message: terminalListingFailure
@@ -2065,7 +2093,7 @@ async function processRunBatch(
         retryAt: nextCalendarRetryAtIso({
           jobId: run.id,
           attempts: 1,
-          now,
+          now: getNow(deps),
         }),
         message: incompleteMessage,
         nowIso,
