@@ -2,6 +2,16 @@ import { randomBytes } from "node:crypto";
 
 export const GOOGLE_CALENDAR_OAUTH_STATE_COOKIE =
   "ega_google_calendar_oauth_state";
+export const GOOGLE_CALENDAR_OAUTH_RETURN_COOKIE =
+  "ega_google_calendar_oauth_return";
+
+export type GoogleCalendarReturnPath = "/settings" | "/tasks";
+
+export function normalizeGoogleCalendarReturnPath(
+  value: string | null | undefined,
+): GoogleCalendarReturnPath {
+  return value === "/tasks" ? "/tasks" : "/settings";
+}
 
 export type GoogleCalendarOAuthEnv = {
   clientId: string;
@@ -102,8 +112,26 @@ export function getSettingsRedirectUrl(
   message: string,
   errorCode?: GoogleCalendarOAuthFailureCode,
 ) {
-  const url = new URL("/settings", requestUrl);
-  url.searchParams.set("tab", "integrations");
+  return getGoogleCalendarReturnUrl(
+    requestUrl,
+    "/settings",
+    type,
+    message,
+    errorCode,
+  );
+}
+
+export function getGoogleCalendarReturnUrl(
+  requestUrl: string,
+  returnPath: GoogleCalendarReturnPath,
+  type: "success" | "error",
+  message: string,
+  errorCode?: GoogleCalendarOAuthFailureCode,
+) {
+  const url = new URL(returnPath, requestUrl);
+  if (returnPath === "/settings") {
+    url.searchParams.set("tab", "integrations");
+  }
   url.searchParams.set(type, message);
   if (type === "error" && errorCode) {
     url.searchParams.set("errorCode", errorCode);
@@ -256,18 +284,59 @@ export async function exchangeGoogleCalendarCodeForTokens(
 }
 
 export function getGoogleAccountEmailFromIdToken(idToken?: string) {
+  return getGoogleAccountIdentityFromIdToken(idToken).email;
+}
+
+export type GoogleAccountIdentity = {
+  email: string | null;
+  subject: string | null;
+};
+
+export function getGoogleAccountIdentityFromIdToken(
+  idToken?: string,
+): GoogleAccountIdentity {
   const [, payload] = idToken?.split(".") ?? [];
 
   if (!payload) {
-    return null;
+    return { email: null, subject: null };
   }
 
   try {
     const normalized = payload.replace(/-/g, "+").replace(/_/g, "/");
     const decoded = Buffer.from(normalized, "base64").toString("utf8");
-    const parsed = JSON.parse(decoded) as { email?: unknown };
-    return typeof parsed.email === "string" ? parsed.email : null;
+    const parsed = JSON.parse(decoded) as { email?: unknown; sub?: unknown };
+    return {
+      email: typeof parsed.email === "string" ? parsed.email : null,
+      subject: typeof parsed.sub === "string" ? parsed.sub : null,
+    };
   } catch {
-    return null;
+    return { email: null, subject: null };
+  }
+}
+
+export async function fetchGoogleAccountIdentity(
+  accessToken: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<GoogleAccountIdentity> {
+  try {
+    const response = await fetchImpl(
+      "https://www.googleapis.com/oauth2/v3/userinfo",
+      {
+        headers: { authorization: `Bearer ${accessToken}` },
+      },
+    );
+    if (!response.ok) {
+      return { email: null, subject: null };
+    }
+    const payload = (await response.json().catch(() => ({}))) as {
+      email?: unknown;
+      sub?: unknown;
+    };
+    return {
+      email: typeof payload.email === "string" ? payload.email : null,
+      subject: typeof payload.sub === "string" ? payload.sub : null,
+    };
+  } catch {
+    return { email: null, subject: null };
   }
 }

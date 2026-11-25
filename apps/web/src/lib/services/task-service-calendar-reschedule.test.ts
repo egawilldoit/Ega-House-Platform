@@ -15,11 +15,16 @@ function stubSupabase(
 ) {
   const filters: Array<{ column: string; value: unknown }> = [];
   const updates: Row[] = [];
-  const inserts: Array<{ table: string; payload: Row }> = [];
+  const enqueues: Row[] = [];
 
   const client = {
     auth: {
       getUser: async () => ({ data: { user: { id: "owner-1" } }, error: null }),
+    },
+    async rpc(name: string, args: Row) {
+      assert.equal(name, "calendar_sync_enqueue_job");
+      enqueues.push(args);
+      return { data: null, error: null };
     },
     from(table: string) {
       if (table === "tasks") {
@@ -62,15 +67,6 @@ function stubSupabase(
         };
       }
 
-      if (table === "calendar_sync_jobs") {
-        return {
-          insert: async (payload: Row) => {
-            inserts.push({ table, payload });
-            return { error: null };
-          },
-        };
-      }
-
       if (table === "task_sessions") {
         return {
           select: () => ({
@@ -85,7 +81,7 @@ function stubSupabase(
     },
   };
 
-  return { client, filters, updates, inserts };
+  return { client, filters, updates, enqueues };
 }
 
 const BASE_ROW: Row = {
@@ -222,7 +218,7 @@ test("a date move enqueues Google Calendar resync only when sync is enabled", as
     { taskId: "task-1", field: "due", date: "2026-05-04" },
     { supabase: withoutSync.client as never },
   );
-  assert.equal(withoutSync.inserts.length, 0);
+  assert.equal(withoutSync.enqueues.length, 0);
 
   const withSync = stubSupabase({
     ...BASE_ROW,
@@ -236,14 +232,10 @@ test("a date move enqueues Google Calendar resync only when sync is enabled", as
   );
 
   assert.deepEqual(result, { errorMessage: null, changed: true });
-  assert.equal(withSync.inserts.length, 1);
-  assert.equal(withSync.inserts[0].table, "calendar_sync_jobs");
-  assert.equal(withSync.inserts[0].payload.owner_user_id, "owner-1");
-  assert.equal(withSync.inserts[0].payload.operation, "upsert");
-  // Fresh queue rows stay pending with a zero attempt count; the cron retry
-  // path owns later failures, not the calendar mutation.
-  assert.equal(withSync.inserts[0].payload.status, "pending");
-  assert.equal(withSync.inserts[0].payload.attempts, 0);
+  assert.equal(withSync.enqueues.length, 1);
+  assert.equal(withSync.enqueues[0].p_owner_user_id, "owner-1");
+  assert.equal(withSync.enqueues[0].p_task_id, "task-1");
+  assert.equal(withSync.enqueues[0].p_operation, "upsert");
 });
 
 test("buildRescheduledWallWindow preserves the wall-clock duration", () => {
@@ -278,8 +270,8 @@ test("a scheduled block move writes UTC instants through the timezone validator"
   assert.equal(stub.updates[0].scheduled_start_at, "2026-05-08T13:00:00.000Z");
   assert.equal(stub.updates[0].scheduled_end_at, "2026-05-08T14:30:00.000Z");
   // updateTaskInline owns the resync enqueue for scheduled moves.
-  assert.equal(stub.inserts.length, 1);
-  assert.equal(stub.inserts[0].table, "calendar_sync_jobs");
+  assert.equal(stub.enqueues.length, 1);
+  assert.equal(stub.enqueues[0].p_operation, "upsert");
 });
 
 test("a scheduled block without a stored window is rejected", async () => {

@@ -291,3 +291,47 @@ test("Google Calendar id token email decode is optional and safe", () => {
   assert.equal(getGoogleAccountEmailFromIdToken(`header.${payload}.signature`), "owner@example.com");
   assert.equal(getGoogleAccountEmailFromIdToken("not-a-jwt"), null);
 });
+
+test("Google userinfo fallback returns stable subject and email", async () => {
+  const { fetchGoogleAccountIdentity } = await import("./oauth");
+  const calls: Array<{ url: string; init: RequestInit }> = [];
+  const identity = await fetchGoogleAccountIdentity("access-1", (async (
+    url: string | URL | Request,
+    init?: RequestInit,
+  ) => {
+    calls.push({ url: String(url), init: init ?? {} });
+    return Response.json({ sub: "google-subject-1", email: "owner@example.com" });
+  }) as typeof fetch);
+
+  assert.deepEqual(identity, {
+    subject: "google-subject-1",
+    email: "owner@example.com",
+  });
+  assert.equal(
+    calls[0]?.url,
+    "https://www.googleapis.com/oauth2/v3/userinfo",
+  );
+  assert.equal(
+    new Headers(calls[0]?.init.headers).get("authorization"),
+    "Bearer access-1",
+  );
+});
+
+test("Tasks return URL keeps OAuth failure codes out of settings", async () => {
+  const { getGoogleCalendarReturnUrl, normalizeGoogleCalendarReturnPath } =
+    await import("./oauth");
+
+  assert.equal(normalizeGoogleCalendarReturnPath("https://evil.example"), "/settings");
+  assert.equal(normalizeGoogleCalendarReturnPath("/tasks"), "/tasks");
+
+  const url = getGoogleCalendarReturnUrl(
+    "https://app.example.com/api/integrations/google-calendar/callback",
+    "/tasks",
+    "error",
+    "Google Calendar connection failed.",
+    "state_mismatch",
+  );
+  assert.equal(url.pathname, "/tasks");
+  assert.equal(url.searchParams.get("errorCode"), "state_mismatch");
+  assert.equal(url.searchParams.get("tab"), null);
+});

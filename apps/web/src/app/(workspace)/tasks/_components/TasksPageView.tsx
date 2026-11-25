@@ -26,6 +26,8 @@ import { TASK_COMMENT_ACTIONS } from "@/lib/task-comment-actions";
 import { TaskFilterBar } from "./task-filter-bar";
 import { TaskList } from "./task-list";
 import { TaskInboxPanel } from "./task-inbox-panel";
+import { TaskCalendarSyncPanel } from "@/components/tasks/task-calendar-sync-panel";
+import type { CalendarSyncStatusView } from "@ega/application/calendar-sync/service";
 
 /**
  * Lean Tasks workbench.
@@ -38,10 +40,14 @@ export function TasksPageView({
   model,
   ownerId = null,
   favouriteAction,
+  calendarSyncStatus,
+  calendarOAuthNotice,
 }: {
   model: TasksPageModel;
   ownerId?: string | null;
   favouriteAction?: (formData: FormData) => void | Promise<void>;
+  calendarSyncStatus?: CalendarSyncStatusView;
+  calendarOAuthNotice?: { tone: "success" | "error"; message: string } | null;
 }) {
   const {
     parsed,
@@ -112,6 +118,19 @@ export function TasksPageView({
 
   return (
     <div className="flex min-w-0 flex-col gap-4">
+      {calendarSyncStatus && activeTab === "active" ? (
+        <TaskCalendarSyncPanel initialStatus={calendarSyncStatus} />
+      ) : null}
+
+      {calendarOAuthNotice ? (
+        <p
+          className={calendarOAuthNotice.tone === "error" ? "feedback-block" : "feedback-block"}
+          role={calendarOAuthNotice.tone === "error" ? "alert" : "status"}
+        >
+          {calendarOAuthNotice.message}
+        </p>
+      ) : null}
+
       <Card clip>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-[var(--ega-divider)] px-[18px] py-3">
           <div

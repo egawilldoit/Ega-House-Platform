@@ -6,6 +6,7 @@ export * from "./estimate";
 export * from "./schedule";
 export * from "./title";
 export * from "./calendar-reminder";
+export * from "./calendar-sync";
 
 export * from "./subtasks";
 export * from "./comments";

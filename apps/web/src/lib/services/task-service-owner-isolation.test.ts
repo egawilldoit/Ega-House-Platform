@@ -280,6 +280,16 @@ function createRlsClient(db: FakeDb, userId: string) {
     auth: {
       getUser: async () => ({ data: { user: { id: userId } }, error: null }),
     },
+    async rpc(name: string, args: Row) {
+      expect(name).toBe("calendar_sync_enqueue_job");
+      expect(args.p_owner_user_id).toBe(userId);
+      db.calendar_sync_jobs.push({
+        owner_user_id: args.p_owner_user_id,
+        task_id: args.p_task_id,
+        operation: args.p_operation,
+      });
+      return { data: null, error: null };
+    },
     from(table: string) {
       return new FakeQuery(db, table as TableName, userId);
     },
@@ -385,6 +395,9 @@ describe("task service owner isolation", () => {
     expect(db.tasks.find((task) => task.id === "task-a")?.archived_at).toBe(
       "2026-11-21T09:00:00.000Z",
     );
+    expect(db.calendar_sync_jobs).toEqual([
+      { owner_user_id: USER_A, task_id: "task-a", operation: "delete" },
+    ]);
   });
 
   it("keeps task mutation modules on the request-scoped server client", () => {

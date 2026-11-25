@@ -245,6 +245,9 @@ export const calendarIntegrationSettings = pgTable(
       .notNull()
       .default(10),
     calendarId: text("calendar_id").notNull().default("primary"),
+    googleAccountSubject: text("google_account_subject"),
+    reconnectRequiredAt: timestamp("reconnect_required_at", { withTimezone: true }),
+    reconnectRequiredReason: text("reconnect_required_reason"),
     accessTokenEncrypted: text("access_token_encrypted"),
     refreshTokenEncrypted: text("refresh_token_encrypted"),
     tokenExpiresAt: timestamp("token_expires_at", { withTimezone: true }),
@@ -316,6 +319,24 @@ export const calendarSyncJobs = pgTable(
     attempts: integer("attempts").notNull().default(0),
     lastError: text("last_error"),
     lockedAt: timestamp("locked_at", { withTimezone: true }),
+    queueVersion: integer("queue_version").notNull().default(1),
+    runId: uuid("run_id"),
+    destinationKey: text("destination_key").notNull().default(""),
+    googleAccountSubject: text("google_account_subject"),
+    googleAccountEmail: text("google_account_email"),
+    calendarId: text("calendar_id"),
+    generation: integer("generation").notNull().default(1),
+    eventExists: boolean("event_exists").notNull().default(false),
+    claimToken: uuid("claim_token"),
+    leaseExpiresAt: timestamp("lease_expires_at", { withTimezone: true }),
+    scheduledAt: timestamp("scheduled_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    payloadHash: text("payload_hash"),
+    outcome: varchar("outcome", { length: 24 }),
+    exclusionReason: text("exclusion_reason"),
+    permanentFailure: boolean("permanent_failure").notNull().default(false),
+    taskUpdatedAt: timestamp("task_updated_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
@@ -329,6 +350,21 @@ export const calendarSyncJobs = pgTable(
       .where(sql`${table.status} in ('pending', 'failed')`),
     index("calendar_sync_jobs_task_id_idx").on(table.taskId),
     index("calendar_sync_jobs_owner_user_id_idx").on(table.ownerUserId),
+    index("calendar_sync_jobs_run_idx")
+      .on(table.runId, table.status, table.scheduledAt)
+      .where(sql`${table.runId} is not null`),
+    index("calendar_sync_jobs_destination_ready_idx")
+      .on(table.destinationKey, table.scheduledAt, table.createdAt)
+      .where(sql`${table.queueVersion} = 2 and ${table.status} in ('pending', 'processing')`),
+    index("calendar_sync_jobs_failed_cooldown_idx")
+      .on(table.ownerUserId, table.taskId, table.destinationKey, table.scheduledAt)
+      .where(sql`${table.queueVersion} = 2 and ${table.status} = 'failed' and not ${table.permanentFailure}`),
+    uniqueIndex("calendar_sync_jobs_one_processing_unique")
+      .on(table.ownerUserId, table.taskId, table.destinationKey)
+      .where(sql`${table.status} = 'processing'`),
+    uniqueIndex("calendar_sync_jobs_one_pending_v2_unique")
+      .on(table.ownerUserId, table.taskId, table.destinationKey)
+      .where(sql`${table.status} = 'pending' and ${table.queueVersion} = 2`),
     check(
       "calendar_sync_jobs_operation_check",
       sql`${table.operation} in ('upsert', 'delete')`,
@@ -338,6 +374,127 @@ export const calendarSyncJobs = pgTable(
       sql`${table.status} in ('pending', 'processing', 'succeeded', 'failed')`,
     ),
     check("calendar_sync_jobs_attempts_check", sql`${table.attempts} >= 0`),
+  ],
+);
+
+export const calendarSyncRuns = pgTable(
+  "calendar_sync_runs",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    ownerUserId: uuid("owner_user_id").default(sql`auth.uid()`).notNull(),
+    destinationKey: text("destination_key").notNull(),
+    googleAccountSubject: text("google_account_subject"),
+    googleAccountEmail: text("google_account_email"),
+    calendarId: text("calendar_id").notNull(),
+    status: varchar("status", { length: 16 }).notNull().default("active"),
+    retryMode: boolean("retry_mode").notNull().default(false),
+    scanCursorCreatedAt: timestamp("scan_cursor_created_at", { withTimezone: true }),
+    scanCursorTaskId: uuid("scan_cursor_task_id"),
+    scanComplete: boolean("scan_complete").notNull().default(false),
+    scanClaimToken: uuid("scan_claim_token"),
+    scanLeaseExpiresAt: timestamp("scan_lease_expires_at", { withTimezone: true }),
+    nextRetryAt: timestamp("next_retry_at", { withTimezone: true }),
+    listingRevision: integer("listing_revision").notNull().default(0),
+    listingNextPageToken: text("listing_next_page_token"),
+    listingEvents: jsonb("listing_events"),
+    lastError: text("last_error"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+  },
+  (table) => [
+    index("calendar_sync_runs_owner_destination_idx").on(
+      table.ownerUserId,
+      table.destinationKey,
+      table.createdAt.desc(),
+    ),
+    index("calendar_sync_runs_active_idx")
+      .on(table.status, table.updatedAt)
+      .where(sql`${table.status} = 'active'`),
+    uniqueIndex("calendar_sync_runs_one_active_destination_unique")
+      .on(table.ownerUserId, table.destinationKey)
+      .where(sql`${table.status} = 'active'`),
+    check(
+      "calendar_sync_runs_status_check",
+      sql`${table.status} in ('active', 'paused', 'completed', 'failed')`,
+    ),
+  ],
+);
+
+export const calendarSyncRunItems = pgTable(
+  "calendar_sync_run_items",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    runId: uuid("run_id")
+      .notNull()
+      .references(() => calendarSyncRuns.id, { onDelete: "cascade" }),
+    ownerUserId: uuid("owner_user_id").notNull(),
+    taskId: uuid("task_id").notNull(),
+    outcome: varchar("outcome", { length: 24 }).notNull().default("pending"),
+    exclusionReason: text("exclusion_reason"),
+    eventId: text("event_id"),
+    payloadHash: text("payload_hash"),
+    errorMessage: text("error_message"),
+    jobId: uuid("job_id"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    uniqueIndex("calendar_sync_run_items_unique").on(table.runId, table.taskId),
+    index("calendar_sync_run_items_outcome_idx").on(table.runId, table.outcome),
+    check(
+      "calendar_sync_run_items_outcome_check",
+      sql`${table.outcome} in ('pending', 'created', 'updated', 'removed', 'unchanged', 'excluded', 'failed')`,
+    ),
+  ],
+);
+
+export const calendarEventMappings = pgTable(
+  "calendar_event_mappings",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    ownerUserId: uuid("owner_user_id").notNull(),
+    taskId: uuid("task_id").notNull(),
+    destinationKey: text("destination_key").notNull(),
+    googleAccountSubject: text("google_account_subject"),
+    googleAccountEmail: text("google_account_email"),
+    calendarId: text("calendar_id").notNull(),
+    eventId: text("event_id").notNull(),
+    generation: integer("generation").notNull().default(1),
+    status: varchar("status", { length: 16 }).notNull().default("active"),
+    metadataVerified: boolean("metadata_verified").notNull().default(false),
+    payloadHash: text("payload_hash"),
+    lastSyncedAt: timestamp("last_synced_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    uniqueIndex("calendar_event_mappings_destination_unique").on(
+      table.ownerUserId,
+      table.taskId,
+      table.destinationKey,
+    ),
+    index("calendar_event_mappings_destination_idx").on(
+      table.destinationKey,
+      table.status,
+    ),
+    check(
+      "calendar_event_mappings_status_check",
+      sql`${table.status} in ('active', 'removed')`,
+    ),
+    check("calendar_event_mappings_generation_check", sql`${table.generation} >= 1`),
   ],
 );
 

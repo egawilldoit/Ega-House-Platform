@@ -10,6 +10,7 @@ import { normalizeTaskRecurrenceRuleInput } from "@/lib/task-recurrence";
 import { normalizeTaskScheduleInput } from "@/lib/task-schedule";
 import { normalizeCalendarReminderMinutes } from "@/lib/services/calendar-settings-service";
 import { processPendingCalendarSyncJobs } from "@/lib/services/calendar-sync-service";
+import { runOwnerCalendarRecovery } from "@/lib/services/calendar-sync-engine";
 import {
   TASK_PRIORITY_VALUES,
   TASK_STATUS_VALUES,
@@ -160,6 +161,7 @@ function drainCalendarSyncQueueAfterResponse(shouldDrain: boolean) {
       await processPendingCalendarSyncJobs({
         limit: 5,
       });
+      await runOwnerCalendarRecovery();
     } catch {
       // Cron remains the reliable retry path if this opportunistic drain fails.
     }

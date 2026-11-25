@@ -208,9 +208,12 @@ export type Database = {
           default_reminder_minutes: number
           disconnected_at: string | null
           google_account_email: string | null
+          google_account_subject: string | null
           id: string
           owner_user_id: string
           provider: string
+          reconnect_required_at: string | null
+          reconnect_required_reason: string | null
           refresh_token_encrypted: string | null
           scheduled_task_sync_enabled: boolean
           token_expires_at: string | null
@@ -224,9 +227,12 @@ export type Database = {
           default_reminder_minutes?: number
           disconnected_at?: string | null
           google_account_email?: string | null
+          google_account_subject?: string | null
           id?: string
           owner_user_id?: string
           provider?: string
+          reconnect_required_at?: string | null
+          reconnect_required_reason?: string | null
           refresh_token_encrypted?: string | null
           scheduled_task_sync_enabled?: boolean
           token_expires_at?: string | null
@@ -240,9 +246,12 @@ export type Database = {
           default_reminder_minutes?: number
           disconnected_at?: string | null
           google_account_email?: string | null
+          google_account_subject?: string | null
           id?: string
           owner_user_id?: string
           provider?: string
+          reconnect_required_at?: string | null
+          reconnect_required_reason?: string | null
           refresh_token_encrypted?: string | null
           scheduled_task_sync_enabled?: boolean
           token_expires_at?: string | null
@@ -263,6 +272,22 @@ export type Database = {
           status: string
           task_id: string
           updated_at: string
+          queue_version: number
+          run_id: string | null
+          destination_key: string
+          google_account_subject: string | null
+          google_account_email: string | null
+          calendar_id: string | null
+          generation: number
+          event_exists: boolean
+          claim_token: string | null
+          lease_expires_at: string | null
+          scheduled_at: string
+          payload_hash: string | null
+          outcome: string | null
+          exclusion_reason: string | null
+          permanent_failure: boolean
+          task_updated_at: string | null
         }
         Insert: {
           attempts?: number
@@ -276,6 +301,22 @@ export type Database = {
           status?: string
           task_id: string
           updated_at?: string
+          queue_version?: number
+          run_id?: string | null
+          destination_key?: string
+          google_account_subject?: string | null
+          google_account_email?: string | null
+          calendar_id?: string | null
+          generation?: number
+          event_exists?: boolean
+          claim_token?: string | null
+          lease_expires_at?: string | null
+          scheduled_at?: string
+          payload_hash?: string | null
+          outcome?: string | null
+          exclusion_reason?: string | null
+          permanent_failure?: boolean
+          task_updated_at?: string | null
         }
         Update: {
           attempts?: number
@@ -288,6 +329,193 @@ export type Database = {
           owner_user_id?: string
           status?: string
           task_id?: string
+          updated_at?: string
+          queue_version?: number
+          run_id?: string | null
+          destination_key?: string
+          google_account_subject?: string | null
+          google_account_email?: string | null
+          calendar_id?: string | null
+          generation?: number
+          event_exists?: boolean
+          claim_token?: string | null
+          lease_expires_at?: string | null
+          scheduled_at?: string
+          payload_hash?: string | null
+          outcome?: string | null
+          exclusion_reason?: string | null
+          permanent_failure?: boolean
+          task_updated_at?: string | null
+        }
+        Relationships: []
+      }
+      calendar_sync_runs: {
+        Row: {
+          id: string
+          owner_user_id: string
+          destination_key: string
+          google_account_subject: string | null
+          google_account_email: string | null
+          calendar_id: string
+          status: string
+          retry_mode: boolean
+          scan_cursor_created_at: string | null
+          scan_cursor_task_id: string | null
+          scan_complete: boolean
+          scan_claim_token: string | null
+          scan_lease_expires_at: string | null
+          listing_revision: number
+          listing_next_page_token: string | null
+          listing_events: Json | null
+          next_retry_at: string | null
+          last_error: string | null
+          created_at: string
+          updated_at: string
+          completed_at: string | null
+        }
+        Insert: {
+          id?: string
+          owner_user_id?: string
+          destination_key: string
+          google_account_subject?: string | null
+          google_account_email?: string | null
+          calendar_id: string
+          status?: string
+          retry_mode?: boolean
+          scan_cursor_created_at?: string | null
+          scan_cursor_task_id?: string | null
+          scan_complete?: boolean
+          scan_claim_token?: string | null
+          scan_lease_expires_at?: string | null
+          listing_revision?: number
+          listing_next_page_token?: string | null
+          listing_events?: Json | null
+          next_retry_at?: string | null
+          last_error?: string | null
+          created_at?: string
+          updated_at?: string
+          completed_at?: string | null
+        }
+        Update: {
+          id?: string
+          owner_user_id?: string
+          destination_key?: string
+          google_account_subject?: string | null
+          google_account_email?: string | null
+          calendar_id?: string
+          status?: string
+          retry_mode?: boolean
+          scan_cursor_created_at?: string | null
+          scan_cursor_task_id?: string | null
+          scan_complete?: boolean
+          scan_claim_token?: string | null
+          scan_lease_expires_at?: string | null
+          listing_revision?: number
+          listing_next_page_token?: string | null
+          listing_events?: Json | null
+          next_retry_at?: string | null
+          last_error?: string | null
+          created_at?: string
+          updated_at?: string
+          completed_at?: string | null
+        }
+        Relationships: []
+      }
+      calendar_sync_run_items: {
+        Row: {
+          id: string
+          run_id: string
+          owner_user_id: string
+          task_id: string
+          outcome: string
+          exclusion_reason: string | null
+          event_id: string | null
+          payload_hash: string | null
+          error_message: string | null
+          job_id: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          run_id: string
+          owner_user_id: string
+          task_id: string
+          outcome?: string
+          exclusion_reason?: string | null
+          event_id?: string | null
+          payload_hash?: string | null
+          error_message?: string | null
+          job_id?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          run_id?: string
+          owner_user_id?: string
+          task_id?: string
+          outcome?: string
+          exclusion_reason?: string | null
+          event_id?: string | null
+          payload_hash?: string | null
+          error_message?: string | null
+          job_id?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      calendar_event_mappings: {
+        Row: {
+          id: string
+          owner_user_id: string
+          task_id: string
+          destination_key: string
+          google_account_subject: string | null
+          google_account_email: string | null
+          calendar_id: string
+          event_id: string
+          generation: number
+          status: string
+          metadata_verified: boolean
+          payload_hash: string | null
+          last_synced_at: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          owner_user_id: string
+          task_id: string
+          destination_key: string
+          google_account_subject?: string | null
+          google_account_email?: string | null
+          calendar_id: string
+          event_id: string
+          generation?: number
+          status?: string
+          metadata_verified?: boolean
+          payload_hash?: string | null
+          last_synced_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          owner_user_id?: string
+          task_id?: string
+          destination_key?: string
+          google_account_subject?: string | null
+          google_account_email?: string | null
+          calendar_id?: string
+          event_id?: string
+          generation?: number
+          status?: string
+          metadata_verified?: boolean
+          payload_hash?: string | null
+          last_synced_at?: string | null
+          created_at?: string
           updated_at?: string
         }
         Relationships: []
@@ -1321,6 +1549,100 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      calendar_sync_advance_generation: {
+        Args: {
+          p_job_id: string
+          p_claim_token: string
+          p_generation: number
+          p_event_id: string
+          p_payload_hash: string | null
+          p_now: string
+        }
+        Returns: boolean
+      }
+      calendar_sync_claim_is_current: {
+        Args: { p_job_id: string; p_claim_token: string }
+        Returns: boolean
+      }
+      calendar_sync_complete_run_if_drained: {
+        Args: { p_run_id: string; p_now: string }
+        Returns: Database["public"]["Tables"]["calendar_sync_runs"]["Row"][]
+      }
+      calendar_sync_fail_claim: {
+        Args: {
+          p_job_id: string
+          p_claim_token: string
+          p_outcome: string
+          p_exclusion_reason: string | null
+          p_cooldown_at?: string
+          p_last_error: string
+          p_permanent: boolean
+          p_now: string
+        }
+        Returns: boolean
+      }
+      calendar_sync_list_actionable_runs: {
+        Args: { p_limit: number }
+        Returns: Database["public"]["Tables"]["calendar_sync_runs"]["Row"][]
+      }
+      calendar_sync_claim_run_scan: {
+        Args: { p_run_id: string; p_claim_token: string; p_now: string; p_lease_seconds: number }
+        Returns: Database["public"]["Tables"]["calendar_sync_runs"]["Row"][]
+      }
+      calendar_sync_commit_scan_page: {
+        Args: {
+          p_run_id: string
+          p_claim_token: string
+          p_next_cursor_created_at: string | null
+          p_next_cursor_task_id: string | null
+          p_scan_complete: boolean
+          p_items: Json
+          p_jobs: Json
+          p_now: string
+          p_expected_cursor_created_at?: string | null
+          p_expected_cursor_task_id?: string | null
+          p_retry_at?: string | null
+        }
+        Returns: boolean
+      }
+      calendar_sync_resume_run_for_retry: {
+        Args: { p_run_id: string; p_destination_key: string; p_retry_mode: boolean; p_now: string }
+        Returns: Database["public"]["Tables"]["calendar_sync_runs"]["Row"][]
+      }
+      calendar_sync_enqueue_job: {
+        Args: {
+          p_owner_user_id: string
+          p_task_id: string
+          p_calendar_event_id: string
+          p_operation: string
+          p_destination_key: string
+          p_google_account_subject: string | null
+          p_google_account_email: string | null
+          p_calendar_id: string
+          p_generation: number
+          p_event_exists: boolean
+          p_now: string
+        }
+        Returns: undefined
+      }
+      calendar_sync_list_ready_destinations: {
+        Args: { p_owner: string | null; p_limit: number }
+        Returns: {
+          owner_user_id: string
+          destination_key: string
+          google_account_subject: string | null
+          google_account_email: string | null
+          calendar_id: string
+        }[]
+      }
+      calendar_sync_complete_legacy_job: {
+        Args: { p_job_id: string; p_claim_token: string; p_status: string; p_task_status: string; p_event_id: string | null; p_failure_reason: string | null; p_update_task: boolean; p_now: string }
+        Returns: boolean
+      }
+      calendar_sync_promote_legacy_job: {
+        Args: { p_job_id: string; p_claim_token: string; p_now: string }
+        Returns: boolean
+      }
       create_project_from_template: {
         Args: {
           p_operation_id: string
@@ -1337,6 +1659,63 @@ export type Database = {
       promote_task_subtask: {
         Args: { p_subtask_id: string; p_new_task_id: string }
         Returns: boolean
+      }
+      calendar_sync_save_listing_checkpoint: {
+        Args: {
+          p_run_id: string
+          p_expected_revision: number
+          p_next_page_token: string | null
+          p_events: Json
+        }
+        Returns: boolean
+      }
+      calendar_sync_fail_unclaimed_listing: {
+        Args: {
+          p_run_id: string
+          p_expected_cursor_created_at: string | null
+          p_expected_cursor_task_id: string | null
+          p_pause: boolean
+          p_retry_at: string | null
+          p_error: string
+          p_now: string
+          p_expected_listing_revision?: number
+        }
+        Returns: boolean
+      }
+      calendar_sync_pause_for_authorization: {
+        Args: {
+          p_owner_user_id: string
+          p_expected_updated_at: string
+          p_expected_connected_at: string | null
+          p_expected_access_token_encrypted: string | null
+          p_expected_refresh_token_encrypted: string | null
+          p_run_id: string | null
+          p_fence_listing: boolean
+          p_expected_cursor_created_at: string | null
+          p_expected_cursor_task_id: string | null
+          p_error: string
+          p_now: string
+          p_expected_listing_revision?: number
+        }
+        Returns: {
+          credentials_marked: boolean
+          run_paused: boolean
+        }[]
+      }
+      calendar_sync_upsert_mapping: {
+        Args: {
+          p_owner_user_id: string
+          p_task_id: string
+          p_destination_key: string
+          p_google_account_subject: string | null
+          p_google_account_email: string | null
+          p_calendar_id: string | null
+          p_event_id: string
+          p_generation: number
+          p_payload_hash: string | null
+          p_now: string
+        }
+        Returns: Database["public"]["Tables"]["calendar_event_mappings"]["Row"][]
       }
       create_task_comment: {
         Args: {

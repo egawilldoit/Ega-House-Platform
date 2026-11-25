@@ -284,6 +284,37 @@ test("Google Calendar callback token persistence updates existing settings row w
   );
 });
 
+test("Google Calendar reconnect without a verified identity does not retain the previous account", async () => {
+  const mock = createCalendarSupabaseMock({
+    userId: "owner-existing",
+    row: {
+      owner_user_id: "owner-existing",
+      provider: "google",
+      google_account_email: "old@example.com",
+      scheduled_task_sync_enabled: true,
+      default_reminder_minutes: 45,
+      connected_at: "2026-05-01T10:00:00.000Z",
+      disconnected_at: null,
+    },
+  });
+
+  const result = await connectGoogleCalendarWithTokens(
+    {
+      accessToken: "new-access-token",
+      refreshToken: "new-refresh-token",
+      expiresInSeconds: 1800,
+    },
+    {
+      supabase: mock.supabase as never,
+      updatedAtIso: "2026-05-10T10:00:00.000Z",
+    },
+  );
+
+  assert.equal(result.errorMessage, null);
+  assert.equal(mock.upsertPayloads[0]?.google_account_email, null);
+  assert.equal(mock.upsertPayloads[0]?.google_account_subject, null);
+});
+
 test("Google Calendar callback token persistence maps database write failure for settings_write_failed", async () => {
   const mock = createCalendarSupabaseMock({
     userId: "owner-failure",

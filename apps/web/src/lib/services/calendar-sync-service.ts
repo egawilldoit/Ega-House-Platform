@@ -1,5 +1,12 @@
+import { randomUUID } from "node:crypto";
 import { createClient } from "@/lib/supabase/server";
 import { getCalendarIntegrationSecretSnapshotForOwner } from "@/lib/services/calendar-settings-service";
+import {
+  deterministicCalendarEventId,
+  isVerifiedCalendarDestination,
+  normalizeCalendarDestination,
+  sameVerifiedCalendarDestination,
+} from "@ega/application/calendar-sync/rules";
 import {
   googleCalendarClient,
   syncGoogleCalendarEventForTask,
@@ -22,6 +29,13 @@ type CalendarSyncJobRow = {
   calendar_event_id: string | null;
   operation: CalendarSyncOperation;
   attempts: number;
+  destination_key?: string | null;
+  google_account_subject?: string | null;
+  google_account_email?: string | null;
+  calendar_id?: string | null;
+  event_exists?: boolean | null;
+  generation?: number | null;
+  claim_token?: string | null;
 };
 
 type CalendarSyncTaskRow = {
@@ -38,6 +52,79 @@ type CalendarSyncTaskRow = {
 
 const MAX_CALENDAR_SYNC_ATTEMPTS = 5;
 const DEFAULT_CALENDAR_SYNC_BATCH_SIZE = 10;
+
+const CALENDAR_DESTINATION_UNVERIFIED_MESSAGE =
+  "Calendar sync paused because the queued Google account or calendar could not be verified against the connected destination. Reconnect the original Google account or re-enqueue this task; no Google Calendar event was changed.";
+
+type CalendarSyncCredentials = Readonly<{
+  google_account_subject: string | null;
+  google_account_email: string | null;
+  calendar_id: string | null;
+  connected_at: string | null;
+  disconnected_at: string | null;
+}>;
+
+function normalizeJobDestination(job: CalendarSyncJobRow) {
+  return normalizeCalendarDestination({
+    accountSubject: job.google_account_subject ?? null,
+    accountEmail: job.google_account_email ?? null,
+    calendarId: job.calendar_id ?? null,
+  });
+}
+
+/**
+ * Scheduled-sync (queue version 1) jobs are written with the destination that
+ * was current when they were queued. Before any Google call, prove that the
+ * credentials still belong to that same account and calendar. Otherwise the
+ * job is paused with an actionable failure instead of being redirected through
+ * a newly connected account.
+ */
+function legacyJobDestinationFailure(
+  job: CalendarSyncJobRow,
+  credentials: CalendarSyncCredentials,
+) {
+  const stamped = normalizeJobDestination(job);
+  const stampedKey = job.destination_key?.trim() ?? "";
+
+  if (!stampedKey || stamped.destinationKey !== stampedKey) {
+    return CALENDAR_DESTINATION_UNVERIFIED_MESSAGE;
+  }
+  if (!isVerifiedCalendarDestination(stamped)) {
+    return CALENDAR_DESTINATION_UNVERIFIED_MESSAGE;
+  }
+  if (!credentials.connected_at || credentials.disconnected_at) {
+    return "Google Calendar is not connected. No Google Calendar event was changed.";
+  }
+
+  const current = normalizeCalendarDestination({
+    accountSubject: credentials.google_account_subject,
+    accountEmail: credentials.google_account_email,
+    calendarId: credentials.calendar_id,
+  });
+  if (
+    !isVerifiedCalendarDestination(current) ||
+    !sameVerifiedCalendarDestination(stamped, current)
+  ) {
+    return CALENDAR_DESTINATION_UNVERIFIED_MESSAGE;
+  }
+
+  return null;
+}
+
+/**
+ * A queued event id is usable only when the enqueue proved it was already
+ * bound to this task and destination (`event_exists`). An id copied from
+ * `tasks.calendar_event_id` on a new connection has no such proof: Google
+ * events created by the legacy worker carry no scope metadata, and a switch
+ * with no mapping history cannot tell where the old id really lives. Jobs
+ * without scoped provenance create a fresh event in the stamped destination
+ * instead of patching or deleting the previous account's event.
+ */
+function scopedJobEventId(job: CalendarSyncJobRow) {
+  return job.event_exists === true && job.calendar_event_id
+    ? job.calendar_event_id
+    : null;
+}
 
 async function resolveSupabaseClient(supabase?: SupabaseServerClient) {
   if (supabase) {
@@ -79,11 +166,10 @@ export async function enqueueCalendarSyncJob(
   }
 
   let ownerUserId = input.ownerUserId ?? null;
-  let calendarEventId = input.calendarEventId ?? null;
-  if (!ownerUserId || calendarEventId === null) {
+  if (!ownerUserId) {
     const taskResult = await supabase
       .from("tasks")
-      .select("owner_user_id, calendar_event_id")
+      .select("owner_user_id")
       .eq("id", taskId)
       .maybeSingle();
 
@@ -91,14 +177,91 @@ export async function enqueueCalendarSyncJob(
       return { errorMessage: "Unable to load task owner for Calendar sync." };
     }
 
-    ownerUserId ??= taskResult.data?.owner_user_id ?? null;
-    calendarEventId ??= taskResult.data?.calendar_event_id ?? null;
+    ownerUserId = taskResult.data?.owner_user_id ?? null;
   }
+  // input.calendarEventId and tasks.calendar_event_id are deliberately not
+  // adopted here. They predate destination binding and carry no account or
+  // calendar scope; only a durable mapping can prove where an event lives.
 
   ownerUserId ??= await getAuthenticatedUserId(supabase);
   if (!ownerUserId) {
     return { errorMessage: "Unable to resolve Calendar sync owner." };
   }
+
+  let settings: {
+    google_account_subject?: string | null;
+    google_account_email?: string | null;
+    calendar_id?: string | null;
+  } = {};
+  try {
+    const settingsResult = await supabase
+      .from("calendar_integration_settings")
+      .select("google_account_subject, google_account_email, calendar_id")
+      .eq("owner_user_id", ownerUserId)
+      .eq("provider", "google")
+      .maybeSingle();
+    settings = (settingsResult.data ?? {}) as typeof settings;
+  } catch {
+    // Older deployments and narrow test doubles may not expose Calendar
+    // settings; the legacy scheduled-sync queue still accepts the job.
+    settings = {};
+  }
+  const { destinationKey } = normalizeCalendarDestination({
+    accountSubject: settings.google_account_subject,
+    accountEmail: settings.google_account_email,
+    calendarId: settings.calendar_id,
+  });
+
+  type CalendarMappingRow = {
+    event_id: string | null;
+    generation: number | null;
+    status: string | null;
+  };
+  let latestMapping: CalendarMappingRow | null = null;
+  try {
+    const mappingResult = await supabase
+      .from("calendar_event_mappings")
+      .select("event_id, generation, status")
+      .eq("owner_user_id", ownerUserId)
+      .eq("task_id", taskId)
+      .eq("destination_key", destinationKey)
+      .order("generation", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const candidate = (mappingResult.data ?? null) as CalendarMappingRow | null;
+    latestMapping =
+      candidate &&
+      typeof candidate.event_id === "string" &&
+      candidate.event_id.length > 0 &&
+      (candidate.status === "active" || candidate.status === "removed")
+        ? candidate
+        : null;
+  } catch {
+    latestMapping = null;
+  }
+
+  const mappingGeneration = Number(latestMapping?.generation ?? 0);
+  const generation =
+    latestMapping?.status === "active"
+      ? Math.max(1, mappingGeneration)
+      : Math.max(1, mappingGeneration + 1);
+  // Positive scoped provenance comes only from an active mapping for this
+  // exact task and destination. Without one, the deterministic id is a fresh
+  // target in the current destination and must be created, never patched or
+  // deleted through an id left behind by a previous account or calendar.
+  const scopedEventId =
+    latestMapping?.status === "active" && latestMapping.event_id
+      ? latestMapping.event_id
+      : null;
+  const eventId =
+    scopedEventId ??
+    deterministicCalendarEventId({
+      ownerUserId,
+      taskId,
+      destinationKey,
+      generation,
+    });
+  const eventExists = Boolean(scopedEventId);
 
   const { error: taskUpdateError } = await supabase
     .from("tasks")
@@ -114,27 +277,27 @@ export async function enqueueCalendarSyncJob(
     return { errorMessage: "Unable to mark task Calendar sync pending." };
   }
 
-  const { error } = await supabase.from("calendar_sync_jobs").insert({
-    owner_user_id: ownerUserId,
-    task_id: taskId,
-    calendar_event_id: calendarEventId,
-    operation,
-    status: "pending",
-    attempts: 0,
-    updated_at: nowIso,
+  const { error } = await supabase.rpc("calendar_sync_enqueue_job", {
+    p_owner_user_id: ownerUserId,
+    p_task_id: taskId,
+    p_calendar_event_id: eventId,
+    p_operation: operation,
+    p_destination_key: destinationKey,
+    p_google_account_subject: settings.google_account_subject ?? null,
+    p_google_account_email: settings.google_account_email ?? null,
+    p_calendar_id: settings.calendar_id?.trim() || "primary",
+    p_generation: generation,
+    p_event_exists: eventExists,
+    p_now: nowIso,
   });
-
-  if (error) {
-    return { errorMessage: "Unable to enqueue Calendar sync job." };
-  }
-
-  return { errorMessage: null };
+  return { errorMessage: error ? "Unable to enqueue Calendar sync job." : null };
 }
 
 async function persistRefreshedAccessToken(
   supabase: SupabaseServerClient,
   input: {
     ownerUserId: string;
+    expectedUpdatedAt: string;
     refreshedAccessToken?: string;
     tokenExpiresAt?: string | null;
     nowIso: string;
@@ -152,7 +315,10 @@ async function persistRefreshedAccessToken(
       updated_at: input.nowIso,
     })
     .eq("owner_user_id", input.ownerUserId)
-    .eq("provider", "google");
+    .eq("provider", "google")
+    .eq("updated_at", input.expectedUpdatedAt)
+    .select("id")
+    .maybeSingle();
 
   return error;
 }
@@ -161,9 +327,43 @@ async function claimPendingCalendarSyncJobs(
   supabase: SupabaseServerClient,
   input: { limit: number; nowIso: string },
 ) {
+  // Reclaim v1 processing rows only after a drain window, so an in-flight row
+  // owned by a pre-cutover worker is not stolen mid-flight.
+  const drainCutoff = new Date(
+    new Date(input.nowIso).getTime() - 5 * 60_000,
+  ).toISOString();
+
+  await supabase
+    .from("calendar_sync_jobs")
+    .update({
+      status: "pending",
+      claim_token: null,
+      lease_expires_at: null,
+      updated_at: input.nowIso,
+    } as never)
+    .eq("queue_version", 1)
+    .eq("status", "processing")
+    .is("lease_expires_at", null)
+    .lte("updated_at", drainCutoff);
+
+  await supabase
+    .from("calendar_sync_jobs")
+    .update({
+      status: "pending",
+      claim_token: null,
+      lease_expires_at: null,
+      updated_at: input.nowIso,
+    } as never)
+    .eq("queue_version", 1)
+    .eq("status", "processing")
+    .lte("lease_expires_at", input.nowIso);
+
   const { data: candidates, error: loadError } = await supabase
     .from("calendar_sync_jobs")
-    .select("id, owner_user_id, task_id, calendar_event_id, operation, attempts")
+    .select(
+      "id, owner_user_id, task_id, calendar_event_id, operation, attempts, queue_version, destination_key, google_account_subject, google_account_email, calendar_id, event_exists, generation",
+    )
+    .eq("queue_version", 1)
     .in("status", ["pending", "failed"])
     .lt("attempts", MAX_CALENDAR_SYNC_ATTEMPTS)
     .order("created_at", { ascending: true })
@@ -174,17 +374,27 @@ async function claimPendingCalendarSyncJobs(
   }
 
   const jobs: CalendarSyncJobRow[] = [];
-  for (const candidate of (candidates ?? []) as CalendarSyncJobRow[]) {
+  for (const candidate of (candidates ?? []) as Array<
+    CalendarSyncJobRow & { queue_version?: number | null }
+  >) {
+    // Queue version 2 is owned by the durable manual-sync engine.
+    if (candidate.queue_version === 2) continue;
     const { data: claimed, error } = await supabase
       .from("calendar_sync_jobs")
       .update({
         status: "processing",
+        claim_token: randomUUID(),
         locked_at: input.nowIso,
+        lease_expires_at: new Date(
+          new Date(input.nowIso).getTime() + 5 * 60_000,
+        ).toISOString(),
         updated_at: input.nowIso,
       })
       .eq("id", candidate.id)
       .in("status", ["pending", "failed"])
-      .select("id, owner_user_id, task_id, calendar_event_id, operation, attempts")
+      .select(
+        "id, owner_user_id, task_id, calendar_event_id, operation, attempts, destination_key, google_account_subject, google_account_email, calendar_id, event_exists, generation, claim_token",
+      )
       .maybeSingle();
 
     if (!error && claimed) {
@@ -227,37 +437,18 @@ async function completeCalendarSyncJob(
     nowIso: string;
   },
 ) {
-  const attempts = input.job.attempts + 1;
-  const finalJobStatus =
-    input.status === "failed" && attempts < MAX_CALENDAR_SYNC_ATTEMPTS
-      ? "failed"
-      : input.status;
-
-  await supabase
-    .from("calendar_sync_jobs")
-    .update({
-      status: finalJobStatus,
-      attempts,
-      last_error: input.failureReason,
-      locked_at: null,
-      updated_at: input.nowIso,
-    })
-    .eq("id", input.job.id);
-
-  if (!input.task) {
-    return;
-  }
-
-  await supabase
-    .from("tasks")
-    .update({
-      calendar_sync_status: input.taskStatus,
-      calendar_event_id: input.eventId,
-      calendar_sync_failure_reason: input.failureReason,
-      updated_at: input.nowIso,
-    })
-    .eq("id", input.task.id)
-    .eq("owner_user_id", input.job.owner_user_id);
+  if (!input.job.claim_token) return false;
+  const result = await supabase.rpc("calendar_sync_complete_legacy_job", {
+    p_job_id: input.job.id,
+    p_claim_token: input.job.claim_token,
+    p_status: input.status,
+    p_task_status: input.taskStatus,
+    p_event_id: input.eventId,
+    p_failure_reason: input.failureReason,
+    p_update_task: Boolean(input.task),
+    p_now: input.nowIso,
+  });
+  return !result.error && result.data === true;
 }
 
 export async function processPendingCalendarSyncJobs(options?: {
@@ -282,6 +473,23 @@ export async function processPendingCalendarSyncJobs(options?: {
   const client = options?.client ?? googleCalendarClient;
 
   for (const job of claimResult.jobs) {
+    const destination = normalizeJobDestination(job);
+    const plannedId = deterministicCalendarEventId({
+      ownerUserId: job.owner_user_id,
+      taskId: job.task_id,
+      destinationKey: destination.destinationKey,
+      generation: job.generation ?? 1,
+    });
+    if (isVerifiedCalendarDestination(destination) &&
+        job.destination_key === destination.destinationKey && job.claim_token &&
+        job.operation === "upsert" && !job.event_exists && job.calendar_event_id === plannedId) {
+      const promoted = await supabase.rpc("calendar_sync_promote_legacy_job", {
+        p_job_id: job.id, p_claim_token: job.claim_token, p_now: nowIso,
+      });
+      if (promoted.error || !promoted.data) failed += 1;
+      continue;
+    }
+    const scopedEventId = scopedJobEventId(job);
     const taskResult = await loadCalendarSyncTask(supabase, job);
     if (taskResult.errorMessage) {
       failed += 1;
@@ -296,26 +504,88 @@ export async function processPendingCalendarSyncJobs(options?: {
       });
       continue;
     }
+    const task = taskResult.data;
 
-    if (!taskResult.data && job.operation === "delete" && job.calendar_event_id) {
-      const settingsResult = await getCalendarIntegrationSecretSnapshotForOwner(
-        job.owner_user_id,
-        { supabase },
-      );
-      if (settingsResult.errorMessage) {
-        failed += 1;
-        await completeCalendarSyncJob(supabase, {
-          job,
-          task: null,
-          status: "failed",
-          taskStatus: "failed",
-          eventId: job.calendar_event_id,
-          failureReason: settingsResult.errorMessage,
-          nowIso,
-        });
-        continue;
-      }
+    const needsCalendarWrite = Boolean(
+      task || (job.operation === "delete" && scopedEventId),
+    );
+    if (!needsCalendarWrite) {
+      const settled = await completeCalendarSyncJob(supabase, {
+        job,
+        task: null,
+        status: "succeeded",
+        taskStatus: "skipped",
+        eventId: null,
+        failureReason: null,
+        nowIso,
+      });
+      if (settled) processed += 1; else failed += 1;
+      continue;
+    }
 
+    const settingsResult = await getCalendarIntegrationSecretSnapshotForOwner(
+      job.owner_user_id,
+      { supabase },
+    );
+    if (settingsResult.errorMessage) {
+      failed += 1;
+      await completeCalendarSyncJob(supabase, {
+        job,
+        task,
+        status: "failed",
+        taskStatus: "failed",
+        eventId: task?.calendar_event_id ?? null,
+        failureReason: settingsResult.errorMessage,
+        nowIso,
+      });
+      continue;
+    }
+    if (!settingsResult.data) {
+      failed += 1;
+      await completeCalendarSyncJob(supabase, {
+        job,
+        task,
+        status: "failed",
+        taskStatus: "failed",
+        eventId: task?.calendar_event_id ?? null,
+        failureReason:
+          "Google Calendar is not connected. No Google Calendar event was changed.",
+        nowIso,
+      });
+      continue;
+    }
+
+    const destinationFailure = legacyJobDestinationFailure(
+      job,
+      settingsResult.data,
+    );
+    if (destinationFailure) {
+      failed += 1;
+      await completeCalendarSyncJob(supabase, {
+        job,
+        task,
+        status: "failed",
+        taskStatus: "failed",
+        eventId: task?.calendar_event_id ?? null,
+        failureReason: destinationFailure,
+        nowIso,
+      });
+      continue;
+    }
+
+    const settings = settingsResult.data;
+    if (job.operation === "upsert" && !job.event_exists) {
+      failed += 1;
+      await completeCalendarSyncJob(supabase, {
+        job, task, status: "failed", taskStatus: "failed",
+        eventId: task?.calendar_event_id ?? null,
+        failureReason: "Calendar sync cannot safely identify this legacy event. Re-enqueue the task.",
+        nowIso,
+      });
+      continue;
+    }
+
+    if (!task) {
       const syncResult = await syncGoogleCalendarEventForTask(
         {
           taskId: job.task_id,
@@ -324,10 +594,10 @@ export async function processPendingCalendarSyncJobs(options?: {
           scheduledEndAt: null,
           calendarSyncEnabled: false,
           calendarReminderMinutes: 0,
-          calendarEventId: job.calendar_event_id,
+          calendarEventId: scopedEventId,
           archivedAt: nowIso,
         },
-        settingsResult.data,
+        settings,
         { client },
       );
 
@@ -345,17 +615,17 @@ export async function processPendingCalendarSyncJobs(options?: {
         continue;
       }
 
-      processed += 1;
       if ("refreshedAccessToken" in syncResult) {
         await persistRefreshedAccessToken(supabase, {
           ownerUserId: job.owner_user_id,
+          expectedUpdatedAt: settings.updated_at,
           refreshedAccessToken: syncResult.refreshedAccessToken,
           tokenExpiresAt: syncResult.tokenExpiresAt,
           nowIso,
         });
       }
 
-      await completeCalendarSyncJob(supabase, {
+      const settled = await completeCalendarSyncJob(supabase, {
         job,
         task: null,
         status: "succeeded",
@@ -364,60 +634,30 @@ export async function processPendingCalendarSyncJobs(options?: {
         failureReason: null,
         nowIso,
       });
-      continue;
-    }
-
-    if (!taskResult.data) {
-      processed += 1;
-      await completeCalendarSyncJob(supabase, {
-        job,
-        task: null,
-        status: "succeeded",
-        taskStatus: "skipped",
-        eventId: null,
-        failureReason: null,
-        nowIso,
-      });
-      continue;
-    }
-
-    const settingsResult = await getCalendarIntegrationSecretSnapshotForOwner(
-      job.owner_user_id,
-      { supabase },
-    );
-    if (settingsResult.errorMessage) {
-      failed += 1;
-      await completeCalendarSyncJob(supabase, {
-        job,
-        task: taskResult.data,
-        status: "failed",
-        taskStatus: "failed",
-        eventId: taskResult.data.calendar_event_id,
-        failureReason: settingsResult.errorMessage,
-        nowIso,
-      });
+      if (settled) processed += 1; else failed += 1;
       continue;
     }
 
     const syncResult = await syncGoogleCalendarEventForTask(
       {
-        taskId: taskResult.data.id,
-        title: taskResult.data.title,
-        scheduledStartAt: taskResult.data.scheduled_start_at,
-        scheduledEndAt: taskResult.data.scheduled_end_at,
+        taskId: task.id,
+        title: task.title,
+        scheduledStartAt: task.scheduled_start_at,
+        scheduledEndAt: task.scheduled_end_at,
         calendarSyncEnabled:
-          job.operation === "delete" ? false : taskResult.data.calendar_sync_enabled,
-        calendarReminderMinutes: taskResult.data.calendar_reminder_minutes,
-        calendarEventId: taskResult.data.calendar_event_id,
-        archivedAt: taskResult.data.archived_at,
+          job.operation === "delete" ? false : task.calendar_sync_enabled,
+        calendarReminderMinutes: task.calendar_reminder_minutes,
+        calendarEventId: scopedEventId,
+        archivedAt: task.archived_at,
       },
-      settingsResult.data,
+      settings,
       { client },
     );
 
     if ("refreshedAccessToken" in syncResult) {
       await persistRefreshedAccessToken(supabase, {
         ownerUserId: job.owner_user_id,
+        expectedUpdatedAt: settings.updated_at,
         refreshedAccessToken: syncResult.refreshedAccessToken,
         tokenExpiresAt: syncResult.tokenExpiresAt,
         nowIso,
@@ -428,26 +668,26 @@ export async function processPendingCalendarSyncJobs(options?: {
       failed += 1;
       await completeCalendarSyncJob(supabase, {
         job,
-        task: taskResult.data,
+        task,
         status: "failed",
         taskStatus: "failed",
-        eventId: taskResult.data.calendar_event_id,
+        eventId: task.calendar_event_id,
         failureReason: syncResult.failureReason,
         nowIso,
       });
       continue;
     }
 
-    processed += 1;
-    await completeCalendarSyncJob(supabase, {
+    const settled = await completeCalendarSyncJob(supabase, {
       job,
-      task: taskResult.data,
+      task,
       status: "succeeded",
       taskStatus: syncResult.status,
       eventId: syncResult.eventId,
       failureReason: syncResult.failureReason,
       nowIso,
     });
+    if (settled) processed += 1; else failed += 1;
   }
 
   return { ok: true, processed, failed };
