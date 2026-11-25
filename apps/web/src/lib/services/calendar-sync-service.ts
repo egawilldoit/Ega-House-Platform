@@ -339,7 +339,19 @@ async function claimPendingCalendarSyncJobs(
     } as never)
     .eq("queue_version", 1)
     .eq("status", "processing")
-    .or(`lease_expires_at.is.null,lease_expires_at.lte.${input.nowIso}`);
+    .is("lease_expires_at", null);
+
+  await supabase
+    .from("calendar_sync_jobs")
+    .update({
+      status: "pending",
+      claim_token: null,
+      lease_expires_at: null,
+      updated_at: input.nowIso,
+    } as never)
+    .eq("queue_version", 1)
+    .eq("status", "processing")
+    .lte("lease_expires_at", input.nowIso);
 
   const { data: candidates, error: loadError } = await supabase
     .from("calendar_sync_jobs")

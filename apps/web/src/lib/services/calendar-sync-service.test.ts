@@ -80,6 +80,12 @@ function createCalendarSyncSupabaseMock(options?: { settingsLoadError?: boolean 
       lt() {
         return query;
       },
+      lte() {
+        return query;
+      },
+      is() {
+        return query;
+      },
       order() {
         return query;
       },
