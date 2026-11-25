@@ -120,4 +120,44 @@ describe("QuickTaskSheetPanel lean capture", () => {
     expect(container.querySelector('[role="tablist"]')).toBeNull();
     expect(container.textContent).not.toContain("Create tasks");
   });
+
+  it("lets users schedule a time block with duration presets and sync to Google Calendar in one step", async () => {
+    await renderPanel("Deep work block");
+
+    const todayBtn = container.querySelector<HTMLButtonElement>(
+      '[data-testid="quick-schedule-today"]',
+    );
+    expect(todayBtn).not.toBeNull();
+
+    await act(async () => {
+      todayBtn!.click();
+    });
+
+    const startInput = field("quick-task-scheduled-start") as HTMLInputElement;
+    const endInput = field("quick-task-scheduled-end") as HTMLInputElement;
+    const syncCheckbox = field("quick-task-calendar-sync") as HTMLInputElement;
+
+    expect(startInput.value).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/);
+    expect(endInput.value).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/);
+    expect(syncCheckbox.checked).toBe(true);
+
+    const twoHoursBtn = container.querySelector<HTMLButtonElement>(
+      '[data-testid="quick-duration-120"]',
+    );
+    await act(async () => {
+      twoHoursBtn!.click();
+    });
+
+    expect(twoHoursBtn?.getAttribute("aria-pressed")).toBe("true");
+    expect(endInput.value).not.toBe(startInput.value);
+
+    const clearBtn = container.querySelector<HTMLButtonElement>(
+      '[data-testid="quick-schedule-clear"]',
+    );
+    await act(async () => {
+      clearBtn!.click();
+    });
+
+    expect(container.querySelector("#quick-task-scheduled-start")).toBeNull();
+  });
 });

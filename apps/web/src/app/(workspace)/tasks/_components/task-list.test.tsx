@@ -278,4 +278,38 @@ describe("TaskList", () => {
 
     expect(document.activeElement).toBe(rows[1]);
   });
+
+  it("shows the schedule time block and honest calendar opt-in label on scheduled rows without falsely claiming synced delivery", async () => {
+    await render([
+      buildTask({
+        id: "task-scheduled",
+        due_date: null,
+        scheduled_start_at: "2026-11-25T17:30:00.000Z",
+        scheduled_end_at: "2026-11-25T19:30:00.000Z",
+        calendar_sync_enabled: true,
+      }),
+      buildTask({
+        id: "task-unopted",
+        due_date: null,
+        scheduled_start_at: "2026-11-25T20:00:00.000Z",
+        scheduled_end_at: "2026-11-25T21:00:00.000Z",
+        calendar_sync_enabled: false,
+      }),
+    ]);
+
+    const optedInBadge = container.querySelector(
+      '[data-testid="task-schedule-task-scheduled"]',
+    );
+    expect(optedInBadge).not.toBeNull();
+    expect(optedInBadge?.getAttribute("title")).toBe("Calendar sync enabled");
+    expect(optedInBadge?.getAttribute("title")).not.toContain("Synced");
+
+    const optedOutBadge = container.querySelector(
+      '[data-testid="task-schedule-task-unopted"]',
+    );
+    expect(optedOutBadge?.getAttribute("title")).toBe(
+      "Scheduled time block (calendar sync off)",
+    );
+    expect(container.textContent).not.toContain("No due date");
+  });
 });

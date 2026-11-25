@@ -73,7 +73,7 @@ test("Calendar sync panel shows connect link and no fabricated counts when disco
   assert.doesNotMatch(markup, /calendar-sync-counts/);
 });
 
-test("Calendar sync panel renders truthful counts and visible exclusion reasons", () => {
+test("Calendar sync panel renders a compact single-line summary when idle and healthy", () => {
   const markup = renderToStaticMarkup(
     React.createElement(TaskCalendarSyncPanel, {
       initialStatus: status(),
@@ -81,9 +81,28 @@ test("Calendar sync panel renders truthful counts and visible exclusion reasons"
   );
 
   assert.match(markup, /Synchronize/);
+  assert.match(markup, /4 events on primary/);
+  assert.match(markup, /calendar-sync-details-toggle/);
+  assert.doesNotMatch(markup, /calendar-sync-counts/);
+});
+
+test("Calendar sync panel auto-expands with truthful counts and exclusion reasons while active", () => {
+  const initial = status();
+  const run = initial.run;
+  assert.ok(run);
+  const markup = renderToStaticMarkup(
+    React.createElement(TaskCalendarSyncPanel, {
+      initialStatus: {
+        ...initial,
+        run: { ...run, status: "active", hasMore: true },
+      },
+    }),
+  );
+
+  assert.match(markup, /Synchronize/);
   assert.match(markup, /Created/);
   assert.match(markup, /Removed/);
-  assert.match(markup, /Excluded/);
+  assert.match(markup, /Excluded \(1\)/);
   assert.match(markup, /A deadline without a planned date or time block is not published/);
   assert.match(markup, /Sync continues in the background/);
 });

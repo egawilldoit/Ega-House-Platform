@@ -3,13 +3,15 @@
 import { useCallback, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Archive, ArchiveRestore, Check, RotateCcw } from "lucide-react";
+import { Archive, ArchiveRestore, CalendarDays, Check, RotateCcw } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { PriorityIcon } from "@/components/ui/priority-icon";
 import { StatusIcon } from "@/components/ui/status-icon";
 import { TaskDueDateLabel } from "@/components/tasks/task-due-date-label";
+import { formatTaskScheduleSummary } from "@/lib/calendar-schedule-draft";
+import { useDisplayTimezone } from "@/lib/hooks/use-display-timezone";
 import { buildTaskDrawerLink } from "@/lib/task-drawer-url";
 import type { BulkTaskResult } from "@/lib/services/task-bulk-service";
 import type { TaskRecord } from "@/lib/services/task-service";
@@ -75,6 +77,7 @@ export function TaskList({
   taskUpdateError = null,
 }: TaskListProps) {
   const router = useRouter();
+  const accountTimeZone = useDisplayTimezone();
   const listRef = useRef<HTMLUListElement | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [message, setMessage] = useState<string | null>(null);
@@ -298,6 +301,16 @@ export function TaskList({
           const priority = isPriority(task.priority) ? task.priority : "medium";
           const rowError =
             taskUpdateTaskId === task.id ? taskUpdateError : null;
+          const scheduleSummary = formatTaskScheduleSummary(
+            task.scheduled_start_at,
+            task.scheduled_end_at,
+            task.planned_for_date,
+            new Date(),
+            accountTimeZone,
+          );
+          const calendarSyncOptedIn = Boolean(
+            scheduleSummary && task.calendar_sync_enabled && !completed,
+          );
 
           return (
             <li
@@ -375,6 +388,28 @@ export function TaskList({
                 ) : null}
               </div>
 
+              {scheduleSummary ? (
+                <span
+                  className="inline-flex items-center gap-1.5 text-[length:var(--text-meta)] tabular-nums text-[color:var(--ega-text-secondary)]"
+                  title={
+                    calendarSyncOptedIn
+                      ? "Calendar sync enabled"
+                      : "Scheduled time block (calendar sync off)"
+                  }
+                  data-testid={`task-schedule-${task.id}`}
+                >
+                  <CalendarDays
+                    className={`h-3.5 w-3.5 shrink-0 ${
+                      calendarSyncOptedIn
+                        ? "text-[color:var(--ega-text-secondary)]"
+                        : "text-[color:var(--ega-text-tertiary)] opacity-60"
+                    }`}
+                    aria-hidden="true"
+                  />
+                  <span>{scheduleSummary}</span>
+                </span>
+              ) : null}
+
               <span className="flex items-center gap-1 text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
                 <StatusIcon
                   status={isTaskStatus(task.status) ? task.status : "todo"}
@@ -382,11 +417,11 @@ export function TaskList({
                 />
                 {task.due_date ? (
                   <TaskDueDateLabel dueDate={task.due_date} status={task.status} />
-                ) : (
+                ) : !scheduleSummary ? (
                   <span className="text-[color:var(--ega-text-tertiary)]">
                     No due date
                   </span>
-                )}
+                ) : null}
               </span>
 
               <span

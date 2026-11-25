@@ -5,6 +5,7 @@ import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 
 import { loadCreateOptionsAction } from "@/app/(workspace)/create-options-actions";
+import type { CreateCalendarDefaults } from "@/lib/services/create-options-service";
 import { Button } from "@/components/ui/button";
 import { QuickTaskSheetPanel } from "@/components/tasks/quick-task-sheet";
 import { InboxCapturePanel } from "@/components/inbox/inbox-capture-sheet";
@@ -40,23 +41,29 @@ export function UnifiedCreateSheet({
   const [loadedOptions, setLoadedOptions] = useState<{
     projects: { id: string; name: string }[];
     goals: { id: string; title: string; project_id: string }[];
+    calendarDefaults?: CreateCalendarDefaults;
   } | null>(null);
   const optionsRequestRef = useRef<Promise<void> | null>(null);
 
   const resolvedProjects = projects.length > 0 ? projects : (loadedOptions?.projects ?? []);
   const resolvedGoals = goals.length > 0 ? goals : (loadedOptions?.goals ?? []);
+  const resolvedCalendarDefaults = loadedOptions?.calendarDefaults;
   const effectiveTaskProjectId = taskProjectId || resolvedProjects[0]?.id || "";
   const effectiveBacklogProjectId = backlogProjectId || resolvedProjects[0]?.id || "";
 
   // The shell passes no eager options; fetch them the first time a create
   // surface is requested so task creation works without charging every route.
   const ensureOptions = useCallback((): Promise<void> => {
-    if (projects.length > 0 || optionsRequestRef.current) {
+    if ((projects.length > 0 && loadedOptions) || optionsRequestRef.current) {
       return optionsRequestRef.current ?? Promise.resolve();
     }
     const request = loadCreateOptionsAction()
       .then((result) => {
-        setLoadedOptions({ projects: result.projects ?? [], goals: result.goals ?? [] });
+        setLoadedOptions({
+          projects: result.projects ?? [],
+          goals: result.goals ?? [],
+          calendarDefaults: result.calendarDefaults,
+        });
       })
       .catch(() => {
         setLoadedOptions({ projects: [], goals: [] });
@@ -66,7 +73,7 @@ export function UnifiedCreateSheet({
       });
     optionsRequestRef.current = request;
     return request;
-  }, [projects]);
+  }, [projects, loadedOptions]);
 
   function closeSheet() {
     setOpen(false);
@@ -264,6 +271,7 @@ export function UnifiedCreateSheet({
                   selectedProjectId={effectiveTaskProjectId}
                   onProjectIdChange={setTaskProjectId}
                   selectedStatus={taskStatus}
+                  calendarDefaults={resolvedCalendarDefaults}
                 />
               </div>
             ) : (
