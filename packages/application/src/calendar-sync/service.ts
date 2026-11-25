@@ -1625,6 +1625,34 @@ async function processJob(
       : await deps.provider.createEvent(connection, payload);
 
   if (!writeResult.ok && writeResult.error.kind === "not_found" && updating) {
+    const accessible = await deps.provider.isCalendarAccessible(connection);
+    if (!accessible.ok || !accessible.value) {
+      if (!accessible.ok) {
+        await failJob(actor, deps, {
+          job,
+          message: accessible.error.message,
+          permanent: false,
+          nowIso,
+          now: getNow(deps),
+        });
+      } else {
+        const paused = await pauseForAuthorization(actor, deps, {
+          runId: job.runId,
+          connection,
+          message: "Google Calendar is inaccessible. Reconnect and retry.",
+          nowIso,
+        });
+        if (!paused.ok) {
+          return { persistenceError: paused.message, refreshedCredentials };
+        }
+        return {
+          authFailure: true,
+          staleAuth: !paused.applied,
+          refreshedCredentials,
+        };
+      }
+      return { refreshedCredentials };
+    }
     const _rotC = await rotateEvent(generation + 1);
     if (_rotC.dbFailed) return { persistenceError: "Unable to advance the Calendar job generation." };
     if (!_rotC.ok) return {};
@@ -2003,7 +2031,7 @@ async function processRunBatch(
       run.scanCursorCreatedAt && run.scanCursorTaskId
         ? { createdAt: run.scanCursorCreatedAt, taskId: run.scanCursorTaskId }
         : null;
-    const listing = await deps.provider.listManagedEvents(connection);
+    const listing = await deps.provider.listManagedEvents(connection, deadline);
     if (!listing.ok) {
       if (isAuthorizationFailure(listing.error)) {
         const paused = await pauseForAuthorization(actor, deps, {

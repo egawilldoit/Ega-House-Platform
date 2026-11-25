@@ -581,6 +581,7 @@ export class GoogleCalendarEventProvider implements CalendarEventProvider {
 
   async listManagedEvents(
     connection: CalendarConnectionRecord,
+    deadline?: number,
   ): Promise<
     CalendarProviderResult<{
       complete: boolean;
@@ -593,6 +594,13 @@ export class GoogleCalendarEventProvider implements CalendarEventProvider {
     let refreshedCredentials: RefreshedCalendarCredentials | undefined;
 
     do {
+      if (deadline !== undefined && Date.now() >= deadline) {
+        return {
+          ok: true,
+          value: { complete: false, events },
+          refreshedCredentials,
+        };
+      }
       const params = new URLSearchParams({
         privateExtendedProperty: "source=ega-house",
         showDeleted: "false",

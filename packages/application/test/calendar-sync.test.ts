@@ -100,6 +100,7 @@ class FakeProvider implements CalendarEventProvider {
 
   async listManagedEvents(
     _connection?: CalendarConnectionRecord,
+    _deadline?: number,
   ): Promise<
     CalendarProviderResult<{ complete: boolean; events: CalendarEventIndexEntry[] }>
   > {

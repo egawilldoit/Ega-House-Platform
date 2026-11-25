@@ -285,6 +285,7 @@ export interface CalendarEventProvider {
   ): Promise<CalendarProviderResult<boolean>>;
   listManagedEvents(
     connection: CalendarConnectionRecord,
+    deadline?: number,
   ): Promise<
     CalendarProviderResult<{
       complete: boolean;
