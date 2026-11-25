@@ -278,4 +278,23 @@ describe("TaskList", () => {
 
     expect(document.activeElement).toBe(rows[1]);
   });
+
+  it("shows the schedule time block and Google Calendar indicator on scheduled rows without repeating No due date", async () => {
+    await render([
+      buildTask({
+        id: "task-scheduled",
+        due_date: null,
+        scheduled_start_at: "2026-11-25T17:30:00.000Z",
+        scheduled_end_at: "2026-11-25T19:30:00.000Z",
+        calendar_sync_enabled: true,
+      }),
+    ]);
+
+    const scheduleBadge = container.querySelector(
+      '[data-testid="task-schedule-task-scheduled"]',
+    );
+    expect(scheduleBadge).not.toBeNull();
+    expect(scheduleBadge?.getAttribute("title")).toBe("Synced to Google Calendar");
+    expect(container.textContent).not.toContain("No due date");
+  });
 });

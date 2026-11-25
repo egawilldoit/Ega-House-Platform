@@ -213,6 +213,38 @@ describe("TaskDrawerPlanningSection", () => {
         ?.value,
     ).toBe("Waiting on API contract");
   });
+
+  it("updates scheduled end time from duration presets and clears the block cleanly", async () => {
+    await render();
+
+    const startInput = container.querySelector<HTMLInputElement>(
+      'input[name="scheduledStartAt"]',
+    )!;
+    const endInput = container.querySelector<HTMLInputElement>(
+      'input[name="scheduledEndAt"]',
+    )!;
+    const initialEnd = endInput.value;
+
+    const ninetyMinBtn = container.querySelector<HTMLButtonElement>(
+      '[data-testid="drawer-duration-90"]',
+    )!;
+    await act(async () => {
+      ninetyMinBtn.click();
+    });
+
+    expect(ninetyMinBtn.getAttribute("aria-pressed")).toBe("true");
+    expect(endInput.value).not.toBe(initialEnd);
+
+    const clearBtn = container.querySelector<HTMLButtonElement>(
+      '[data-testid="drawer-schedule-clear"]',
+    )!;
+    await act(async () => {
+      clearBtn.click();
+    });
+
+    expect(startInput.value).toBe("");
+    expect(endInput.value).toBe("");
+  });
 });
 
 async function setSelectValue(selector: string, value: string) {

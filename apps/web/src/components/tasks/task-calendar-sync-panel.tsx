@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { CalendarDays, RefreshCw } from "lucide-react";
+import { CalendarDays, ChevronDown, RefreshCw } from "lucide-react";
 
 import {
   CALENDAR_SYNC_EXCLUSION_LABELS,
@@ -38,7 +38,7 @@ export function TaskCalendarSyncPanel({
   const [busy, setBusy] = useState<SyncAction | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [offline, setOffline] = useState(
-    () => typeof navigator !== "undefined" && !navigator.onLine,
+    () => typeof navigator !== "undefined" && navigator.onLine === false,
   );
   const mountedRef = useRef(true);
   const continuingRef = useRef(false);
@@ -71,7 +71,7 @@ export function TaskCalendarSyncPanel({
     action: SyncAction,
     runId?: string,
   ): Promise<SyncResponse | null> {
-    if (typeof navigator !== "undefined" && !navigator.onLine) {
+    if (typeof navigator !== "undefined" && navigator.onLine === false) {
       setOffline(true);
       setErrorMessage(
         "You are offline. Reconnect to continue this Calendar sync.",
@@ -101,7 +101,7 @@ export function TaskCalendarSyncPanel({
     try {
       let currentRunId: string | null = runId;
       while (mountedRef.current && currentRunId) {
-        if (typeof navigator !== "undefined" && !navigator.onLine) {
+        if (typeof navigator !== "undefined" && navigator.onLine === false) {
           setOffline(true);
           break;
         }
@@ -174,10 +174,49 @@ export function TaskCalendarSyncPanel({
     run?.statusErrors.failures,
   ].filter((message): message is string => Boolean(message));
 
+  const isSyncing = Boolean(
+    busy || (run?.status === "active" && run.hasMore && !status.continuationBlocked),
+  );
+  const needsAttention = Boolean(
+    !connected ||
+      needsReconnect ||
+      errorMessage ||
+      status.message ||
+      offline ||
+      statusReadErrors.length > 0 ||
+      failures.length > 0 ||
+      (counts && (counts.failed > 0 || counts.retrying > 0)),
+  );
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const expanded = detailsOpen || needsAttention || isSyncing;
+
+  const syncedEventCount = counts
+    ? counts.created + counts.updated + counts.unchanged
+    : 0;
+  const calendarLabel = status.connection.calendarId || "primary";
+  const compactSummary = !connected
+    ? "Connect once to publish scheduled tasks."
+    : needsReconnect
+      ? "Reconnect required to resume syncing."
+      : isSyncing
+        ? "Syncing tasks with Google Calendar…"
+        : run && counts
+          ? `${countLabel(syncedEventCount)} ${
+              syncedEventCount === 1 ? "event" : "events"
+            } on ${calendarLabel}`
+          : status.connection.accountEmail
+            ? `Ready on ${status.connection.accountEmail} (${calendarLabel})`
+            : `Ready on ${calendarLabel}`;
+
   return (
     <Card className="overflow-hidden">
-      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[var(--ega-divider)] px-[18px] py-3">
-        <div className="min-w-0">
+      <div
+        className={cn(
+          "flex flex-wrap items-center justify-between gap-3 px-[18px] py-2.5",
+          expanded ? "border-b border-[var(--ega-divider)]" : undefined,
+        )}
+      >
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1">
           <div className="flex items-center gap-2">
             <CalendarDays className="h-4 w-4 text-ega-text-secondary" aria-hidden="true" />
             <h2 className="text-[length:var(--text-body)] font-semibold text-ega-text">
@@ -199,14 +238,33 @@ export function TaskCalendarSyncPanel({
                   : "Not connected"}
             </Badge>
           </div>
-          <p className="mt-1 text-[length:var(--text-meta)] text-ega-text-secondary">
-            {connected
-              ? `${status.connection.accountEmail ?? "Google account"} · ${status.connection.calendarId}`
-              : "Connect once, then publish eligible tasks from this page."}
+          <p className="truncate text-[length:var(--text-meta)] text-ega-text-secondary">
+            {compactSummary}
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          {connected && !needsAttention && !isSyncing ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              aria-expanded={expanded}
+              onClick={() => setDetailsOpen((current) => !current)}
+              data-testid="calendar-sync-details-toggle"
+              className="gap-1 text-xs text-ega-text-secondary"
+            >
+              <span>Details</span>
+              <ChevronDown
+                className={cn(
+                  "h-3.5 w-3.5 transition-transform motion-reduce:transition-none",
+                  expanded ? "rotate-180" : undefined,
+                )}
+                aria-hidden="true"
+              />
+            </Button>
+          ) : null}
+
           {!connected || needsReconnect ? (
             <Link
               href={CONNECT_HREF}
@@ -219,6 +277,7 @@ export function TaskCalendarSyncPanel({
             <>
               <Button
                 type="button"
+                variant="secondary"
                 size="sm"
                 onClick={() => void runAction("start")}
                 disabled={Boolean(busy) || offline}
@@ -241,137 +300,148 @@ export function TaskCalendarSyncPanel({
         </div>
       </div>
 
-      <div className="flex flex-col gap-3 px-[18px] py-3">
-        {status.message ? (
-          <p className="feedback-block" role="status">
-            {status.message}
-          </p>
-        ) : null}
-
-        {statusReadErrors.length > 0 ? (
-          <p
-            className="feedback-block"
-            role="status"
-            data-testid="calendar-sync-status-unavailable"
-          >
-            Some Calendar sync status could not be loaded:{" "}
-            {statusReadErrors.join(" ")} Details shown may be incomplete.
-          </p>
-        ) : null}
-
-        {needsReconnect ? (
-          <p className="feedback-block" role="alert">
-            Google Calendar needs a verified account connection. Reconnect the
-            same account to resume queued work; existing events stay in Google
-            Calendar until a sync removes them.
-          </p>
-        ) : null}
-
-        {errorMessage ? (
-          <p className="feedback-block" role="alert" data-testid="calendar-sync-error">
-            {errorMessage}
-          </p>
-        ) : null}
-
-        {offline && !errorMessage ? (
-          <p className="feedback-block" role="status">
-            Offline. Sync will resume when the connection returns.
-          </p>
-        ) : null}
-
-        {run && counts ? (
-          <>
-            <div
-              className="grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-4 lg:grid-cols-8"
-              data-testid="calendar-sync-counts"
-            >
-              {[
-                ["Created", counts.created],
-                ["Updated", counts.updated],
-                ["Removed", counts.removed],
-                ["Unchanged", counts.unchanged],
-                ["Excluded", counts.excluded],
-                ["Pending", counts.pending],
-                ["Retrying", counts.retrying],
-                ["Failed", counts.failed],
-              ].map(([label, value]) => (
-                <div key={String(label)} className="min-w-0">
-                  <dt className="text-[length:var(--text-meta)] text-ega-text-tertiary">
-                    {label}
-                  </dt>
-                  <dd className="tabular-nums text-[length:var(--text-body)] font-medium text-ega-text">
-                    {countLabel(Number(value))}
-                  </dd>
-                </div>
-              ))}
-            </div>
-
+      {expanded ? (
+        <div
+          className="flex flex-col gap-3 px-[18px] py-3"
+          data-testid="calendar-sync-details"
+        >
+          {connected && status.connection.accountEmail ? (
             <p className="text-[length:var(--text-meta)] text-ega-text-tertiary">
-              {run.scanComplete
-                ? "Scan complete."
-                : `Scanning tasks. ${countLabel(counts.total)} accounted for so far.`}{" "}
-              Sync continues in the background if you close this page.
+              Account: {status.connection.accountEmail} ({calendarLabel})
             </p>
+          ) : null}
 
-            {exclusions.length > 0 ? (
-              <div>
-                <h3 className="text-[length:var(--text-meta)] font-medium text-ega-text-secondary">
-                  Excluded
-                </h3>
-                <ul className="mt-1 flex flex-col gap-1">
-                  {exclusions.map((exclusion) => (
-                    <li
-                      key={exclusion.reason}
-                      className="text-[length:var(--text-meta)] text-ega-text-secondary"
-                    >
-                      {CALENDAR_SYNC_EXCLUSION_LABELS[
-                        exclusion.reason as CalendarSyncExclusionReason
-                      ] ?? exclusion.reason}{" "}
-                      ({countLabel(exclusion.count)})
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ) : null}
+          {status.message ? (
+            <p className="feedback-block" role="status">
+              {status.message}
+            </p>
+          ) : null}
 
-            {failures.length > 0 ? (
-              <div>
-                <h3 className="text-[length:var(--text-meta)] font-medium text-ega-text-secondary">
-                  Needs attention
-                </h3>
-                <ul className="mt-1 flex flex-col gap-1">
-                  {failures.map((failure) => (
-                    <li
-                      key={`${failure.taskId}-${failure.message}`}
-                      className="text-[length:var(--text-meta)] text-[color:var(--status-overdue)]"
-                    >
-                      {failure.message}
-                    </li>
-                  ))}
-                </ul>
-                <p className="mt-1 text-[length:var(--text-meta)] text-ega-text-tertiary">
-                  Permanent failures need the task or conflicting Google event
-                  corrected before retry.
-                </p>
-              </div>
-            ) : null}
-          </>
-        ) : run ? (
-          <p className="text-[length:var(--text-meta)] text-ega-text-secondary">
-            Run details could not be loaded. Use Synchronize to resume this sync.
-          </p>
-        ) : connected ? (
-          <p className="text-[length:var(--text-meta)] text-ega-text-secondary">
-            No Calendar sync run yet. Synchronize to publish eligible tasks and
-            remove events for completed, archived, unscheduled, or opted-out tasks.
-          </p>
-        ) : (
-          <p className="text-[length:var(--text-meta)] text-ega-text-secondary">
-            A deadline without a planned date is not published. Add a planned
-            date or a complete time block to include a task.
-          </p>
-        )}
-      </div>
+          {statusReadErrors.length > 0 ? (
+            <p
+              className="feedback-block"
+              role="status"
+              data-testid="calendar-sync-status-unavailable"
+            >
+              Some Calendar sync status could not be loaded:{" "}
+              {statusReadErrors.join(" ")} Details shown may be incomplete.
+            </p>
+          ) : null}
+
+          {needsReconnect ? (
+            <p className="feedback-block" role="alert">
+              Google Calendar needs a verified account connection. Reconnect the
+              same account to resume queued work; existing events stay in Google
+              Calendar until a sync removes them.
+            </p>
+          ) : null}
+
+          {errorMessage ? (
+            <p className="feedback-block" role="alert" data-testid="calendar-sync-error">
+              {errorMessage}
+            </p>
+          ) : null}
+
+          {offline && !errorMessage ? (
+            <p className="feedback-block" role="status">
+              Offline. Sync will resume when the connection returns.
+            </p>
+          ) : null}
+
+          {run && counts ? (
+            <>
+              <dl
+                className="grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-4 lg:grid-cols-8"
+                data-testid="calendar-sync-counts"
+              >
+                {[
+                  ["Created", counts.created],
+                  ["Updated", counts.updated],
+                  ["Removed", counts.removed],
+                  ["Unchanged", counts.unchanged],
+                  ["Excluded", counts.excluded],
+                  ["Pending", counts.pending],
+                  ["Retrying", counts.retrying],
+                  ["Failed", counts.failed],
+                ].map(([label, value]) => (
+                  <div key={String(label)} className="min-w-0">
+                    <dt className="text-[length:var(--text-meta)] text-ega-text-tertiary">
+                      {label}
+                    </dt>
+                    <dd className="tabular-nums text-[length:var(--text-body)] font-medium text-ega-text">
+                      {countLabel(Number(value))}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+
+              <p className="text-[length:var(--text-meta)] text-ega-text-tertiary">
+                {run.scanComplete
+                  ? "Scan complete."
+                  : `Scanning tasks. ${countLabel(counts.total)} accounted for so far.`}{" "}
+                Sync continues in the background if you close this page.
+              </p>
+
+              {exclusions.length > 0 ? (
+                <details className="group">
+                  <summary className="cursor-pointer text-[length:var(--text-meta)] font-medium text-ega-text-secondary hover:text-ega-text">
+                    Excluded ({countLabel(counts.excluded)})
+                  </summary>
+                  <ul className="mt-1.5 flex flex-col gap-1 pl-3">
+                    {exclusions.map((exclusion) => (
+                      <li
+                        key={exclusion.reason}
+                        className="text-[length:var(--text-meta)] text-ega-text-secondary"
+                      >
+                        {CALENDAR_SYNC_EXCLUSION_LABELS[
+                          exclusion.reason as CalendarSyncExclusionReason
+                        ] ?? exclusion.reason}{" "}
+                        ({countLabel(exclusion.count)})
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              ) : null}
+
+              {failures.length > 0 ? (
+                <div>
+                  <h3 className="text-[length:var(--text-meta)] font-medium text-ega-text-secondary">
+                    Needs attention
+                  </h3>
+                  <ul className="mt-1 flex flex-col gap-1">
+                    {failures.map((failure) => (
+                      <li
+                        key={`${failure.taskId}-${failure.message}`}
+                        className="text-[length:var(--text-meta)] text-[color:var(--status-overdue)]"
+                      >
+                        {failure.message}
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="mt-1 text-[length:var(--text-meta)] text-ega-text-tertiary">
+                    Permanent failures need the task or conflicting Google event
+                    corrected before retry.
+                  </p>
+                </div>
+              ) : null}
+            </>
+          ) : run ? (
+            <p className="text-[length:var(--text-meta)] text-ega-text-secondary">
+              Run details could not be loaded. Use Synchronize to resume this sync.
+            </p>
+          ) : connected ? (
+            <p className="text-[length:var(--text-meta)] text-ega-text-secondary">
+              No Calendar sync run yet. Synchronize to publish eligible tasks and
+              remove events for completed, archived, unscheduled, or opted-out tasks.
+            </p>
+          ) : (
+            <p className="text-[length:var(--text-meta)] text-ega-text-secondary">
+              A deadline without a planned date is not published. Add a planned
+              date or a complete time block to include a task.
+            </p>
+          )}
+        </div>
+      ) : null}
     </Card>
   );
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useState } from "react";
-import { ChevronDown } from "lucide-react";
+import { CalendarClock, ChevronDown, X } from "lucide-react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 
 import {
@@ -11,11 +11,20 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
+  SCHEDULE_DURATION_PRESETS,
+  addMinutesToLocalDateTime,
+  buildQuickScheduleBlock,
+  durationMinutesBetween,
+  formatDurationChipLabel,
+} from "@/lib/calendar-schedule-draft";
+import type { CreateCalendarDefaults } from "@/lib/services/create-options-service";
+import {
   TASK_PRIORITY_VALUES,
   TASK_TITLE_LENGTH_ERROR,
   TASK_TITLE_MAX,
   formatTaskToken,
 } from "@/lib/task-domain";
+import { cn } from "@/lib/utils";
 
 type QuickTaskSheetProject = {
   id: string;
@@ -42,6 +51,8 @@ export type QuickTaskSheetPanelProps = {
   onProjectIdChange?: (projectId: string) => void;
   /** Column the "Add task here" action was opened from, if any. */
   selectedStatus?: string;
+  /** Owner's Google Calendar connection & default sync preferences. */
+  calendarDefaults?: CreateCalendarDefaults;
 };
 
 const DEFAULT_RETURN_TO = "/tasks";
@@ -115,13 +126,30 @@ export function QuickTaskSheetPanel({
   onCommandChange,
   selectedProjectId,
   onProjectIdChange,
+  calendarDefaults,
 }: QuickTaskSheetPanelProps) {
   const defaultProjectId = selectedProjectId || projects[0]?.id || "";
+  const defaultSyncOnSchedule = calendarDefaults
+    ? calendarDefaults.connected && calendarDefaults.scheduledTaskSyncEnabled
+    : false;
+  const defaultReminderMinutes = String(
+    calendarDefaults?.defaultReminderMinutes ?? 10,
+  );
+
   const [title, setTitle] = useState(initialCommand ?? "");
   const [projectId, setProjectId] = useState(defaultProjectId);
   const [priority, setPriority] = useState("medium");
   const [dueDate, setDueDate] = useState("");
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [scheduleOpen, setScheduleOpen] = useState(false);
+  const [scheduledStartAt, setScheduledStartAt] = useState("");
+  const [scheduledEndAt, setScheduledEndAt] = useState("");
+  const [selectedDurationMinutes, setSelectedDurationMinutes] = useState<number>(60);
+  const [calendarSyncEnabled, setCalendarSyncEnabled] = useState(defaultSyncOnSchedule);
+  const [calendarSyncTouched, setCalendarSyncTouched] = useState(false);
+  const [calendarReminderMinutes, setCalendarReminderMinutes] = useState(
+    defaultReminderMinutes,
+  );
 
   const initialState: CreateTaskFormState = {
     error: null,
@@ -134,6 +162,8 @@ export function QuickTaskSheetPanel({
   );
 
   const titleTooLong = title.length > TASK_TITLE_MAX;
+  const hasSchedule = Boolean(scheduledStartAt || scheduledEndAt);
+  const activeDuration = durationMinutesBetween(scheduledStartAt, scheduledEndAt);
 
   useEffect(() => {
     const focusId = window.requestAnimationFrame(() => {
@@ -142,15 +172,25 @@ export function QuickTaskSheetPanel({
     return () => window.cancelAnimationFrame(focusId);
   }, []);
 
-  // The unified shell may load project options after the panel mounts; adopt
-  // the first real option so creating a task never fails with an empty project.
-  // Render-time adjustment follows the existing QuickTaskSheetPanel pattern.
+  // The unified shell may load project and calendar options after mount.
   const [previousDefaultProjectId, setPreviousDefaultProjectId] =
     useState(defaultProjectId);
   if (defaultProjectId !== previousDefaultProjectId) {
     setPreviousDefaultProjectId(defaultProjectId);
     if (!projectId && defaultProjectId) {
       setProjectId(defaultProjectId);
+    }
+  }
+
+  const [previousCalendarDefaults, setPreviousCalendarDefaults] =
+    useState(calendarDefaults);
+  if (calendarDefaults !== previousCalendarDefaults) {
+    setPreviousCalendarDefaults(calendarDefaults);
+    if (calendarDefaults && !calendarSyncTouched) {
+      setCalendarSyncEnabled(
+        calendarDefaults.connected && calendarDefaults.scheduledTaskSyncEnabled,
+      );
+      setCalendarReminderMinutes(String(calendarDefaults.defaultReminderMinutes));
     }
   }
 
@@ -168,6 +208,17 @@ export function QuickTaskSheetPanel({
     setPriority(state.values.priority);
     setDueDate(state.values.dueDate);
     setProjectId(state.values.projectId);
+    if (state.values.scheduledStartAt || state.values.scheduledEndAt) {
+      setScheduledStartAt(state.values.scheduledStartAt);
+      setScheduledEndAt(state.values.scheduledEndAt);
+      setScheduleOpen(true);
+    }
+    if (state.values.calendarSyncEnabled) {
+      setCalendarSyncEnabled(state.values.calendarSyncEnabled === "on");
+    }
+    if (state.values.calendarReminderMinutes) {
+      setCalendarReminderMinutes(state.values.calendarReminderMinutes);
+    }
   }
 
   function handleTitleChange(value: string) {
@@ -178,6 +229,50 @@ export function QuickTaskSheetPanel({
   function handleProjectChange(value: string) {
     setProjectId(value);
     onProjectIdChange?.(value);
+  }
+
+  function applyQuickDay(dayOffset: 0 | 1) {
+    const block = buildQuickScheduleBlock(dayOffset, selectedDurationMinutes);
+    setScheduledStartAt(block.start);
+    setScheduledEndAt(block.end);
+    setScheduleOpen(true);
+    if (!calendarSyncTouched && (calendarDefaults?.connected ?? true)) {
+      setCalendarSyncEnabled(true);
+    }
+  }
+
+  function handleStartChange(nextStart: string) {
+    setScheduledStartAt(nextStart);
+    if (nextStart) {
+      const span = activeDuration ?? selectedDurationMinutes;
+      const computedEnd = addMinutesToLocalDateTime(nextStart, span);
+      if (computedEnd) setScheduledEndAt(computedEnd);
+      if (!calendarSyncTouched && (calendarDefaults?.connected ?? true)) {
+        setCalendarSyncEnabled(true);
+      }
+    }
+  }
+
+  function handleDurationSelect(minutes: number) {
+    setSelectedDurationMinutes(minutes);
+    if (scheduledStartAt) {
+      const computedEnd = addMinutesToLocalDateTime(scheduledStartAt, minutes);
+      if (computedEnd) setScheduledEndAt(computedEnd);
+      return;
+    }
+    const block = buildQuickScheduleBlock(0, minutes);
+    setScheduledStartAt(block.start);
+    setScheduledEndAt(block.end);
+    setScheduleOpen(true);
+    if (!calendarSyncTouched && (calendarDefaults?.connected ?? true)) {
+      setCalendarSyncEnabled(true);
+    }
+  }
+
+  function clearSchedule() {
+    setScheduledStartAt("");
+    setScheduledEndAt("");
+    setScheduleOpen(false);
   }
 
   return (
@@ -250,6 +345,168 @@ export function QuickTaskSheetPanel({
             pending={pending}
             disabled={!title.trim() || titleTooLong}
           />
+        </div>
+
+        <div className="flex flex-col gap-2.5 border-t border-[var(--ega-divider)] pt-3">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="inline-flex items-center gap-1.5 pr-1 text-[length:var(--text-meta)] font-medium text-[color:var(--ega-text-secondary)]">
+              <CalendarClock className="h-3.5 w-3.5" aria-hidden="true" />
+              Schedule
+            </span>
+            <button
+              type="button"
+              onClick={() => applyQuickDay(0)}
+              data-testid="quick-schedule-today"
+              className="rounded-[var(--radius-sm)] border border-[var(--ega-border)] bg-[var(--ega-surface-subtle)] px-2.5 py-1 text-xs font-medium text-[color:var(--ega-text)] transition-colors hover:bg-[var(--ega-surface-hover)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ega-focus-outline)]"
+            >
+              Today
+            </button>
+            <button
+              type="button"
+              onClick={() => applyQuickDay(1)}
+              data-testid="quick-schedule-tomorrow"
+              className="rounded-[var(--radius-sm)] border border-[var(--ega-border)] bg-[var(--ega-surface-subtle)] px-2.5 py-1 text-xs font-medium text-[color:var(--ega-text)] transition-colors hover:bg-[var(--ega-surface-hover)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ega-focus-outline)]"
+            >
+              Tomorrow
+            </button>
+            {!scheduleOpen && !hasSchedule ? (
+              <button
+                type="button"
+                onClick={() => setScheduleOpen(true)}
+                data-testid="quick-schedule-custom"
+                className="rounded-[var(--radius-sm)] px-2 py-1 text-xs text-[color:var(--ega-text-secondary)] transition-colors hover:bg-[var(--ega-surface-hover)] hover:text-[color:var(--ega-text)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ega-focus-outline)]"
+              >
+                Pick time
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={clearSchedule}
+                data-testid="quick-schedule-clear"
+                className="ml-auto inline-flex items-center gap-1 rounded-[var(--radius-sm)] px-2 py-1 text-xs text-[color:var(--ega-text-secondary)] transition-colors hover:bg-[var(--ega-surface-hover)] hover:text-[color:var(--ega-text)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ega-focus-outline)]"
+              >
+                <X className="h-3 w-3" aria-hidden="true" />
+                Clear
+              </button>
+            )}
+          </div>
+
+          {scheduleOpen || hasSchedule ? (
+            <div className="flex flex-col gap-2.5">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="text-[length:var(--text-meta)] text-[color:var(--ega-text-tertiary)]">
+                  Duration
+                </span>
+                {SCHEDULE_DURATION_PRESETS.map((minutes) => {
+                  const active = activeDuration === minutes;
+                  return (
+                    <button
+                      key={minutes}
+                      type="button"
+                      onClick={() => handleDurationSelect(minutes)}
+                      aria-pressed={active}
+                      data-testid={`quick-duration-${minutes}`}
+                      className={cn(
+                        "rounded-[var(--radius-sm)] border px-2 py-0.5 text-xs tabular-nums transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ega-focus-outline)]",
+                        active
+                          ? "border-[var(--ega-ink)] bg-[var(--ega-ink)] font-medium text-[color:var(--ega-on-ink)]"
+                          : "border-[var(--ega-border)] bg-[var(--ega-surface)] text-[color:var(--ega-text-secondary)] hover:bg-[var(--ega-surface-hover)] hover:text-[color:var(--ega-text)]",
+                      )}
+                    >
+                      {formatDurationChipLabel(minutes)}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+                <div className="flex flex-col gap-1">
+                  <label htmlFor="quick-task-scheduled-start" className={FIELD_LABEL}>
+                    Start
+                  </label>
+                  <input
+                    id="quick-task-scheduled-start"
+                    name="scheduledStartAt"
+                    type="datetime-local"
+                    value={scheduledStartAt}
+                    onChange={(event) => handleStartChange(event.target.value)}
+                    className="h-9 w-full rounded-[var(--radius-sm)] border border-[var(--ega-border)] bg-[var(--ega-surface)] px-2 text-xs tabular-nums text-[color:var(--ega-text)]"
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label htmlFor="quick-task-scheduled-end" className={FIELD_LABEL}>
+                    End
+                  </label>
+                  <input
+                    id="quick-task-scheduled-end"
+                    name="scheduledEndAt"
+                    type="datetime-local"
+                    value={scheduledEndAt}
+                    onChange={(event) => setScheduledEndAt(event.target.value)}
+                    className="h-9 w-full rounded-[var(--radius-sm)] border border-[var(--ega-border)] bg-[var(--ega-surface)] px-2 text-xs tabular-nums text-[color:var(--ega-text)]"
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-3 pt-0.5">
+                <label className="inline-flex cursor-pointer items-center gap-2 text-xs font-medium text-[color:var(--ega-text)]">
+                  <input
+                    id="quick-task-calendar-sync"
+                    type="checkbox"
+                    name="calendarSyncEnabled"
+                    checked={calendarSyncEnabled}
+                    onChange={(event) => {
+                      setCalendarSyncTouched(true);
+                      setCalendarSyncEnabled(event.target.checked);
+                    }}
+                    className="h-4 w-4"
+                  />
+                  Sync to Google Calendar
+                </label>
+
+                {calendarSyncEnabled ? (
+                  <label className="inline-flex items-center gap-1.5 text-xs text-[color:var(--ega-text-secondary)]">
+                    <span>Reminder</span>
+                    <input
+                      id="quick-task-calendar-reminder"
+                      name="calendarReminderMinutes"
+                      type="number"
+                      min={0}
+                      step={5}
+                      value={calendarReminderMinutes}
+                      onChange={(event) =>
+                        setCalendarReminderMinutes(event.target.value)
+                      }
+                      className="h-8 w-16 rounded-[var(--radius-sm)] border border-[var(--ega-border)] bg-[var(--ega-surface)] px-1.5 text-xs tabular-nums text-[color:var(--ega-text)]"
+                    />
+                    <span>min before</span>
+                  </label>
+                ) : (
+                  <input
+                    type="hidden"
+                    name="calendarReminderMinutes"
+                    value={calendarReminderMinutes}
+                  />
+                )}
+              </div>
+
+              {calendarSyncEnabled && scheduledStartAt && scheduledEndAt ? (
+                <p className="text-[length:var(--text-meta)] text-[color:var(--ega-text-tertiary)]">
+                  Publishes to Google Calendar automatically when you create this task.
+                </p>
+              ) : null}
+            </div>
+          ) : (
+            <>
+              <input type="hidden" name="scheduledStartAt" value="" />
+              <input type="hidden" name="scheduledEndAt" value="" />
+              <input
+                type="hidden"
+                name="calendarReminderMinutes"
+                value={calendarReminderMinutes}
+              />
+            </>
+          )}
         </div>
 
         <details
