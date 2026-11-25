@@ -219,6 +219,7 @@ export type CalendarJobFailure = Readonly<{
   message: string;
   permanent: boolean;
   retryAt: string | null;
+  cooldownAt?: string;
   outcome: Extract<CalendarSyncItemOutcome, "failed" | "excluded">;
   exclusionReason?: CalendarSyncExclusionReason | null;
 }>;

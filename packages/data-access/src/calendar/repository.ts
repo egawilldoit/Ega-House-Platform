@@ -913,6 +913,7 @@ export class SupabaseCalendarSyncRepository implements CalendarSyncRepository {
       p_exclusion_reason: input.failure.exclusionReason ?? null,
       p_last_error: input.failure.message,
       p_permanent: input.failure.permanent,
+      ...(input.failure.cooldownAt ? { p_cooldown_at: input.failure.cooldownAt } : {}),
       p_now: input.nowIso,
     });
     if (result.error) return failure(result.error);

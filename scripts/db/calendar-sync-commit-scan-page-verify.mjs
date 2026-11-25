@@ -1634,6 +1634,37 @@ async function main() {
       UPDATE public.calendar_sync_jobs SET lease_expires_at = now() + interval '1 minute'
       WHERE id = ${claimedOrphan.id}::uuid
     `;
+    const rollbackCooldown = new Error("rollback final attempt cooldown fixture");
+    try {
+      await sql.begin(async (tx) => {
+        const [pending] = await tx`
+          INSERT INTO public.calendar_sync_jobs (
+            owner_user_id, task_id, destination_key, calendar_id, operation, status, queue_version, scheduled_at
+          )
+          SELECT owner_user_id, task_id, destination_key, calendar_id, 'delete', 'pending', 2, now()
+          FROM public.calendar_sync_jobs WHERE id = ${claimedOrphan.id}::uuid
+          RETURNING id`;
+        const [settled] = await tx`SELECT public.calendar_sync_fail_claim(
+          ${claimedOrphan.id}::uuid, ${ORPHAN_JOB_CLAIM}::uuid,
+          'failed', NULL, 'rate limited on final attempt', false, now(), ${RETRY_AT}::timestamptz
+        ) AS failed`;
+        assert(settled.failed, "rate limited final attempt must settle");
+        const backedOff = await tx`SELECT status, scheduled_at FROM public.calendar_sync_jobs
+          WHERE id IN (${claimedOrphan.id}::uuid, ${pending.id}::uuid)`;
+        assert(backedOff.length === 2 && backedOff.every((row) =>
+          new Date(row.scheduled_at).getTime() === new Date(RETRY_AT).getTime()),
+          "terminal settlement must retain cooldown and propagate it to the pending edit");
+        await tx`DELETE FROM public.calendar_sync_jobs WHERE id = ${pending.id}::uuid`;
+        await tx`SELECT public.calendar_sync_resume_run_for_retry(
+          ${RUN_REMOVAL}::uuid, ${DESTINATION_KEY}, true, now())`;
+        const [manualRetry] = await tx`SELECT status FROM public.calendar_sync_jobs
+          WHERE id = ${claimedOrphan.id}::uuid`;
+        assert(manualRetry.status === "failed", "manual Retry must not bypass the final-attempt cooldown");
+        throw rollbackCooldown;
+      });
+    } catch (error) {
+      if (error !== rollbackCooldown) throw error;
+    }
     const [exhausted] = await sql`SELECT public.calendar_sync_fail_claim(
       ${claimedOrphan.id}::uuid, ${ORPHAN_JOB_CLAIM}::uuid, 'failed', NULL, 'exhausted', false, now()
     ) AS failed`;

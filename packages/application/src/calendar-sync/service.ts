@@ -1190,6 +1190,14 @@ async function failJob(
         : input.message,
       permanent: input.permanent,
       retryAt,
+      cooldownAt: exhausted && !input.permanent && input.retryAfterSeconds !== undefined
+        ? nextCalendarRetryAtIso({
+            jobId: input.job.id,
+            attempts,
+            now: getNow(deps),
+            retryAfterSeconds: input.retryAfterSeconds,
+          })
+        : undefined,
       outcome: input.outcome ?? "failed",
       exclusionReason: input.exclusionReason ?? null,
     },

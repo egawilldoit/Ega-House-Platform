@@ -1574,6 +1574,7 @@ export type Database = {
           p_claim_token: string
           p_outcome: string
           p_exclusion_reason: string | null
+          p_cooldown_at?: string
           p_last_error: string
           p_permanent: boolean
           p_now: string

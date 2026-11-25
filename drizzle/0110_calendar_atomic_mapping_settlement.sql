@@ -361,18 +361,28 @@ $advance$;
 
 CREATE FUNCTION public.calendar_sync_fail_claim(
   p_job_id uuid, p_claim_token uuid, p_outcome text, p_exclusion_reason text,
-  p_last_error text, p_permanent boolean, p_now timestamptz
+  p_last_error text, p_permanent boolean, p_now timestamptz,
+  p_cooldown_at timestamptz DEFAULT NULL
 ) RETURNS boolean
 LANGUAGE sql SECURITY INVOKER SET search_path = ''
 AS $fail$
   WITH failed AS (
     UPDATE public.calendar_sync_jobs
     SET status = 'failed', outcome = p_outcome, exclusion_reason = p_exclusion_reason,
-        last_error = p_last_error, permanent_failure = p_permanent, scheduled_at = p_now,
+        last_error = p_last_error, permanent_failure = p_permanent,
+        scheduled_at = greatest(p_now, p_cooldown_at),
         claim_token = NULL, lease_expires_at = NULL, locked_at = NULL, updated_at = p_now
     WHERE id = p_job_id AND status = 'processing' AND claim_token = p_claim_token
       AND lease_expires_at > clock_timestamp()
-    RETURNING id, run_id, task_id, owner_user_id, task_updated_at, created_at, calendar_event_id, payload_hash
+    RETURNING id, run_id, task_id, owner_user_id, task_updated_at, created_at,
+      calendar_event_id, payload_hash, destination_key
+  ), backed_off AS (
+    UPDATE public.calendar_sync_jobs AS pending
+    SET scheduled_at = greatest(pending.scheduled_at, p_cooldown_at)
+    FROM failed
+    WHERE p_cooldown_at IS NOT NULL AND pending.status = 'pending'
+      AND pending.queue_version = 2 AND pending.owner_user_id = failed.owner_user_id
+      AND pending.task_id = failed.task_id AND pending.destination_key = failed.destination_key
   ), failed_items AS (
     UPDATE public.calendar_sync_run_items AS item
     SET outcome = 'failed', exclusion_reason = p_exclusion_reason,
@@ -398,7 +408,7 @@ REVOKE ALL ON FUNCTION
   public.calendar_sync_complete_run_if_drained(uuid, timestamptz),
   public.calendar_sync_claim_is_current(uuid, uuid),
   public.calendar_sync_advance_generation(uuid, uuid, integer, text, text, timestamptz),
-  public.calendar_sync_fail_claim(uuid, uuid, text, text, text, boolean, timestamptz)
+  public.calendar_sync_fail_claim(uuid, uuid, text, text, text, boolean, timestamptz, timestamptz)
 FROM PUBLIC, anon;
 --> statement-breakpoint
 
@@ -407,7 +417,7 @@ GRANT EXECUTE ON FUNCTION
   public.calendar_sync_complete_run_if_drained(uuid, timestamptz),
   public.calendar_sync_claim_is_current(uuid, uuid),
   public.calendar_sync_advance_generation(uuid, uuid, integer, text, text, timestamptz),
-  public.calendar_sync_fail_claim(uuid, uuid, text, text, text, boolean, timestamptz)
+  public.calendar_sync_fail_claim(uuid, uuid, text, text, text, boolean, timestamptz, timestamptz)
 TO authenticated, service_role;
 --> statement-breakpoint
 

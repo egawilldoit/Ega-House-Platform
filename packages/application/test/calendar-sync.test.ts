@@ -909,7 +909,7 @@ class FakeRepository implements CalendarSyncRepository {
       status: input.failure.retryAt ? "pending" : "failed",
       permanentFailure: input.failure.permanent,
       lastError: input.failure.message,
-      scheduledAt: input.failure.retryAt ?? job.scheduledAt,
+      scheduledAt: input.failure.retryAt ?? input.failure.cooldownAt ?? job.scheduledAt,
       claimToken: null,
     });
     if (!input.failure.retryAt && job.runId) {
@@ -2363,13 +2363,15 @@ test("transport timeouts record backoff, recover on retry, and exhaust the retry
   provider.events.clear();
   repository.mappings.clear();
   repository.jobs.set("scheduled", queuedJob({ attempts: 7 }));
-  provider.nextCreateFailure = timeout;
+  const limited = { ...timeout, retryAfterSeconds: 120 };
+  provider.nextCreateFailure = limited;
   await processCalendarRecovery(actor, deps);
   const exhausted = repository.jobs.get("scheduled");
   assert.equal(exhausted?.status, "failed");
   assert.equal(exhausted?.attempts, 8);
   assert.equal(exhausted?.permanentFailure, false);
   assert.equal(exhausted?.lastError, `${timeout.message} Retry limit reached.`);
+  assert.ok(Date.parse(exhausted.scheduledAt) >= deps.now().getTime() + 120_000);
 });
 
 test("an unexpected worker error releases every unstarted detached claim", async () => {
