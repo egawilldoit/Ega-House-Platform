@@ -13,6 +13,7 @@ import type {
   CalendarEventIndexEntry,
   CalendarEventPayload,
   CalendarEventProvider,
+  CalendarJobFailure,
   CalendarJobRecord,
   CalendarListingCheckpoint,
   CalendarMappingRecord,
@@ -897,7 +898,7 @@ class FakeRepository implements CalendarSyncRepository {
     input: {
       job: CalendarJobRecord;
       claimToken: string;
-      failure: { permanent: boolean; message: string; retryAt: string | null; outcome: "failed" | "excluded" };
+      failure: CalendarJobFailure;
     },
   ) {
     const job = this.jobs.get(input.job.id);
