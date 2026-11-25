@@ -115,12 +115,22 @@ export function sameVerifiedCalendarDestination(
 
   const leftEmail = left.accountEmail?.trim().toLowerCase() ?? "";
   const rightEmail = right.accountEmail?.trim().toLowerCase() ?? "";
-  if (leftEmail && rightEmail) {
-    return leftEmail === rightEmail;
-  }
-
   const leftSubject = left.accountSubject?.trim() ?? "";
   const rightSubject = right.accountSubject?.trim() ?? "";
+
+  // Reject conflicting known Google subjects even when emails match, so a
+  // reused email across two distinct accounts cannot bind their work.
+  if (leftSubject && rightSubject && leftSubject !== rightSubject) {
+    return false;
+  }
+
+  if (leftEmail && rightEmail) {
+    if (leftEmail !== rightEmail) return false;
+    // Legacy records without a subject fall back to the email match.
+    if (leftSubject && rightSubject) return leftSubject === rightSubject;
+    return true;
+  }
+
   if (leftSubject && rightSubject) {
     return leftSubject === rightSubject;
   }

@@ -1273,7 +1273,7 @@ async function processJob(
   const config = getConfig(deps);
 
   if (!jobMatchesConnection(job, connection)) {
-    await failJob(actor, deps, {
+    const _failRecorded9 = await failJob(actor, deps, {
       job,
       message:
         "The Calendar destination changed after this job was queued. Its events remain in the previous calendar.",
@@ -1281,6 +1281,9 @@ async function processJob(
       nowIso,
       now,
     });
+    if (!_failRecorded9) {
+      return { persistenceError: "Unable to record the Calendar sync failure." };
+    }
     return {};
   }
 
@@ -1289,13 +1292,16 @@ async function processJob(
     taskId: job.taskId,
   });
   if (!taskResult.ok) {
-    await failJob(actor, deps, {
+    const _failRecorded8 = await failJob(actor, deps, {
       job,
       message: "Unable to load the task for Calendar sync.",
       permanent: false,
       nowIso,
       now,
     });
+    if (!_failRecorded8) {
+      return { persistenceError: "Unable to record the Calendar sync failure." };
+    }
     return {};
   }
 
@@ -1334,10 +1340,13 @@ async function processJob(
       ownerUserId: job.ownerUserId, taskIds: [job.taskId],
     });
     if (!mappings.ok) {
-      await failJob(actor, deps, {
+      const _failRecorded7 = await failJob(actor, deps, {
         job, message: "Unable to load the Calendar removal target.",
         permanent: false, nowIso, now,
       });
+      if (!_failRecorded7) {
+        return { persistenceError: "Unable to record the Calendar sync failure." };
+      }
       return {};
     }
     const mapped = mappings.value.find((mapping) =>
@@ -1365,10 +1374,13 @@ async function processJob(
           }
           return { authFailure: true, staleAuth: !paused.applied };
         }
-        await failJob(actor, deps, {
+        const _failRecorded6 = await failJob(actor, deps, {
           job, message: lookup.error.message, permanent: lookup.error.kind === "permanent",
           retryAfterSeconds: lookup.error.retryAfterSeconds, nowIso, now,
         });
+        if (!_failRecorded6) {
+          return { persistenceError: "Unable to record the Calendar sync failure." };
+        }
         return {};
       }
       refreshedCredentials = lookup.refreshedCredentials;
@@ -1384,10 +1396,13 @@ async function processJob(
           jobId: job.id, claimToken: job.claimToken, eventId: plannedEventId, nowIso,
         });
         if (!prepared.ok) {
-          await failJob(actor, deps, {
+          const _failRecorded5 = await failJob(actor, deps, {
             job, message: "Unable to save the verified Calendar removal target.",
             permanent: false, nowIso, now,
           });
+          if (!_failRecorded5) {
+            return { persistenceError: "Unable to record the Calendar sync failure." };
+          }
           return { refreshedCredentials };
         }
         if (!prepared.value) return { refreshedCredentials };
@@ -1412,10 +1427,13 @@ async function processJob(
             refreshedCredentials,
           };
         }
-        await failJob(actor, deps, {
+        const _failRecorded4 = await failJob(actor, deps, {
           job, message: deleted.error.message, permanent: deleted.error.kind === "permanent",
           retryAfterSeconds: deleted.error.retryAfterSeconds, nowIso, now,
         });
+        if (!_failRecorded4) {
+          return { persistenceError: "Unable to record the Calendar sync failure." };
+        }
         return { refreshedCredentials };
       }
       refreshedCredentials = deleted.refreshedCredentials ?? refreshedCredentials;
@@ -1423,13 +1441,16 @@ async function processJob(
       if (deleted.value.alreadyRemoved) {
         const accessible = await deps.provider.isCalendarAccessible(connection);
         if (!accessible.ok) {
-          await failJob(actor, deps, {
+          const _failRecorded3 = await failJob(actor, deps, {
             job,
             message: accessible.error.message,
             permanent: false,
             nowIso,
             now,
           });
+          if (!_failRecorded3) {
+            return { persistenceError: "Unable to record the Calendar sync failure." };
+          }
           return { refreshedCredentials };
         }
         if (!accessible.value) {
@@ -1467,13 +1488,16 @@ async function processJob(
   }
 
   if (!built?.payload) {
-    await failJob(actor, deps, {
+    const _failRecorded2 = await failJob(actor, deps, {
       job,
       message: "The Calendar event payload could not be built.",
       permanent: true,
       nowIso,
       now,
     });
+    if (!_failRecorded2) {
+      return { persistenceError: "Unable to record the Calendar sync failure." };
+    }
     return {};
   }
 
@@ -1482,10 +1506,13 @@ async function processJob(
     taskIds: [job.taskId],
   });
   if (!mappings.ok) {
-    await failJob(actor, deps, {
+    const _failRecorded1 = await failJob(actor, deps, {
       job, message: "Unable to load Calendar event mappings.",
       permanent: false, nowIso, now,
     });
+    if (!_failRecorded1) {
+      return { persistenceError: "Unable to record the Calendar sync failure." };
+    }
     return {};
   }
 
@@ -1607,7 +1634,7 @@ async function processJob(
       return { authFailure: true, staleAuth: !paused.applied };
     }
 
-    await failJob(actor, deps, {
+    const _failRecorded0 = await failJob(actor, deps, {
       job,
       message: writeResult.error.message,
       permanent: writeResult.error.kind === "permanent",
@@ -1615,6 +1642,9 @@ async function processJob(
       nowIso,
       now,
     });
+    if (!_failRecorded0) {
+      return { persistenceError: "Unable to record the Calendar sync failure." };
+    }
     return {};
   }
 
@@ -1777,6 +1807,15 @@ async function processRunBatch(
   const nowIso = now.toISOString();
   const config = getConfig(deps);
   const deadline = requestDeadline ?? Date.now() + config.requestBudgetMs;
+
+  if (Date.now() >= deadline) {
+    return {
+      ok: true,
+      status: await buildStatus(actor, deps, run.id),
+      authFailure: false,
+      retryable: true,
+    };
+  }
 
   const connectionResult = await deps.repository.getConnectionForOwner(
     actor,
@@ -2045,6 +2084,14 @@ async function processRunBatch(
   // The Google listing above is awaited in full and can consume most of the
   // request budget. Give the task scan its own fresh budget so a slow listing
   // cannot starve scanning on every retry and stall the run indefinitely.
+  if (Date.now() >= deadline) {
+    return {
+      ok: true,
+      status: await buildStatus(actor, deps, run.id),
+      authFailure: false,
+      retryable: true,
+    };
+  }
   const scanDeadline = Date.now() + config.requestBudgetMs;
   const scanResult = await scanRun(actor, deps, {
     run,

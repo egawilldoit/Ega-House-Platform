@@ -327,6 +327,20 @@ async function claimPendingCalendarSyncJobs(
   supabase: SupabaseServerClient,
   input: { limit: number; nowIso: string },
 ) {
+  // Reclaim expired or leaseless v1 processing rows independently of the v2
+  // engine, so an in-flight v1 job is not stranded during/after migration.
+  await supabase
+    .from("calendar_sync_jobs")
+    .update({
+      status: "pending",
+      claim_token: null,
+      lease_expires_at: null,
+      updated_at: input.nowIso,
+    } as never)
+    .eq("queue_version", 1)
+    .eq("status", "processing")
+    .or(`lease_expires_at.is.null,lease_expires_at.lte.${input.nowIso}`);
+
   const { data: candidates, error: loadError } = await supabase
     .from("calendar_sync_jobs")
     .select(

@@ -702,9 +702,14 @@ AS $ready$
       AND COALESCE(identity.job_subject, '') <> 'unknown-account'
       AND COALESCE(identity.settings_email, '') <> 'unknown-account'
       AND COALESCE(identity.settings_subject, '') <> 'unknown-account'
-      AND CASE WHEN identity.job_email IS NOT NULL AND identity.settings_email IS NOT NULL
-        THEN identity.job_email = identity.settings_email
-        ELSE identity.job_subject = identity.settings_subject
+      AND CASE
+        WHEN identity.job_subject IS NOT NULL AND identity.settings_subject IS NOT NULL
+          THEN identity.job_subject = identity.settings_subject
+               AND (identity.job_email IS NULL OR identity.settings_email IS NULL
+                    OR identity.job_email = identity.settings_email)
+        WHEN identity.job_email IS NOT NULL AND identity.settings_email IS NOT NULL
+          THEN identity.job_email = identity.settings_email
+        ELSE false
       END
   ),
   deduped AS (
