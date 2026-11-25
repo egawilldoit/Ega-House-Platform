@@ -1766,6 +1766,7 @@ async function drainRunJobs(
   staleAuth?: boolean;
   persistenceError?: string;
   refreshed?: RefreshedCalendarCredentials;
+  processed?: number;
 }> {
   const config = getConfig(deps);
   let processed = 0;
@@ -1793,6 +1794,7 @@ async function drainRunJobs(
       return {
         persistenceError: "Unable to claim Calendar sync jobs.",
         refreshed,
+        processed,
       };
     }
     if (claimed.value.length === 0) break;
@@ -1822,14 +1824,14 @@ async function drainRunJobs(
               }).catch(() => undefined);
             }
             nextJob = jobs.length;
-            return { persistenceError: result.persistenceError, refreshed };
+            return { persistenceError: result.persistenceError, refreshed, processed };
           }
           nextJob -= 1;
           return { persistenceError: result.persistenceError, refreshed };
         }
         if (result.authFailure) {
           nextJob -= 1;
-          return { authFailure: true, staleAuth: result.staleAuth, refreshed };
+          return { authFailure: true, staleAuth: result.staleAuth, refreshed, processed };
         }
         processed += 1;
       }
@@ -1844,7 +1846,7 @@ async function drainRunJobs(
     }
   }
 
-  return { refreshed };
+  return { refreshed, processed };
 }
 
 async function processRunBatch(
@@ -2211,7 +2213,12 @@ async function processRunBatch(
     };
   }
 
-  const status = await buildStatus(actor, deps, run.id);
+  let status = await buildStatus(actor, deps, run.id);
+  // If no job was claimable this pass, stop browser-driven continuation to
+  // avoid a tight loop while another worker holds the lease.
+  if ((drained.processed ?? 0) === 0 && status.run) {
+    status = { ...status, run: { ...status.run, hasMore: false } };
+  }
   return {
     ok: true,
     status:
