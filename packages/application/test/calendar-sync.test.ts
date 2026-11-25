@@ -77,10 +77,10 @@ class FakeProvider implements CalendarEventProvider {
   updateCalls = 0;
   deleteCalls = 0;
   listCalls = 0;
-  nextCreateFailure: { kind: "authorization" | "retryable"; message: string; retryAfterSeconds?: number } | null = null;
+  nextCreateFailure: { kind: "authorization" | "retryable"; message: string } | null = null;
   getCalls = 0;
   nextListFailure: { kind: "authorization" | "retryable" | "permanent"; message: string } | null = null;
-  nextGetFailure: { kind: "authorization" | "retryable" | "permanent"; message: string } | null = null;
+  nextGetFailure: { kind: "authorization" | "retryable" | "permanent"; message: string; retryAfterSeconds?: number } | null = null;
   nextCalendarAccessFailure: { kind: "authorization" | "retryable" | "permanent"; message: string } | null = null;
   calendarAccessible = true;
 
