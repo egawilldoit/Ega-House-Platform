@@ -321,7 +321,8 @@ function commitQuery(sql, commit) {
     ${sql.json(commit.jobs)}::jsonb,
     ${commit.nowIso}::timestamptz,
     ${commit.expectedCursor?.createdAt ?? null}::timestamptz,
-    ${commit.expectedCursor?.taskId ?? null}::uuid
+    ${commit.expectedCursor?.taskId ?? null}::uuid,
+    ${commit.retryAt ?? null}::timestamptz
   ) AS committed`;
 }
 
@@ -876,6 +877,10 @@ async function main() {
       "one processing plus one pending job must count once");
 
     // The expired database lease is reclaimable even with a caller clock hours behind.
+    assert((await claimJobsQuery(sql, JOB_CLAIM_RECOVER, NOW_RECOVER)).length === 0,
+      "expired claim coalescing must preserve the newer pending job's cooldown");
+    await sql`UPDATE public.calendar_sync_jobs SET scheduled_at = clock_timestamp() - interval '1 second'
+      WHERE id = ${pendingA.id}::uuid`;
     const recoveredJobs = await claimJobsQuery(sql, JOB_CLAIM_RECOVER, NOW_RECOVER);
     assert(recoveredJobs.length === 1, "only the newer pending edit must be claimable");
     const recoveredA = recoveredJobs[0];
@@ -1008,7 +1013,7 @@ async function main() {
         recordFailure: true,
         lastError: "Transient Google Calendar error.",
         outcome: "failed",
-        scheduledAt: NOW_RELEASE,
+        scheduledAt: RETRY_AT,
       },
     );
     assert(
@@ -1027,8 +1032,8 @@ async function main() {
     assert(afterRelease[0].outcome === null, "the newer intent must not inherit an older outcome");
     assert(afterRelease[0].payload_hash === "hash-a4", "the newer intent must keep its payload hash");
     assert(
-      new Date(afterRelease[0].scheduled_at).getTime() <= new Date(NOW_EDIT_RELEASE).getTime(),
-      "a superseded release must leave the newer intent ready",
+      new Date(afterRelease[0].scheduled_at).getTime() === new Date(RETRY_AT).getTime(),
+      "a superseded release must pass the provider cooldown to the newer intent",
     );
     const [staleReleaseFinalize] = await sql`
       UPDATE public.calendar_sync_jobs
@@ -1040,6 +1045,22 @@ async function main() {
     `;
     assert(!staleReleaseFinalize, "a superseded release token must not finalize newer work");
 
+    const scanDuringCooldown = "20202020-2020-4020-8020-202020202020";
+    assert((await claimScanQuery(sql, scanDuringCooldown, NOW_EDIT_RELEASE))[0]?.id === RUN,
+      "a scan can plan a newer edit during an individual job cooldown");
+    assert((await commitQuery(sql, editDrafts({
+      claimToken: scanDuringCooldown,
+      nowIso: NOW_EDIT_RELEASE,
+      eventId: "event-a2",
+      payloadHash: "hash-a4",
+      taskUpdatedAt: "2026-11-23T10:10:30+00:00",
+    })))[0].committed, "the newer scan edit should commit");
+    assert(new Date((await jobsForTask(sql, TASK_A))[0].scheduled_at).getTime() === new Date(RETRY_AT).getTime(),
+      "coalescing a newer scan edit must preserve the existing cooldown");
+    const embargoedJobs = await claimJobsQuery(sql, JOB_CLAIM_RELEASE, NOW_EDIT_RELEASE);
+    assert(embargoedJobs.length === 0, "the newer intent must wait for the provider cooldown");
+    await sql`UPDATE public.calendar_sync_jobs SET scheduled_at = clock_timestamp() - interval '1 second'
+      WHERE id = ${releasePendingA.id}::uuid`;
     const claimedReleaseJobs = await claimJobsQuery(sql, JOB_CLAIM_RELEASE, NOW_RELEASE);
     assert(claimedReleaseJobs.length === 1, "the surviving newer edit must be claimable");
     const claimedReleaseA = claimedReleaseJobs[0];
@@ -1778,6 +1799,24 @@ async function main() {
       ) AS recorded`;
     assert(!blockedByCompleted.recorded, "listing failure must never overwrite a completed run");
     const embargoedRun = backedOffRuns[2];
+    const scanCooldownClaim = "21212121-2121-4121-8121-212121212121";
+    assert((await sql`SELECT id FROM public.calendar_sync_claim_run_scan(
+      ${embargoedRun}::uuid, ${scanCooldownClaim}::uuid, now(), 60)`).length === 1,
+      "run must start with a live scan lease");
+    const [scanReleased] = await commitQuery(sql, {
+      runId: embargoedRun, claimToken: scanCooldownClaim, expectedCursor: null,
+      nextCursor: null, scanComplete: false, items: [], jobs: [], nowIso: NOW,
+      retryAt: new Date(Date.now() + 120_000).toISOString(),
+    });
+    const [scanCooldown] = await sql`SELECT scan_claim_token, next_retry_at, scan_cursor_task_id
+      FROM public.calendar_sync_runs WHERE id = ${embargoedRun}::uuid`;
+    assert(scanReleased.committed && scanCooldown.scan_claim_token === null &&
+      scanCooldown.scan_cursor_task_id === null && new Date(scanCooldown.next_retry_at).getTime() > Date.now(),
+      "committing an empty page must release the scan lease and start its cooldown without advancing");
+    assert((await sql`SELECT id FROM public.calendar_sync_claim_run_scan(
+      ${embargoedRun}::uuid, gen_random_uuid(), now(), 60)`).length === 0,
+      "a scan must not be claimable before its lookup cooldown");
+
     await sql`SELECT public.calendar_sync_fail_unclaimed_listing(
       ${embargoedRun}::uuid, NULL, NULL, false, now() + interval '10 minutes', 'rate limit', now(), 0)`;
     await sql`SELECT public.calendar_sync_fail_unclaimed_listing(
@@ -1848,10 +1887,12 @@ async function main() {
       WHERE id = ${newJobId}::uuid`;
     assert(await claimDetached(JOB_CLAIM_RECOVER) === newJobId, "expired work must be reclaimed");
     await releaseJobsQuery(sql, [newJobId], JOB_CLAIM_RECOVER, NOW);
+    await sql`UPDATE public.calendar_sync_jobs SET scheduled_at = ${RETRY_AT}::timestamptz
+      WHERE id = ${newJobId}::uuid`;
     await enqueueGeneration(1, "generation-one", "delete");
     const [coalesced] = await sql`
       SELECT job.generation, job.calendar_event_id, job.event_exists, job.operation,
-        job.status, job.attempts, mapping.generation AS mapped_generation
+        job.status, job.attempts, job.scheduled_at, mapping.generation AS mapped_generation
       FROM public.calendar_sync_jobs AS job
       JOIN public.calendar_event_mappings AS mapping USING (owner_user_id, task_id, destination_key)
       WHERE job.id = ${newJobId}::uuid`;
@@ -1859,6 +1900,9 @@ async function main() {
       !coalesced.event_exists && coalesced.operation === "delete" && coalesced.status === "pending" &&
       coalesced.attempts === 0 && coalesced.mapped_generation === 1,
     "a stale enqueue must preserve the unverified higher-generation target");
+    assert(new Date(coalesced.scheduled_at).getTime() === new Date(RETRY_AT).getTime(),
+      "a task enqueue must preserve a pending job cooldown");
+    await sql`UPDATE public.calendar_sync_jobs SET scheduled_at = now() WHERE id = ${newJobId}::uuid`;
     log("AD-HOC-ENQUEUE", "recovered generation survives a conflicting lower-generation delete");
 
     await sql`

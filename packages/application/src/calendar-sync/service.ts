@@ -932,17 +932,29 @@ async function scanRun(
         hasOtherDestinationMapping: otherDestinationTaskIds.has(task.id),
       });
       if ("lookupFailure" in planned) {
-        await deps.repository.commitScanPage(actor, {
+        const authFailure = planned.lookupFailure.kind === "authorization";
+        const released = await deps.repository.commitScanPage(actor, {
           runId: run.id,
           claimToken,
           expectedCursor,
           nextCursor: expectedCursor,
           scanComplete: false,
+          retryAt: authFailure ? undefined : nextCalendarRetryAtIso({
+            jobId: run.id,
+            attempts: 1,
+            now: getNow(deps),
+            retryAfterSeconds: planned.lookupFailure.retryAfterSeconds,
+          }),
           items: [],
           jobs: [],
           nowIso: input.nowIso,
         });
-        const authFailure = planned.lookupFailure.kind === "authorization";
+        if (!released.ok) {
+          return { ok: false, message: "Unable to save Calendar scan retry state.", persistenceFailure: true };
+        }
+        if (!released.value) {
+          return { ok: false, message: "Calendar scan claim changed; retry to continue.", retryable: true };
+        }
         if (authFailure) {
           const paused = await pauseForAuthorization(actor, deps, {
             runId: run.id,

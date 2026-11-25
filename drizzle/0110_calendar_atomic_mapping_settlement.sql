@@ -568,7 +568,6 @@ BEGIN
       OR calendar_sync_jobs.calendar_event_id IS NULL,
     attempts = 0,
     status = 'pending',
-    scheduled_at = now(),
     last_error = NULL,
     permanent_failure = false,
     updated_at = now();
@@ -686,7 +685,6 @@ AS $enqueue$
       (EXCLUDED.generation >= calendar_sync_jobs.generation OR calendar_sync_jobs.calendar_event_id IS NULL),
     task_updated_at = EXCLUDED.task_updated_at,
     attempts = 0,
-    scheduled_at = LEAST(calendar_sync_jobs.scheduled_at, p_now, now()),
     last_error = NULL,
     permanent_failure = false,
     updated_at = p_now;

@@ -161,6 +161,7 @@ export type CalendarScanCommit = Readonly<{
   expectedCursor: CalendarScanCursor | null;
   nextCursor: CalendarScanCursor | null;
   scanComplete: boolean;
+  retryAt?: string;
   items: CalendarRunItemDraft[];
   jobs: CalendarScanJobDraft[];
   nowIso: string;

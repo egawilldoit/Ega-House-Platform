@@ -77,7 +77,7 @@ class FakeProvider implements CalendarEventProvider {
   updateCalls = 0;
   deleteCalls = 0;
   listCalls = 0;
-  nextCreateFailure: { kind: "authorization" | "retryable"; message: string } | null = null;
+  nextCreateFailure: { kind: "authorization" | "retryable"; message: string; retryAfterSeconds?: number } | null = null;
   getCalls = 0;
   nextListFailure: { kind: "authorization" | "retryable" | "permanent"; message: string } | null = null;
   nextGetFailure: { kind: "authorization" | "retryable" | "permanent"; message: string } | null = null;
@@ -682,6 +682,7 @@ class FakeRepository implements CalendarSyncRepository {
       this.runs.set(commit.runId, {
         ...run,
         scanComplete: commit.scanComplete,
+        nextRetryAt: commit.retryAt ?? null,
         scanCursorCreatedAt: commit.nextCursor?.createdAt ?? null,
         scanCursorTaskId: commit.nextCursor?.taskId ?? null,
         updatedAt: commit.nowIso,
@@ -3226,6 +3227,35 @@ test("manual entry points preserve Google listing backoff until it is due", asyn
   currentTime = Date.parse(repository.runs.get(runId)!.nextRetryAt!) + 1000;
   await continueCalendarSync(actor, deps, runId);
   assert.equal(calls, 2);
+});
+
+test("manual continuation honors Retry-After from a mapped-event lookup", async () => {
+  const repository = new FakeRepository();
+  const provider = new FakeProvider();
+  repository.addTask(task());
+  const deps = buildDeps(repository, provider);
+  let currentTime = deps.now().getTime();
+  deps.now = () => new Date(currentTime);
+
+  await startCalendarSync(actor, deps);
+  const original = [...provider.events.values()][0];
+  assert.ok(original);
+  provider.events.set(original.id, { ...original, privateProperties: {} });
+  provider.nextGetFailure = { kind: "retryable", message: "Rate limited", retryAfterSeconds: 120 };
+
+  const started = await startCalendarSync(actor, deps);
+  assert.ok(started.ok && started.data.run);
+  const { id } = started.data.run;
+  const retryAt = Date.parse(repository.runs.get(id)?.nextRetryAt ?? "");
+  assert.ok(retryAt >= currentTime + 120_000);
+  await continueCalendarSync(actor, deps, id);
+  await startCalendarSync(actor, deps);
+  assert.equal(provider.getCalls, 1);
+
+  currentTime = retryAt + 1000;
+  await continueCalendarSync(actor, deps, id);
+  assert.equal(provider.getCalls, 2);
+  assert.equal(provider.events.size, 1);
 });
 
 test("a listing paused at the request deadline resumes from its saved page token", async () => {

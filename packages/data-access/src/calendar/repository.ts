@@ -726,6 +726,7 @@ export class SupabaseCalendarSyncRepository implements CalendarSyncRepository {
       p_next_cursor_created_at: commit.nextCursor?.createdAt ?? null,
       p_next_cursor_task_id: commit.nextCursor?.taskId ?? null,
       p_scan_complete: commit.scanComplete,
+      ...(commit.retryAt ? { p_retry_at: commit.retryAt } : {}),
       p_items: commit.items.map(toCalendarScanItemPayload),
       p_jobs: commit.jobs.map(toCalendarScanJobPayload),
       p_now: commit.nowIso,

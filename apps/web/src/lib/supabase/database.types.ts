@@ -1600,6 +1600,7 @@ export type Database = {
           p_now: string
           p_expected_cursor_created_at?: string | null
           p_expected_cursor_task_id?: string | null
+          p_retry_at?: string | null
         }
         Returns: boolean
       }

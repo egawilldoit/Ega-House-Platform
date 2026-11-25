@@ -309,7 +309,8 @@ CREATE OR REPLACE FUNCTION public.calendar_sync_commit_scan_page(
   p_jobs jsonb,
   p_now timestamptz,
   p_expected_cursor_created_at timestamptz DEFAULT NULL,
-  p_expected_cursor_task_id uuid DEFAULT NULL
+  p_expected_cursor_task_id uuid DEFAULT NULL,
+  p_retry_at timestamptz DEFAULT NULL
 ) RETURNS boolean
 LANGUAGE plpgsql
 SECURITY INVOKER
@@ -411,7 +412,6 @@ BEGIN
       payload_hash = EXCLUDED.payload_hash,
       exclusion_reason = EXCLUDED.exclusion_reason,
       task_updated_at = EXCLUDED.task_updated_at,
-      scheduled_at = LEAST(public.calendar_sync_jobs.scheduled_at, p_now, now()),
       last_error = NULL,
       permanent_failure = false,
       updated_at = p_now;
@@ -434,7 +434,7 @@ BEGIN
       listing_events = CASE WHEN p_scan_complete THEN NULL ELSE listing_events END,
       scan_claim_token = NULL,
       scan_lease_expires_at = NULL,
-      next_retry_at = NULL,
+      next_retry_at = p_retry_at,
       updated_at = p_now
   WHERE id = p_run_id;
 
@@ -543,7 +543,6 @@ BEGIN
       event_exists = calendar_sync_jobs.event_exists AND NOT (
         EXCLUDED.generation > calendar_sync_jobs.generation AND EXCLUDED.calendar_event_id IS NOT NULL
       ),
-      scheduled_at = LEAST(public.calendar_sync_jobs.scheduled_at, p_now, now()),
       updated_at = p_now
     RETURNING *
   )
@@ -689,7 +688,9 @@ BEGIN
         event_exists = calendar_sync_jobs.event_exists AND NOT (
           EXCLUDED.generation > calendar_sync_jobs.generation AND EXCLUDED.calendar_event_id IS NOT NULL
         ),
-        scheduled_at = LEAST(public.calendar_sync_jobs.scheduled_at, p_now, now()),
+        scheduled_at = CASE WHEN p_record_failure
+          THEN greatest(calendar_sync_jobs.scheduled_at, EXCLUDED.scheduled_at)
+          ELSE calendar_sync_jobs.scheduled_at END,
         updated_at = p_now
       RETURNING *
     )
@@ -988,7 +989,7 @@ $upsert_mapping$;
 --> statement-breakpoint
 
 REVOKE ALL ON FUNCTION public.calendar_sync_claim_run_scan(uuid, uuid, timestamptz, integer) FROM PUBLIC, anon;
-REVOKE ALL ON FUNCTION public.calendar_sync_commit_scan_page(uuid, uuid, timestamptz, uuid, boolean, jsonb, jsonb, timestamptz, timestamptz, uuid) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.calendar_sync_commit_scan_page(uuid, uuid, timestamptz, uuid, boolean, jsonb, jsonb, timestamptz, timestamptz, uuid, timestamptz) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.calendar_sync_claim_jobs(uuid, text, uuid, uuid, integer, timestamptz, integer) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.calendar_sync_release_claimed_jobs(uuid[], uuid, timestamptz, boolean, text, varchar, text, timestamptz) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.calendar_sync_complete_job(uuid, uuid, varchar, text, integer, text, text, text, boolean, boolean, text, integer, timestamptz) FROM PUBLIC, anon;
@@ -998,7 +999,7 @@ REVOKE ALL ON FUNCTION public.calendar_sync_run_exclusions(uuid) FROM PUBLIC, an
 REVOKE ALL ON FUNCTION public.calendar_sync_run_failures(uuid, integer) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.calendar_sync_upsert_mapping(uuid, uuid, text, text, text, text, text, integer, text, timestamptz) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.calendar_sync_claim_run_scan(uuid, uuid, timestamptz, integer) TO authenticated, service_role;
-GRANT EXECUTE ON FUNCTION public.calendar_sync_commit_scan_page(uuid, uuid, timestamptz, uuid, boolean, jsonb, jsonb, timestamptz, timestamptz, uuid) TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.calendar_sync_commit_scan_page(uuid, uuid, timestamptz, uuid, boolean, jsonb, jsonb, timestamptz, timestamptz, uuid, timestamptz) TO authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.calendar_sync_claim_jobs(uuid, text, uuid, uuid, integer, timestamptz, integer) TO authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.calendar_sync_release_claimed_jobs(uuid[], uuid, timestamptz, boolean, text, varchar, text, timestamptz) TO authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.calendar_sync_complete_job(uuid, uuid, varchar, text, integer, text, text, text, boolean, boolean, text, integer, timestamptz) TO authenticated, service_role;
