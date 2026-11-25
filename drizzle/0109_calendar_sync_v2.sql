@@ -33,6 +33,9 @@ CREATE TABLE IF NOT EXISTS public.calendar_sync_runs (
   scan_claim_token uuid,
   scan_lease_expires_at timestamptz,
   next_retry_at timestamptz,
+  listing_revision integer NOT NULL DEFAULT 0,
+  listing_next_page_token text,
+  listing_events jsonb,
   last_error text,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
@@ -188,8 +191,8 @@ UPDATE public.calendar_sync_jobs AS j
 SET
   destination_key =
     COALESCE(
-      NULLIF(lower(trim(s.google_account_email)), ''),
       NULLIF(trim(s.google_account_subject), ''),
+      NULLIF(lower(trim(s.google_account_email)), ''),
       'unknown-account'
     ) || '|' || COALESCE(NULLIF(trim(s.calendar_id), ''), 'primary'),
   google_account_subject = s.google_account_subject,
@@ -427,6 +430,7 @@ BEGIN
   SET scan_cursor_created_at = p_next_cursor_created_at,
       scan_cursor_task_id = p_next_cursor_task_id,
       scan_complete = p_scan_complete,
+      listing_events = CASE WHEN p_scan_complete THEN NULL ELSE listing_events END,
       scan_claim_token = NULL,
       scan_lease_expires_at = NULL,
       next_retry_at = NULL,
@@ -705,6 +709,18 @@ BEGIN
       AND job.status = 'pending';
 
     IF FOUND THEN
+      IF p_record_failure THEN
+        UPDATE public.calendar_sync_run_items AS item
+        SET outcome = 'pending', exclusion_reason = p_exclusion_reason,
+            error_message = NULL, updated_at = p_now
+        WHERE item.job_id = v_job.id AND item.run_id = v_job.run_id
+          AND item.task_id = v_job.task_id;
+        UPDATE public.tasks AS task
+        SET calendar_sync_status = 'pending', calendar_sync_failure_reason = p_last_error
+        WHERE task.id = v_job.task_id AND task.owner_user_id = v_job.owner_user_id
+    AND (task.updated_at = v_job.task_updated_at OR
+         (v_job.task_updated_at IS NULL AND task.updated_at <= v_job.created_at));
+      END IF;
       RETURN NEXT v_job;
     END IF;
   END LOOP;

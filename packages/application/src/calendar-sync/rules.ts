@@ -37,7 +37,7 @@ export function normalizeCalendarDestination(input: {
   const accountSubject = normalizeOptional(input.accountSubject);
   const accountEmail = normalizeOptional(input.accountEmail)?.toLowerCase() ?? null;
   const calendarId = normalizeOptional(input.calendarId) ?? "primary";
-  const accountKey = accountEmail ?? accountSubject ?? "unknown-account";
+  const accountKey = accountSubject ?? accountEmail ?? "unknown-account";
 
   return {
     accountSubject,
@@ -88,13 +88,7 @@ export function isVerifiedCalendarDestination(
   );
 }
 
-/**
- * Compare destinations that must both carry verified account identity. An
- * email (when both sides have one) is the strongest evidence; otherwise a
- * subject shared by both sides is used. A legacy row that has the same email
- * but no subject remains compatible with a later verified capture of the same
- * account. Different known emails or subjects are a mismatch.
- */
+/** Compare stable Google subjects when either destination has one. */
 export function sameVerifiedCalendarDestination(
   left: Pick<
     CalendarSyncDestination,
@@ -118,24 +112,10 @@ export function sameVerifiedCalendarDestination(
   const leftSubject = left.accountSubject?.trim() ?? "";
   const rightSubject = right.accountSubject?.trim() ?? "";
 
-  // Reject conflicting known Google subjects even when emails match, so a
-  // reused email across two distinct accounts cannot bind their work.
-  if (leftSubject && rightSubject && leftSubject !== rightSubject) {
-    return false;
+  if (leftSubject || rightSubject) {
+    return Boolean(leftSubject && leftSubject === rightSubject);
   }
-
-  if (leftEmail && rightEmail) {
-    if (leftEmail !== rightEmail) return false;
-    // Legacy records without a subject fall back to the email match.
-    if (leftSubject && rightSubject) return leftSubject === rightSubject;
-    return true;
-  }
-
-  if (leftSubject && rightSubject) {
-    return leftSubject === rightSubject;
-  }
-
-  return false;
+  return Boolean(leftEmail && leftEmail === rightEmail);
 }
 
 /**

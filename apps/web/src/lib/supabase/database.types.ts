@@ -364,6 +364,9 @@ export type Database = {
           scan_complete: boolean
           scan_claim_token: string | null
           scan_lease_expires_at: string | null
+          listing_revision: number
+          listing_next_page_token: string | null
+          listing_events: Json | null
           next_retry_at: string | null
           last_error: string | null
           created_at: string
@@ -384,6 +387,9 @@ export type Database = {
           scan_complete?: boolean
           scan_claim_token?: string | null
           scan_lease_expires_at?: string | null
+          listing_revision?: number
+          listing_next_page_token?: string | null
+          listing_events?: Json | null
           next_retry_at?: string | null
           last_error?: string | null
           created_at?: string
@@ -404,6 +410,9 @@ export type Database = {
           scan_complete?: boolean
           scan_claim_token?: string | null
           scan_lease_expires_at?: string | null
+          listing_revision?: number
+          listing_next_page_token?: string | null
+          listing_events?: Json | null
           next_retry_at?: string | null
           last_error?: string | null
           created_at?: string
@@ -1658,6 +1667,7 @@ export type Database = {
           p_retry_at: string | null
           p_error: string
           p_now: string
+          p_expected_listing_revision?: number
         }
         Returns: boolean
       }

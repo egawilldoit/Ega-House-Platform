@@ -1621,6 +1621,36 @@ async function main() {
       WHERE run_id = ${RUN_REMOVAL}::uuid AND task_id = ${TASK_ORPHAN}::uuid`;
     assert(failedItem.outcome === "failed" && failedItem.error_message === "exhausted",
       "exhaustion must atomically settle the job and item");
+    // Roll back this fixture mutation so the later purge proof sees the original task.
+    const undoEditFixture = new Error("rollback task edit fixture");
+    try {
+      await sql.begin(async (tx) => {
+        const [freshestTask] = await tx`UPDATE public.tasks
+          SET calendar_sync_status = 'pending', calendar_sync_failure_reason = NULL,
+              updated_at = clock_timestamp() + interval '1 second'
+          WHERE id = ${TASK_C}::uuid
+          RETURNING updated_at`;
+        const [editedClaim] = await tx`UPDATE public.calendar_sync_jobs
+          SET status = 'processing', claim_token = ${ORPHAN_JOB_CLAIM}::uuid,
+              lease_expires_at = now() + interval '1 minute',
+              task_updated_at = ${freshestTask.updated_at}::timestamptz - interval '1 second'
+          WHERE id = (SELECT id FROM public.calendar_sync_jobs WHERE task_id = ${TASK_C}::uuid
+                      AND status = 'succeeded' LIMIT 1)
+          RETURNING id`;
+        assert(editedClaim, "task edit proof needs a job for the edited task");
+        const [editedSettlement] = await tx`SELECT public.calendar_sync_fail_claim(
+          ${editedClaim.id}::uuid, ${ORPHAN_JOB_CLAIM}::uuid, 'failed', NULL, 'old failure', true, now()
+        ) AS failed`;
+        const [editedTask] = await tx`SELECT calendar_sync_status, calendar_sync_failure_reason
+          FROM public.tasks WHERE id = ${TASK_C}::uuid`;
+        assert(editedSettlement.failed && editedTask.calendar_sync_status === "pending" &&
+          editedTask.calendar_sync_failure_reason === null,
+        "an older job must settle without overwriting the edited task's sync state");
+        throw undoEditFixture;
+      });
+    } catch (error) {
+      if (error !== undoEditFixture) throw error;
+    }
     const resumeRetry = (db) => db`SELECT status, scan_complete, retry_mode, completed_at
       FROM public.calendar_sync_resume_run_for_retry(
         ${RUN_REMOVAL}::uuid, ${DESTINATION_REMOVAL}, true, now()

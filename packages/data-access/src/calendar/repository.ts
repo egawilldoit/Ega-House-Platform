@@ -2,6 +2,7 @@ import type {
   CalendarConnectionRecord,
   CalendarEventIndexEntry,
   CalendarJobRecord,
+  CalendarListingCheckpoint,
   CalendarMappingRecord,
   CalendarReadyQueue,
   CalendarRunCounts,
@@ -13,7 +14,6 @@ import type {
   CalendarScanCursor,
   CalendarScanJobDraft,
   CalendarSyncDestination,
-  CalendarSyncItemOutcome,
   CalendarSyncRepository,
   CalendarTaskPage,
   CalendarTaskScanRecord,
@@ -109,6 +109,7 @@ function mapRun(row: Row): CalendarRunRecord {
     status: String(row.status) as CalendarRunRecord["status"],
     retryMode: Boolean(row.retry_mode),
     scanComplete: Boolean(row.scan_complete),
+    nextRetryAt: nullableString(row.next_retry_at),
     scanCursorCreatedAt: nullableString(row.scan_cursor_created_at),
     scanCursorTaskId: nullableString(row.scan_cursor_task_id),
     lastError: nullableString(row.last_error),
@@ -162,7 +163,7 @@ const TASK_COLUMNS =
   "id, owner_user_id, title, status, archived_at, completed_at, calendar_sync_enabled, calendar_reminder_minutes, scheduled_start_at, scheduled_end_at, planned_for_date, due_date, calendar_event_id, created_at, updated_at";
 
 const RUN_COLUMNS =
-  "id, owner_user_id, destination_key, google_account_subject, google_account_email, calendar_id, status, retry_mode, scan_cursor_created_at, scan_cursor_task_id, scan_complete, last_error, created_at, updated_at, completed_at";
+  "id, owner_user_id, destination_key, google_account_subject, google_account_email, calendar_id, status, retry_mode, scan_cursor_created_at, scan_cursor_task_id, scan_complete, next_retry_at, last_error, created_at, updated_at, completed_at";
 
 const MAPPING_COLUMNS =
   "id, owner_user_id, task_id, destination_key, google_account_subject, google_account_email, calendar_id, event_id, generation, status, metadata_verified, payload_hash, last_synced_at, updated_at";
@@ -492,11 +493,55 @@ export class SupabaseCalendarSyncRepository implements CalendarSyncRepository {
     return { ok: true, value: undefined };
   }
 
+  async getListingCheckpoint(
+    _actor: AuthenticatedActor,
+    runId: string,
+  ): Promise<RepositoryResult<CalendarListingCheckpoint | null>> {
+    const result = await this.supabase
+      .from("calendar_sync_runs")
+      .select("listing_revision, listing_next_page_token, listing_events")
+      .eq("id", runId)
+      .maybeSingle();
+    if (result.error) return failure(result.error);
+    const row = asRow(result.data);
+    if (!result.data) return { ok: true, value: null };
+    return {
+      ok: true,
+      value: {
+        revision: Number(row.listing_revision),
+        nextPageToken: nullableString(row.listing_next_page_token),
+        events: Array.isArray(row.listing_events) ? row.listing_events : null,
+      },
+    };
+  }
+
+  async saveListingCheckpoint(
+    _actor: AuthenticatedActor,
+    runId: string,
+    checkpoint: CalendarListingCheckpoint,
+  ): Promise<RepositoryResult<boolean>> {
+    const result = await this.supabase
+      .from("calendar_sync_runs")
+      .update({
+        listing_revision: checkpoint.revision,
+        listing_next_page_token: checkpoint.nextPageToken,
+        listing_events: checkpoint.events,
+      } as never)
+      .eq("id", runId)
+      .eq("status", "active")
+      .eq("scan_complete", false)
+      .eq("listing_revision", checkpoint.revision - 1)
+      .select("id");
+    if (result.error) return failure(result.error);
+    return { ok: true, value: asRows(result.data).length > 0 };
+  }
+
   async recordListingFailure(
     _actor: AuthenticatedActor,
     input: {
       runId: string;
       expectedCursor: CalendarScanCursor | null;
+      expectedListingRevision: number;
       pause: boolean;
       retryAt: string | null;
       message: string;
@@ -511,6 +556,7 @@ export class SupabaseCalendarSyncRepository implements CalendarSyncRepository {
       p_retry_at: input.retryAt,
       p_error: input.message,
       p_now: input.nowIso,
+      p_expected_listing_revision: input.expectedListingRevision,
     });
     if (result.error) return failure(result.error);
     return { ok: true, value: Boolean(result.data) };
@@ -905,60 +951,6 @@ export class SupabaseCalendarSyncRepository implements CalendarSyncRepository {
     const row = asRows(result.data)[0];
     if (!row) return failure({ message: "Calendar mapping was not persisted." });
     return { ok: true, value: mapMapping(row) };
-  }
-
-  async updateTaskSyncState(
-    actor: AuthenticatedActor,
-    input: {
-      taskId: string;
-      eventId: string | null;
-      status: "pending" | "synced" | "failed" | "skipped";
-      failureReason: string | null;
-      nowIso: string;
-    },
-  ): Promise<RepositoryResult<void>> {
-    let query = this.supabase
-      .from("tasks")
-      .update({
-        calendar_event_id: input.eventId,
-        calendar_sync_status: input.status,
-        calendar_sync_failure_reason: input.failureReason,
-        updated_at: input.nowIso,
-      } as never)
-      .eq("id", input.taskId);
-    if (this.scope === "owner") query = query.eq("owner_user_id", actor.userId);
-    const result = await query;
-    if (result.error) return failure(result.error);
-    return { ok: true, value: undefined };
-  }
-
-  async updateRunItem(
-    _actor: AuthenticatedActor,
-    input: {
-      runId: string;
-      taskId: string;
-      outcome: CalendarSyncItemOutcome;
-      exclusionReason: CalendarJobRecord["exclusionReason"];
-      eventId: string | null;
-      payloadHash: string | null;
-      errorMessage?: string | null;
-      nowIso: string;
-    },
-  ): Promise<RepositoryResult<void>> {
-    const result = await this.supabase
-      .from("calendar_sync_run_items")
-      .update({
-        outcome: input.outcome,
-        exclusion_reason: input.exclusionReason,
-        event_id: input.eventId,
-        payload_hash: input.payloadHash,
-        error_message: input.errorMessage ?? null,
-        updated_at: input.nowIso,
-      } as never)
-      .eq("run_id", input.runId)
-      .eq("task_id", input.taskId);
-    if (result.error) return failure(result.error);
-    return { ok: true, value: undefined };
   }
 
   async countPendingRunJobs(

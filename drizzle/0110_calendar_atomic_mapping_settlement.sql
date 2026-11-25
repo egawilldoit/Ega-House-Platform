@@ -111,9 +111,17 @@ BEGIN
         job_id = v_job.id,
         updated_at = p_now
     WHERE run_id = v_job.run_id
-      AND task_id = v_job.task_id;
+      AND task_id = v_job.task_id
+      AND (job_id IS NULL OR job_id = v_job.id);
   END IF;
 
+  UPDATE public.tasks AS task
+  SET calendar_event_id = p_event_id,
+      calendar_sync_status = CASE WHEN p_outcome IN ('created', 'updated') THEN 'synced' ELSE 'skipped' END,
+      calendar_sync_failure_reason = p_last_error
+  WHERE task.id = v_job.task_id AND task.owner_user_id = v_job.owner_user_id
+    AND (task.updated_at = v_job.task_updated_at OR
+         (v_job.task_updated_at IS NULL AND task.updated_at <= v_job.created_at));
   RETURN true;
 END
 $complete_job$;
@@ -283,8 +291,15 @@ BEGIN
   END IF;
 
   RETURN QUERY UPDATE public.calendar_sync_runs
-  SET status = 'active', retry_mode = p_retry_mode, last_error = NULL,
-      next_retry_at = NULL, completed_at = NULL, updated_at = p_now
+  SET status = 'active', retry_mode = p_retry_mode,
+      last_error = CASE WHEN next_retry_at > clock_timestamp() THEN last_error END,
+      next_retry_at = CASE WHEN next_retry_at > clock_timestamp() THEN next_retry_at END,
+      listing_events = CASE WHEN status = 'paused' AND listing_next_page_token IS NOT NULL
+                            THEN NULL ELSE listing_events END,
+      listing_revision = CASE WHEN status = 'paused' AND listing_next_page_token IS NOT NULL
+                              THEN listing_revision + 1 ELSE listing_revision END,
+      listing_next_page_token = CASE WHEN status = 'paused' THEN NULL ELSE listing_next_page_token END,
+      completed_at = NULL, updated_at = p_now
   WHERE id = p_run_id
   RETURNING *;
 END
@@ -357,7 +372,7 @@ AS $fail$
         claim_token = NULL, lease_expires_at = NULL, locked_at = NULL, updated_at = p_now
     WHERE id = p_job_id AND status = 'processing' AND claim_token = p_claim_token
       AND lease_expires_at > clock_timestamp()
-    RETURNING id, run_id, task_id, calendar_event_id, payload_hash
+    RETURNING id, run_id, task_id, owner_user_id, task_updated_at, created_at, calendar_event_id, payload_hash
   ), failed_items AS (
     UPDATE public.calendar_sync_run_items AS item
     SET outcome = 'failed', exclusion_reason = p_exclusion_reason,
@@ -366,6 +381,13 @@ AS $fail$
     FROM failed
     WHERE item.run_id = failed.run_id AND item.task_id = failed.task_id
       AND item.job_id = failed.id
+  ), failed_tasks AS (
+    UPDATE public.tasks AS task
+    SET calendar_sync_status = 'failed', calendar_sync_failure_reason = p_last_error
+    FROM failed
+    WHERE task.id = failed.task_id AND task.owner_user_id = failed.owner_user_id
+      AND (task.updated_at = failed.task_updated_at OR
+           (failed.task_updated_at IS NULL AND task.updated_at <= failed.created_at))
   )
   SELECT EXISTS (SELECT 1 FROM failed);
 $fail$;
@@ -396,9 +418,9 @@ AS $actionable$
   SELECT run.*
   FROM public.calendar_sync_runs AS run
   WHERE run.status = 'active'
+    AND (run.scan_complete OR run.next_retry_at IS NULL OR run.next_retry_at <= clock_timestamp())
     AND (
-      (NOT run.scan_complete
-        AND (run.next_retry_at IS NULL OR run.next_retry_at <= clock_timestamp()))
+      NOT run.scan_complete
       OR EXISTS (
         SELECT 1 FROM public.calendar_sync_jobs AS job
         WHERE job.run_id = run.id
@@ -642,11 +664,13 @@ AS $enqueue$
   INSERT INTO public.calendar_sync_jobs (
     owner_user_id, task_id, calendar_event_id, operation, status, attempts,
     queue_version, destination_key, google_account_subject, google_account_email,
-    calendar_id, generation, event_exists, scheduled_at, updated_at
+    calendar_id, generation, event_exists, task_updated_at, scheduled_at, updated_at
   ) VALUES (
     p_owner_user_id, p_task_id, p_calendar_event_id, p_operation, 'pending', 0,
     2, p_destination_key, p_google_account_subject, p_google_account_email,
-    p_calendar_id, p_generation, p_event_exists, LEAST(p_now, now()), p_now
+    p_calendar_id, p_generation, p_event_exists,
+    (SELECT updated_at FROM public.tasks WHERE id = p_task_id AND owner_user_id = p_owner_user_id),
+    LEAST(p_now, now()), p_now
   )
   ON CONFLICT (owner_user_id, task_id, destination_key)
     WHERE (status = 'pending' AND queue_version = 2)
@@ -660,6 +684,7 @@ AS $enqueue$
       ELSE EXCLUDED.generation END,
     event_exists = EXCLUDED.event_exists AND
       (EXCLUDED.generation >= calendar_sync_jobs.generation OR calendar_sync_jobs.calendar_event_id IS NULL),
+    task_updated_at = EXCLUDED.task_updated_at,
     attempts = 0,
     scheduled_at = LEAST(calendar_sync_jobs.scheduled_at, p_now, now()),
     last_error = NULL,
@@ -703,10 +728,8 @@ AS $ready$
       AND COALESCE(identity.settings_email, '') <> 'unknown-account'
       AND COALESCE(identity.settings_subject, '') <> 'unknown-account'
       AND CASE
-        WHEN identity.job_subject IS NOT NULL AND identity.settings_subject IS NOT NULL
+        WHEN identity.job_subject IS NOT NULL OR identity.settings_subject IS NOT NULL
           THEN identity.job_subject = identity.settings_subject
-               AND (identity.job_email IS NULL OR identity.settings_email IS NULL
-                    OR identity.job_email = identity.settings_email)
         WHEN identity.job_email IS NOT NULL AND identity.settings_email IS NOT NULL
           THEN identity.job_email = identity.settings_email
         ELSE false
@@ -736,7 +759,8 @@ CREATE FUNCTION public.calendar_sync_fail_unclaimed_listing(
   p_pause boolean,
   p_retry_at timestamptz,
   p_error text,
-  p_now timestamptz
+  p_now timestamptz,
+  p_expected_listing_revision integer DEFAULT NULL
 ) RETURNS boolean
 LANGUAGE sql VOLATILE SECURITY INVOKER SET search_path = ''
 AS $listing_fail$
@@ -749,6 +773,7 @@ AS $listing_fail$
     WHERE id = p_run_id
       AND status = 'active'
       AND NOT scan_complete
+      AND (p_expected_listing_revision IS NULL OR listing_revision = p_expected_listing_revision)
       AND scan_cursor_created_at IS NOT DISTINCT FROM p_expected_cursor_created_at
       AND scan_cursor_task_id IS NOT DISTINCT FROM p_expected_cursor_task_id
       AND (
@@ -839,7 +864,7 @@ $auth_pause$;
 REVOKE ALL ON FUNCTION
   public.calendar_sync_enqueue_job(uuid, uuid, text, text, text, text, text, text, integer, boolean, timestamptz),
   public.calendar_sync_list_ready_destinations(uuid, integer),
-  public.calendar_sync_fail_unclaimed_listing(uuid, timestamptz, uuid, boolean, timestamptz, text, timestamptz),
+  public.calendar_sync_fail_unclaimed_listing(uuid, timestamptz, uuid, boolean, timestamptz, text, timestamptz, integer),
   public.calendar_sync_pause_for_authorization(uuid, timestamptz, timestamptz, text, text, uuid, boolean, timestamptz, uuid, text, timestamptz)
 FROM PUBLIC, anon;
 --> statement-breakpoint
@@ -847,6 +872,6 @@ FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION
   public.calendar_sync_enqueue_job(uuid, uuid, text, text, text, text, text, text, integer, boolean, timestamptz),
   public.calendar_sync_list_ready_destinations(uuid, integer),
-  public.calendar_sync_fail_unclaimed_listing(uuid, timestamptz, uuid, boolean, timestamptz, text, timestamptz),
+  public.calendar_sync_fail_unclaimed_listing(uuid, timestamptz, uuid, boolean, timestamptz, text, timestamptz, integer),
   public.calendar_sync_pause_for_authorization(uuid, timestamptz, timestamptz, text, text, uuid, boolean, timestamptz, uuid, text, timestamptz)
 TO authenticated, service_role;

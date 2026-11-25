@@ -245,7 +245,6 @@ test("completeJob settles the job, confirmed mapping removal and run item atomic
       exclusionReason: null,
       mappingRemoval: { eventId: "event-a", generation: JOB.generation },
       lastError: null,
-      taskSyncStatus: "skipped",
     },
     nowIso: NOW,
   });
@@ -288,7 +287,6 @@ test("completeJob reports no settlement when a stale claim cannot finalize", asy
       payloadHash: null,
       exclusionReason: null,
       mappingRemoval: { eventId: "event-a", generation: JOB.generation },
-      taskSyncStatus: "skipped",
     },
     nowIso: NOW,
   });

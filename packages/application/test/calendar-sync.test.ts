@@ -14,6 +14,7 @@ import type {
   CalendarEventPayload,
   CalendarEventProvider,
   CalendarJobRecord,
+  CalendarListingCheckpoint,
   CalendarMappingRecord,
   CalendarProviderResult,
   CalendarReadyQueue,
@@ -30,7 +31,7 @@ import type {
   CalendarTaskPage,
   CalendarTaskScanRecord,
 } from "@ega/application/calendar-sync/ports";
-import { deterministicCalendarEventId } from "@ega/application/calendar-sync/rules";
+import { deterministicCalendarEventId, normalizeCalendarDestination, sameVerifiedCalendarDestination } from "@ega/application/calendar-sync/rules";
 import {
   continueCalendarSync,
   getCalendarSyncStatus,
@@ -44,7 +45,7 @@ const destination: CalendarSyncDestination = {
   accountSubject: "google-subject-1",
   accountEmail: "owner@example.com",
   calendarId: "primary",
-  destinationKey: "owner@example.com|primary",
+  destinationKey: "google-subject-1|primary",
 };
 
 function task(overrides: Partial<CalendarTaskScanRecord> = {}): CalendarTaskScanRecord {
@@ -101,8 +102,9 @@ class FakeProvider implements CalendarEventProvider {
   async listManagedEvents(
     _connection?: CalendarConnectionRecord,
     _deadline?: number,
+    _pageToken?: string | null,
   ): Promise<
-    CalendarProviderResult<{ complete: boolean; events: CalendarEventIndexEntry[] }>
+    CalendarProviderResult<{ complete: boolean; events: CalendarEventIndexEntry[]; nextPageToken?: string | null }>
   > {
     this.listCalls += 1;
     if (this.nextListFailure) {
@@ -423,6 +425,20 @@ class FakeRepository implements CalendarSyncRepository {
     return { ok: true as const, value: undefined };
   }
 
+  listingCheckpoints = new Map<string, CalendarListingCheckpoint>();
+
+  async getListingCheckpoint(_actor: AuthenticatedActor, runId: string) {
+    return { ok: true as const, value: this.listingCheckpoints.get(runId) ?? null };
+  }
+
+  async saveListingCheckpoint(_actor: AuthenticatedActor, runId: string, checkpoint: CalendarListingCheckpoint) {
+    if ((this.listingCheckpoints.get(runId)?.revision ?? 0) !== checkpoint.revision - 1) {
+      return { ok: true as const, value: false };
+    }
+    this.listingCheckpoints.set(runId, checkpoint);
+    return { ok: true as const, value: true };
+  }
+
   async recordListingFailure(
     _actor: AuthenticatedActor,
     input: {
@@ -455,6 +471,7 @@ class FakeRepository implements CalendarSyncRepository {
       ...run,
       status: input.pause ? "paused" : run.status,
       lastError: input.message,
+      nextRetryAt: input.pause ? null : input.retryAt,
       updatedAt: input.nowIso,
     });
     if (input.pause) {
@@ -868,6 +885,9 @@ class FakeRepository implements CalendarSyncRepository {
       this.items.set(job.runId, items);
     }
 
+    const task = this.tasks.get(job.taskId);
+    if (task) this.tasks.set(job.taskId, { ...task, calendarEventId: input.completion.eventId });
+
     return { ok: true as const, value: true };
   }
 
@@ -931,46 +951,6 @@ class FakeRepository implements CalendarSyncRepository {
     };
     this.mappings.set(key, mapping);
     return { ok: true as const, value: mapping };
-  }
-
-  async updateTaskSyncState(
-    _actor: AuthenticatedActor,
-    input: { taskId: string; eventId: string | null },
-  ) {
-    const row = this.tasks.get(input.taskId);
-    if (row) {
-      this.tasks.set(input.taskId, { ...row, calendarEventId: input.eventId });
-    }
-    return { ok: true as const, value: undefined };
-  }
-
-  async updateRunItem(
-    _actor: AuthenticatedActor,
-    input: {
-      runId: string;
-      taskId: string;
-      outcome: CalendarSyncItemOutcome;
-      exclusionReason: CalendarRunItemDraft["exclusionReason"];
-      eventId: string | null;
-      payloadHash: string | null;
-      errorMessage?: string | null;
-    },
-  ) {
-    const items = this.runItems(input.runId);
-    const next = items.map((item) =>
-      item.taskId === input.taskId
-        ? {
-            ...item,
-            outcome: input.outcome,
-            exclusionReason: input.exclusionReason,
-            eventId: input.eventId,
-            payloadHash: input.payloadHash,
-            errorMessage: input.errorMessage ?? null,
-          }
-        : item,
-    );
-    this.items.set(input.runId, next);
-    return { ok: true as const, value: undefined };
   }
 
   async countPendingRunJobs(_actor: AuthenticatedActor, runId: string) {
@@ -1759,7 +1739,7 @@ test("a switched destination never adopts the previous destination's saved event
     ...repository.connection,
     accountSubject: "google-subject-2",
     accountEmail: "new@example.com",
-    destinationKey: "new@example.com|primary",
+    destinationKey: "google-subject-2|primary",
     updatedAt: "2026-05-11T00:00:00.000Z",
   };
 
@@ -1789,7 +1769,7 @@ test("a switched destination never adopts the previous destination's saved event
   assert.equal(switched.data.run?.counts?.failed, 1);
 
   const runB = [...repository.runs.values()].find(
-    (run) => run.destination.destinationKey === "new@example.com|primary",
+    (run) => run.destination.destinationKey === "google-subject-2|primary",
   );
   assert.ok(runB);
   const item = repository.items.get(runB.id)?.[0];
@@ -1797,7 +1777,7 @@ test("a switched destination never adopts the previous destination's saved event
   assert.match(String(item?.errorMessage), /different Google account or calendar/);
   assert.equal(
     [...repository.mappings.values()].filter(
-      (mapping) => mapping.destination.destinationKey === "new@example.com|primary",
+      (mapping) => mapping.destination.destinationKey === "google-subject-2|primary",
     ).length,
     0,
   );
@@ -1810,7 +1790,7 @@ test("a first sync under a new account never targets an absent legacy event id",
     ...repository.connection,
     accountSubject: "google-subject-2",
     accountEmail: "new@example.com",
-    destinationKey: "new@example.com|primary",
+    destinationKey: "google-subject-2|primary",
     updatedAt: "2026-05-11T00:00:00.000Z",
   };
   const accountAEventId = "account-a-legacy-event";
@@ -1837,7 +1817,7 @@ test("a first sync under a new account never targets an absent legacy event id",
   assert.equal(result.data.run?.counts?.failed, 1);
 
   const runB = [...repository.runs.values()].find(
-    (run) => run.destination.destinationKey === "new@example.com|primary",
+    (run) => run.destination.destinationKey === "google-subject-2|primary",
   );
   assert.ok(runB);
   const item = repository.items.get(runB.id)?.[0];
@@ -1853,7 +1833,7 @@ test("an excluded task never deletes another account's listed legacy event", asy
     ...repository.connection,
     accountSubject: "google-subject-2",
     accountEmail: "new@example.com",
-    destinationKey: "new@example.com|primary",
+    destinationKey: "google-subject-2|primary",
     updatedAt: "2026-05-11T00:00:00.000Z",
   };
   const accountAEventId = "account-a-excluded-event";
@@ -1867,7 +1847,7 @@ test("an excluded task never deletes another account's listed legacy event", asy
       source: "ega-house",
       task_id: "task-1",
       owner_user_id: actor.userId,
-      destination_key: "owner@example.com|primary",
+      destination_key: "google-subject-1|primary",
     },
     raw: {},
   });
@@ -1897,7 +1877,7 @@ test("a saved event id is adopted when its metadata proves the current destinati
     ...repository.connection,
     accountSubject: "google-subject-2",
     accountEmail: "new@example.com",
-    destinationKey: "new@example.com|primary",
+    destinationKey: "google-subject-2|primary",
     updatedAt: "2026-05-11T00:00:00.000Z",
   };
   const ownedEventId = "account-b-owned-event";
@@ -1911,7 +1891,7 @@ test("a saved event id is adopted when its metadata proves the current destinati
       source: "ega-house",
       task_id: "task-1",
       owner_user_id: actor.userId,
-      destination_key: "new@example.com|primary",
+      destination_key: "google-subject-2|primary",
       generation: "1",
     },
     raw: {},
@@ -1929,7 +1909,7 @@ test("a saved event id is adopted when its metadata proves the current destinati
   assert.equal(mapping?.eventId, ownedEventId);
   assert.equal(
     mapping?.destination.destinationKey,
-    "new@example.com|primary",
+    "google-subject-2|primary",
   );
   assert.equal(provider.events.get(ownedEventId)?.privateProperties.task_id, "task-1");
 });
@@ -2047,7 +2027,7 @@ test("recovery leaves another destination's queued job pending after an account 
     ...repository.connection,
     accountSubject: "google-subject-2",
     accountEmail: "new@example.com",
-    destinationKey: "new@example.com|primary",
+    destinationKey: "google-subject-2|primary",
     updatedAt: "2026-05-11T00:00:00.000Z",
   };
   repository.jobs.set("old-account-job", {
@@ -2059,7 +2039,7 @@ test("recovery leaves another destination's queued job pending after an account 
       accountSubject: "google-subject-1",
       accountEmail: "owner@example.com",
       calendarId: "primary",
-      destinationKey: "owner@example.com|primary",
+      destinationKey: "google-subject-1|primary",
     },
     operation: "upsert",
     status: "pending",
@@ -2494,7 +2474,7 @@ test("five older runs with permanent or transient listing failures do not starve
       accountSubject: `sub-${i}`,
       accountEmail: `user-${i}@example.com`,
       calendarId: calId,
-      destinationKey: `user-${i}@example.com|${calId}`,
+      destinationKey: `sub-${i}|${calId}`,
     };
     connections.set(ownerId, {
       ...repository.connection,
@@ -3115,7 +3095,7 @@ test("a failed getPausedRun read is flagged instead of discarding the paused run
     accountSubject: "other-subject",
     accountEmail: "other@example.com",
     calendarId: "other",
-    destinationKey: "other@example.com|other",
+    destinationKey: "other-subject|other",
   };
   const { value: pausedRun } = await repository.ensureRun(actor, {
     destination: otherDestination,
@@ -3203,4 +3183,82 @@ test("a genuinely empty status response keeps null read errors", async () => {
   assert.equal(status.data.statusErrors.connection, null);
   assert.equal(status.data.statusErrors.run, null);
   assert.equal(status.data.statusErrors.pausedRun, null);
+});
+
+test("verified Google subjects distinguish accounts that share an email", () => {
+  const first = normalizeCalendarDestination(destination);
+  const second = normalizeCalendarDestination({ ...destination, accountSubject: "another-subject" });
+  const renamed = normalizeCalendarDestination({ ...destination, accountEmail: "renamed@example.com" });
+  assert.notEqual(first.destinationKey, second.destinationKey);
+  assert.equal(sameVerifiedCalendarDestination(first, second), false);
+  assert.equal(first.destinationKey, renamed.destinationKey);
+  assert.equal(sameVerifiedCalendarDestination(first, renamed), true);
+});
+
+test("manual entry points preserve Google listing backoff until it is due", async () => {
+  const repository = new FakeRepository();
+  const provider = new FakeProvider();
+  const deps = buildDeps(repository, provider);
+  let currentTime = deps.now().getTime();
+  deps.now = () => new Date(currentTime);
+  const list = provider.listManagedEvents.bind(provider);
+  let calls = 0;
+  provider.listManagedEvents = async (...args) => {
+    if (++calls === 1) return {
+      ok: false, error: { kind: "retryable", message: "Rate limited", retryAfterSeconds: 120 },
+    };
+    return list(...args);
+  };
+  const started = await startCalendarSync(actor, deps);
+  assert.ok(started.ok && started.data.run);
+  const runId = started.data.run.id;
+  for (const result of [
+    await getCalendarSyncStatus(actor, deps),
+    await continueCalendarSync(actor, deps, runId),
+    await retryCalendarSync(actor, deps),
+    await startCalendarSync(actor, deps),
+  ]) {
+    assert.ok(result.ok && result.data.run);
+    assert.equal(result.data.run.id, runId);
+    assert.equal(result.data.run.hasMore, false);
+  }
+  assert.equal(calls, 1);
+  currentTime = Date.parse(repository.runs.get(runId)!.nextRetryAt!) + 1000;
+  await continueCalendarSync(actor, deps, runId);
+  assert.equal(calls, 2);
+});
+
+test("a listing paused at the request deadline resumes from its saved page token", async () => {
+  const repository = new FakeRepository();
+  const provider = new FakeProvider();
+  repository.addTask(task());
+  const list = provider.listManagedEvents.bind(provider);
+  const tokens: (string | null | undefined)[] = [];
+  provider.listManagedEvents = async (connection, deadline, pageToken) => {
+    tokens.push(pageToken);
+    if (tokens.length === 1) {
+      return { ok: true, value: { complete: false, events: [], nextPageToken: "page-2" } };
+    }
+    return list(connection, deadline);
+  };
+  const deps = buildDeps(repository, provider);
+  const started = await startCalendarSync(actor, deps);
+  assert.ok(started.ok && started.data.run?.hasMore);
+  assert.equal(provider.createCalls, 0);
+  const continued = await continueCalendarSync(actor, deps, started.data.run.id);
+  assert.ok(continued.ok);
+  assert.deepEqual(tokens.map((token) => token ?? null), [null, "page-2"]);
+  assert.equal(provider.createCalls, 1);
+});
+
+test("recovery surfaces a superseded settlement after Google accepts a write", async () => {
+  const repository = new FakeRepository();
+  const provider = new FakeProvider();
+  repository.addTask(task());
+  repository.jobs.set("scheduled", queuedJob());
+  repository.completeJob = async () => ({ ok: true, value: false });
+  const result = await processCalendarRecovery(actor, buildDeps(repository, provider));
+  assert.equal(result.ok, false);
+  assert.equal(provider.createCalls, 1);
+  assert.equal(repository.jobs.get("scheduled")?.status, "processing");
 });

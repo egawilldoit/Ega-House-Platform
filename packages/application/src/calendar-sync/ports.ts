@@ -60,6 +60,7 @@ export type CalendarRunRecord = Readonly<{
   status: CalendarSyncRunStatus;
   retryMode: boolean;
   scanComplete: boolean;
+  nextRetryAt?: string | null;
   scanCursorCreatedAt: string | null;
   scanCursorTaskId: string | null;
   lastError: string | null;
@@ -211,8 +212,6 @@ export type CalendarJobCompletion = Readonly<{
   mappingRemoval?: CalendarMappingRemoval | null;
   lastError?: string | null;
   permanentFailure?: boolean;
-  taskSyncStatus: "synced" | "failed" | "skipped";
-  taskFailureReason?: string | null;
 }>;
 
 export type CalendarJobFailure = Readonly<{
@@ -279,6 +278,12 @@ export type CalendarProviderResult<T> =
     }>
   | Readonly<{ ok: false; error: CalendarProviderFailure }>;
 
+export type CalendarListingCheckpoint = Readonly<{
+  revision: number;
+  nextPageToken: string | null;
+  events: CalendarEventIndexEntry[] | null;
+}>;
+
 export interface CalendarEventProvider {
   isCalendarAccessible(
     connection: CalendarConnectionRecord,
@@ -286,9 +291,11 @@ export interface CalendarEventProvider {
   listManagedEvents(
     connection: CalendarConnectionRecord,
     deadline?: number,
+    resumePageToken?: string | null,
   ): Promise<
     CalendarProviderResult<{
       complete: boolean;
+      nextPageToken?: string | null;
       events: CalendarEventIndexEntry[];
     }>
   >;
@@ -378,11 +385,21 @@ export interface CalendarSyncRepository {
     message: string,
     nowIso: string,
   ): Promise<RepositoryResult<void>>;
+  getListingCheckpoint(
+    actor: AuthenticatedActor,
+    runId: string,
+  ): Promise<RepositoryResult<CalendarListingCheckpoint | null>>;
+  saveListingCheckpoint(
+    actor: AuthenticatedActor,
+    runId: string,
+    checkpoint: CalendarListingCheckpoint,
+  ): Promise<RepositoryResult<boolean>>;
   recordListingFailure(
     actor: AuthenticatedActor,
     input: Readonly<{
       runId: string;
       expectedCursor: CalendarScanCursor | null;
+      expectedListingRevision: number;
       pause: boolean;
       retryAt: string | null;
       message: string;
@@ -513,29 +530,6 @@ export interface CalendarSyncRepository {
       nowIso: string;
     }>,
   ): Promise<RepositoryResult<CalendarMappingRecord>>;
-  updateTaskSyncState(
-    actor: AuthenticatedActor,
-    input: Readonly<{
-      taskId: string;
-      eventId: string | null;
-      status: "pending" | "synced" | "failed" | "skipped";
-      failureReason: string | null;
-      nowIso: string;
-    }>,
-  ): Promise<RepositoryResult<void>>;
-  updateRunItem(
-    actor: AuthenticatedActor,
-    input: Readonly<{
-      runId: string;
-      taskId: string;
-      outcome: CalendarSyncItemOutcome;
-      exclusionReason: CalendarSyncExclusionReason | null;
-      eventId: string | null;
-      payloadHash: string | null;
-      errorMessage?: string | null;
-      nowIso: string;
-    }>,
-  ): Promise<RepositoryResult<void>>;
   countPendingRunJobs(
     actor: AuthenticatedActor,
     runId: string,

@@ -582,14 +582,16 @@ export class GoogleCalendarEventProvider implements CalendarEventProvider {
   async listManagedEvents(
     connection: CalendarConnectionRecord,
     deadline?: number,
+    resumePageToken?: string | null,
   ): Promise<
     CalendarProviderResult<{
       complete: boolean;
+      nextPageToken?: string | null;
       events: CalendarEventIndexEntry[];
     }>
   > {
     const events: CalendarEventIndexEntry[] = [];
-    let pageToken: string | null = null;
+    let pageToken = resumePageToken ?? null;
     let pageCount = 0;
     let refreshedCredentials: RefreshedCalendarCredentials | undefined;
 
@@ -597,7 +599,7 @@ export class GoogleCalendarEventProvider implements CalendarEventProvider {
       if (deadline !== undefined && Date.now() >= deadline) {
         return {
           ok: true,
-          value: { complete: false, events },
+          value: { complete: false, events, nextPageToken: pageToken },
           refreshedCredentials,
         };
       }

@@ -23,6 +23,7 @@ import {
 import type {
   CalendarConnectionRecord,
   CalendarProviderFailure,
+  CalendarProviderResult,
   CalendarEventDocument,
   CalendarEventIndexEntry,
   CalendarEventProvider,
@@ -203,6 +204,10 @@ function statusMessageFor(
       : null;
 }
 
+function listingBackedOff(run: CalendarRunRecord, now: Date): boolean {
+  return !run.scanComplete && Boolean(run.nextRetryAt && Date.parse(run.nextRetryAt) > now.getTime());
+}
+
 async function loadRunView(
   actor: AuthenticatedActor,
   deps: CalendarSyncDependencies,
@@ -221,6 +226,7 @@ async function loadRunView(
   // still a real CalendarRunCounts, so hasMore stays correct on real data.
   const hasMore =
     run.status === "active" &&
+    !listingBackedOff(run, getNow(deps)) &&
     (!run.scanComplete || (counts.ok && counts.value.ready > 0));
 
   return {
@@ -1108,7 +1114,6 @@ async function completeJobOutcome(
   deps: CalendarSyncDependencies,
   input: {
     job: CalendarJobRecord;
-    connection: CalendarConnectionRecord;
     outcome: "created" | "updated" | "removed" | "unchanged" | "excluded";
     eventId: string | null;
     payloadHash: string | null;
@@ -1116,11 +1121,10 @@ async function completeJobOutcome(
     exclusionReason: CalendarScanJobDraft["exclusionReason"];
     mappingRemoval?: { eventId: string; generation: number } | null;
     nowIso: string;
-    taskSyncStatus: "synced" | "failed" | "skipped";
     lastError?: string | null;
   },
-): Promise<{ settled: boolean; dbFailed: boolean }> {
-  const completed = await deps.repository.completeJob(actor, {
+) {
+  return deps.repository.completeJob(actor, {
     job: input.job,
     claimToken: input.job.claimToken as string,
     completion: {
@@ -1131,39 +1135,10 @@ async function completeJobOutcome(
       exclusionReason: input.exclusionReason,
       mappingRemoval: input.mappingRemoval ?? null,
       lastError: input.lastError ?? null,
-      taskSyncStatus: input.taskSyncStatus,
-      taskFailureReason: input.lastError ?? null,
     },
     nowIso: input.nowIso,
   });
 
-  if (!completed.ok) {
-    // The database settlement itself failed. Surface it so recovery does not
-    // count this job as processed.
-    return { settled: false, dbFailed: true };
-  }
-  if (!completed.value) {
-    // Another worker reclaimed this lease. Do not mutate mappings, run items or
-    // task state from an expired claim; the settlement is atomic in the
-    // repository and leaves the mapping active for the newer claim.
-    return { settled: false, dbFailed: false };
-  }
-
-  const task = await deps.repository.getTask(actor, {
-    ownerUserId: input.job.ownerUserId,
-    taskId: input.job.taskId,
-  });
-  if (task.ok && task.value) {
-    await deps.repository.updateTaskSyncState(actor, {
-      taskId: input.job.taskId,
-      eventId: input.eventId,
-      status: input.taskSyncStatus,
-      failureReason: input.lastError ?? null,
-      nowIso: input.nowIso,
-    });
-  }
-
-  return { settled: true, dbFailed: false };
 }
 
 async function failJob(
@@ -1207,36 +1182,7 @@ async function failJob(
     nowIso: input.nowIso,
   });
 
-  if (!failed.ok || !failed.value) return false;
-
-  const task = await deps.repository.getTask(actor, {
-    ownerUserId: input.job.ownerUserId,
-    taskId: input.job.taskId,
-  });
-  if (task.ok && task.value) {
-    await deps.repository.updateTaskSyncState(actor, {
-      taskId: input.job.taskId,
-      eventId: input.job.eventId,
-      status: terminal ? "failed" : "pending",
-      failureReason: input.message,
-      nowIso: input.nowIso,
-    });
-  }
-
-  if (input.job.runId && !terminal) {
-    await deps.repository.updateRunItem(actor, {
-      runId: input.job.runId,
-      taskId: input.job.taskId,
-      outcome: "pending",
-      exclusionReason: input.exclusionReason ?? null,
-      eventId: input.job.eventId,
-      payloadHash: input.job.payloadHash,
-      errorMessage: null,
-      nowIso: input.nowIso,
-    });
-  }
-
-  return true;
+  return failed.ok && failed.value;
 }
 
 async function claimStillCurrent(
@@ -1414,7 +1360,7 @@ async function processJob(
     if (eventId) {
       const _claim1 = await claimStillCurrent(actor, deps, job);
       if (!_claim1.ok) return { persistenceError: "Unable to verify the job claim." };
-      if (!_claim1.current) return { refreshedCredentials };
+      if (!_claim1.current) return { persistenceError: "Unable to verify the job claim because it expired or was superseded.", settlementFailed: true };
       const deleted = await deps.provider.deleteEvent(connection, eventId);
       if (!deleted.ok) {
         if (deleted.error.kind === "authorization") {
@@ -1476,14 +1422,16 @@ async function processJob(
     }
 
     const settled = await completeJobOutcome(actor, deps, {
-      job, connection, outcome: eventId ? "removed" : "excluded",
+      job, outcome: eventId ? "removed" : "excluded",
       eventId: null, payloadHash: null, generation: removalGeneration, exclusionReason,
       mappingRemoval: eventId ? { eventId, generation: removalGeneration } : null,
-      nowIso, taskSyncStatus: "skipped",
+      nowIso,
     });
-    if (settled.dbFailed) {
+    if (!settled.ok || !settled.value) {
       return {
-        persistenceError: "Unable to settle the Calendar sync job.",
+        persistenceError: !settled.ok
+          ? "Unable to settle the Calendar sync job."
+          : "Unable to settle the Calendar sync job because its claim expired or was superseded.",
         settlementFailed: true,
       };
     }
@@ -1566,7 +1514,7 @@ async function processJob(
     if (mapping.status === "removed") {
       const _rotA = await rotateEvent(mapping.generation + 1);
       if (_rotA.dbFailed) return { persistenceError: "Unable to advance the Calendar job generation." };
-      if (!_rotA.ok) return {};
+      if (!_rotA.ok) return { persistenceError: "Unable to advance the Calendar job generation because its claim expired or was superseded.", settlementFailed: true };
     } else {
       needsMappingLookup = !updating || job.eventId !== mapping.eventId;
       targetEvent(mapping.eventId, mapping.generation);
@@ -1613,13 +1561,13 @@ async function processJob(
       }
       const _rotB = await rotateEvent(generation + 1);
       if (_rotB.dbFailed) return { persistenceError: "Unable to advance the Calendar job generation." };
-      if (!_rotB.ok) return {};
+      if (!_rotB.ok) return { persistenceError: "Unable to advance the Calendar job generation because its claim expired or was superseded.", settlementFailed: true };
     }
   }
 
   const _claim2 = await claimStillCurrent(actor, deps, job);
   if (!_claim2.ok) return { persistenceError: "Unable to verify the job claim." };
-  if (!_claim2.current) return {};
+  if (!_claim2.current) return { persistenceError: "Unable to verify the job claim because it expired or was superseded.", settlementFailed: true };
 
   let writeResult = lookupFailure
     ? { ok: false as const, error: lookupFailure }
@@ -1631,13 +1579,15 @@ async function processJob(
     const accessible = await deps.provider.isCalendarAccessible(connection);
     if (!accessible.ok || !accessible.value) {
       if (!accessible.ok) {
-        await failJob(actor, deps, {
+        const recorded = await failJob(actor, deps, {
           job,
           message: accessible.error.message,
           permanent: false,
+          retryAfterSeconds: accessible.error.retryAfterSeconds,
           nowIso,
           now: getNow(deps),
         });
+        if (!recorded) return { persistenceError: "Unable to record the Calendar sync failure." };
       } else {
         const paused = await pauseForAuthorization(actor, deps, {
           runId: job.runId,
@@ -1658,7 +1608,7 @@ async function processJob(
     }
     const _rotC = await rotateEvent(generation + 1);
     if (_rotC.dbFailed) return { persistenceError: "Unable to advance the Calendar job generation." };
-    if (!_rotC.ok) return {};
+    if (!_rotC.ok) return { persistenceError: "Unable to advance the Calendar job generation because its claim expired or was superseded.", settlementFailed: true };
     writeResult = await deps.provider.createEvent(connection, payload);
   }
   if (!writeResult.ok && writeResult.error.kind === "conflict") {
@@ -1680,12 +1630,12 @@ async function processJob(
           : 0;
         const _rotD = await rotateEvent(Math.max(generation, verifiedGeneration, mapping?.generation ?? 0) + 1);
         if (_rotD.dbFailed) return { persistenceError: "Unable to advance the Calendar job generation." };
-        if (!_rotD.ok) return {};
+        if (!_rotD.ok) return { persistenceError: "Unable to advance the Calendar job generation because its claim expired or was superseded.", settlementFailed: true };
         writeResult = await deps.provider.createEvent(connection, payload);
       } else if (metadataMatches && existing.value.status !== "cancelled") {
         const _claim2 = await claimStillCurrent(actor, deps, job);
   if (!_claim2.ok) return { persistenceError: "Unable to verify the job claim." };
-  if (!_claim2.current) return {};
+  if (!_claim2.current) return { persistenceError: "Unable to verify the job claim because it expired or was superseded.", settlementFailed: true };
         writeResult = await deps.provider.updateEvent(connection, payload.eventId, payload);
       } else {
         writeResult = {
@@ -1730,24 +1680,23 @@ async function processJob(
   refreshedCredentials = writeResult.refreshedCredentials;
   const eventId = writeResult.value.id;
   const _claim4 = await claimStillCurrent(actor, deps, job);
-  if (!_claim4.ok) return { persistenceError: "Unable to verify the job claim." };
-  if (!_claim4.current) {
-    return { refreshedCredentials };
+  if (!_claim4.ok || !_claim4.current) {
+    return { persistenceError: "Unable to settle the Calendar sync job because its claim expired or was superseded.", settlementFailed: true };
   }
   const settled = await completeJobOutcome(actor, deps, {
     job,
-    connection,
     outcome: updating ? "updated" : "created",
     eventId,
     payloadHash,
     generation,
     exclusionReason: null,
     nowIso,
-    taskSyncStatus: "synced",
   });
-  if (settled.dbFailed) {
+  if (!settled.ok || !settled.value) {
     return {
-      persistenceError: "Unable to settle the Calendar sync job.",
+      persistenceError: !settled.ok
+          ? "Unable to settle the Calendar sync job."
+          : "Unable to settle the Calendar sync job because its claim expired or was superseded.",
       settlementFailed: true,
     };
   }
@@ -2028,13 +1977,36 @@ async function processRunBatch(
     };
   }
 
+  if (listingBackedOff(run, getNow(deps))) {
+    return {
+      ok: true,
+      status: withStatusMessage(
+        await buildStatus(actor, deps, run.id),
+        "Google Calendar asked us to wait before retrying. Synchronization will resume after the delay.",
+      ),
+      authFailure: false,
+      retryable: true,
+    };
+  }
+
   let eventIndex = new Map<string, CalendarEventIndexEntry>();
   if (!run.scanComplete) {
     const observedCursor =
       run.scanCursorCreatedAt && run.scanCursorTaskId
         ? { createdAt: run.scanCursorCreatedAt, taskId: run.scanCursorTaskId }
         : null;
-    const listing = await deps.provider.listManagedEvents(connection, deadline);
+    const checkpoint = await deps.repository.getListingCheckpoint(actor, run.id);
+    if (!checkpoint.ok) {
+      return { ok: false, errorMessage: "Unable to load Calendar listing progress." };
+    }
+    const savedListing = checkpoint.value;
+    const listing: CalendarProviderResult<{
+      complete: boolean;
+      nextPageToken?: string | null;
+      events: CalendarEventIndexEntry[];
+    }> = savedListing?.events && !savedListing.nextPageToken
+      ? { ok: true as const, value: { complete: true, events: [] } }
+      : await deps.provider.listManagedEvents(connection, deadline, savedListing?.nextPageToken);
     if (!listing.ok) {
       if (isAuthorizationFailure(listing.error)) {
         const paused = await pauseForAuthorization(actor, deps, {
@@ -2073,6 +2045,7 @@ async function processRunBatch(
       const recorded = await deps.repository.recordListingFailure(actor, {
         runId: run.id,
         expectedCursor: observedCursor,
+        expectedListingRevision: savedListing?.revision ?? 0,
         pause: terminalListingFailure,
         retryAt: terminalListingFailure
           ? null
@@ -2114,6 +2087,35 @@ async function processRunBatch(
       };
     }
 
+    if (listing.refreshedCredentials) {
+      connection = await persistRefreshedCredentials(actor, deps, {
+        connection,
+        refreshed: listing.refreshedCredentials,
+        nowIso,
+      });
+    }
+
+    const events = [...(savedListing?.events ?? []), ...listing.value.events];
+    if ((!savedListing?.events || savedListing.nextPageToken) &&
+        (listing.value.complete || (listing.value.nextPageToken && listing.value.nextPageToken !== savedListing?.nextPageToken))) {
+      const saved = await deps.repository.saveListingCheckpoint(actor, run.id, {
+        revision: (savedListing?.revision ?? 0) + 1,
+        nextPageToken: listing.value.nextPageToken ?? null,
+        events,
+      });
+      if (!saved.ok) {
+        return { ok: false, errorMessage: "Unable to save Calendar listing progress." };
+      }
+      if (!saved.value || !listing.value.complete) {
+        return {
+          ok: true,
+          status: await buildStatus(actor, deps, run.id),
+          authFailure: false,
+          retryable: true,
+        };
+      }
+    }
+
     if (!listing.value.complete) {
       // An incomplete event listing is not proof that any managed event was
       // deleted, so the scan intentionally refuses to infer removals.
@@ -2122,6 +2124,7 @@ async function processRunBatch(
       const recorded = await deps.repository.recordListingFailure(actor, {
         runId: run.id,
         expectedCursor: observedCursor,
+        expectedListingRevision: savedListing?.revision ?? 0,
         pause: false,
         retryAt: nextCalendarRetryAtIso({
           jobId: run.id,
@@ -2154,19 +2157,8 @@ async function processRunBatch(
       };
     }
 
-    if (listing.refreshedCredentials) {
-      connection = await persistRefreshedCredentials(actor, deps, {
-        connection,
-        refreshed: listing.refreshedCredentials,
-        nowIso,
-      });
-    }
-
-    eventIndex = eventIndexFor(listing.value.events);
+    eventIndex = eventIndexFor(events);
   }
-  // The Google listing above is awaited in full and can consume most of the
-  // request budget. Give the task scan its own fresh budget so a slow listing
-  // cannot starve scanning on every retry and stall the run indefinitely.
   if (Date.now() >= deadline) {
     return {
       ok: true,
@@ -2175,12 +2167,11 @@ async function processRunBatch(
       retryable: true,
     };
   }
-  const scanDeadline = Date.now() + config.requestBudgetMs;
   const scanResult = await scanRun(actor, deps, {
     run,
     connection,
     eventIndex,
-    deadline: scanDeadline,
+    deadline,
     nowIso,
   });
 
@@ -2247,7 +2238,7 @@ async function processRunBatch(
   let status = await buildStatus(actor, deps, run.id);
   // If no job was claimable this pass, stop browser-driven continuation to
   // avoid a tight loop while another worker holds the lease.
-  if ((drained.processed ?? 0) === 0 && status.run) {
+  if ((drained.processed ?? 0) === 0 && status.run?.scanComplete) {
     status = { ...status, run: { ...status.run, hasMore: false } };
   }
   return {

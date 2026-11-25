@@ -206,11 +206,11 @@ export async function enqueueCalendarSyncJob(
     // settings; the legacy scheduled-sync queue still accepts the job.
     settings = {};
   }
-  const accountKey =
-    settings.google_account_email?.trim().toLowerCase() ||
-    settings.google_account_subject?.trim() ||
-    "unknown-account";
-  const destinationKey = `${accountKey}|${settings.calendar_id?.trim() || "primary"}`;
+  const { destinationKey } = normalizeCalendarDestination({
+    accountSubject: settings.google_account_subject,
+    accountEmail: settings.google_account_email,
+    calendarId: settings.calendar_id,
+  });
 
   type CalendarMappingRow = {
     event_id: string | null;
