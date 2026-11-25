@@ -46,7 +46,10 @@ export async function POST(request: Request) {
   let body: { action?: unknown; runId?: unknown; retryMode?: unknown } = {};
 
   try {
-    body = (await request.json()) as typeof body;
+    const parsed = await request.json();
+    if (parsed && typeof parsed === "object") {
+      body = parsed as typeof body;
+    }
   } catch {
     return jsonResponse({ ok: false, error: "A JSON request body is required." }, 400);
   }

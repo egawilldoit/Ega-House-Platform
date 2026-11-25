@@ -80,9 +80,14 @@ export async function getWebCalendarSyncStatus(origin: string) {
     buildDependencies(supabase, { origin, scope: "owner" }),
   );
   if (!result.ok) {
+    const status = /unable to load|unable to claim|unable to save|unable to start|unable to continue/i.test(
+      result.errorMessage,
+    )
+      ? 503
+      : 400;
     return {
       ok: false as const,
-      status: 400,
+      status,
       errorMessage: result.errorMessage,
     };
   }
@@ -110,9 +115,16 @@ export async function startWebCalendarSync(
     : await startCalendarSync(actor, deps);
 
   if (!result.ok) {
+    const isOperational = /unable to load|unable to claim|unable to save|unable to start/i.test(
+      result.errorMessage,
+    );
     return {
       ok: false as const,
-      status: result.code === "validation" ? 409 : 400,
+      status: result.code === "validation"
+        ? 409
+        : isOperational
+          ? 503
+          : 400,
       errorMessage: result.errorMessage,
       reason: result.reason,
     };
@@ -139,9 +151,16 @@ export async function continueWebCalendarSync(origin: string, runId: string) {
   );
 
   if (!result.ok) {
+    const isOperational = /unable to load|unable to claim|unable to save/i.test(
+      result.errorMessage,
+    );
     return {
       ok: false as const,
-      status: result.code === "notFound" ? 404 : 400,
+      status: result.code === "notFound"
+        ? 404
+        : isOperational
+          ? 503
+          : 400,
       errorMessage: result.errorMessage,
     };
   }
