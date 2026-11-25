@@ -261,7 +261,7 @@ export function TaskCalendarSyncPanel({
 
         {needsReconnect ? (
           <p className="feedback-block" role="alert">
-            Google no longer accepts the saved Calendar connection. Reconnect the
+            Google Calendar needs a verified account connection. Reconnect the
             same account to resume queued work; existing events stay in Google
             Calendar until a sync removes them.
           </p>

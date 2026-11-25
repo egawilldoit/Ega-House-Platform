@@ -35,6 +35,7 @@ export type GoogleCalendarOAuthFailureCode =
   | "missing_code"
   | "token_exchange_failed"
   | "missing_refresh_token"
+  | "account_identity_unavailable"
   | "settings_write_failed"
   | "unexpected";
 
@@ -98,11 +99,12 @@ export function buildGoogleCalendarAuthorizationUrl(
   url.searchParams.set("client_id", env.clientId);
   url.searchParams.set("redirect_uri", env.redirectUri);
   url.searchParams.set("response_type", "code");
-  url.searchParams.set("scope", env.scopes);
+  const scopes = new Set([...env.scopes.split(/\s+/), "openid", "email"]);
+  url.searchParams.set("scope", [...scopes].join(" "));
   url.searchParams.set("state", state);
   url.searchParams.set("access_type", "offline");
   url.searchParams.set("include_granted_scopes", "true");
-  url.searchParams.set("prompt", "consent");
+  url.searchParams.set("prompt", "consent select_account");
   return url;
 }
 
@@ -154,6 +156,8 @@ export function getGoogleCalendarOAuthFailureMessage(
       return "Google Calendar token exchange failed. Check production OAuth client ID, client secret, and exact redirect URI.";
     case "missing_refresh_token":
       return "Google did not return offline Calendar access. Reconnect and approve consent again.";
+    case "account_identity_unavailable":
+      return "Google Calendar did not provide an account identity. Reconnect and approve access to your Google account email.";
     case "settings_write_failed":
       return "Google Calendar connected with Google, but EGA could not save the connection. Retry after checking database access.";
     case "unexpected":

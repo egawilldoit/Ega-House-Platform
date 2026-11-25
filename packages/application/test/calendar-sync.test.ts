@@ -2085,6 +2085,9 @@ test("manual sync cannot start without a verified Google account identity", asyn
     accountEmail: null,
   };
 
+  const status = await getCalendarSyncStatus(actor, buildDeps(repository, provider));
+  assert.equal(status.ok && status.data.connection.needsReconnect, true);
+
   const result = await startCalendarSync(actor, buildDeps(repository, provider));
   assert.equal(result.ok, false);
   if (result.ok) return;

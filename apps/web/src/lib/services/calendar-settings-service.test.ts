@@ -127,6 +127,7 @@ test("missing Calendar settings use disconnected defaults", async () => {
   assert.equal(result.errorMessage, null);
   assert.deepEqual(result.data, {
     connected: false,
+    needsReconnect: false,
     googleAccountEmail: null,
     scheduledTaskSyncEnabled: false,
     defaultReminderMinutes: 10,
@@ -163,9 +164,30 @@ test("Calendar settings reads are owner-scoped and select no secrets", async () 
   assert.equal(assertCalendarSettingsViewHasNoSecrets(result.data), true);
 });
 
+test("a saved connection without Google account identity needs reconnect", async () => {
+  const mock = createCalendarSupabaseMock({
+    row: {
+      owner_user_id: "user-1",
+      provider: "google",
+      google_account_email: null,
+      scheduled_task_sync_enabled: true,
+      default_reminder_minutes: 15,
+      connected_at: "2026-05-10T10:00:00.000Z",
+      disconnected_at: null,
+    },
+  });
+  const result = await getCalendarIntegrationSettings({
+    supabase: mock.supabase as never,
+  });
+
+  assert.equal(result.data.connected, true);
+  assert.equal(result.data.needsReconnect, true);
+});
+
 test("disconnected Calendar never defaults task forms into sync", () => {
   const defaults = getCalendarTaskFormDefaults({
     connected: false,
+    needsReconnect: false,
     googleAccountEmail: null,
     scheduledTaskSyncEnabled: true,
     defaultReminderMinutes: 20,

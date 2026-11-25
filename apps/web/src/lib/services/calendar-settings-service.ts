@@ -1,3 +1,4 @@
+import { isVerifiedCalendarDestination } from "@ega/application";
 import {
   DEFAULT_CALENDAR_REMINDER_MINUTES,
   normalizeCalendarReminderMinutes,
@@ -17,6 +18,7 @@ export {
 
 export type CalendarIntegrationSettingsView = {
   connected: boolean;
+  needsReconnect: boolean;
   googleAccountEmail: string | null;
   scheduledTaskSyncEnabled: boolean;
   defaultReminderMinutes: number;
@@ -32,6 +34,8 @@ type CalendarSettingsSafeRow = {
   owner_user_id: string;
   provider: string;
   google_account_email: string | null;
+  google_account_subject: string | null;
+  reconnect_required_at: string | null;
   scheduled_task_sync_enabled: boolean | null;
   default_reminder_minutes: number | null;
   calendar_id: string | null;
@@ -41,7 +45,6 @@ type CalendarSettingsSafeRow = {
 
 type CalendarSettingsSecretRow = CalendarSettingsSafeRow & {
   updated_at: string;
-  google_account_subject: string | null;
   access_token_encrypted: string | null;
   refresh_token_encrypted: string | null;
   token_expires_at: string | null;
@@ -56,11 +59,12 @@ export type GoogleCalendarTokenConnectionInput = {
 };
 
 const CALENDAR_SETTINGS_SAFE_SELECT =
-  "owner_user_id, provider, google_account_email, scheduled_task_sync_enabled, default_reminder_minutes, calendar_id, connected_at, disconnected_at";
+  "owner_user_id, provider, google_account_email, google_account_subject, reconnect_required_at, scheduled_task_sync_enabled, default_reminder_minutes, calendar_id, connected_at, disconnected_at";
 
 function getDisconnectedSettings(): CalendarIntegrationSettingsView {
   return {
     connected: false,
+    needsReconnect: false,
     googleAccountEmail: null,
     scheduledTaskSyncEnabled: false,
     defaultReminderMinutes: DEFAULT_CALENDAR_REMINDER_MINUTES,
@@ -78,6 +82,13 @@ function normalizeCalendarSettingsRow(
 
   return {
     connected,
+    needsReconnect: connected && Boolean(
+      row.reconnect_required_at || !isVerifiedCalendarDestination({
+        accountEmail: row.google_account_email,
+        accountSubject: row.google_account_subject,
+        calendarId: normalizeCalendarId(row.calendar_id),
+      }),
+    ),
     googleAccountEmail: connected ? row.google_account_email : null,
     scheduledTaskSyncEnabled: Boolean(row.scheduled_task_sync_enabled),
     defaultReminderMinutes: normalizeCalendarReminderMinutes(
@@ -204,7 +215,7 @@ export async function getCalendarIntegrationSecretSnapshot(options?: {
   const { data, error } = await supabase
     .from("calendar_integration_settings")
     .select(
-      `${CALENDAR_SETTINGS_SAFE_SELECT}, google_account_subject, access_token_encrypted, refresh_token_encrypted, token_expires_at, updated_at`,
+      `${CALENDAR_SETTINGS_SAFE_SELECT}, access_token_encrypted, refresh_token_encrypted, token_expires_at, updated_at`,
     )
     .eq("owner_user_id", authResult.userId)
     .eq("provider", GOOGLE_CALENDAR_PROVIDER)
@@ -237,7 +248,7 @@ export async function getCalendarIntegrationSecretSnapshotForOwner(
   const { data, error } = await supabase
     .from("calendar_integration_settings")
     .select(
-      `${CALENDAR_SETTINGS_SAFE_SELECT}, google_account_subject, access_token_encrypted, refresh_token_encrypted, token_expires_at, updated_at`,
+      `${CALENDAR_SETTINGS_SAFE_SELECT}, access_token_encrypted, refresh_token_encrypted, token_expires_at, updated_at`,
     )
     .eq("owner_user_id", normalizedOwnerUserId)
     .eq("provider", GOOGLE_CALENDAR_PROVIDER)
