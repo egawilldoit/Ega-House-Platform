@@ -1658,6 +1658,15 @@ export type Database = {
         Args: { p_subtask_id: string; p_new_task_id: string }
         Returns: boolean
       }
+      calendar_sync_save_listing_checkpoint: {
+        Args: {
+          p_run_id: string
+          p_expected_revision: number
+          p_next_page_token: string | null
+          p_events: Json
+        }
+        Returns: boolean
+      }
       calendar_sync_fail_unclaimed_listing: {
         Args: {
           p_run_id: string
@@ -1684,6 +1693,7 @@ export type Database = {
           p_expected_cursor_task_id: string | null
           p_error: string
           p_now: string
+          p_expected_listing_revision?: number
         }
         Returns: {
           credentials_marked: boolean

@@ -311,6 +311,7 @@ async function pauseForAuthorization(
     runId: string | null;
     connection: CalendarConnectionRecord;
     expectedListingCursor?: CalendarScanCursor | null;
+    expectedListingRevision?: number;
     fenceListingPause?: boolean;
     message: string;
     nowIso: string;
@@ -328,6 +329,7 @@ async function pauseForAuthorization(
     runId: input.runId,
     fenceListing: Boolean(input.fenceListingPause),
     expectedCursor: input.expectedListingCursor ?? null,
+    expectedListingRevision: input.expectedListingRevision,
     message: input.message,
     nowIso: input.nowIso,
   });
@@ -1352,7 +1354,11 @@ async function processJob(
           }
           return { refreshedCredentials };
         }
-        if (!prepared.value) return { refreshedCredentials };
+        if (!prepared.value) return {
+          refreshedCredentials,
+          persistenceError: "Unable to save the Calendar removal target because its claim expired or was superseded.",
+          settlementFailed: true,
+        };
         eventId = plannedEventId;
       }
     }
@@ -1394,6 +1400,7 @@ async function processJob(
             job,
             message: accessible.error.message,
             permanent: false,
+            retryAfterSeconds: accessible.error.retryAfterSeconds,
             nowIso,
             now,
           });
@@ -2013,6 +2020,7 @@ async function processRunBatch(
           runId: run.id,
           connection,
           expectedListingCursor: observedCursor,
+          expectedListingRevision: savedListing?.revision ?? 0,
           fenceListingPause: true,
           message: listing.error.message,
           nowIso,

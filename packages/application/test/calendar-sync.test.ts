@@ -3262,3 +3262,23 @@ test("recovery surfaces a superseded settlement after Google accepts a write", a
   assert.equal(provider.createCalls, 1);
   assert.equal(repository.jobs.get("scheduled")?.status, "processing");
 });
+
+
+test("recovery reports a lost claim while preparing a verified removal without calling DELETE", async () => {
+  const repository = new FakeRepository();
+  const provider = new FakeProvider();
+  const deps = buildDeps(repository, provider);
+  repository.addTask(task());
+  repository.jobs.set("scheduled", queuedJob());
+  repository.failNextCompletion = true;
+  await processCalendarRecovery(actor, deps);
+  assert.equal(provider.events.size, 1);
+  const job = repository.jobs.get("scheduled")!;
+  repository.jobs.set(job.id, { ...job, status: "pending", claimToken: null });
+  repository.addTask(task({ archivedAt: "2026-05-10T08:30:00.000Z" }));
+  repository.prepareJobRemoval = async () => ({ ok: true, value: false });
+  const result = await processCalendarRecovery(actor, deps);
+  assert.equal(result.ok, false);
+  assert.equal(provider.deleteCalls, 0);
+  assert.equal(provider.events.size, 1);
+});

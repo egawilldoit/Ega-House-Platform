@@ -299,6 +299,7 @@ export class SupabaseCalendarSyncRepository implements CalendarSyncRepository {
       runId: string | null;
       fenceListing: boolean;
       expectedCursor: CalendarScanCursor | null;
+      expectedListingRevision?: number;
       message: string;
       nowIso: string;
     },
@@ -321,6 +322,9 @@ export class SupabaseCalendarSyncRepository implements CalendarSyncRepository {
         p_expected_cursor_task_id: input.expectedCursor?.taskId ?? null,
         p_error: input.message,
         p_now: input.nowIso,
+        ...(input.expectedListingRevision === undefined ? {} : {
+          p_expected_listing_revision: input.expectedListingRevision,
+        }),
       },
     );
     if (result.error) return failure(result.error);
@@ -361,9 +365,7 @@ export class SupabaseCalendarSyncRepository implements CalendarSyncRepository {
     if (latest.error) return failure(latest.error);
     const latestRun = latest.data ? mapRun(asRow(latest.data)) : null;
 
-    // Do not resume a run bound to a different Google subject, even when the
-    // destination key (email-first) matches. A replacement account with the
-    // same email must start its own run.
+    // A saved run must still belong to the verified subject.
     const subjectConflict =
       Boolean(
         latestRun?.destination.accountSubject &&
@@ -520,20 +522,14 @@ export class SupabaseCalendarSyncRepository implements CalendarSyncRepository {
     runId: string,
     checkpoint: CalendarListingCheckpoint,
   ): Promise<RepositoryResult<boolean>> {
-    const result = await this.supabase
-      .from("calendar_sync_runs")
-      .update({
-        listing_revision: checkpoint.revision,
-        listing_next_page_token: checkpoint.nextPageToken,
-        listing_events: checkpoint.events,
-      } as never)
-      .eq("id", runId)
-      .eq("status", "active")
-      .eq("scan_complete", false)
-      .eq("listing_revision", checkpoint.revision - 1)
-      .select("id");
+    const result = await this.supabase.rpc("calendar_sync_save_listing_checkpoint", {
+      p_run_id: runId,
+      p_expected_revision: checkpoint.revision - 1,
+      p_next_page_token: checkpoint.nextPageToken,
+      p_events: checkpoint.events,
+    });
     if (result.error) return failure(result.error);
-    return { ok: true, value: asRows(result.data).length > 0 };
+    return { ok: true, value: Boolean(result.data) };
   }
 
   async recordListingFailure(

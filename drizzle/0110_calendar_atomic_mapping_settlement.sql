@@ -767,8 +767,9 @@ AS $listing_fail$
   WITH updated AS (
     UPDATE public.calendar_sync_runs
     SET status = CASE WHEN p_pause THEN 'paused' ELSE status END,
-        next_retry_at = CASE WHEN p_pause THEN NULL ELSE p_retry_at END,
-        last_error = left(p_error, 500),
+        next_retry_at = CASE WHEN p_pause THEN NULL ELSE greatest(next_retry_at, p_retry_at) END,
+        last_error = CASE WHEN NOT p_pause AND next_retry_at > p_retry_at
+                          THEN last_error ELSE left(p_error, 500) END,
         updated_at = p_now
     WHERE id = p_run_id
       AND status = 'active'
@@ -787,6 +788,25 @@ AS $listing_fail$
 $listing_fail$;
 --> statement-breakpoint
 
+CREATE FUNCTION public.calendar_sync_save_listing_checkpoint(
+  p_run_id uuid, p_expected_revision integer, p_next_page_token text, p_events jsonb
+) RETURNS boolean
+LANGUAGE sql VOLATILE SECURITY INVOKER SET search_path = ''
+AS $listing_checkpoint$
+  WITH saved AS (
+    UPDATE public.calendar_sync_runs
+    SET listing_revision = listing_revision + 1,
+        listing_next_page_token = p_next_page_token, listing_events = p_events,
+        next_retry_at = NULL, last_error = NULL
+    WHERE id = p_run_id AND status = 'active' AND NOT scan_complete
+      AND listing_revision = p_expected_revision
+      AND (next_retry_at IS NULL OR next_retry_at <= clock_timestamp())
+    RETURNING id
+  )
+  SELECT EXISTS (SELECT 1 FROM saved);
+$listing_checkpoint$;
+--> statement-breakpoint
+
 CREATE FUNCTION public.calendar_sync_pause_for_authorization(
   p_owner_user_id uuid,
   p_expected_updated_at timestamptz,
@@ -798,7 +818,8 @@ CREATE FUNCTION public.calendar_sync_pause_for_authorization(
   p_expected_cursor_created_at timestamptz,
   p_expected_cursor_task_id uuid,
   p_error text,
-  p_now timestamptz
+  p_now timestamptz,
+  p_expected_listing_revision integer DEFAULT NULL
 ) RETURNS TABLE (
   credentials_marked boolean,
   run_paused boolean
@@ -808,6 +829,22 @@ AS $auth_pause$
 DECLARE
   v_paused boolean := false;
 BEGIN
+  IF p_expected_listing_revision IS NOT NULL THEN
+    -- Match the credential-then-run lock order used during authorization pause.
+    PERFORM 1 FROM public.calendar_integration_settings
+    WHERE owner_user_id = p_owner_user_id AND provider = 'google'
+    FOR UPDATE;
+    PERFORM 1 FROM public.calendar_sync_runs
+    WHERE id = p_run_id AND owner_user_id = p_owner_user_id
+      AND status = 'active' AND NOT scan_complete
+      AND listing_revision = p_expected_listing_revision
+    FOR UPDATE;
+    IF NOT FOUND THEN
+      RETURN QUERY SELECT false, false;
+      RETURN;
+    END IF;
+  END IF;
+
   UPDATE public.calendar_integration_settings
   SET reconnect_required_at = p_now,
       reconnect_required_reason = left(p_error, 500),
@@ -865,7 +902,8 @@ REVOKE ALL ON FUNCTION
   public.calendar_sync_enqueue_job(uuid, uuid, text, text, text, text, text, text, integer, boolean, timestamptz),
   public.calendar_sync_list_ready_destinations(uuid, integer),
   public.calendar_sync_fail_unclaimed_listing(uuid, timestamptz, uuid, boolean, timestamptz, text, timestamptz, integer),
-  public.calendar_sync_pause_for_authorization(uuid, timestamptz, timestamptz, text, text, uuid, boolean, timestamptz, uuid, text, timestamptz)
+  public.calendar_sync_save_listing_checkpoint(uuid, integer, text, jsonb),
+  public.calendar_sync_pause_for_authorization(uuid, timestamptz, timestamptz, text, text, uuid, boolean, timestamptz, uuid, text, timestamptz, integer)
 FROM PUBLIC, anon;
 --> statement-breakpoint
 
@@ -873,5 +911,6 @@ GRANT EXECUTE ON FUNCTION
   public.calendar_sync_enqueue_job(uuid, uuid, text, text, text, text, text, text, integer, boolean, timestamptz),
   public.calendar_sync_list_ready_destinations(uuid, integer),
   public.calendar_sync_fail_unclaimed_listing(uuid, timestamptz, uuid, boolean, timestamptz, text, timestamptz, integer),
-  public.calendar_sync_pause_for_authorization(uuid, timestamptz, timestamptz, text, text, uuid, boolean, timestamptz, uuid, text, timestamptz)
+  public.calendar_sync_save_listing_checkpoint(uuid, integer, text, jsonb),
+  public.calendar_sync_pause_for_authorization(uuid, timestamptz, timestamptz, text, text, uuid, boolean, timestamptz, uuid, text, timestamptz, integer)
 TO authenticated, service_role;

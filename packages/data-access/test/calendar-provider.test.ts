@@ -531,3 +531,17 @@ test("post-header body read timeouts are retryable for refresh, create, and upda
   assert.equal(updateResult.ok, false);
   assert.equal(!updateResult.ok && updateResult.error.kind, "retryable");
 });
+
+
+test("a quota-limited calendar accessibility probe preserves Retry-After", async () => {
+  const provider = providerWith(async () => Response.json(
+    { error: { message: "Quota exceeded", errors: [{ reason: "rateLimitExceeded" }] } },
+    { status: 403, headers: { "retry-after": "120" } },
+  ));
+  const result = await provider.isCalendarAccessible(connection);
+  assert.equal(result.ok, false);
+  if (!result.ok) {
+    assert.equal(result.error.kind, "retryable");
+    assert.equal(result.error.retryAfterSeconds, 120);
+  }
+});

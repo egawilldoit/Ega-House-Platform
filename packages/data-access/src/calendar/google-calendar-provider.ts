@@ -64,6 +64,7 @@ function classifyGoogleFailure(input: {
       reason.includes("ratelimit") ||
       reason.includes("userratelimit") ||
       message.includes("rate limit") ||
+      reason.includes("quota") ||
       message.includes("quota")
     ) {
       return {
@@ -671,15 +672,17 @@ export class GoogleCalendarEventProvider implements CalendarEventProvider {
       { method: "GET" },
     );
     if (!result.ok) return result;
-    if (result.response.status === 404 || result.response.status === 403) {
-      return {
-        ok: true,
-        value: false,
-        refreshedCredentials: result.refreshedCredentials,
-      };
-    }
     if (!result.response.ok) {
-      return { ok: false, error: await this.failureFromResponse(result.response) };
+      const error = await this.failureFromResponse(result.response);
+      if (error.kind === "not_found" ||
+          (result.response.status === 403 && error.kind === "permanent")) {
+        return {
+          ok: true,
+          value: false,
+          refreshedCredentials: result.refreshedCredentials,
+        };
+      }
+      return { ok: false, error };
     }
     return {
       ok: true,

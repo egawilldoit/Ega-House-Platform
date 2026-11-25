@@ -1777,6 +1777,21 @@ async function main() {
         ${RUN_REMOVAL}::uuid, NULL, NULL, true, NULL, 'late failure', now()
       ) AS recorded`;
     assert(!blockedByCompleted.recorded, "listing failure must never overwrite a completed run");
+    const embargoedRun = backedOffRuns[2];
+    await sql`SELECT public.calendar_sync_fail_unclaimed_listing(
+      ${embargoedRun}::uuid, NULL, NULL, false, now() + interval '10 minutes', 'rate limit', now(), 0)`;
+    await sql`SELECT public.calendar_sync_fail_unclaimed_listing(
+      ${embargoedRun}::uuid, NULL, NULL, false, now() + interval '1 minute', 'transient error', now(), 0)`;
+    const [embargo] = await sql`SELECT
+      (next_retry_at > now() + interval '9 minutes') AS preserved, last_error
+      FROM public.calendar_sync_runs WHERE id = ${embargoedRun}::uuid`;
+    const [blockedCheckpoint] = await sql`SELECT public.calendar_sync_save_listing_checkpoint(
+      ${embargoedRun}::uuid, 0, 'next-page', '[]'::jsonb) AS saved`;
+    const backedOffClaim = await sql`SELECT id FROM public.calendar_sync_claim_run_scan(
+      ${embargoedRun}::uuid, gen_random_uuid(), now(), 60)`;
+    assert(embargo.preserved && embargo.last_error === "rate limit" &&
+      !blockedCheckpoint.saved && backedOffClaim.length === 0,
+      "a late failure must not shorten Retry-After, and a late checkpoint must wait for it");
     // 4) Succeeds when active, unclaimed, incomplete, and cursor matches
     const [allowedPause] = await sql`
       SELECT public.calendar_sync_fail_unclaimed_listing(
@@ -2009,6 +2024,19 @@ async function main() {
           afterReconnectRun.status === "active",
         "stale auth pause serialized after reconnect must leave replacement credentials and active run untouched",
       );
+
+      const [checkpoint] = await sql`SELECT public.calendar_sync_save_listing_checkpoint(
+        ${authRaceRun.id}::uuid, 0, 'next-page', '[]'::jsonb) AS saved`;
+      const [oldListingAuth] = await sql`SELECT credentials_marked, run_paused
+        FROM public.calendar_sync_pause_for_authorization(
+          ${OWNER}::uuid, '2026-11-23T08:05:00.000Z', '2026-11-23T08:05:00.000Z',
+          'enc-access-v2', 'enc-refresh-v2', ${authRaceRun.id}::uuid, true,
+          NULL, NULL, 'stale listing authorization result', now(), 0)`;
+      const [freshCredentials] = await sql`SELECT reconnect_required_at
+        FROM public.calendar_integration_settings WHERE owner_user_id = ${OWNER}::uuid AND provider = 'google'`;
+      assert(checkpoint.saved && !oldListingAuth.credentials_marked && !oldListingAuth.run_paused &&
+        freshCredentials.reconnect_required_at === null,
+      "an authorization response for an older checkpoint must not mark credentials or pause the run");
 
       // 2) Listing fence on matching credentials: live scan claim blocks pausing the run
       //    while still marking the matching credentials reconnect_required.

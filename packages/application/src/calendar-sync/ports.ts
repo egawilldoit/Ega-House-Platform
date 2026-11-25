@@ -351,6 +351,7 @@ export interface CalendarSyncRepository {
       runId: string | null;
       fenceListing: boolean;
       expectedCursor: CalendarScanCursor | null;
+      expectedListingRevision?: number;
       message: string;
       nowIso: string;
     }>,

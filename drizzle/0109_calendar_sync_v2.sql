@@ -284,6 +284,7 @@ AS $claim$
   WHERE id = p_run_id
     AND status = 'active'
     AND NOT scan_complete
+    AND (next_retry_at IS NULL OR next_retry_at <= clock_timestamp())
     AND (
       scan_claim_token IS NULL
       OR scan_lease_expires_at IS NULL
