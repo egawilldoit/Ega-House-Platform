@@ -933,10 +933,10 @@ async function main() {
     assert(recoveredCounts.counts.unchanged === 1, "unchanged work must stay counted");
     assert(recoveredCounts.counts.processing === 1, "the recovered claim must be the only processing job");
     assert(
-      recoveredCounts.counts.pending === 1,
-      "the run counts must report one unfinished recovered job, not a duplicate",
+      recoveredCounts.counts.pending === 0,
+      "a recovered job with a live lease must not be reported as pending work",
     );
-    assert(recoveredCounts.counts.ready === 1, "recovered work must be ready exactly once");
+    assert(recoveredCounts.counts.ready === 0, "a recovered job with a live lease must not be reported as ready work");
     assert(recoveredCounts.counts.retrying === 0, "a recovered claim must not look retrying");
 
     const [staleCompleted] = await sql`
