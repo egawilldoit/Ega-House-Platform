@@ -14,6 +14,7 @@ import {
   formatDurationChipLabel,
   toLocalDateTimeInputValue,
 } from "@/lib/calendar-schedule-draft";
+import { useDisplayTimezone } from "@/lib/hooks/use-display-timezone";
 import {
   TASK_RECURRENCE_RULE_VALUES,
   formatTaskRecurrenceRule,
@@ -56,6 +57,7 @@ export function TaskDrawerPlanningSection({
   cancelReminderAction,
   reminders = planning.reminders,
 }: TaskDrawerPlanningSectionProps) {
+  const accountTimeZone = useDisplayTimezone();
   const [projectId, setProjectId] = useState(planning.projectId ?? "");
   const [goalId, setGoalId] = useState(planning.goalId ?? "");
   const [statusValue, setStatusValue] = useState(status);
@@ -63,11 +65,24 @@ export function TaskDrawerPlanningSection({
     blockedReason ?? "",
   );
   const [scheduledStartAt, setScheduledStartAt] = useState(() =>
-    toLocalDateTimeInputValue(planning.scheduledStartAt),
+    toLocalDateTimeInputValue(planning.scheduledStartAt, accountTimeZone),
   );
   const [scheduledEndAt, setScheduledEndAt] = useState(() =>
-    toLocalDateTimeInputValue(planning.scheduledEndAt),
+    toLocalDateTimeInputValue(planning.scheduledEndAt, accountTimeZone),
   );
+  const [scheduleEdited, setScheduleEdited] = useState(false);
+  const [previousTimeZone, setPreviousTimeZone] = useState(accountTimeZone);
+  if (accountTimeZone !== previousTimeZone) {
+    setPreviousTimeZone(accountTimeZone);
+    if (!scheduleEdited) {
+      setScheduledStartAt(
+        toLocalDateTimeInputValue(planning.scheduledStartAt, accountTimeZone),
+      );
+      setScheduledEndAt(
+        toLocalDateTimeInputValue(planning.scheduledEndAt, accountTimeZone),
+      );
+    }
+  }
   const [calendarSyncEnabled, setCalendarSyncEnabled] = useState(
     planning.calendarSyncEnabled,
   );
@@ -82,7 +97,10 @@ export function TaskDrawerPlanningSection({
     const block = buildQuickScheduleBlock(
       dayOffset,
       activeDuration ?? defaultDurationMinutes,
+      new Date(),
+      accountTimeZone,
     );
+    setScheduleEdited(true);
     setScheduledStartAt(block.start);
     setScheduledEndAt(block.end);
     if (!calendarSyncTouched) {
@@ -91,6 +109,7 @@ export function TaskDrawerPlanningSection({
   }
 
   function handleStartChange(nextStart: string) {
+    setScheduleEdited(true);
     setScheduledStartAt(nextStart);
     if (nextStart) {
       const span = activeDuration ?? defaultDurationMinutes;
@@ -103,12 +122,13 @@ export function TaskDrawerPlanningSection({
   }
 
   function handleDurationSelect(minutes: number) {
+    setScheduleEdited(true);
     if (scheduledStartAt) {
       const nextEnd = addMinutesToLocalDateTime(scheduledStartAt, minutes);
       if (nextEnd) setScheduledEndAt(nextEnd);
       return;
     }
-    const block = buildQuickScheduleBlock(0, minutes);
+    const block = buildQuickScheduleBlock(0, minutes, new Date(), accountTimeZone);
     setScheduledStartAt(block.start);
     setScheduledEndAt(block.end);
     if (!calendarSyncTouched) {
@@ -117,6 +137,7 @@ export function TaskDrawerPlanningSection({
   }
 
   function clearSchedule() {
+    setScheduleEdited(true);
     setScheduledStartAt("");
     setScheduledEndAt("");
   }

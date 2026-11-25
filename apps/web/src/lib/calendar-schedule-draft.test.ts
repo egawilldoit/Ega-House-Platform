@@ -51,3 +51,37 @@ test("formatTaskScheduleSummary formats same-day timed blocks and all-day planne
 
   assert.equal(formatTaskScheduleSummary(null, null, null, now), null);
 });
+
+test("buildQuickScheduleBlock and formatTaskScheduleSummary respect the canonical account timezone when it differs from local time", () => {
+  const instant = new Date("2026-11-25T20:00:00.000Z");
+
+  const utcToday = buildQuickScheduleBlock(0, 60, instant, "UTC");
+  assert.equal(utcToday.start, "2026-11-25T20:30");
+  assert.equal(utcToday.end, "2026-11-25T21:30");
+
+  const laToday = buildQuickScheduleBlock(0, 60, instant, "America/Los_Angeles");
+  assert.equal(laToday.start, "2026-11-25T12:30");
+  assert.equal(laToday.end, "2026-11-25T13:30");
+
+  const laTomorrow = buildQuickScheduleBlock(1, 90, instant, "America/Los_Angeles");
+  assert.equal(laTomorrow.start, "2026-11-26T09:00");
+  assert.equal(laTomorrow.end, "2026-11-26T10:30");
+
+  const summaryUtc = formatTaskScheduleSummary(
+    "2026-11-25T20:30:00.000Z",
+    "2026-11-25T21:30:00.000Z",
+    null,
+    instant,
+    "UTC",
+  );
+  assert.equal(summaryUtc, "Today 8:30 PM–9:30 PM");
+
+  const summaryLa = formatTaskScheduleSummary(
+    "2026-11-25T20:30:00.000Z",
+    "2026-11-25T21:30:00.000Z",
+    null,
+    instant,
+    "America/Los_Angeles",
+  );
+  assert.equal(summaryLa, "Today 12:30 PM–1:30 PM");
+});

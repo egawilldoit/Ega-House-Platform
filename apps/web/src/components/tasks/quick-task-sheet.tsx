@@ -17,6 +17,7 @@ import {
   durationMinutesBetween,
   formatDurationChipLabel,
 } from "@/lib/calendar-schedule-draft";
+import { useDisplayTimezone } from "@/lib/hooks/use-display-timezone";
 import type { CreateCalendarDefaults } from "@/lib/services/create-options-service";
 import {
   TASK_PRIORITY_VALUES,
@@ -128,6 +129,7 @@ export function QuickTaskSheetPanel({
   onProjectIdChange,
   calendarDefaults,
 }: QuickTaskSheetPanelProps) {
+  const accountTimeZone = useDisplayTimezone();
   const defaultProjectId = selectedProjectId || projects[0]?.id || "";
   const defaultSyncOnSchedule = calendarDefaults
     ? calendarDefaults.connected && calendarDefaults.scheduledTaskSyncEnabled
@@ -232,7 +234,12 @@ export function QuickTaskSheetPanel({
   }
 
   function applyQuickDay(dayOffset: 0 | 1) {
-    const block = buildQuickScheduleBlock(dayOffset, selectedDurationMinutes);
+    const block = buildQuickScheduleBlock(
+      dayOffset,
+      selectedDurationMinutes,
+      new Date(),
+      accountTimeZone,
+    );
     setScheduledStartAt(block.start);
     setScheduledEndAt(block.end);
     setScheduleOpen(true);
@@ -260,7 +267,7 @@ export function QuickTaskSheetPanel({
       if (computedEnd) setScheduledEndAt(computedEnd);
       return;
     }
-    const block = buildQuickScheduleBlock(0, minutes);
+    const block = buildQuickScheduleBlock(0, minutes, new Date(), accountTimeZone);
     setScheduledStartAt(block.start);
     setScheduledEndAt(block.end);
     setScheduleOpen(true);
