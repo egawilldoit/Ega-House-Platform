@@ -269,7 +269,9 @@ export function MoneyPeriodPanel({
             ? opening.status === "unknown"
               ? "This period is superseded but not finalized. Its own dates still accept routine entries; initialize the missing opening to review and finalize it."
               : "This period is superseded but not finalized. Its own dates still accept routine entries; use the rollover review to finalize it."
-            : `This period is ${period.lifecycle.replaceAll("_", " ")}. Routine settings are closed; use the historical correction path.`}
+            : period.lifecycle === "ended"
+              ? "This period is ended. Its own dates are historical corrections; a later routine entry continues the calendar from this period's end and leaves it ended."
+              : `This period is ${period.lifecycle.replaceAll("_", " ")}. Routine settings are closed; use the historical correction path.`}
         </p>
       ) : null}
 

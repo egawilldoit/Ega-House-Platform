@@ -964,15 +964,48 @@ function daysBetween(from: string, to: string): number {
 }
 
 /**
+ * The one continuation rule shared by a tracking source and an already-ended
+ * source. The database performs the actual continuation inside the routine
+ * write transaction; this only prepares the target and an actionable message.
+ */
+function continuationEntryTarget(
+  period: MoneyPeriod,
+  bookingDate: string,
+  now: Date,
+): ApplicationResult<MoneyRoutineEntryTarget> {
+  const localToday = getLocalDateInTimezone(now, period.timezone);
+  if (bookingDate > localToday) {
+    return applicationFailure(
+      `The date ${bookingDate} is in the future. A routine write can continue the calendar only up to today (${localToday}) in the period timezone ${period.timezone}.`,
+      "validation",
+    );
+  }
+  if (daysBetween(period.endDate, bookingDate) > 366) {
+    return applicationFailure(
+      `The date ${bookingDate} is more than 366 days after the period ${period.startDate}–${period.endDate}. Create a Money period explicitly before recording it.`,
+      "validation",
+    );
+  }
+  return applicationSuccess({
+    periodId: null,
+    timezone: period.timezone,
+    requiresContinuation: true,
+    bookingDate,
+  });
+}
+
+/**
  * Routine entry policy. A tracking period owns dates inside its window. A date
  * after it is a controlled continuation (the database closes the routine window
  * as `superseded` and creates exactly one later tracking period), but only up
  * to the owner-local today in the source period timezone: a future date must not
- * supersede the current window. A date inside a non-finalized `superseded`
- * period is still routine entry for that period's own dates: `superseded`
- * closes the forward window, it is not finalization approval, so the owner can
- * still record a forgotten expense. Finalized (`ended`/`rolled_over`) ranges
- * remain explicit historical corrections.
+ * supersede the current window. When no period is tracking, the latest `ended`
+ * period (a final-day close) can continue the same calendar for a later date;
+ * it keeps its `ended` lifecycle and close evidence. A date inside a
+ * non-finalized `superseded` period is still routine entry for that period's
+ * own dates: `superseded` closes the forward window, it is not finalization
+ * approval, so the owner can still record a forgotten expense. Dates inside an
+ * `ended` or `rolled_over` range remain explicit historical corrections.
  *
  * Reads never mutate the calendar. `bookingDate === null` means the instant was
  * not resolved yet; the existing tracking period is returned unchanged.
@@ -1034,37 +1067,25 @@ export async function resolveRoutineEntry(
   }
 
   if (current && bookingDate > current.endDate) {
-    const localToday = getLocalDateInTimezone(now, current.timezone);
-    if (bookingDate > localToday) {
-      return applicationFailure(
-        `The date ${bookingDate} is in the future. A routine write can continue the calendar only up to today (${localToday}) in the period timezone ${current.timezone}.`,
-        "validation",
-      );
-    }
-    if (daysBetween(current.endDate, bookingDate) > 366) {
-      return applicationFailure(
-        `The date ${bookingDate} is more than 366 days after the tracking period ${current.startDate}–${current.endDate}. Create a Money period explicitly before recording it.`,
-        "validation",
-      );
-    }
-    return applicationSuccess({
-      periodId: null,
-      timezone: current.timezone,
-      requiresContinuation: true,
-      bookingDate,
-    });
+    return continuationEntryTarget(current, bookingDate, now);
   }
 
   // Before the tracking window (or with no tracking period): only a
   // non-finalized superseded period may accept routine entry for its own range.
   // A genuinely empty account keeps the legacy no-period behavior without a
-  // second overlapping read.
+  // second overlapping read. With no tracking period, the latest ended period
+  // may continue the calendar for a later date: a final-day close ends the
+  // window but is not a reason to refuse the next month's routine entry.
   if (!current) {
     const existing = await repository.list(actor, 1);
     if (!existing.ok) {
       return fromRepository(existing, "Unable to check Money periods right now.");
     }
-    if (existing.value.length === 0) return applicationSuccess(null);
+    const latest = existing.value[0] ?? null;
+    if (!latest) return applicationSuccess(null);
+    if (latest.lifecycle === "ended" && bookingDate > latest.endDate) {
+      return continuationEntryTarget(latest, bookingDate, now);
+    }
   }
   const overlapping = await repository.findOverlapping(actor, {
     startDate: bookingDate,
@@ -1093,8 +1114,18 @@ export async function resolveRoutineEntry(
     );
   }
 
+  const closed = overlapping.value
+    .filter((period) => period.lifecycle !== "tracking")
+    .sort((left, right) => right.startDate.localeCompare(left.startDate))[0];
+  if (closed) {
+    return applicationFailure(
+      `The date ${bookingDate} belongs to the ${closed.lifecycle.replaceAll("_", " ")} period ${closed.startDate}–${closed.endDate}. Use the explicit historical correction path.`,
+      "validation",
+    );
+  }
+
   return applicationFailure(
-    "There is no tracking period. Ended, superseded or rolled-over periods accept entries only through the explicit historical correction path.",
+    "The date is outside any writable period. Use the explicit historical correction path or create a Money period.",
     "validation",
   );
 }

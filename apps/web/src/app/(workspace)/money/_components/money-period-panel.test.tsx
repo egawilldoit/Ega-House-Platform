@@ -108,6 +108,16 @@ afterEach(async () => {
   container.remove();
 });
 
+describe("MoneyPeriodPanel ended period guidance", () => {
+  it("explains that a later routine entry continues from the period end", async () => {
+    await render({ period: { ...PERIOD, lifecycle: "ended" } });
+    expect(container.textContent).toContain(
+      "a later routine entry continues the calendar from this period's end",
+    );
+    expect(container.textContent).toContain("leaves it ended");
+  });
+});
+
 describe("MoneyPeriodPanel superseded opening initialization", () => {
   it("records only the missing opening and never an active-date change", async () => {
     await render({});

@@ -108,9 +108,9 @@ export type MoneyRolloverPreview = Readonly<{
   /** True when the bounded bridge read could not prove the full list. */
   priorCorrectionBridgesTruncated: boolean;
   /**
-   * The tracking period already created by automatic continuation for this
-   * source. Rollover adopts it with exactly this range and establishes its
-   * opening; it never creates a second successor.
+   * The period already created by automatic continuation for this source.
+   * Rollover adopts it with exactly this range and establishes its opening; it
+   * never creates a second successor.
    */
   continuationSuccessor: MoneyRolloverSourceContext["continuationSuccessor"];
   /** The preceding unfinalized period that must be finalized first, if any. */
@@ -365,7 +365,10 @@ async function prepareRollover(
     };
   }
   if (source.continuationSuccessor) {
-    if (source.period.lifecycle !== "superseded") {
+    if (
+      source.period.lifecycle !== "superseded" &&
+      source.period.lifecycle !== "ended"
+    ) {
       return {
         ok: false,
         code: "conflict",
@@ -407,9 +410,11 @@ async function prepareRollover(
 
   const localToday = getLocalDateInTimezone(now, source.period.timezone);
   // Continuity blockers. A continued period cannot be finalized before the
-  // period it continues without orphaning that predecessor. Any finalization
-  // is also refused while an unfinalized source still owns the current local
-  // day (including its end date): the day would stop belonging to any writable
+  // period it continues without orphaning that predecessor; a predecessor is
+  // either superseded by routine continuation or ended by its final-day close,
+  // and both adopt the exact continuation successor. Any finalization is also
+  // refused while an unfinalized source still owns the current local day
+  // (including its end date): the day would stop belonging to any writable
   // period and a later same-day entry would have no legal target. A source
   // already ended through a retained final-day close is exempt because closing
   // that day was itself the explicit decision.

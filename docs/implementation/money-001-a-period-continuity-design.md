@@ -41,6 +41,7 @@ Add one lifecycle value: `superseded`.
 
 ```text
 tracking --(routine entry needs a later date)--> superseded
+ended    --(routine entry needs a later date)--> ended + tracking successor
 superseded --(explicit finalization/rollover)--> rolled_over
 tracking|ended|superseded --(explicit rollover)--> rolled_over
 ```
@@ -48,9 +49,13 @@ tracking|ended|superseded --(explicit rollover)--> rolled_over
 - `superseded` means: the routine window closed because a later tracking period
   began. It is **not** a reconciliation approval and carries no finalization
   reference, close row or opening movement.
-- `superseded` remains a legal rollover source. Finalization still requires the
-  existing explicit review, acceptance notes, close comparison and atomic
-  receipt.
+- `ended` keeps the evidence of an explicit final-day close. Continuing from it
+  creates the successor without changing the source lifecycle, close row or
+  finalization fields, so a routine write never forges finalization evidence.
+- `superseded` and `ended` remain legal rollover sources. Finalization still
+  requires the existing explicit review, acceptance notes, close comparison and
+  atomic receipt. A period ending on its final day does not force the next
+  month's routine entry into the historical correction path.
 - The partial unique index / single-tracking invariant is unchanged.
 
 This is additive: extend the lifecycle check constraint, the domain/contracts
@@ -61,28 +66,31 @@ receipt is rewritten.
 
 New SECURITY DEFINER RPC `money_continue_period(p_booking_date date)`, invoked
 only by the atomic `money_record_routine_movement` RPC when an authenticated
-routine **write** needs a date after the current tracking window. Authenticated
-callers cannot execute it directly (`EXECUTE` is revoked), so supersession and
-the financial insert always share one transaction. The RPC derives `createdFrom`
-(`web`/`mcp`) from the verified JWT client convention, so no caller-supplied
-surface is trusted:
+routine **write** needs a date after the current tracking window, or after the
+latest `ended` period when no period is tracking. Authenticated callers cannot
+execute it directly (`EXECUTE` is revoked), so the lifecycle transition (when
+any) and the financial insert always share one transaction. The RPC derives
+`createdFrom` (`web`/`mcp`) from the verified JWT client convention, so no
+caller-supplied surface is trusted:
 
 1. `auth.uid()` owner; MCP `personal_ops.write` grant; no service-role path.
-2. Lock the owner's periods and current tracking period.
+2. Lock the owner's periods and the current tracking period. If none is
+   tracking, select the latest `ended` period as the continuation source.
 3. If a tracking period covers the booking date, return it (idempotent no-op).
 4. Reject a booking date after owner-local today in the source period timezone:
    a future date must not supersede the window before its day arrives.
 5. If the date is before the current tracking period and inside a non-finalized
    `superseded` period, accept it for that period's own range (a superseded
-   window is not finalization approval). Any date before the window that is not
-   in a non-finalized superseded period is rejected as a historical correction.
-6. Compute the smallest successor range that starts at `tracking.end_date + 1`
-   and ends at the last day of the booking date's calendar month (capped at 366
-   days). Reject a gap larger than 366 days with an explicit period-setup
+   window is not finalization approval). Any date inside any closed period
+   (including the ended source itself) is rejected as a historical correction.
+6. Compute the smallest successor range that starts at the source's `end_date +
+   1` and ends at the last day of the booking date's calendar month (capped at
+   366 days). Reject a gap larger than 366 days with an explicit period-setup
    requirement instead of creating a chain of empty periods.
-7. Mark the previous tracking period `superseded` (no `finalization_reference`,
-   no close, no successor link yet). Do **not** set `successor_period_id`; that
-   column keeps its finalization meaning.
+7. A tracking source becomes `superseded` (no `finalization_reference`, no
+   close, no successor link yet). An `ended` source is left `ended` with its
+   final-day close evidence unchanged. Do **not** set `successor_period_id`;
+   that column keeps its finalization meaning.
 8. Insert exactly one `tracking` successor with:
    - `initialization = 'uninitialized'`, `opening_movement_id = null`;
    - `active_date = booking date` (or the successor start when the booking date
@@ -131,9 +139,14 @@ refused instead of advancing the calendar, so an update can never keep a stale
   opening corrections stay closed until the explicit rollover review. A
   finalized (`rolled_over`) range still uses the historical correction path.
 - When the previous period is explicitly finalized, the rollover RPC must
-  **adopt** an existing continuation successor instead of creating a duplicate:
+  **adopt** an existing continuation successor instead of creating a duplicate.
+  This applies when the predecessor was superseded by a routine continuation or
+  left `ended` by its final-day close before the later routine write continued
+  the calendar:
   - identify the immediate next period by the real date chain
-    (`start_date = source.end_date + 1`), not by provenance JSON;
+    (`start_date = source.end_date + 1`), not by provenance JSON; the successor
+    may be tracking, superseded by a later continuation, or already ended by its
+    own final-day close, and adoption still uses its exact recorded range;
   - validate the requested successor range equals that period exactly;
   - if its opening is uninitialized, insert exactly one opening movement with
     the approved carry-forward or verified amount and mark initialization;

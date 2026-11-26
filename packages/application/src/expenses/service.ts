@@ -115,8 +115,10 @@ export type CreateExpenseOptions = Readonly<{
   /**
    * Optional period guard. When supplied, a configured tracking period owns
    * its inclusive range, a non-finalized `superseded` period still owns its own
-   * dates, and a later date asks the database to continue atomically. Ended
-   * and rolled-over ranges are historical corrections. Accounts with no period
+   * dates, and a later date asks the database to continue atomically. With no
+   * tracking period, the latest `ended` period may continue the calendar for a
+   * later date without losing its close evidence; its own dates, and every
+   * rolled-over range, remain historical corrections. Accounts with no period
    * keep the existing behavior.
    */
   periods?: Pick<

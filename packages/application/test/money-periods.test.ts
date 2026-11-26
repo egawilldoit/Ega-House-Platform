@@ -1976,6 +1976,95 @@ test("routine expense creation delegates continuation to the atomic insert", asy
   );
 });
 
+test("a final-day closed period continues the calendar for a later routine date", async () => {
+  const money = makeRepository();
+  const expenses = expenseRepository();
+  const created = await createMoneyPeriod(
+    ACTOR,
+    money.repository,
+    {
+      ...CREATE_BODY,
+      startDate: "2026-11-01",
+      endDate: "2026-11-05",
+      activeDate: "2026-11-05",
+      opening: { ...CREATE_BODY.opening, cutoffDate: "2026-10-31" },
+    },
+    { now: NOW, timezone: "Africa/Casablanca" },
+  );
+  assert.equal(created.ok, true);
+  if (!created.ok) return;
+
+  const sourceId = created.data.period.id;
+  const source = money.periods.get(sourceId)!;
+  money.periods.set(sourceId, {
+    ownerUserId: ACTOR.userId,
+    period: {
+      ...source.period,
+      lifecycle: "ended",
+      version: source.period.version + 1,
+    },
+  });
+
+  // The closed range itself stays a historical correction: continuing the
+  // calendar must never reopen the final day that owns the close evidence.
+  const insideClosed = await createExpense(
+    ACTOR,
+    expenses.repository,
+    {
+      ...EXPENSE_BODY,
+      occurredAt: "2026-11-05T12:00:00.000Z",
+      idempotencyKey: "expense-guard-ended-inside",
+    },
+    { periods: money.repository, now: NOW },
+  );
+  assert.equal(insideClosed.ok, false);
+  if (!insideClosed.ok) {
+    assert.equal(insideClosed.code, "validation");
+    assert.match(insideClosed.errorMessage, /belongs to the ended period/);
+  }
+
+  // A future date still cannot continue the calendar before its day arrives.
+  const future = await createExpense(
+    ACTOR,
+    expenses.repository,
+    {
+      ...EXPENSE_BODY,
+      occurredAt: "2026-11-12T12:00:00.000Z",
+      idempotencyKey: "expense-guard-ended-future",
+    },
+    { periods: money.repository, now: NOW },
+  );
+  assert.equal(future.ok, false);
+  if (!future.ok) {
+    assert.equal(future.code, "validation");
+    assert.match(future.errorMessage, /in the future/);
+  }
+
+  // With no tracking period, a later non-future date asks the database to
+  // continue from the latest ended period and insert the row atomically.
+  const continued = await createExpense(
+    ACTOR,
+    expenses.repository,
+    {
+      ...EXPENSE_BODY,
+      occurredAt: "2026-11-08T12:00:00.000Z",
+      idempotencyKey: "expense-guard-ended-continue",
+    },
+    { periods: money.repository, now: NOW },
+  );
+  assert.equal(continued.ok, true);
+  assert.deepEqual(expenses.lastCreate(), {
+    periodId: null,
+    requiresContinuation: true,
+    bookingDate: "2026-11-08",
+  });
+  // The read guard never mutates or reclassifies the ended source.
+  assert.equal(
+    money.periods.get(sourceId)?.period.lifecycle,
+    "ended",
+  );
+});
+
 test("a non-finalized superseded period still accepts its own routine dates", async () => {
   const money = makeRepository();
   const expenses = expenseRepository();

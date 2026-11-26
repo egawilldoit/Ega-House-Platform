@@ -238,6 +238,9 @@ function createHandlers(repository: ExpenseRepository = createRepository()) {
         async list() {
           return { ok: true as const, value: [] };
         },
+        async findOverlapping() {
+          return { ok: true as const, value: [] };
+        },
       }) as never,
   });
 }

@@ -5,13 +5,15 @@
 -- tracking window may continue the calendar:
 --
 --   tracking --(routine write needs a later date)--> superseded
+--   ended    --(routine write needs a later date)--> ended + one tracking successor
 --   superseded --(explicit finalization/rollover)--> rolled_over
 --   tracking|ended|superseded --(explicit rollover)--> rolled_over
 --
 -- `superseded` means only that the routine window closed. It carries no
 -- finalization reference, no close row, no successor link and no opening, and
--- it is never a reconciliation approval. Finalization still requires the
--- explicit reviewed rollover transaction.
+-- it is never a reconciliation approval. `ended` keeps the evidence of an
+-- explicit final-day close; continuing from it leaves that evidence untouched.
+-- Finalization still requires the explicit reviewed rollover transaction.
 --
 -- This migration is additive: it extends the lifecycle constraint, replaces the
 -- period guards, adds the controlled continuation RPC and teaches the explicit
@@ -510,8 +512,10 @@ $update_period$;
 --> statement-breakpoint
 
 -- Controlled calendar continuation. Called only from the application routine
--- write guard; reads never invoke it. It supersedes the current tracking period
--- and creates exactly one later tracking period with an unknown opening.
+-- write guard; reads never invoke it. It creates exactly one later tracking
+-- period with an unknown opening. A tracking source is superseded first; a
+-- source already closed by its final-day close stays `ended`, so its retained
+-- close evidence is neither replaced nor upgraded into a routine transition.
 CREATE OR REPLACE FUNCTION public.money_continue_period(
   p_booking_date date
 )
@@ -523,6 +527,7 @@ AS $continue$
 DECLARE
   v_owner uuid := auth.uid();
   v_tracking public.money_periods;
+  v_continuing_ended boolean := false;
   v_existing public.money_periods;
   v_successor public.money_periods;
   v_new_id uuid := gen_random_uuid();
@@ -558,14 +563,31 @@ BEGIN
   LIMIT 1;
 
   IF v_tracking.id IS NULL THEN
-    RAISE EXCEPTION 'There is no tracking period to continue. Create a Money period explicitly.'
-      USING ERRCODE = '23514';
+    -- A final-day close ends the period without superseding it. A later
+    -- routine write still needs a writable window, so an ended latest period
+    -- may continue the calendar; it keeps its `ended` lifecycle and close
+    -- evidence. The latest period must be the ended one: continuing an earlier
+    -- range past a later superseded/rolled-over range would overlap it.
+    SELECT * INTO v_tracking
+    FROM public.money_periods
+    WHERE owner_user_id = v_owner
+    ORDER BY end_date DESC, start_date DESC
+    LIMIT 1;
+    IF v_tracking.id IS NULL OR v_tracking.lifecycle <> 'ended' THEN
+      RAISE EXCEPTION 'There is no tracking or latest ended period to continue. Create a Money period explicitly.'
+        USING ERRCODE = '23514';
+    END IF;
+    v_continuing_ended := true;
   END IF;
   IF p_booking_date BETWEEN v_tracking.start_date AND v_tracking.end_date THEN
-    RETURN v_tracking;
+    -- A tracking source owns its own dates. An ended source does not: the
+    -- closed-period check below reports the explicit historical correction.
+    IF NOT v_continuing_ended THEN
+      RETURN v_tracking;
+    END IF;
   END IF;
   IF p_booking_date < v_tracking.start_date THEN
-    RAISE EXCEPTION 'The date % is before the tracking period. Use the explicit historical correction path.', p_booking_date
+    RAISE EXCEPTION 'The date % is before the latest period. Use the explicit historical correction path.', p_booking_date
       USING ERRCODE = '23514';
   END IF;
 
@@ -592,7 +614,7 @@ BEGIN
 
   v_gap := p_booking_date - v_tracking.end_date;
   IF v_gap > 366 THEN
-    RAISE EXCEPTION 'The date % is more than 366 days after the tracking period. Create a Money period explicitly.', p_booking_date
+    RAISE EXCEPTION 'The date % is more than 366 days after the latest period. Create a Money period explicitly.', p_booking_date
       USING ERRCODE = '23514';
   END IF;
 
@@ -630,11 +652,13 @@ BEGIN
   LIMIT 1;
   v_settings := COALESCE(v_policy.policy -> 'settings', v_tracking.settings, '{}'::jsonb);
 
-  UPDATE public.money_periods
-  SET lifecycle = 'superseded',
-      version = version + 1,
-      updated_at = v_now
-  WHERE id = v_tracking.id AND owner_user_id = v_owner;
+  IF NOT v_continuing_ended THEN
+    UPDATE public.money_periods
+    SET lifecycle = 'superseded',
+        version = version + 1,
+        updated_at = v_now
+    WHERE id = v_tracking.id AND owner_user_id = v_owner;
+  END IF;
 
   INSERT INTO public.money_periods (
     id, owner_user_id, start_date, end_date, currency, timezone, active_date,
@@ -681,8 +705,9 @@ $continue$;
 --> statement-breakpoint
 -- `money_continue_period` is an internal step of the atomic routine write.
 -- Authenticated callers reach it only through money_record_routine_movement so
--- supersession and the financial insert share one transaction; a direct call
--- could leave a superseded window without the movement that required it.
+-- the lifecycle transition (when any) and the financial insert share one
+-- transaction; a direct call could leave a superseded window without the
+-- movement that required it.
 REVOKE ALL ON FUNCTION public.money_continue_period(date) FROM PUBLIC, anon, authenticated;
 --> statement-breakpoint
 
@@ -798,10 +823,32 @@ BEGIN
     ORDER BY start_date DESC
     LIMIT 1
     FOR UPDATE;
-    IF v_period.id IS NULL
-       AND EXISTS (SELECT 1 FROM public.money_periods WHERE owner_user_id = v_owner) THEN
-      RAISE EXCEPTION 'There is no tracking period. Ended, superseded or rolled-over periods accept entries only through the explicit historical correction path.'
-        USING ERRCODE = '23514';
+    IF v_period.id IS NULL THEN
+      -- With no tracking window, the latest ended period is the only source
+      -- that may continue the calendar. Its own dates stay historical
+      -- corrections; only later dates are continued. The continuation creates
+      -- the successor atomically with this insert and leaves the source ended.
+      SELECT * INTO v_period
+      FROM public.money_periods
+      WHERE owner_user_id = v_owner
+      ORDER BY end_date DESC, start_date DESC
+      LIMIT 1;
+      IF v_period.id IS NOT NULL AND v_period.lifecycle = 'ended' THEN
+        IF p_booking_date > v_period.end_date THEN
+          SELECT * INTO v_period
+          FROM public.money_continue_period(p_booking_date);
+        ELSIF p_booking_date BETWEEN v_period.start_date AND v_period.end_date THEN
+          RAISE EXCEPTION 'The date % belongs to the ended period %–%. Use the explicit historical correction path.',
+            p_booking_date, v_period.start_date, v_period.end_date
+            USING ERRCODE = '23514';
+        ELSE
+          RAISE EXCEPTION 'The date % is outside the writable period. Use the explicit historical correction path.', p_booking_date
+            USING ERRCODE = '23514';
+        END IF;
+      ELSIF v_period.id IS NOT NULL THEN
+        RAISE EXCEPTION 'There is no tracking period. Ended, superseded or rolled-over periods accept their own dates only through the explicit historical correction path.'
+          USING ERRCODE = '23514';
+      END IF;
     END IF;
   END IF;
 
@@ -966,13 +1013,15 @@ BEGIN
 
   -- Finalizing a continuation successor before the period it continues would
   -- leave the predecessor permanently unfinalizable: the successor is already
-  -- rolled over, so the predecessor's adoption path no longer exists. Block it
-  -- with an actionable message before any preview comparison.
+  -- rolled over, so the predecessor's adoption path no longer exists. A
+  -- predecessor left superseded by a routine continuation and one left ended
+  -- by its final-day close both continue into this period. Block either with an
+  -- actionable message before any preview comparison.
   SELECT * INTO v_predecessor
   FROM public.money_periods
   WHERE owner_user_id = v_owner
     AND end_date = v_source.start_date - 1
-    AND lifecycle = 'superseded'
+    AND lifecycle IN ('superseded', 'ended')
     AND successor_period_id IS NULL
   ORDER BY start_date DESC
   LIMIT 1;
@@ -1134,11 +1183,13 @@ BEGIN
 
   -- Adoption of a continuation-created successor. The identity comes from the
   -- real date chain (the immediate next period that starts the day after the
-  -- source ends), never from forgeable provenance JSON. The immediate successor
-  -- may still be tracking or may already be superseded by a later continuation;
-  -- either way it is the one period that owns those dates. The requested range
+  -- source ends), never from forgeable provenance JSON. A source may be
+  -- superseded by a routine continuation or ended by its final-day close; the
+  -- immediate successor may still be tracking, may already be superseded by a
+  -- later continuation, or may already be ended by its own final-day close.
+  -- Either way it is the one period that owns those dates. The requested range
   -- must be exactly that period; anything else is a conflict, not a duplicate.
-  IF v_source.lifecycle = 'superseded' THEN
+  IF v_source.lifecycle IN ('superseded', 'ended') THEN
     SELECT * INTO v_continuation
     FROM public.money_periods
     WHERE owner_user_id = v_owner

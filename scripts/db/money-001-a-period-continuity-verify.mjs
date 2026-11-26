@@ -50,6 +50,7 @@ const L = "cccccccc-9999-4999-8999-999999999999";
 const M = "dddddddd-9999-4999-8999-999999999999";
 const N = "eeeeeeee-9999-4999-8999-999999999999";
 const O = "ffffffff-9999-4999-8999-999999999999";
+const P = "12121212-9999-4999-8999-999999999999";
 const RESOURCE = "https://ega.example.com/api/mcp";
 const READ = ["today.read", "timer.read", "personal_ops.read"];
 const WRITE = [...READ, "personal_ops.write"];
@@ -149,16 +150,16 @@ const createPeriod = (
         createdFrom: "web",
       },
   initialization = opening === null ? "uninitialized" : "initialized",
+  settings = { savingsTargetMinor: null, emergencyTargetMinor: null },
 ) =>
   tx.unsafe(
     `SELECT (p).id, (p).version, (p).lifecycle
      FROM (SELECT public.money_create_period(
        $1::date, $2::date, 'Africa/Casablanca'::text, $3::date,
        $7::text, $4::integer, $1::date, $5::text, $6::jsonb,
-       '{"savingsTargetMinor":null,"emergencyTargetMinor":null}'::jsonb,
-       now()::timestamptz
+       $8::jsonb, now()::timestamptz
      ) AS p) created`,
-    [start, end, active, opening, hex("a"), provenance, initialization],
+    [start, end, active, opening, hex("a"), provenance, initialization, settings],
   );
 
 const continuePeriod = (tx, bookingDate) =>
@@ -222,8 +223,8 @@ async function main() {
     await sql.unsafe("GRANT USAGE ON SCHEMA public, auth TO anon, authenticated");
     await sql.unsafe("CREATE TABLE auth.users (id uuid PRIMARY KEY, email text NOT NULL)");
     await sql.unsafe(
-      "INSERT INTO auth.users VALUES ($1,'a@example.test'),($2,'b@example.test'),($3,'c@example.test'),($4,'d@example.test'),($5,'e@example.test'),($6,'f@example.test'),($7,'g@example.test'),($8,'h@example.test'),($9,'i@example.test'),($10,'j@example.test'),($11,'k@example.test'),($12,'l@example.test'),($13,'m@example.test'),($14,'n@example.test'),($15,'o@example.test')",
-      [A, B, C, D, E, F, G, H, I, J, K, L, M, N, O],
+      "INSERT INTO auth.users VALUES ($1,'a@example.test'),($2,'b@example.test'),($3,'c@example.test'),($4,'d@example.test'),($5,'e@example.test'),($6,'f@example.test'),($7,'g@example.test'),($8,'h@example.test'),($9,'i@example.test'),($10,'j@example.test'),($11,'k@example.test'),($12,'l@example.test'),($13,'m@example.test'),($14,'n@example.test'),($15,'o@example.test'),($16,'p@example.test')",
+      [A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P],
     );
     await sql.unsafe("UPDATE auth.users SET email='ab.mortaki@gmail.com' WHERE id=$1", [A]);
     await sql.unsafe(
@@ -2448,6 +2449,302 @@ async function main() {
       "a carried opening with the exact source end cutoff is retained",
     );
     console.log("[CARRY] a carried opening cutoff must equal the source period end");
+
+    // --- A final-day close continues into the next month -------------------
+    // The explicit close ends the source on its final day. A later routine
+    // write must still continue the calendar, leaving the ended source (and its
+    // retained close evidence) untouched. Finalization then adopts that exact
+    // successor instead of creating a second period.
+    const pSourceStart = addDays(today, -40);
+    const pSourceEnd = addDays(today, -11);
+    const pCreated = await user(P, (tx) =>
+      createPeriod(
+        tx,
+        pSourceStart,
+        pSourceEnd,
+        pSourceStart,
+        100000,
+        undefined,
+        "initialized",
+        { savingsTargetMinor: 12000, emergencyTargetMinor: 3000 },
+      ),
+    );
+    const pSourceId = pCreated[0].id;
+    await user(P, (tx) =>
+      tx.unsafe("SELECT public.money_rebase_day_start_baseline($1::uuid)", [
+        pSourceId,
+      ]),
+    );
+    const pBeforeMove = (
+      await sql.unsafe("SELECT version FROM public.money_periods WHERE id=$1", [
+        pSourceId,
+      ])
+    )[0];
+    await user(P, (tx) =>
+      tx.unsafe(
+        `SELECT * FROM public.money_update_period(
+          $1::uuid,$2::integer,$3::date,NULL::jsonb,NULL::integer,NULL::text,
+          NULL::text,NULL::jsonb,NULL::text,now()::timestamptz
+        )`,
+        [pSourceId, pBeforeMove.version, pSourceEnd],
+      ),
+    );
+    const pBeforeClose = (
+      await sql.unsafe("SELECT version FROM public.money_periods WHERE id=$1", [
+        pSourceId,
+      ])
+    )[0];
+    const pClosed = await user(P, (tx) =>
+      tx.unsafe(
+        `SELECT public.money_close_day(
+          $1::uuid,$2::integer,$3::date,$4::text,$5::uuid,$6::text,$7::uuid[],$8::timestamptz
+        ) AS result`,
+        [
+          pSourceId,
+          pBeforeClose.version,
+          pSourceEnd,
+          "Final day closed",
+          "a0000000-0000-4000-8000-0000000000f1",
+          hex("f"),
+          [],
+          `${pSourceEnd}T20:00:00.000Z`,
+        ],
+      ),
+    );
+    assert(
+      pClosed[0].result.status === "closed" &&
+        pClosed[0].result.period.lifecycle === "ended",
+      "the final-day close ends the source with retained evidence",
+    );
+    const pEndedVersion = pClosed[0].result.period.version;
+    const pBookingDate = addDays(pSourceEnd, 1);
+    const pRoutine = await user(P, (tx) =>
+      recordRoutine(tx, {
+        bookingDate: pBookingDate,
+        amountMinor: 2100,
+        category: "groceries",
+        needVsWant: "need",
+        idempotencyKey: "money-f04-p-ended-continuation",
+        fingerprint: hex("a"),
+      }),
+    );
+    const pPeriods = await sql.unsafe(
+      `SELECT id, lifecycle, start_date, end_date, active_date, successor_period_id,
+              finalization_reference, rolled_over_at, version
+       FROM public.money_periods WHERE owner_user_id=$1 ORDER BY start_date`,
+      [P],
+    );
+    assert(pPeriods.length === 2, "the ended source creates exactly one successor");
+    const pSourceRow = pPeriods.find((row) => row.id === pSourceId);
+    const pSuccessor = pPeriods.find((row) => row.lifecycle === "tracking");
+    assert(
+      pSourceRow.lifecycle === "ended" &&
+        pSourceRow.successor_period_id === null &&
+        pSourceRow.finalization_reference === null &&
+        pSourceRow.rolled_over_at === null &&
+        pSourceRow.version === pEndedVersion,
+      "the ended source stays ended with no forged finalization evidence",
+    );
+    assert(
+      pSuccessor &&
+        pSuccessor.start_date === pBookingDate &&
+        pSuccessor.end_date === endOfMonth(pBookingDate) &&
+        pRoutine[0].period_id === pSuccessor.id,
+      "the routine expense lands in the one contiguous tracking successor",
+    );
+    const pEvidence = await sql.unsafe(
+      `SELECT
+         (SELECT count(*)::int FROM public.money_day_closes WHERE owner_user_id=$1 AND period_id=$2) AS closes,
+         (SELECT close_fingerprint FROM public.money_day_closes WHERE owner_user_id=$1 AND period_id=$2) AS fingerprint,
+         (SELECT count(*)::int FROM public.personal_expenses WHERE owner_user_id=$1 AND period_id=$3 AND kind='opening') AS successor_openings`,
+      [P, pSourceId, pSuccessor.id],
+    );
+    assert(
+      pEvidence[0].closes === 1 &&
+        pEvidence[0].fingerprint === hex("f") &&
+        pEvidence[0].successor_openings === 0,
+      "continuation invents no close or opening and leaves the close fingerprint unchanged",
+    );
+
+    // A retry in the continued range never creates a second successor.
+    await user(P, (tx) =>
+      recordRoutine(tx, {
+        bookingDate: pBookingDate,
+        amountMinor: 2200,
+        category: "household",
+        needVsWant: "need",
+        idempotencyKey: "money-f04-p-ended-continuation-retry",
+        fingerprint: hex("b"),
+      }),
+    );
+    const pPeriodCount = await sql.unsafe(
+      "SELECT count(*)::int n FROM public.money_periods WHERE owner_user_id=$1",
+      [P],
+    );
+    assert(pPeriodCount[0].n === 2, "the retry reuses the same successor");
+    const pSuccessorMovements = await sql.unsafe(
+      `SELECT count(*)::int n FROM public.personal_expenses
+       WHERE owner_user_id=$1 AND period_id=$2 AND kind <> 'opening' AND deleted_at IS NULL`,
+      [P, pSuccessor.id],
+    );
+
+    // Finalizing the continuation before the ended predecessor would orphan the
+    // predecessor's adoption path, so it is blocked exactly like a superseded
+    // predecessor.
+    const pSuccessorVersion = (
+      await sql.unsafe("SELECT version FROM public.money_periods WHERE id=$1", [
+        pSuccessor.id,
+      ])
+    )[0].version;
+    let pSuccessorFirstBlocked = false;
+    try {
+      await user(P, (tx) =>
+        callRollover(tx, [
+          pSuccessor.id,
+          pSuccessorVersion,
+          addDays(pSuccessor.end_date, 1),
+          addDays(pSuccessor.end_date, 20),
+          addDays(pSuccessor.end_date, 1),
+          "Africa/Casablanca",
+          "initialized",
+          false,
+          0,
+          pSuccessor.end_date,
+          null,
+          null,
+          hex("d"),
+          {},
+          null,
+          "f04-p-successor-first",
+          hex("e"),
+          "carry_forward",
+          null,
+          null,
+          null,
+          null,
+          0,
+          {},
+          [],
+          [],
+          `${addDays(pSuccessor.end_date, 1)}T09:00:00.000Z`,
+        ]),
+      );
+    } catch (error) {
+      pSuccessorFirstBlocked =
+        error.code === "23514" && /preceding period/.test(error.message);
+    }
+    assert(
+      pSuccessorFirstBlocked,
+      "an ended predecessor must be finalized before its tracking successor",
+    );
+
+    // Finalization from the ended source adopts the exact continuation range.
+    const pSummary = (
+      await user(P, (tx) =>
+        tx.unsafe(
+          "SELECT public.money_rollover_close_snapshot_summary($1::uuid) AS summary",
+          [pSourceId],
+        ),
+      )
+    )[0].summary;
+    const pRolloverArgs = (endDate, operationId) => [
+      pSourceId,
+      pEndedVersion,
+      pSuccessor.start_date,
+      endDate,
+      pSuccessor.start_date,
+      "Africa/Casablanca",
+      "initialized",
+      false,
+      100000,
+      pSourceEnd,
+      null,
+      "Finalized after review",
+      hex("d"),
+      {
+        opening: {
+          source: "carry_forward",
+          recordedAt: `${pSuccessor.start_date}T09:00:00.000Z`,
+          cutoffDate: pSourceEnd,
+          evidence: null,
+          note: "Finalized after review",
+          corrections: [],
+        },
+        createdFrom: "web",
+      },
+      null,
+      operationId,
+      hex("e"),
+      "carry_forward",
+      null,
+      null,
+      "Savings target versus transfers reviewed",
+      "Reviewed every unverified day",
+      pSummary.unverifiedDayCount,
+      { modeledClosingCashMinor: 100000, pendingOccurrenceCount: 0 },
+      [],
+      [],
+      `${pSuccessor.start_date}T09:00:00.000Z`,
+    ];
+    let pRangeConflict = false;
+    try {
+      await user(P, (tx) =>
+        callRollover(
+          tx,
+          pRolloverArgs(
+            addDays(pSuccessor.end_date, 1),
+            "f04-p-ended-range-mismatch",
+          ),
+        ),
+      );
+    } catch (error) {
+      pRangeConflict = error.code === "40001" &&
+        /exactly that range/.test(error.message);
+    }
+    assert(
+      pRangeConflict,
+      "an ended-source rollover adopts only the exact continuation range",
+    );
+    const pAdopted = await user(P, (tx) =>
+      callRollover(tx, pRolloverArgs(pSuccessor.end_date, "f04-p-ended-adopt")),
+    );
+    assert(
+      pAdopted[0].result.rollover.successor_period_id === pSuccessor.id,
+      "finalization adopts the continuation successor",
+    );
+    const pAfterAdoption = await sql.unsafe(
+      `SELECT
+         (SELECT count(*)::int FROM public.money_periods WHERE owner_user_id=$1) AS periods,
+         (SELECT lifecycle FROM public.money_periods WHERE id=$2) AS source_lifecycle,
+         (SELECT successor_period_id FROM public.money_periods WHERE id=$2) AS source_successor,
+         (SELECT finalization_reference FROM public.money_periods WHERE id=$2) AS source_reference,
+         (SELECT lifecycle FROM public.money_periods WHERE id=$3) AS successor_lifecycle,
+         (SELECT count(*)::int FROM public.personal_expenses
+           WHERE owner_user_id=$1 AND period_id=$3 AND kind='opening' AND deleted_at IS NULL) AS successor_openings,
+         (SELECT amount_minor FROM public.personal_expenses
+           WHERE owner_user_id=$1 AND period_id=$3 AND kind='opening' AND deleted_at IS NULL) AS successor_opening_amount,
+         (SELECT count(*)::int FROM public.personal_expenses
+           WHERE owner_user_id=$1 AND period_id=$3 AND kind <> 'opening' AND deleted_at IS NULL) AS successor_movements,
+         (SELECT count(*)::int FROM public.money_day_closes
+           WHERE owner_user_id=$1 AND period_id=$2) AS source_closes,
+         (SELECT count(*)::int FROM public.money_period_rollovers
+           WHERE owner_user_id=$1 AND source_period_id=$2) AS receipts`,
+      [P, pSourceId, pSuccessor.id],
+    );
+    assert(
+      pAfterAdoption[0].periods === 2 &&
+        pAfterAdoption[0].source_lifecycle === "rolled_over" &&
+        pAfterAdoption[0].source_successor === pSuccessor.id &&
+        pAfterAdoption[0].source_reference === pSuccessor.id &&
+        pAfterAdoption[0].successor_lifecycle === "tracking" &&
+        pAfterAdoption[0].successor_openings === 1 &&
+        pAfterAdoption[0].successor_opening_amount === 100000 &&
+        pAfterAdoption[0].successor_movements === pSuccessorMovements[0].n &&
+        pAfterAdoption[0].source_closes === 1 &&
+        pAfterAdoption[0].receipts === 1,
+      "adoption links the ended source, keeps one successor/opening and its recorded movements",
+    );
+    console.log("[ENDED] a final-day close continues into the next month and is adopted without duplication");
 
     // --- Gap limit ----------------------------------------------------------
     await user(B, (tx) =>

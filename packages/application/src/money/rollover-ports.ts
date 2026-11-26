@@ -54,9 +54,10 @@ export type MoneyRolloverContinuationSuccessor = Readonly<{
 
 /**
  * The immediately preceding period when it still owns the calendar edge
- * without a finalized successor link. A continuation successor must not be
- * finalized before this period: doing so would orphan the predecessor and
- * leave no legal finalization path.
+ * without a finalized successor link. The predecessor is either superseded by
+ * a routine continuation or ended by its final-day close. A continuation
+ * successor must not be finalized before this period: doing so would orphan the
+ * predecessor and leave no legal finalization path.
  */
 export type MoneyRolloverUnfinalizedPredecessor = Readonly<{
   periodId: string;
@@ -84,9 +85,10 @@ export type MoneyRolloverSourceContext = Readonly<{
   priorCorrectionBridgesTruncated: boolean;
   /**
    * The immediate next period after this source, when it continues the
-   * calendar (tracking or already superseded by a later continuation). This is
-   * the real continuation chain identity; rollover adopts it and never creates
-   * a duplicate. Provenance JSON is not used for identity.
+   * calendar (tracking, already superseded by a later continuation, or already
+   * ended by its own final-day close). This is the real continuation chain
+   * identity; rollover adopts it and never creates a duplicate. Provenance JSON
+   * is not used for identity.
    */
   continuationSuccessor: MoneyRolloverContinuationSuccessor | null;
   unfinalizedPredecessor: MoneyRolloverUnfinalizedPredecessor | null;

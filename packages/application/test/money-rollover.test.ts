@@ -250,6 +250,61 @@ test("a continued successor is adopted only with its exact range", async () => {
   assert.deepEqual(preview.data.continuationSuccessor, continuationSuccessor);
 });
 
+test("an ended source adopts its continuation successor by exact range", async () => {
+  const continuationSuccessor = {
+    periodId: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+    startDate: "2026-12-01",
+    endDate: "2027-03-31",
+    activeDate: "2027-03-05",
+    initialization: "uninitialized" as const,
+    openingAmountMinor: null,
+  };
+  // The default context source is ended (a final-day close), and the routine
+  // continuation already created the tracking successor.
+  const fake = fakeRepository(
+    context({ continuationSuccessor, modeledClosingCashMinor: 68_900 }),
+  );
+  const operation = "750e8400-e29b-41d4-a716-446655440011";
+
+  const mismatch = await rolloverMoneyPeriod(
+    actor,
+    { repository: fake.repository, obligations: noTemplates },
+    baseInput(),
+    operation,
+    { now: new Date("2027-03-10T09:00:00.000Z") },
+  );
+  assert.equal(mismatch.ok, false);
+  if (!mismatch.ok) {
+    assert.equal(mismatch.code, "conflict");
+    assert.match(mismatch.errorMessage, /already covers 2026-12-01–2027-03-31/);
+  }
+  assert.equal(fake.writes.length, 0);
+
+  const matched = await rolloverMoneyPeriod(
+    actor,
+    { repository: fake.repository, obligations: noTemplates },
+    baseInput({ startDate: "2026-12-01", endDate: "2027-03-31" }),
+    operation,
+    { now: new Date("2027-03-10T09:00:00.000Z") },
+  );
+  assert.equal(matched.ok, true);
+  assert.equal(fake.writes.length, 1);
+  assert.equal(fake.writes[0]!.targets.startDate, "2026-12-01");
+  assert.equal(fake.writes[0]!.targets.endDate, "2027-03-31");
+
+  const preview = await getMoneyRolloverPreviewForPeriod(
+    actor,
+    { repository: fake.repository, obligations: noTemplates },
+    endedPeriod().id,
+    { now: new Date("2027-03-10T09:00:00.000Z") },
+  );
+  assert.equal(preview.ok, true);
+  if (!preview.ok) return;
+  assert.deepEqual(preview.data.targets.startDate, "2026-12-01");
+  assert.deepEqual(preview.data.targets.endDate, "2027-03-31");
+  assert.deepEqual(preview.data.continuationSuccessor, continuationSuccessor);
+});
+
 test("carry-forward creates one successor opening from modeled closing cash", async () => {
   const fake = fakeRepository(context());
   const result = await rolloverMoneyPeriod(

@@ -29,7 +29,10 @@ integrated.
   extensions, rollover adoption of an already-continued successor, and the
   predecessor/early-finalization blockers. The routine RPC is the only writer
   that can start a later tracking window from a routine write; reads never call
-  it. A non-finalized superseded period still accepts its own routine dates.
+  it. When no period is tracking, the latest period ended by its final-day close
+  can continue the same calendar while staying `ended` with unchanged close
+  evidence, and finalization later adopts that successor by its exact date-chain
+  range. A non-finalized superseded period still accepts its own routine dates.
   Every routine write with a resolved period uses that RPC so a rollover that
   commits between application resolution and insert cannot be bypassed by a
   direct stale insert. The routine write, continuation and rollover adoption

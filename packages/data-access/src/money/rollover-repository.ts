@@ -573,7 +573,8 @@ export class SupabaseMoneyRolloverRepository implements MoneyRolloverRepository 
             : null,
         unfinalizedPredecessor:
           predecessor &&
-          predecessor.lifecycle === "superseded" &&
+          (predecessor.lifecycle === "superseded" ||
+            predecessor.lifecycle === "ended") &&
           predecessor.successor_period_id == null
             ? {
                 periodId: String(predecessor.id),
