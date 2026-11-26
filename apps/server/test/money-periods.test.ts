@@ -129,6 +129,7 @@ function periodRow(overrides: Record<string, unknown> = {}) {
     active_date: "2026-11-11",
     lifecycle: "tracking",
     initialization: "initialized",
+    day_start_setup_completed: true,
     opening_movement_id: OPENING_ID,
     provenance: {
       opening: {
@@ -262,6 +263,7 @@ test("PATCH settings requires the current version and maps conflicts", async () 
     data: periodRow({
       opening_movement_id: null,
       initialization: "uninitialized",
+      day_start_setup_completed: true,
       active_date: "2026-11-10",
       version: 2,
     }),
@@ -327,6 +329,7 @@ test("expense creation receives the out-of-period guard at the HTTP boundary", a
     data: periodRow({
       opening_movement_id: null,
       initialization: "uninitialized",
+      day_start_setup_completed: true,
       start_date: "2026-11-09",
       end_date: "2026-11-30",
     }),
@@ -337,7 +340,7 @@ test("expense creation receives the out-of-period guard at the HTTP boundary", a
     method: "POST",
     headers: { ...AUTH, "content-type": "application/json" },
     body: JSON.stringify({
-      occurredAt: "2026-12-02T12:00:00+01:00",
+      occurredAt: "2026-11-08T12:00:00+01:00",
       amountMinor: 1100,
       category: "coffee",
       needVsWant: "want",
@@ -347,6 +350,7 @@ test("expense creation receives the out-of-period guard at the HTTP boundary", a
   assert.equal(res.status, 400);
   const body = await res.json();
   assert.match(body.error.message, /outside the tracking period/);
+  assert.equal(fake.rpcCalls.length, 0);
   assert.equal(
     fake.calls.some((call) =>
       call.steps.some((step) => step.method === "insert"),

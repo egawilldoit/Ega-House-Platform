@@ -24,6 +24,7 @@ const PERIOD: MoneyPeriodDto = {
   lifecycle: "tracking",
   initialization: "initialized",
   openingMovementId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+  dayStartSetupCompleted: true,
   provenance: { opening: null, createdFrom: "web" },
   settings: {},
   version: 3,
@@ -124,6 +125,50 @@ async function submit() {
 }
 
 describe("MoneyDayClosePanel", () => {
+  it("labels the final-purchase default from the canonical classification rule", async () => {
+    await act(async () => {
+      root.render(
+        <MoneyDayClosePanel
+          period={PERIOD}
+          dayClose={null}
+          lastClose={null}
+          recentCloses={[]}
+          dayClosesUnavailable={false}
+          unverifiedDates={[]}
+          unverifiedDayCount={0}
+          action={async () => ({ ok: true as const, error: null })}
+        />,
+      );
+    });
+    const addButton = [...container.querySelectorAll("button")].find(
+      (button) => button.textContent === "Add final purchase",
+    )!;
+    await act(async () => {
+      addButton.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    const dailySelect = [...container.querySelectorAll("select")].find(
+      (select) =>
+        [...select.options].some((option) =>
+          option.textContent?.startsWith("Default ("),
+        ),
+    )!;
+    expect(dailySelect.options[0]!.textContent).toBe("Default (included)");
+
+    const categorySelect = [...container.querySelectorAll("select")].find(
+      (select) =>
+        [...select.options].some((option) => option.value === "coffee"),
+    )!;
+    const setter = Object.getOwnPropertyDescriptor(
+      HTMLSelectElement.prototype,
+      "value",
+    )!.set!;
+    await act(async () => {
+      setter.call(categorySelect, "bills");
+      categorySelect.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    expect(dailySelect.options[0]!.textContent).toBe("Default (excluded)");
+  });
+
   it("keeps each final purchase identity across a retry so the close can recover", async () => {
     const action = vi
       .fn()
@@ -140,6 +185,8 @@ describe("MoneyDayClosePanel", () => {
           lastClose={null}
           recentCloses={[]}
           dayClosesUnavailable={false}
+          unverifiedDates={[]}
+          unverifiedDayCount={0}
           action={action}
         />,
       );
@@ -202,6 +249,8 @@ describe("MoneyDayClosePanel", () => {
           }}
           recentCloses={[CLOSE]}
           dayClosesUnavailable={false}
+          unverifiedDates={[]}
+          unverifiedDayCount={0}
           action={vi.fn()}
         />,
       );
@@ -210,6 +259,26 @@ describe("MoneyDayClosePanel", () => {
     expect(container.textContent).toContain("Day spending (original)");
     expect(container.textContent).toContain("Day spending (restated)");
     expect(container.textContent).toContain("Active date advanced to 2026-11-30");
+  });
+
+  it("states that close is optional and lists skipped unverified days", async () => {
+    await act(async () => {
+      root.render(
+        <MoneyDayClosePanel
+          period={PERIOD}
+          dayClose={null}
+          lastClose={null}
+          recentCloses={[]}
+          dayClosesUnavailable={false}
+          unverifiedDates={["2026-11-21", "2026-11-22"]}
+          unverifiedDayCount={2}
+          action={vi.fn()}
+        />,
+      );
+    });
+    expect(container.textContent).toContain("Day close is optional");
+    expect(container.textContent).toContain("2 unverified/unclosed days");
+    expect(container.textContent).toContain("2026-11-21, 2026-11-22");
   });
 
   it("does not offer a routine close for an ended period", async () => {
@@ -221,6 +290,8 @@ describe("MoneyDayClosePanel", () => {
           lastClose={null}
           recentCloses={[]}
           dayClosesUnavailable={false}
+          unverifiedDates={[]}
+          unverifiedDayCount={0}
           action={vi.fn()}
         />,
       );

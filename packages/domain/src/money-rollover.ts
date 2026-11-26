@@ -58,6 +58,7 @@ export type MoneyRolloverOpeningMode =
 export const MONEY_ROLLOVER_OPERATION_ID_MAX_LENGTH = 128;
 export const MONEY_ROLLOVER_REASON_MAX_LENGTH = 200;
 export const MONEY_ROLLOVER_ACCEPTED_DIFFERENCE_MAX_LENGTH = 500;
+export const MONEY_ROLLOVER_UNVERIFIED_DAYS_NOTE_MAX_LENGTH = 500;
 
 export type MoneyRolloverUnpaidTreatmentChoice = Readonly<{
   treatment: MoneyRolloverUnpaidTreatment;
@@ -96,6 +97,12 @@ export type MoneyRolloverValues = Readonly<{
    * note is retained as provenance; without it a difference blocks rollover.
    */
   acceptClosingDifferenceNote: string | null;
+  /**
+   * Explicit acknowledgment of reviewed unverified/unclosed source days. The
+   * note is retained as provenance. A source with any unclosed date cannot roll
+   * over until every unverified day is acknowledged; no close row is invented.
+   */
+  acceptUnverifiedDaysNote: string | null;
 }>;
 
 export type MoneyRolloverTargets = Readonly<{
@@ -204,7 +211,13 @@ export function defaultMoneyRolloverRange(source: Pick<MoneyPeriod, "startDate" 
   };
 }
 
-/** A finished period is the only legal rollover source. */
+/**
+ * A rolled-over period is the only illegal source. Both a tracking period with
+ * reviewed unclosed days and an ended period may roll over (MONEY-001 ID-09):
+ * finalization is an explicit owner decision, not a midnight or close-driven
+ * transition. Unverified days are acknowledged with retained provenance by the
+ * preview/write path; no close evidence is fabricated.
+ */
 export function moneyRolloverSourceFailure(
   source: Pick<MoneyPeriod, "lifecycle" | "activeDate" | "endDate">,
 ): MoneyRolloverValidationFailure | null {
@@ -214,16 +227,10 @@ export function moneyRolloverSourceFailure(
       "This period was already rolled over. Continue from its successor instead of rolling it over twice.",
     );
   }
-  if (source.lifecycle === "tracking") {
+  if (source.activeDate > source.endDate) {
     return failure(
       "sourcePeriodId",
-      "Close the final day of this period before rolling it over. Rollover is explicit and never replaces a day close.",
-    );
-  }
-  if (source.activeDate !== source.endDate) {
-    return failure(
-      "sourcePeriodId",
-      `This period is ended but its active date is ${source.activeDate}, not its end date ${source.endDate}. Finish closing its tracked days first.`,
+      `The source active date ${source.activeDate} is after its end date ${source.endDate}. Repair the period before rolling it over.`,
     );
   }
   return null;
@@ -437,6 +444,25 @@ export function parseMoneyRolloverInput(input: unknown): MoneyRolloverValidation
     acceptClosingDifferenceNote = input.acceptClosingDifferenceNote.trim();
   }
 
+  let acceptUnverifiedDaysNote: string | null = null;
+  if (
+    input.acceptUnverifiedDaysNote !== undefined &&
+    input.acceptUnverifiedDaysNote !== null
+  ) {
+    if (
+      typeof input.acceptUnverifiedDaysNote !== "string" ||
+      input.acceptUnverifiedDaysNote.trim().length < 3 ||
+      input.acceptUnverifiedDaysNote.length >
+        MONEY_ROLLOVER_UNVERIFIED_DAYS_NOTE_MAX_LENGTH
+    ) {
+      return failure(
+        "acceptUnverifiedDaysNote",
+        `Acknowledging unverified days needs a retained note of 3–${MONEY_ROLLOVER_UNVERIFIED_DAYS_NOTE_MAX_LENGTH} characters.`,
+      );
+    }
+    acceptUnverifiedDaysNote = input.acceptUnverifiedDaysNote.trim();
+  }
+
   return {
     ok: true,
     value: {
@@ -449,6 +475,7 @@ export function parseMoneyRolloverInput(input: unknown): MoneyRolloverValidation
       settingsOverrides,
       allowUncoveredDays: input.allowUncoveredDays,
       acceptClosingDifferenceNote,
+      acceptUnverifiedDaysNote,
     },
   };
 }
@@ -541,16 +568,20 @@ export type MoneyRolloverCloseSnapshotAssessment =
   | Readonly<{
       available: true;
       closeCount: number;
+      /** Previously closed dates, ascending: the retained attestation history. */
+      closedDates?: readonly string[];
       /**
-       * Inclusive days from the first retained close (tracking start) through
-       * the source end that each need retained close evidence. Leading calendar
-       * days before tracking began are not required.
+       * Every inclusive day in the source period. Finalization reviews the whole
+       * period, so leading calendar days with no close are unverified too.
        */
+      periodDayCount?: number;
+      /** Retained days still requiring either a close or explicit acknowledgment. */
       requiredCloseCount: number;
-      /** First retained close date: the day tracking began. */
+      /** First retained close date; null when the source has never been closed. */
       trackedFromDate: string | null;
-      /** Tracked days with no retained close; empty means complete evidence. */
+      /** Every unclosed/unverified date in the source period. */
       missingCloseDates: readonly string[];
+      unverifiedDayCount?: number;
       completeCloseEvidence: boolean;
       lastClosedDate: string | null;
       comparableToRestatedTotals: true;
@@ -585,6 +616,13 @@ export function assessMoneyRollover(input: Readonly<{
   unpaidChoice: MoneyRolloverUnpaidTreatmentChoice | null;
   openingMode: MoneyRolloverOpeningMode;
   closeSnapshots: MoneyRolloverCloseSnapshotAssessment;
+  /**
+   * True when the owner supplied the retained acknowledgment note for every
+   * reviewed unverified/unclosed date. The application derives this from the
+   * parsed request; it is not a UI-only flag. Omitted callers are treated as
+   * not acknowledged.
+   */
+  unverifiedDaysAccepted?: boolean;
 }>): MoneyRolloverReconciliation {
   const choices: string[] = [];
   const blockers: string[] = [];
@@ -680,26 +718,32 @@ export function assessMoneyRollover(input: Readonly<{
       "The close-to-restated comparison is incomplete. Repair the source ledger or close evidence before rolling over.",
     );
   } else {
+    const closedCount = closeSnapshot.closeCount;
+    const unverifiedCount =
+      closeSnapshot.unverifiedDayCount ?? closeSnapshot.missingCloseDates.length;
     if (!completeCloseEvidence) {
-      const required = closeSnapshot.requiredCloseCount;
       const missing = closeSnapshot.missingCloseDates;
-      const firstMissing = missing[0];
       const missingLabel =
         missing.length > 0
-          ? `${missing.length} tracked day${missing.length === 1 ? "" : "s"} (${missing.slice(0, 5).join(", ")}${missing.length > 5 ? ", …" : ""})`
-          : `${Math.max(required - closeSnapshot.closeCount, 0)} tracked day${required - closeSnapshot.closeCount === 1 ? "" : "s"}`;
+          ? `${unverifiedCount} unverified/unclosed day${unverifiedCount === 1 ? "" : "s"} (${missing.slice(0, 8).join(", ")}${missing.length > 8 ? ", …" : ""})`
+          : `${unverifiedCount} unverified/unclosed day${unverifiedCount === 1 ? "" : "s"}`;
+      const accepted = input.unverifiedDaysAccepted === true;
       differences.push({
         code: "incomplete_close_evidence",
         amountMinor: null,
-        status: "unavailable",
-        message: `Retained close evidence is missing for ${missingLabel}. Tracking began on ${closeSnapshot.trackedFromDate ?? "an unknown date"}; leading days before tracking began are not required, but every tracked day through the source end must be closed.`,
+        status: accepted ? "accepted" : "choice_required",
+        message: accepted
+          ? `Reviewed retained ${closedCount === 1 ? "close" : "closes"} and ${missingLabel}. The unverified dates are explicitly acknowledged with retained provenance; no close rows were invented.`
+          : `Review retained ${closedCount === 1 ? "close" : "closes"} and ${missingLabel}. These dates stay unverified: rollover never invents close rows. Acknowledge them explicitly with a retained note before finalizing.`,
       });
-      blockers.push(
-        firstMissing
-          ? `The retained day closes have a gap inside the tracked range (first missing ${firstMissing}). Restore the missing close evidence before rollover; untracked leading days are not a gap.`
-          : "Every tracked source day needs retained close evidence before rollover. Restore the missing close evidence before rolling over.",
-      );
-    } else if (closeSnapshot.restatedDifferenceCount > 0) {
+      if (!accepted) {
+        choices.push(
+          `Acknowledge the ${unverifiedCount} reviewed unverified/unclosed date${unverifiedCount === 1 ? "" : "s"} with a retained note, or close them before rollover.`,
+        );
+      }
+    }
+
+    if (closeSnapshot.restatedDifferenceCount > 0) {
       const changed = closeSnapshot.restatedDifferenceCount;
       const accepted = input.differenceAccepted;
       differences.push({
@@ -713,7 +757,7 @@ export function assessMoneyRollover(input: Readonly<{
           "Review the restated close snapshots and accept them with a retained note, or correct the affected source movements first.",
         );
       }
-    } else {
+    } else if (completeCloseEvidence) {
       differences.push({
         code: "close_snapshot_restatement",
         amountMinor: null,
@@ -887,5 +931,10 @@ export function canonicalMoneyRolloverPayload(values: MoneyRolloverValues): stri
     settingsOverrides: values.settingsOverrides,
     allowUncoveredDays: values.allowUncoveredDays,
     acceptClosingDifferenceNote: values.acceptClosingDifferenceNote,
+    // Added by MONEY-001-A. Omitted when unused so an existing operation's
+    // stored request fingerprint still replays identically.
+    ...(values.acceptUnverifiedDaysNote === null
+      ? {}
+      : { acceptUnverifiedDaysNote: values.acceptUnverifiedDaysNote }),
   });
 }

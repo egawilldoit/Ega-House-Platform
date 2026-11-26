@@ -17,9 +17,15 @@ type Step = { method: string; args: unknown[] };
 class FakeSupabase {
   private readonly queues = new Map<string, QueryResult[]>();
   calls: Array<{ table: string; steps: Step[] }> = [];
+  rpcCalls: Array<{ name: string; args: Record<string, unknown> }> = [];
 
   from(table: string) {
     return new FakeBuilder(table, this);
+  }
+
+  rpc(name: string, args: Record<string, unknown>) {
+    this.rpcCalls.push({ name, args });
+    return Promise.resolve(this.pop(`rpc:${name}`));
   }
 
   push(table: string, result: QueryResult) {
@@ -215,6 +221,7 @@ const PERIOD_ROW = {
   active_date: "2026-11-11",
   lifecycle: "tracking",
   initialization: "initialized",
+  day_start_setup_completed: true,
   opening_movement_id: null,
   provenance: { opening: null, createdFrom: "web" },
   settings: {},
@@ -223,7 +230,7 @@ const PERIOD_ROW = {
   updated_at: "2026-11-01T10:00:00+00:00",
 };
 
-test("POST /api/money/movements applies the MONEY-03 tracking-period guard and stamps period_id", async () => {
+test("POST /api/money/movements applies the MONEY-03 guard and records through the atomic period RPC", async () => {
   const fake = new FakeSupabase();
   fake.push("personal_expenses", { data: null, error: null });
   fake.push("money_periods", { data: PERIOD_ROW, error: null });
@@ -234,7 +241,7 @@ test("POST /api/money/movements applies the MONEY-03 tracking-period guard and s
     body: JSON.stringify({
       kind: "income",
       amountMinor: 20000,
-      bookingDate: "2026-12-01",
+      bookingDate: "2026-10-31",
       idempotencyKey: "income-late",
     }),
   });
@@ -245,7 +252,7 @@ test("POST /api/money/movements applies the MONEY-03 tracking-period guard and s
 
   fake.push("personal_expenses", { data: null, error: null });
   fake.push("money_periods", { data: PERIOD_ROW, error: null });
-  fake.push("personal_expenses", { data: row(), error: null });
+  fake.push("rpc:money_record_routine_movement", { data: row(), error: null });
 
   const inside = await makeApp(fake).request("/api/money/movements", {
     method: "POST",
@@ -258,12 +265,17 @@ test("POST /api/money/movements applies the MONEY-03 tracking-period guard and s
     }),
   });
   assert.equal(inside.status, 201);
-  const insert = fake.calls.find((call) =>
-    call.steps.some((step) => step.method === "insert"),
+  const rpc = fake.rpcCalls.find(
+    (call) => call.name === "money_record_routine_movement",
   );
-  const payload = insert?.steps.find((step) => step.method === "insert")
-    ?.args[0] as Record<string, unknown>;
-  assert.equal(payload.period_id, PERIOD_ROW.id);
+  assert.equal(rpc?.args.p_booking_date, "2026-11-09");
+  assert.equal(rpc?.args.p_idempotency_key, "income-1");
+  assert.equal(
+    fake.calls.some((call) =>
+      call.steps.some((step) => step.method === "insert"),
+    ),
+    false,
+  );
 });
 
 test("GET /api/money/movements applies the cutoff to booking_date", async () => {

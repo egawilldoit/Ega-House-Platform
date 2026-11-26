@@ -1,4 +1,5 @@
 import {
+  defaultCountsInDaily,
   moneyDayCloseTransition,
   parseMoneyDayCloseInput,
   type MoneyDayClose,
@@ -28,7 +29,7 @@ import { createMovement } from "./service";
 export type CloseMoneyDayDependencies = Readonly<{
   periods: Pick<
     MoneyPeriodRepository,
-    "findTracking" | "findById" | "list" | "closeDay"
+    "findTracking" | "findById" | "list" | "findOverlapping" | "closeDay"
   > &
     Partial<
       Pick<
@@ -95,7 +96,9 @@ export function moneyDayCloseFingerprint(
           needVsWant: purchase.needVsWant,
           paymentMethod: purchase.paymentMethod,
           purpose: purchase.purpose,
-          countsInDaily: purchase.countsInDaily ?? true,
+          countsInDaily:
+            purchase.countsInDaily ??
+            defaultCountsInDaily("expense", purchase.purpose, purchase.category),
           idempotencyKey: purchase.idempotencyKey,
         }))
         .sort((left, right) =>
@@ -387,12 +390,7 @@ export async function closeMoneyDay(
         occurredAt: null,
         idempotencyKey: purchase.idempotencyKey,
       },
-      {
-        periods: dependencies.periods as Pick<
-          MoneyPeriodRepository,
-          "findTracking" | "list"
-        >,
-      },
+      { periods: dependencies.periods },
     );
     if (!created.ok) {
       return {

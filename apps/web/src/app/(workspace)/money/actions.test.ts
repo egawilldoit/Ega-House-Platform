@@ -33,6 +33,10 @@ const overviewSource = readFileSync(
   resolve(import.meta.dirname, "./_components/money-overview-panels.tsx"),
   "utf8",
 );
+const quickEntrySource = readFileSync(
+  resolve(import.meta.dirname, "./_components/money-quick-entry.tsx"),
+  "utf8",
+);
 
 test("money actions derive the actor from the verified session and never accept an owner", () => {
   assert.match(actionsSource, /getCurrentUser\(\)/);
@@ -113,6 +117,18 @@ test("day-start rebase is explicit, authenticated and uses the request-scoped pe
   assert.doesNotMatch(actionsSource, /getSupabaseServiceClient/);
 });
 
+test("quick entry sends wall time and uses the canonical classification default", () => {
+  assert.match(quickEntrySource, /defaultCountsInDaily\(/);
+  assert.match(quickEntrySource, /occurredAtWallTime/);
+  assert.doesNotMatch(quickEntrySource, /new Date\(knownTime\)/);
+  assert.match(actionsSource, /moneyWallTimeToOccurredAt/);
+  assert.match(actionsSource, /moneyWriteTimezone/);
+  assert.match(actionsSource, /tracking\.value\.timezone/);
+  assert.doesNotMatch(actionsSource, /classifyDateInPeriod/);
+  assert.match(actionsSource, /WALL_TIME_PATTERN/);
+  assert.match(actionsSource, /getLocalDateInTimezone/);
+});
+
 test("expense creation carries the tracking-period guard on the shared repo", () => {
   assert.match(
     actionsSource,
@@ -129,11 +145,11 @@ test("money actions map application codes onto the component conflict contract",
   assert.equal(mapApplicationCode(undefined), "INTERNAL");
 });
 
-test("money page wires the mutation components with the verified owner", () => {
-  assert.match(pageSource, /MoneyCreatePanel/);
-  assert.match(pageSource, /MoneyRowActions/);
+test("money page wires the primary mutation and history components with the verified owner", () => {
+  assert.match(pageSource, /MoneyQuickEntry/);
+  assert.match(pageSource, /MoneyHistory/);
   assert.match(pageSource, /ownerKey=\{user\.id\}/);
-  assert.match(pageSource, /expense=\{expense\}/);
+  assert.doesNotMatch(pageSource, /MoneyCreatePanel|MoneyMovementPanel/);
 });
 
 /**

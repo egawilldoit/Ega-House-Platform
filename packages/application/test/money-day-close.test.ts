@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
-  assertRoutineEntryAllowed,
+  resolveRoutineEntry,
   closeMoneyDay,
   createAuthenticatedActor,
   getMoneyDayCloseView,
@@ -34,6 +34,7 @@ function makePeriod(patch: Partial<MoneyPeriod> = {}): MoneyPeriod {
     activeDate: "2026-11-29",
     lifecycle: "tracking",
     initialization: "initialized",
+    dayStartSetupCompleted: true,
     openingMovementId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
     provenance: { opening: null, createdFrom: "web" },
     settings: {},
@@ -132,6 +133,7 @@ function movement(id: string, amountMinor: number, bookingDate: string): MoneyLe
     bookingDate,
     occurredAt: null,
     periodId: PERIOD_ID,
+    idempotencyKey: `key-${id}`,
     version: 1,
     deletedAt: null,
     createdAt: `${bookingDate}T12:00:00.000Z`,
@@ -142,7 +144,7 @@ function movement(id: string, amountMinor: number, bookingDate: string): MoneyLe
 type Harness = {
   repository: Pick<
     MoneyPeriodRepository,
-    "findTracking" | "findById" | "list" | "closeDay"
+    "findTracking" | "findById" | "list" | "findOverlapping" | "closeDay"
   > & {
     getDayCloseByOperation: NonNullable<MoneyPeriodRepository["getDayCloseByOperation"]>;
     getDayStartBaseline: NonNullable<MoneyPeriodRepository["getDayStartBaseline"]>;
@@ -171,6 +173,9 @@ function harness(options: {
       return { ok: true, value: id === period.id ? period : null };
     },
     async list() {
+      return { ok: true, value: [period] };
+    },
+    async findOverlapping() {
       return { ok: true, value: [period] };
     },
     async getDayCloseByOperation() {
@@ -526,15 +531,52 @@ test("a historical selected date loads its exact close even outside the recent s
   assert.deepEqual(exactCalls, ["2026-11-09"]);
 });
 
+test("unverified coverage names the last unverified date, not a later closed date", async () => {
+  const period = makePeriod({
+    startDate: "2026-11-01",
+    endDate: "2026-11-30",
+    activeDate: "2026-11-23",
+    lifecycle: "tracking",
+  });
+  const closes = [
+    makeClose({ closeDate: "2026-11-20", id: "close-20" }),
+    makeClose({ closeDate: "2026-11-22", id: "close-22" }),
+  ];
+  const repository = {
+    async listDayCloses() {
+      return { ok: true as const, value: closes };
+    },
+    async getDayCloseForDate() {
+      return { ok: true as const, value: null };
+    },
+  } as unknown as MoneyPeriodRepository;
+
+  const result = await loadMoneyDayCloseViews(
+    ACTOR,
+    repository,
+    period,
+    { amountMinor: 50_000 },
+    "2026-11-23",
+  );
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.data.unverifiedThroughDate, "2026-11-21");
+  assert.equal(result.data.unverifiedDates.includes("2026-11-22"), false);
+  assert.equal(result.data.unverifiedDates.includes("2026-11-21"), true);
+});
+
 test("after the final day, routine entries require an explicit rollover or correction", async () => {
   const ended = makePeriod({ lifecycle: "ended", activeDate: "2026-11-30" });
-  const result = await assertRoutineEntryAllowed(
+  const result = await resolveRoutineEntry(
     ACTOR,
     {
       async findTracking() {
         return { ok: true, value: null };
       },
       async list() {
+        return { ok: true, value: [ended] };
+      },
+      async findOverlapping() {
         return { ok: true, value: [ended] };
       },
     },

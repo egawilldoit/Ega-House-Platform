@@ -87,7 +87,7 @@ export function QuickExpenseSheet({ ownerKey, submitExpense, onCreated }: QuickE
   const lastFocusedElementRef = useRef<HTMLElement | null>(null);
 
   // Owner isolation: a different verified owner starts with a clean draft,
-  // exactly like ExpenseCreateForm. Render-time adjustment; the idempotency
+  // exactly like the Money quick entry. Render-time adjustment; the idempotency
   // key rotates in useStableIdempotencyKey on the same owner change.
   const [ownerScope, setOwnerScope] = useState(ownerKey);
   if (ownerScope !== ownerKey) {

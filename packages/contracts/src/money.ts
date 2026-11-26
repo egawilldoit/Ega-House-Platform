@@ -53,6 +53,8 @@ export type MoneyPeriodDto = Readonly<{
   lifecycle: MoneyPeriodLifecycle;
   initialization: MoneyPeriodInitialization;
   openingMovementId: string | null;
+  /** Explicit owner confirmation of the initial obligation set. */
+  dayStartSetupCompleted: boolean;
   /** Versioned opening provenance, including correction history. */
   provenance: MoneyPeriodProvenance;
   settings: MoneyPeriodSettings;
@@ -111,6 +113,15 @@ export type MoneyStateDateResolutionDto = Readonly<{
     | "active_day"
     | "local_today_no_period";
   periodRelation: "in_period" | "before_period" | "after_period" | "no_period";
+  /** Inclusive cutoff used by current cash/reserve/daily projections. */
+  projectionCutoffDate: string;
+  projectionBasis:
+    | "explicit_date"
+    | "active_day"
+    | "local_today"
+    | "period_end"
+    | "local_today_no_period";
+  projectionClampedToPeriod: boolean;
 }>;
 
 export type MoneyStatePeriodSummaryDto = Readonly<{
@@ -122,6 +133,7 @@ export type MoneyStatePeriodSummaryDto = Readonly<{
   activeDate: string;
   lifecycle: MoneyPeriodLifecycle;
   initialization: MoneyPeriodInitialization;
+  dayStartSetupCompleted: boolean;
   version: number;
 }>;
 
@@ -149,6 +161,11 @@ export type MoneyStateDto = Readonly<{
   lastClose: MoneyDayCloseStateDto | null;
   recentCloses: readonly MoneyDayCloseDto[];
   dayClosesUnavailable: boolean;
+  /** Unclosed dates the owner skipped before the active day (never invented). */
+  unverifiedDates: readonly string[];
+  unverifiedDayCount: number;
+  unverifiedThroughDate: string | null;
+  closedDayCount: number;
   dateResolution: MoneyStateDateResolutionDto;
   history: readonly MoneyStatePeriodSummaryDto[];
   historyUnavailable: boolean;
@@ -271,6 +288,8 @@ export type MoneyMovementDto = Readonly<{
   bookingDate: string;
   occurredAt: string | null;
   periodId: string | null;
+  /** Stable retry identity; lets one history reuse the expense editor. */
+  idempotencyKey: string;
   version: number;
   deletedAt: string | null;
   createdAt: string;

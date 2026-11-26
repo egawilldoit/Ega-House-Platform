@@ -46,6 +46,26 @@ export type ExpenseIdempotencyReceipt = Readonly<{
 export type ExpenseCreateRecordInput = Readonly<{
   values: ExpenseCreateValues;
   createFingerprint: string;
+  /** Target period resolved by the application guard; null for legacy/no-period writes. */
+  periodId?: string | null;
+  /**
+   * Explicit booking day resolved in the target period timezone. The legacy
+   * expense path derives its day from `occurredAt`; a routine write must use
+   * the same day the guard resolved so the period and the row agree.
+   */
+  periodBookingDate?: string;
+  /**
+   * True when the booking date is after the tracking window. The database
+   * continues the calendar and inserts the expense in one transaction; a
+   * failed insert never leaves a superseded source behind.
+   */
+  requiresContinuation?: boolean;
+  /**
+   * Canonical discretionary classification resolved by the application from
+   * the expense kind/purpose/category. The repository persists this value; it
+   * never invents a second default.
+   */
+  countsInDaily: boolean;
 }>;
 
 export type ExpenseUpdateRecordInput = Readonly<{

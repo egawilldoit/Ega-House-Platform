@@ -19,6 +19,7 @@ import {
 export type MoneyRowActionsProps = {
   ownerKey: string;
   expense: ExpenseDto;
+  canChangeBookingDate?: boolean;
 };
 
 /**
@@ -30,7 +31,11 @@ export type MoneyRowActionsProps = {
  * form itself preserves the draft on version conflicts for deliberate
  * reconciliation.
  */
-export function MoneyRowActions({ ownerKey, expense }: MoneyRowActionsProps) {
+export function MoneyRowActions({
+  ownerKey,
+  expense,
+  canChangeBookingDate = true,
+}: MoneyRowActionsProps) {
   const router = useRouter();
   const [editOpen, setEditOpen] = useState(false);
   const label = expense.merchant ?? expense.note ?? "Expense";
@@ -81,6 +86,7 @@ export function MoneyRowActions({ ownerKey, expense }: MoneyRowActionsProps) {
                 <ExpenseEditForm
                   ownerKey={ownerKey}
                   expense={expense}
+                  canChangeOccurredAt={canChangeBookingDate}
                   submitUpdate={updateExpenseAction}
                   fetchLatest={getExpenseAction}
                   onUpdated={() => {

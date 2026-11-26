@@ -4,6 +4,7 @@ import {
   assessMoneyRollover,
   buildCarryForwardOpening,
   buildVerifiedRolloverOpening,
+  canonicalMoneyRolloverPayload,
   defaultMoneyRolloverRange,
   generateMoneyPeriodWeekWindows,
   moneyRolloverSourceFailure,
@@ -24,6 +25,7 @@ import {
   type ObligationCreateValues,
   type ObligationTemplate,
 } from "@ega/domain/obligations";
+import { getLocalDateInTimezone } from "@ega/domain/time-context";
 
 import type { AuthenticatedActor } from "../auth/actor";
 import { sha256Hex } from "../shared/hash";
@@ -54,11 +56,12 @@ import type {
  * model: the successor opening is the canonical `opening` movement and
  * generated occurrences use the MONEY-06 template rules.
  *
- * Integration dependency (MONEY-09): the source must already be finished by the
- * durable day close (`lifecycle = 'ended'`, `activeDate = endDate`). Stored close
- * snapshots are read from `money_day_closes` and compared with live restated
- * totals; a changed or unavailable comparison is an explicit decision, never a
- * passed check.
+ * MONEY-001 ID-09 finalization: both a tracking period with reviewed unclosed
+ * days and an ended period are legal sources. Stored close snapshots are read
+ * from `money_day_closes` and compared with live restated totals; a changed or
+ * unavailable comparison is an explicit decision, never a passed check. A
+ * source with unverified days must carry an explicit retained acknowledgment
+ * before the atomic write; rollover never invents close rows.
  */
 
 export type MoneyRolloverSurface = "web" | "mcp";
@@ -93,12 +96,25 @@ export type MoneyRolloverPreview = Readonly<{
   reconciliation: MoneyRolloverReconciliation;
   /** Stored close evidence and the live restatement comparison it powered. */
   closeSnapshots: MoneyRolloverSourceContext["closeSnapshots"];
+  /** Exact unverified/unclosed dates the owner must review before rollover. */
+  unverifiedDates?: readonly string[];
+  unverifiedDayCount?: number;
+  unverifiedDaysAcknowledged?: boolean;
+  requiresUnverifiedDaysAcknowledgment?: boolean;
   pendingOccurrences: MoneyRolloverSourceContext["pendingOccurrences"];
   pendingOccurrencesTruncated: boolean;
   /** Corrections from a rolled-over predecessor that affected this period. */
   priorCorrectionBridges: readonly MoneyRolloverBridgeRecord[];
   /** True when the bounded bridge read could not prove the full list. */
   priorCorrectionBridgesTruncated: boolean;
+  /**
+   * The period already created by automatic continuation for this source.
+   * Rollover adopts it with exactly this range and establishes its opening; it
+   * never creates a second successor.
+   */
+  continuationSuccessor: MoneyRolloverSourceContext["continuationSuccessor"];
+  /** The preceding unfinalized period that must be finalized first, if any. */
+  unfinalizedPredecessor: MoneyRolloverSourceContext["unfinalizedPredecessor"];
   generatedObligations: readonly Readonly<{
     templateId: string;
     description: string;
@@ -348,6 +364,29 @@ async function prepareRollover(
         "This period already has a successor. Continue from that period instead of creating a second one.",
     };
   }
+  if (source.continuationSuccessor) {
+    if (
+      source.period.lifecycle !== "superseded" &&
+      source.period.lifecycle !== "ended"
+    ) {
+      return {
+        ok: false,
+        code: "conflict",
+        message:
+          "A tracking period already continues this source. Finalize that tracking period instead of creating another successor.",
+      };
+    }
+    if (
+      values.startDate !== source.continuationSuccessor.startDate ||
+      values.endDate !== source.continuationSuccessor.endDate
+    ) {
+      return {
+        ok: false,
+        code: "conflict",
+        message: `The continued period already covers ${source.continuationSuccessor.startDate}–${source.continuationSuccessor.endDate}. Finalize it with exactly that range instead of creating a duplicate.`,
+      };
+    }
+  }
 
   const targetsResult = validateMoneyRolloverTargets({
     source: source.period,
@@ -369,6 +408,49 @@ async function prepareRollover(
     };
   }
 
+  const localToday = getLocalDateInTimezone(now, source.period.timezone);
+  // Continuity blockers. A continued period cannot be finalized before the
+  // period it continues without orphaning that predecessor; a predecessor is
+  // either superseded by routine continuation or ended by its final-day close,
+  // and both adopt the exact continuation successor. Any finalization is also
+  // refused while an unfinalized source still owns the current local day
+  // (including its end date): the day would stop belonging to any writable
+  // period and a later same-day entry would have no legal target. A source
+  // already ended through a retained final-day close is exempt because closing
+  // that day was itself the explicit decision.
+  const continuityBlockers: string[] = [];
+  if (source.unfinalizedPredecessor) {
+    continuityBlockers.push(
+      `Finalize the preceding period ${source.unfinalizedPredecessor.startDate}–${source.unfinalizedPredecessor.endDate} first. This period continues it and cannot be finalized before its predecessor.`,
+    );
+  }
+  // A verified balance is evidence for a cutoff, not a promise about future
+  // days. Before the source period has ended in the owner's calendar, its
+  // verified balance cannot cover the source end without inventing future
+  // evidence. Keep this specific message ahead of the generic same-day blocker;
+  // the generic blocker below covers the exact end date for both modes.
+  if (
+    values.opening.mode === "verified_source" &&
+    source.period.lifecycle === "tracking" &&
+    localToday < source.period.endDate
+  ) {
+    return {
+      ok: false,
+      code: "validation",
+      message:
+        "A verified opening is only available after the source period ends. Use carry-forward for early finalization or wait until the period end.",
+    };
+  }
+  if (
+    (source.period.lifecycle === "tracking" ||
+      source.period.lifecycle === "superseded") &&
+    source.period.endDate >= localToday
+  ) {
+    continuityBlockers.push(
+      `Finalizing now would leave ${localToday} outside a writable period. Finalize after ${source.period.endDate} instead.`,
+    );
+  }
+
   let opening: MoneyOpeningInput | null = null;
   let initialized: "initialized" | "reconciled" = "initialized";
   let verifiedClosingCashMinor: number | null = null;
@@ -380,7 +462,7 @@ async function prepareRollover(
         ok: false,
         code: "validation",
         message:
-          "Closing cash is unknown, so it cannot be carried forward as zero. Initialize the source period or supply a verified opening.",
+          "Closing cash is unknown, so it cannot be carried forward as zero. Initialize the source period's opening first, then reload the review.",
       };
     } else if (source.modeledClosingCashMinor < 0) {
       openingFailure = {
@@ -408,6 +490,12 @@ async function prepareRollover(
         code: "validation",
         message: `The verified opening cutoff must cover the source close and not extend past the successor start (${source.period.endDate} through ${targets.startDate}).`,
       };
+    } else if (verified.cutoffDate > localToday) {
+      openingFailure = {
+        ok: false,
+        code: "validation",
+        message: `The verified balance date cannot be in the future (today is ${localToday}).`,
+      };
     } else {
       opening = buildVerifiedRolloverOpening(verified, source.period);
       initialized = "reconciled";
@@ -424,6 +512,7 @@ async function prepareRollover(
     unpaidChoice: values.unpaidItems,
     openingMode: values.opening.mode,
     closeSnapshots: source.closeSnapshots,
+    unverifiedDaysAccepted: values.acceptUnverifiedDaysNote !== null,
   });
 
   const templatesResult = await dependencies.obligations.listTemplates(actor, {
@@ -440,6 +529,7 @@ async function prepareRollover(
 
   const blockers = [
     ...reconciliation.blockers,
+    ...continuityBlockers,
     ...(openingFailure ? [openingFailure.message] : []),
     ...(source.pendingOccurrencesTruncated
       ? [
@@ -476,6 +566,13 @@ async function prepareRollover(
 function previewOf(prepared: Prepared): MoneyRolloverPreview {
   const { source, values, targets, opening, reconciliation, obligations, carried } =
     prepared;
+  const closeSnapshots = source.closeSnapshots;
+  const unverifiedDates = closeSnapshots.available
+    ? closeSnapshots.missingCloseDates
+    : [];
+  const unverifiedDayCount = closeSnapshots.available
+    ? (closeSnapshots.unverifiedDayCount ?? unverifiedDates.length)
+    : 0;
   return {
     source: {
       periodId: source.period.id,
@@ -496,10 +593,17 @@ function previewOf(prepared: Prepared): MoneyRolloverPreview {
     ),
     reconciliation,
     closeSnapshots: source.closeSnapshots,
+    unverifiedDates,
+    unverifiedDayCount,
+    unverifiedDaysAcknowledged: values.acceptUnverifiedDaysNote !== null,
+    requiresUnverifiedDaysAcknowledgment:
+      unverifiedDayCount > 0 && values.acceptUnverifiedDaysNote === null,
     pendingOccurrences: source.pendingOccurrences,
     pendingOccurrencesTruncated: source.pendingOccurrencesTruncated,
     priorCorrectionBridges: source.priorCorrectionBridges,
     priorCorrectionBridgesTruncated: source.priorCorrectionBridgesTruncated,
+    continuationSuccessor: source.continuationSuccessor,
+    unfinalizedPredecessor: source.unfinalizedPredecessor,
     generatedObligations: obligations.map((item) => ({
       templateId: item.values.templateId ?? "",
       description: item.values.description,
@@ -548,6 +652,23 @@ export async function getMoneyRolloverPreview(
   return applicationSuccess(previewOf(prepared.value));
 }
 
+/**
+ * Stable rollover request identity. The canonical payload omits a null
+ * unverified-days note, so receipts written before MONEY-001-A keep replaying
+ * with the same operation id instead of being mistaken for a different request.
+ */
+export function moneyRolloverRequestFingerprint(
+  operation: string,
+  values: MoneyRolloverValues,
+): string {
+  return sha256Hex(
+    JSON.stringify({
+      operation,
+      payload: JSON.parse(canonicalMoneyRolloverPayload(values)),
+    }),
+  );
+}
+
 /** Roll over exactly once. Retries replay the original result, never a duplicate. */
 export async function rolloverMoneyPeriod(
   actor: AuthenticatedActor,
@@ -577,8 +698,9 @@ export async function rolloverMoneyPeriod(
   if (!parsed.ok) return applicationFailure(parsed.message, "validation");
 
   const operation = operationId.trim();
-  const requestFingerprint = sha256Hex(
-    JSON.stringify({ operation, payload: parsed.value }),
+  const requestFingerprint = moneyRolloverRequestFingerprint(
+    operation,
+    parsed.value,
   );
 
   // Replay before any decision check: an identical retry must return the
@@ -642,6 +764,7 @@ export async function rolloverMoneyPeriod(
 
   const surface = options.surface ?? "web";
   const createdAt = now.toISOString();
+  const closedSnapshot = prepared.value.source.closeSnapshots;
   const writeInput: MoneyRolloverWriteInput = {
     values,
     targets,
@@ -654,6 +777,10 @@ export async function rolloverMoneyPeriod(
     openingCreateFingerprint: sha256Hex(canonicalMoneyOpeningPayload(opening)),
     reconciliation,
     reconciliationAcceptedNote: values.acceptClosingDifferenceNote,
+    unverifiedDaysNote: values.acceptUnverifiedDaysNote,
+    unverifiedDaysCount: closedSnapshot.available
+      ? (closedSnapshot.unverifiedDayCount ?? closedSnapshot.missingCloseDates.length)
+      : 0,
     obligations,
     carriedOccurrences: carried,
     createdAt,
@@ -742,7 +869,12 @@ export async function getMoneyRolloverPreviewForPeriod(
   if (!source) {
     return applicationFailure("The source Money period was not found.", "notFound");
   }
-  const range = defaultMoneyRolloverRange(source.period);
+  const range = source.continuationSuccessor
+    ? {
+        startDate: source.continuationSuccessor.startDate,
+        endDate: source.continuationSuccessor.endDate,
+      }
+    : defaultMoneyRolloverRange(source.period);
   return getMoneyRolloverPreview(
     actor,
     dependencies,
@@ -756,6 +888,7 @@ export async function getMoneyRolloverPreviewForPeriod(
       settingsOverrides: null,
       allowUncoveredDays: false,
       acceptClosingDifferenceNote: null,
+      acceptUnverifiedDaysNote: null,
     },
     options,
   );

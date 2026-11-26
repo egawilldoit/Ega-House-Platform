@@ -46,6 +46,7 @@ import {
   isSupabaseUniqueConstraintViolation,
   sanitizeSupabaseError,
 } from "../supabase/errors";
+import { recordRoutineMovement } from "./routine-entry";
 
 /**
  * Request-scoped Supabase adapters for Money.
@@ -63,7 +64,7 @@ const LEDGER_TABLE = "personal_expenses";
 const IDEMPOTENCY_CONSTRAINT = "personal_expenses_owner_idempotency_key_unique";
 
 const PERIOD_COLUMNS =
-  "id, owner_user_id, start_date, end_date, currency, timezone, active_date, lifecycle, initialization, opening_movement_id, provenance, settings, version, created_at, updated_at";
+  "id, owner_user_id, start_date, end_date, currency, timezone, active_date, lifecycle, initialization, opening_movement_id, day_start_setup_completed, provenance, settings, version, created_at, updated_at";
 
 const OPENING_COLUMNS =
   "id, amount_minor, currency, booking_date, version, created_at, updated_at";
@@ -122,6 +123,7 @@ type PeriodRow = {
   lifecycle: string;
   initialization: string;
   opening_movement_id: string | null;
+  day_start_setup_completed: boolean;
   provenance: unknown;
   settings: unknown;
   version: number;
@@ -187,6 +189,8 @@ function toProvenance(value: unknown): MoneyPeriodProvenance {
   return {
     opening: toOpeningProvenance(value.opening),
     createdFrom: value.createdFrom === "mcp" ? "mcp" : "web",
+    continuedFrom:
+      typeof value.continuedFrom === "string" ? value.continuedFrom : null,
   };
 }
 
@@ -206,6 +210,7 @@ function toPeriod(row: PeriodRow): MoneyPeriod {
     initialization: String(row.initialization) as MoneyPeriodInitialization,
     openingMovementId:
       row.opening_movement_id == null ? null : String(row.opening_movement_id),
+    dayStartSetupCompleted: row.day_start_setup_completed === true,
     provenance: toProvenance(row.provenance),
     settings: toSettings(row.settings),
     version: Number(row.version),
@@ -256,7 +261,16 @@ const CLOSE_COLUMNS =
   "id, period_id, close_date, status, note, operation_id, close_fingerprint, expected_period_version, period_version_after, active_date_after, lifecycle_after, is_final_day, algorithm_version, policy_version_id, policy_version, baseline_version, included_movement_ids, snapshot, created_at";
 
 function toMinor(value: unknown): number | null {
-  return typeof value === "number" && Number.isSafeInteger(value) ? value : null;
+  // PostgREST can serialize integer JSON values as either numbers or numeric
+  // strings depending on the driver/path. Accept both, but never a fraction,
+  // blank, boolean or non-finite value.
+  const parsed =
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && value.trim() !== ""
+        ? Number(value)
+        : Number.NaN;
+  return Number.isSafeInteger(parsed) ? parsed : null;
 }
 
 function toCategoryTotals(value: unknown): Partial<Record<ExpenseCategory, number>> {
@@ -738,7 +752,12 @@ export class SupabaseMoneyPeriodRepository implements MoneyPeriodRepository {
     }
     const recordedCashMinor = toMinor(row.recordedCashMinor);
     const unpaidCommitmentsMinor = toMinor(row.unpaidCommitmentsMinor);
-    const savingsFundedMinor = toMinor(row.savingsFundedMinor);
+    // The RPC names this field `fundedSavingsMinor`; the domain/repository
+    // port calls the same amount `savingsFundedMinor`. Accept the legacy key
+    // too so a pre-upgrade read never turns a known balance into unavailable.
+    const savingsFundedMinor = toMinor(
+      row.fundedSavingsMinor ?? row.savingsFundedMinor,
+    );
     const emergencyUsedMinor = toMinor(row.emergencyUsedMinor);
     if (
       recordedCashMinor === null
@@ -954,6 +973,7 @@ function toRecord(row: MovementRow): MoneyLedgerRow {
     bookingDate: String(row.booking_date),
     occurredAt: row.occurred_at == null ? null : String(row.occurred_at),
     periodId: row.period_id == null ? null : String(row.period_id),
+    idempotencyKey: String(row.idempotency_key),
     version: Number(row.version),
     deletedAt: row.deleted_at == null ? null : String(row.deleted_at),
     createdAt: String(row.created_at),
@@ -1036,6 +1056,49 @@ export class SupabaseMoneyRepository implements MoneyMovementRepository {
     actor: AuthenticatedActor,
     input: MoneyCreateRecordInput,
   ): Promise<RepositoryResult<MoneyLedgerRow>> {
+    // Every routine write with a resolved period goes through the atomic RPC.
+    // The application resolution is only a preview: a concurrent rollover can
+    // finalize that period before a direct insert. The RPC re-reads the
+    // lifecycle under the shared owner lock and owns `period_id`, so a stale
+    // read cannot land a movement in a finalized range. The direct insert stays
+    // only for the legacy no-period account, where no lifecycle can race.
+    if (input.requiresContinuation || typeof input.periodId === "string") {
+      const values = input.values;
+      const result = await recordRoutineMovement(this.supabase, {
+        bookingDate: values.bookingDate,
+        kind: values.kind,
+        direction: values.direction,
+        occurredAt: values.occurredAt,
+        amountMinor: values.amountMinor,
+        category: values.category,
+        note: values.note,
+        merchant: values.merchant,
+        needVsWant: values.needVsWant,
+        paymentMethod: values.paymentMethod,
+        purpose: values.purpose,
+        countsInDaily: values.countsInDaily,
+        idempotencyKey: values.idempotencyKey,
+        createFingerprint: input.createFingerprint,
+      });
+      if (!result.ok) {
+        if (
+          result.error &&
+          typeof result.error === "object" &&
+          isSupabaseUniqueConstraintViolation(
+            result.error as MoneySupabaseError,
+            IDEMPOTENCY_CONSTRAINT,
+          )
+        ) {
+          return { ok: false, error: { code: "conflict" } };
+        }
+        return {
+          ok: false,
+          error: moneyFailure(result.error as MoneySupabaseError),
+        };
+      }
+      return { ok: true, value: toRecord(result.row as unknown as MovementRow) };
+    }
+
     const { data, error } = await this.supabase
       .from(LEDGER_TABLE)
       .insert(toInsertPayload(actor, input))

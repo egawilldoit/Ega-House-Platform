@@ -110,10 +110,20 @@ class FakeBuilder {
 
 class FakeSupabase {
   readonly calls: Array<{ steps: string[] }> = [];
-  constructor(private readonly queue: QueryResult[]) {}
+  readonly rpcCalls: Array<{ name: string; params: Record<string, unknown> }> = [];
+  constructor(
+    private readonly queue: QueryResult[],
+    private readonly rpcQueue: QueryResult[] = [],
+  ) {}
   from(table: string) {
     assert.equal(table, "personal_expenses");
     return new FakeBuilder(this.queue, this.calls);
+  }
+  rpc(name: string, params: Record<string, unknown>) {
+    this.rpcCalls.push({ name, params });
+    return Promise.resolve(
+      this.rpcQueue.shift() ?? { data: null, error: null },
+    );
   }
 }
 
@@ -170,11 +180,13 @@ test("create sends canonical snake_case values and the fingerprint", async () =>
   const created = await repository(fake).create(ACTOR, {
     values: CREATE_VALUES,
     createFingerprint: FINGERPRINT,
+    countsInDaily: true,
   });
   assert.equal(created.ok, true);
 
   const insertStep = fake.calls[0]?.steps.find((step) => step.startsWith("insert:"));
   assert.ok(insertStep?.includes('"create_fingerprint":'));
+  assert.ok(insertStep?.includes('"counts_in_daily":true'));
   const selectStep = fake.calls[0]?.steps.find((step) => step.startsWith("select:"));
   assert.ok(selectStep && !selectStep.includes("create_fingerprint"));
 });
@@ -184,6 +196,7 @@ test("a deadlocked expense write returns a retryable conflict", async () => {
   const result = await repository(fake).create(ACTOR, {
     values: CREATE_VALUES,
     createFingerprint: FINGERPRINT,
+    countsInDaily: true,
   });
   assert.deepEqual(result, { ok: false, error: { code: "conflict" } });
 });
@@ -200,7 +213,7 @@ test("only the named idempotency unique constraint maps to conflict", async () =
         },
       },
     ]),
-  ).create(ACTOR, { values: CREATE_VALUES, createFingerprint: FINGERPRINT });
+  ).create(ACTOR, { values: CREATE_VALUES, createFingerprint: FINGERPRINT, countsInDaily: true });
   assert.equal(duplicate.ok, false);
   if (!duplicate.ok) assert.equal(duplicate.error.code, "conflict");
 
@@ -214,7 +227,7 @@ test("only the named idempotency unique constraint maps to conflict", async () =
         },
       },
     ]),
-  ).create(ACTOR, { values: CREATE_VALUES, createFingerprint: FINGERPRINT });
+  ).create(ACTOR, { values: CREATE_VALUES, createFingerprint: FINGERPRINT, countsInDaily: true });
   assert.equal(unrelated.ok, false);
   if (!unrelated.ok) assert.equal(unrelated.error.code, "unknown");
 });
@@ -259,6 +272,7 @@ test("42501 permission failures map to forbidden", async () => {
   const result = await repository(fake).create(ACTOR, {
     values: CREATE_VALUES,
     createFingerprint: FINGERPRINT,
+    countsInDaily: true,
   });
   assert.equal(result.ok, false);
   if (!result.ok) assert.equal(result.error.code, "forbidden");
@@ -464,6 +478,73 @@ test("summarize flags truncation at the row cap instead of a fake total", async 
   assert.equal(result.value.truncated, true);
   assert.equal(result.value.recordCount, 10000);
   assert.equal(result.value.totalsByCategory.coffee, 10000 * 100);
+});
+
+test("routine expense creation uses the resolved day in the atomic RPC", async () => {
+  const stored = {
+    ...ROW,
+    booking_date: "2026-12-02",
+    period_id: "00000000-0000-4000-8000-000000000098",
+    purpose: null,
+    counts_in_daily: true,
+  };
+  const fake = new FakeSupabase([], [{ data: stored, error: null }]);
+  const result = await repository(fake).create(ACTOR, {
+    values: {
+      ...CREATE_VALUES,
+      occurredAt: "2026-12-01T23:30:00.000Z",
+      bookingDate: "2026-12-01",
+    },
+    createFingerprint: FINGERPRINT,
+    periodId: null,
+    periodBookingDate: "2026-12-02",
+    requiresContinuation: true,
+    countsInDaily: true,
+  });
+  assert.equal(result.ok, true);
+  if (result.ok) {
+    assert.equal(result.value.bookingDate, "2026-12-02");
+    assert.equal(
+      result.value.periodId,
+      "00000000-0000-4000-8000-000000000098",
+    );
+  }
+  assert.equal(fake.rpcCalls.length, 1);
+  assert.equal(
+    fake.rpcCalls[0]?.name,
+    "money_record_routine_movement",
+  );
+  assert.equal(fake.rpcCalls[0]?.params.p_booking_date, "2026-12-02");
+  assert.equal(
+    fake.rpcCalls[0]?.params.p_occurred_at,
+    "2026-12-01T23:30:00.000Z",
+  );
+  assert.equal(fake.calls.length, 0);
+});
+
+test("a resolved routine period also uses the atomic lifecycle lock, not a direct insert", async () => {
+  const stored = {
+    ...ROW,
+    booking_date: "2026-11-25",
+    period_id: ID,
+    purpose: null,
+    counts_in_daily: true,
+  };
+  const fake = new FakeSupabase([], [{ data: stored, error: null }]);
+  const result = await repository(fake).create(ACTOR, {
+    values: { ...CREATE_VALUES, bookingDate: "2026-11-25" },
+    createFingerprint: FINGERPRINT,
+    periodId: ID,
+    periodBookingDate: "2026-11-25",
+    requiresContinuation: false,
+    countsInDaily: true,
+  });
+  assert.equal(result.ok, true);
+  if (result.ok) assert.equal(result.value.periodId, ID);
+  assert.equal(fake.rpcCalls.length, 1);
+  assert.equal(fake.rpcCalls[0]?.name, "money_record_routine_movement");
+  assert.equal(fake.rpcCalls[0]?.params.p_booking_date, "2026-11-25");
+  assert.equal(fake.calls.length, 0, "a resolved routine write never issues a plain insert");
 });
 
 test("summarize failure is a failure, never a zero-shaped success", async () => {

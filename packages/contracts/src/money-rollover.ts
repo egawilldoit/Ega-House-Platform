@@ -1,4 +1,8 @@
-import type { MoneyPeriodLifecycle, MoneyPurpose } from "@ega/domain/money";
+import type {
+  MoneyPeriodInitialization,
+  MoneyPeriodLifecycle,
+  MoneyPurpose,
+} from "@ega/domain/money";
 import type { ExpenseCategory } from "@ega/domain/expenses";
 import type {
   MoneyRolloverOpeningMode,
@@ -44,6 +48,12 @@ export type MoneyRolloverRequest = Readonly<{
   allowUncoveredDays?: boolean;
   /** Required to accept a modeled-versus-verified closing difference or a savings target versus transfers difference. */
   acceptClosingDifferenceNote?: string | null;
+  /**
+   * Retained acknowledgment for every reviewed unverified/unclosed source day.
+   * Required when the source has any unclosed date; rollover never invents a
+   * close row. The exact reviewed count is re-checked by the atomic write.
+   */
+  acceptUnverifiedDaysNote?: string | null;
 }>;
 
 export type MoneyRolloverWriteRequest = MoneyRolloverRequest &
@@ -94,9 +104,15 @@ export type MoneyRolloverCloseSnapshotDto =
   | Readonly<{
       available: true;
       closeCount: number;
+      /** Previously closed dates, ascending. */
+      closedDates?: readonly string[];
+      /** Every inclusive day in the source period. */
+      periodDayCount?: number;
       requiredCloseCount: number;
       trackedFromDate: string | null;
+      /** Every unclosed/unverified date in the source period. */
       missingCloseDates: readonly string[];
+      unverifiedDayCount?: number;
       completeCloseEvidence: boolean;
       lastClosedDate: string | null;
       comparableToRestatedTotals: true;
@@ -174,11 +190,33 @@ export type MoneyRolloverPreviewResponse = Readonly<{
   settings: Readonly<Record<string, unknown>>;
   reconciliation: MoneyRolloverReconciliationDto;
   closeSnapshots: MoneyRolloverCloseSnapshotDto;
+  /** Exact unverified/unclosed dates reviewed before finalization. */
+  unverifiedDates?: readonly string[];
+  unverifiedDayCount?: number;
+  unverifiedDaysAcknowledged?: boolean;
+  requiresUnverifiedDaysAcknowledgment?: boolean;
   pendingOccurrences: readonly MoneyRolloverPendingOccurrenceDto[];
   pendingOccurrencesTruncated: boolean;
   priorCorrectionBridges: readonly MoneyRolloverBridgeDto[];
   /** True when the bounded bridge read could not prove the full list. */
   priorCorrectionBridgesTruncated: boolean;
+  /** An already-continued immediate successor that finalization adopts. */
+  continuationSuccessor: Readonly<{
+    periodId: string;
+    startDate: string;
+    endDate: string;
+    activeDate: string;
+    initialization: MoneyPeriodInitialization;
+    /** Existing opening amount when the continued period already has one. */
+    openingAmountMinor: number | null;
+  }> | null;
+  /** Immediate predecessor that must be finalized before this period. */
+  unfinalizedPredecessor: Readonly<{
+    periodId: string;
+    startDate: string;
+    endDate: string;
+    lifecycle: MoneyPeriodLifecycle;
+  }> | null;
   generatedObligations: readonly Readonly<{
     templateId: string;
     description: string;
@@ -210,6 +248,8 @@ export type MoneyRolloverRecordDto = Readonly<{
   closingCutoffDate: string;
   unpaidTreatment: MoneyRolloverUnpaidTreatment | null;
   reconciliationAcceptedNote: string | null;
+  unverifiedDaysNote: string | null;
+  unverifiedDaysCount: number;
   generatedOccurrenceCount: number;
   carriedOccurrenceCount: number;
   cancelledOccurrenceCount: number;

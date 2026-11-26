@@ -56,6 +56,10 @@ class FakeBuilder {
     this.steps.push({ method: "gte", args });
     return this;
   }
+  lte(...args: unknown[]) {
+    this.steps.push({ method: "lte", args });
+    return this;
+  }
   lt(...args: unknown[]) {
     this.steps.push({ method: "lt", args });
     return this;

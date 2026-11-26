@@ -96,7 +96,7 @@ export function CategoryCapsForm({ caps, action, returnTo }: CategoryCapsFormPro
         an advisory — it never blocks an expense.
       </p>
       <div>
-        <PendingSubmitButton pendingLabel="Saving…">Save caps</PendingSubmitButton>
+        <PendingSubmitButton type="submit" pendingLabel="Saving…">Save caps</PendingSubmitButton>
       </div>
     </form>
   );

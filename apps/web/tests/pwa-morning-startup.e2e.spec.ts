@@ -51,7 +51,7 @@ test("owner starts the day with known outcomes, recovers a timer and saves its o
   await page.reload();
   // Today collapses "Daily startup" once planned work exists; reopen it to
   // verify the saved outcomes.
-  await page.getByTestId("today-startup-disclosure").locator("summary").click();
+  await page.getByTestId("today-startup-disclosure").locator("summary").first().click();
   const planned = page.getByTestId("morning-startup-planned");
   await expect(planned).toBeVisible();
   for (const title of selectedTitles) {

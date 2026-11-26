@@ -1,16 +1,10 @@
 /**
  * Team B mutation kit public surface (PO-06B).
  *
- * Self-contained create/edit/soft-delete components plus the integer-safe MAD
- * helpers they share. No page, route, navigation or list coupling: Team A
- * composes these into the Money page with server-wired handlers.
+ * Self-contained edit/soft-delete components plus the integer-safe MAD helpers
+ * they share. The primary Money quick entry owns creation through the shared
+ * movement use case; Today still mounts its own quick expense sheet.
  */
-export { ExpenseCreateForm } from "./expense-create-form";
-export type {
-  ExpenseCreateFormProps,
-  ExpenseCreateSubmitInput,
-  ExpenseCreateSubmitResult,
-} from "./expense-create-form";
 export { ExpenseEditForm } from "./expense-edit-form";
 export type {
   ExpenseEditFormProps,

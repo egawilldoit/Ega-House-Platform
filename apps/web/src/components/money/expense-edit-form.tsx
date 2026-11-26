@@ -24,6 +24,8 @@ export type ExpenseEditFormProps = {
   /** Server-verified owner id; draft resets on change (no cross-owner leak). */
   ownerKey: string;
   expense: ExpenseDto;
+  /** Historical periods keep their booking date; amount-only edits stay valid. */
+  canChangeOccurredAt?: boolean;
   /** Persist the patch with the given expected version. */
   submitUpdate: (
     id: string,
@@ -65,6 +67,7 @@ function toDatetimeLocalValue(iso: string): string {
 export function ExpenseEditForm({
   ownerKey,
   expense,
+  canChangeOccurredAt = true,
   submitUpdate,
   fetchLatest,
   onUpdated,
@@ -257,15 +260,30 @@ export function ExpenseEditForm({
           <label htmlFor={`expense-edit-occurred-${expense.id}`} className={FIELD_LABEL}>
             Date and time
           </label>
-          <Input
-            id={`expense-edit-occurred-${expense.id}`}
-            type="datetime-local"
-            required
-            value={occurredAtInput}
-            onChange={(event) => setOccurredAtInput(event.target.value)}
-            disabled={isSubmitting}
-            className="h-11 w-full"
-          />
+          {canChangeOccurredAt ? (
+            <Input
+              id={`expense-edit-occurred-${expense.id}`}
+              type="datetime-local"
+              required
+              value={occurredAtInput}
+              onChange={(event) => setOccurredAtInput(event.target.value)}
+              disabled={isSubmitting}
+              className="h-11 w-full"
+            />
+          ) : (
+            <p className="text-sm tabular-nums">
+              {expense.occurredAt
+                ? new Intl.DateTimeFormat("en-GB", {
+                    dateStyle: "medium",
+                    timeStyle: "short",
+                  }).format(new Date(expense.occurredAt))
+                : expense.bookingDate}
+              <span className="mt-1 block text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
+                Historical periods keep their original date. Amount and classification
+                corrections remain available.
+              </span>
+            </p>
+          )}
           {fieldErrors.occurredAtInput ? (
             <p role="alert" className="text-sm text-[var(--signal-error)]">
               {fieldErrors.occurredAtInput}

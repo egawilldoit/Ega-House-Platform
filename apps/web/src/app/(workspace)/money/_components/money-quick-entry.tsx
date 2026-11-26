@@ -12,6 +12,8 @@ import {
   EXPENSE_NEED_VS_WANT_OPTIONS,
 } from "@/lib/money/expense-form-validation";
 import { parseMadAmountToMinor } from "@/lib/money/money-amount";
+import { defaultCountsInDaily, type MoneyPurpose } from "@ega/domain/money";
+import type { ExpenseCategory } from "@ega/domain/expenses";
 import type { MoneyMovementDto } from "@ega/contracts/money";
 
 import { createMovementAction } from "../actions";
@@ -19,54 +21,42 @@ import { createMovementAction } from "../actions";
 type MovementKind = Exclude<MoneyMovementDto["kind"], "opening">;
 
 const KIND_OPTIONS: ReadonlyArray<{ value: MovementKind; label: string }> = [
+  { value: "expense", label: "Expense" },
   { value: "income", label: "Income received" },
   { value: "savings_transfer", label: "Savings transfer" },
-  { value: "expense", label: "Expense" },
   { value: "reconciliation_adjustment", label: "Reconciliation adjustment" },
 ];
 
 const FIELD_LABEL = "form-label";
 
-function todayLocalDate(): string {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-}
-
-/** `datetime-local` has no offset; resolve it in the browser's local zone. */
-function localDateTimeToIso(value: string): string {
-  const parsed = new Date(value);
-  return Number.isFinite(parsed.getTime()) ? parsed.toISOString() : value;
-}
-
 /**
- * MONEY-04 manual movement form for income, savings transfers, adjustments and
- * (when desired) expenses. It composes the shared `createMovementAction`, so
- * parsing, defaults, owner scope and the idempotency receipt match the MCP and
- * HTTP surfaces exactly. A date-only booking keeps occurrence time unknown.
+ * The one primary Money creation affordance. Every kind posts through the
+ * canonical `createMovementAction` use case with a stable idempotency key, so
+ * the Money page has one write path and the same owner/period/retry semantics
+ * as HTTP and MCP. Expense is the default because it is the everyday action.
  */
-export function MoneyMovementPanel({
+export function MoneyQuickEntry({
   ownerKey,
   defaultBookingDate,
 }: {
   ownerKey: string;
-  defaultBookingDate?: string;
+  defaultBookingDate: string;
 }) {
   const router = useRouter();
-  const [kind, setKind] = useState<MovementKind>("income");
+  const [kind, setKind] = useState<MovementKind>("expense");
   const [direction, setDirection] = useState<"in" | "out">("out");
   const [idempotencyKey, rotateKey] = useStableIdempotencyKey({
     ownerKey,
-    purchaseNonce: "movement",
+    purchaseNonce: "money-quick-entry",
   });
   const [amountInput, setAmountInput] = useState("");
-  const [bookingDate, setBookingDate] = useState(
-    () => defaultBookingDate ?? todayLocalDate(),
-  );
+  const [bookingDate, setBookingDate] = useState(defaultBookingDate);
   const [knownTime, setKnownTime] = useState("");
   const [category, setCategory] = useState("");
   const [needVsWant, setNeedVsWant] = useState("");
   const [purpose, setPurpose] = useState("");
   const [dailyOverride, setDailyOverride] = useState("default");
+  const [paymentMethod, setPaymentMethod] = useState("");
   const [note, setNote] = useState("");
   const [merchant, setMerchant] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
@@ -85,6 +75,8 @@ export function MoneyMovementPanel({
     setNote("");
     setMerchant("");
     setKnownTime("");
+    setPurpose("");
+    setPaymentMethod("");
     setDailyOverride("default");
     setFormError(null);
     setSuccess(null);
@@ -108,6 +100,10 @@ export function MoneyMovementPanel({
       setFormError("An expense needs a category and a need or want classification.");
       return;
     }
+    if (knownTime && knownTime.slice(0, 10) !== bookingDate) {
+      setFormError("The exact time must fall on the selected booking date.");
+      return;
+    }
 
     pendingRef.current = true;
     setPending(true);
@@ -117,12 +113,15 @@ export function MoneyMovementPanel({
         ...(kind === "reconciliation_adjustment" ? { direction } : {}),
         amountMinor: amount.value,
         bookingDate,
-        ...(knownTime ? { occurredAt: localDateTimeToIso(knownTime) } : {}),
+        // The datetime-local value has no timezone. Send the wall time as
+        // entered; the server converts it with the verified period/owner zone.
+        ...(knownTime ? { occurredAtWallTime: knownTime } : {}),
         ...(kind === "expense"
           ? {
               category: category as MoneyMovementDto["category"],
               needVsWant: needVsWant as MoneyMovementDto["needVsWant"],
               ...(purpose ? { purpose: purpose as MoneyMovementDto["purpose"] } : {}),
+              paymentMethod: (paymentMethod || null) as MoneyMovementDto["paymentMethod"],
             }
           : {}),
         ...(dailyOverride === "default"
@@ -148,30 +147,34 @@ export function MoneyMovementPanel({
     }
   }
 
-  const defaultDaily = kind === "expense";
+  const defaultDaily = defaultCountsInDaily(
+    kind,
+    purpose ? (purpose as MoneyPurpose) : null,
+    category ? (category as ExpenseCategory) : null,
+  );
 
   return (
     <section
-      aria-labelledby="money-movement-heading"
+      aria-labelledby="money-quick-entry-heading"
       className="mt-6 rounded-lg border border-ega-border p-5"
     >
       <h2
-        id="money-movement-heading"
+        id="money-quick-entry-heading"
         className="text-[length:var(--text-section)] font-semibold tracking-[var(--tracking-tight)]"
       >
-        Record income or savings movement
+        Quick entry
       </h2>
       <p className="mt-2 text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
-        One ledger for cash: income is a posted inflow, a savings transfer moves
-        spendable cash into funded savings once, and an adjustment corrects the
-        recorded model. Choose “As booked” to keep occurrence time unknown.
+        One durable ledger write. An expense reduces recorded cash once; income is an
+        independent inflow; a savings transfer moves cash into funded savings once; a
+        reconciliation adjustment corrects the recorded model explicitly.
       </p>
-      <form onSubmit={handleSubmit} aria-label="Record money movement" className="mt-4 flex flex-col gap-4" noValidate>
+      <form onSubmit={handleSubmit} aria-label="Quick financial entry" className="mt-4 flex flex-col gap-4" noValidate>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div className="space-y-2">
-            <label htmlFor="movement-kind" className={FIELD_LABEL}>Kind</label>
+            <label htmlFor="quick-kind" className={FIELD_LABEL}>Kind</label>
             <select
-              id="movement-kind"
+              id="quick-kind"
               value={kind}
               onChange={(event) => setKind(event.target.value as MovementKind)}
               disabled={pending || success !== null}
@@ -184,9 +187,9 @@ export function MoneyMovementPanel({
           </div>
           {kind === "reconciliation_adjustment" ? (
             <div className="space-y-2">
-              <label htmlFor="movement-direction" className={FIELD_LABEL}>Direction</label>
+              <label htmlFor="quick-direction" className={FIELD_LABEL}>Direction</label>
               <select
-                id="movement-direction"
+                id="quick-direction"
                 value={direction}
                 onChange={(event) => setDirection(event.target.value as "in" | "out")}
                 disabled={pending || success !== null}
@@ -198,9 +201,9 @@ export function MoneyMovementPanel({
             </div>
           ) : null}
           <div className="space-y-2">
-            <label htmlFor="movement-amount" className={FIELD_LABEL}>Amount (MAD)</label>
+            <label htmlFor="quick-amount" className={FIELD_LABEL}>Amount (MAD)</label>
             <Input
-              id="movement-amount"
+              id="quick-amount"
               inputMode="decimal"
               placeholder="200.00"
               required
@@ -211,9 +214,9 @@ export function MoneyMovementPanel({
             />
           </div>
           <div className="space-y-2">
-            <label htmlFor="movement-booking-date" className={FIELD_LABEL}>Booking date</label>
+            <label htmlFor="quick-booking-date" className={FIELD_LABEL}>Booking date</label>
             <Input
-              id="movement-booking-date"
+              id="quick-booking-date"
               type="date"
               required
               value={bookingDate}
@@ -221,43 +224,16 @@ export function MoneyMovementPanel({
               disabled={pending || success !== null}
               className="h-11 w-full"
             />
-          </div>
-          <div className="space-y-2">
-            <label htmlFor="movement-time" className={FIELD_LABEL}>
-              Exact time <span className="font-normal">(optional)</span>
-            </label>
-            <Input
-              id="movement-time"
-              type="datetime-local"
-              value={knownTime}
-              onChange={(event) => setKnownTime(event.target.value)}
-              disabled={pending || success !== null}
-              className="h-11 w-full"
-            />
             <p className="text-xs text-[color:var(--muted-foreground)]">
-              Leave empty when only the day is known.
+              Date in the tracking period timezone. A later valid date works even when earlier days are unclosed.
             </p>
-          </div>
-          <div className="space-y-2">
-            <label htmlFor="movement-daily" className={FIELD_LABEL}>Counts in daily spending</label>
-            <select
-              id="movement-daily"
-              value={dailyOverride}
-              onChange={(event) => setDailyOverride(event.target.value)}
-              disabled={pending || success !== null}
-              className="input-instrument h-11 w-full text-sm"
-            >
-              <option value="default">Default ({defaultDaily ? "yes" : "no"})</option>
-              <option value="true">Yes — daily spending</option>
-              <option value="false">No — cash only</option>
-            </select>
           </div>
           {kind === "expense" ? (
             <>
               <div className="space-y-2">
-                <label htmlFor="movement-category" className={FIELD_LABEL}>Category</label>
+                <label htmlFor="quick-category" className={FIELD_LABEL}>Category</label>
                 <select
-                  id="movement-category"
+                  id="quick-category"
                   value={category}
                   onChange={(event) => setCategory(event.target.value)}
                   disabled={pending || success !== null}
@@ -270,9 +246,9 @@ export function MoneyMovementPanel({
                 </select>
               </div>
               <div className="space-y-2">
-                <label htmlFor="movement-need" className={FIELD_LABEL}>Need or want</label>
+                <label htmlFor="quick-need" className={FIELD_LABEL}>Need or want</label>
                 <select
-                  id="movement-need"
+                  id="quick-need"
                   value={needVsWant}
                   onChange={(event) => setNeedVsWant(event.target.value)}
                   disabled={pending || success !== null}
@@ -284,45 +260,26 @@ export function MoneyMovementPanel({
                   ))}
                 </select>
               </div>
-              <div className="space-y-2">
-                <label htmlFor="movement-purpose" className={FIELD_LABEL}>
-                  Purpose <span className="font-normal">(optional)</span>
-                </label>
-                <select
-                  id="movement-purpose"
-                  value={purpose}
-                  onChange={(event) => setPurpose(event.target.value)}
-                  disabled={pending || success !== null}
-                  className="input-instrument h-11 w-full text-sm"
-                >
-                  <option value="">No purpose</option>
-                  <option value="fixed">Fixed</option>
-                  <option value="flexible">Flexible</option>
-                  <option value="emergency">Emergency</option>
-                </select>
-              </div>
             </>
           ) : null}
-        </div>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div className="space-y-2">
-            <label htmlFor="movement-merchant" className={FIELD_LABEL}>
+            <label htmlFor="quick-merchant" className={FIELD_LABEL}>
               Source <span className="font-normal">(optional)</span>
             </label>
             <Input
-              id="movement-merchant"
+              id="quick-merchant"
               value={merchant}
               onChange={(event) => setMerchant(event.target.value)}
               disabled={pending || success !== null}
               className="h-11 w-full"
             />
           </div>
-          <div className="space-y-2">
-            <label htmlFor="movement-note" className={FIELD_LABEL}>
+          <div className="space-y-2 sm:col-span-2">
+            <label htmlFor="quick-note" className={FIELD_LABEL}>
               Note <span className="font-normal">(optional)</span>
             </label>
             <Textarea
-              id="movement-note"
+              id="quick-note"
               value={note}
               onChange={(event) => setNote(event.target.value)}
               disabled={pending || success !== null}
@@ -330,6 +287,84 @@ export function MoneyMovementPanel({
             />
           </div>
         </div>
+
+        <details className="rounded border border-ega-border p-3">
+          <summary className="cursor-pointer text-[length:var(--text-meta)] font-medium">
+            More options
+          </summary>
+          <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <label htmlFor="quick-time" className={FIELD_LABEL}>
+                Exact time <span className="font-normal">(optional)</span>
+              </label>
+              <Input
+                id="quick-time"
+                type="datetime-local"
+                value={knownTime}
+                onChange={(event) => setKnownTime(event.target.value)}
+                disabled={pending || success !== null}
+                className="h-11 w-full"
+              />
+              <p className="text-xs text-[color:var(--muted-foreground)]">
+                Leave empty when only the day is known.
+              </p>
+            </div>
+            <div className="space-y-2">
+              <label htmlFor="quick-daily" className={FIELD_LABEL}>Counts in daily spending</label>
+              <select
+                id="quick-daily"
+                value={dailyOverride}
+                onChange={(event) => setDailyOverride(event.target.value)}
+                disabled={pending || success !== null}
+                className="input-instrument h-11 w-full text-sm"
+              >
+                <option value="default">Default ({defaultDaily ? "yes" : "no"})</option>
+                <option value="true">Yes — daily spending</option>
+                <option value="false">No — cash only</option>
+              </select>
+            </div>
+            {kind === "expense" ? (
+              <>
+                <div className="space-y-2">
+                  <label htmlFor="quick-purpose" className={FIELD_LABEL}>
+                    Purpose <span className="font-normal">(optional)</span>
+                  </label>
+                  <select
+                    id="quick-purpose"
+                    value={purpose}
+                    onChange={(event) => setPurpose(event.target.value)}
+                    disabled={pending || success !== null}
+                    className="input-instrument h-11 w-full text-sm"
+                  >
+                    <option value="">No purpose</option>
+                    <option value="fixed">Fixed</option>
+                    <option value="flexible">Flexible</option>
+                    <option value="emergency">Emergency</option>
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <label htmlFor="quick-payment" className={FIELD_LABEL}>
+                    Payment method <span className="font-normal">(metadata)</span>
+                  </label>
+                  <select
+                    id="quick-payment"
+                    value={paymentMethod}
+                    onChange={(event) => setPaymentMethod(event.target.value)}
+                    disabled={pending || success !== null}
+                    className="input-instrument h-11 w-full text-sm"
+                  >
+                    <option value="">Not recorded</option>
+                    <option value="cash">Cash</option>
+                    <option value="card">Card</option>
+                    <option value="bank_transfer">Bank transfer</option>
+                    <option value="mobile_wallet">Mobile wallet</option>
+                    <option value="other">Other</option>
+                  </select>
+                </div>
+              </>
+            ) : null}
+          </div>
+        </details>
 
         {success ? (
           <p role="status" aria-live="polite" className="feedback-block">

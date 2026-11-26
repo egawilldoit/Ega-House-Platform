@@ -10,6 +10,7 @@ import type {
 } from "@ega/contracts/money";
 import {
   EXPENSE_CATEGORY_LABELS,
+  defaultCountsInDaily,
 } from "@ega/domain/money";
 import {
   EXPENSE_CATEGORY_VALUES,
@@ -43,6 +44,9 @@ type Props = {
   lastClose: MoneyDayCloseStateDto | null;
   recentCloses: readonly MoneyDayCloseDto[];
   dayClosesUnavailable: boolean;
+  /** Unclosed dates before the active day; never inferred as closed. */
+  unverifiedDates: readonly string[];
+  unverifiedDayCount: number;
   action: (formData: FormData) => Promise<MoneyFormActionResult>;
 };
 
@@ -96,6 +100,8 @@ export function MoneyDayClosePanel({
   lastClose,
   recentCloses,
   dayClosesUnavailable,
+  unverifiedDates,
+  unverifiedDayCount,
   action,
 }: Props) {
   const router = useRouter();
@@ -181,6 +187,27 @@ export function MoneyDayClosePanel({
         the retained cash/reference/reserve snapshot, then advances the active date exactly one day.
         It never changes savings, budgets or carryover.
       </p>
+      <p className="mt-1 text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
+        Day close is optional. You can record a later valid date, or move the active date, without
+        closing earlier days. Skipped days stay unverified and gain no fabricated close row.
+      </p>
+
+      {unverifiedDayCount > 0 ? (
+        <div role="status" className="mt-3 rounded border border-ega-border p-3">
+          <p className="text-[length:var(--text-meta)]">
+            {unverifiedDayCount} unverified/unclosed day{unverifiedDayCount === 1 ? "" : "s"} before
+            the active date. These dates are not treated as zero or as closed.
+          </p>
+          <details className="mt-1">
+            <summary className="cursor-pointer text-[length:var(--text-meta)] underline">
+              Show the unverified dates
+            </summary>
+            <p className="mt-1 break-words text-[length:var(--text-meta)] tabular-nums">
+              {unverifiedDates.join(", ")}
+            </p>
+          </details>
+        </div>
+      ) : null}
 
       {tracking ? (
         <form onSubmit={handleSubmit} className="mt-4 flex flex-col gap-3">
@@ -285,7 +312,15 @@ export function MoneyDayClosePanel({
                         }
                         className="rounded border border-ega-border bg-transparent px-2 py-1 text-[length:var(--text-body)]"
                       >
-                        <option value="">Default (included)</option>
+                        <option value="">
+                          {defaultCountsInDaily(
+                            "expense",
+                            row.purpose || null,
+                            row.category,
+                          )
+                            ? "Default (included)"
+                            : "Default (excluded)"}
+                        </option>
                         <option value="included">Included</option>
                         <option value="excluded">Excluded</option>
                       </select>
@@ -315,7 +350,7 @@ export function MoneyDayClosePanel({
           {error ? <p role="alert" className="text-[color:var(--ega-danger)]">{error}</p> : null}
           {success ? <p role="status">{success}</p> : null}
           <div>
-            <PendingSubmitButton pendingLabel="Closing…" disabled={pending}>
+            <PendingSubmitButton type="submit" pendingLabel="Closing…" disabled={pending}>
               {pending ? "Closing…" : `Close ${period.activeDate}`}
             </PendingSubmitButton>
           </div>
@@ -326,9 +361,9 @@ export function MoneyDayClosePanel({
         </form>
       ) : (
         <p role="status" className="mt-3 text-[length:var(--text-body)]">
-          This period is {period.lifecycle.replaceAll("_", " ")} and requires rollover before a new
-          routine day can be closed. Historical corrections remain available through the versioned
-          movement path.
+          {period.lifecycle === "rolled_over"
+            ? "This period was already rolled over. Continue from its successor period; historical corrections remain available through the versioned movement path."
+            : `This period is ${period.lifecycle.replaceAll("_", " ")} and requires rollover before a new routine day can be closed. Historical corrections remain available through the versioned movement path.`}
         </p>
       )}
 

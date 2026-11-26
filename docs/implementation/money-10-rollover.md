@@ -1,7 +1,8 @@
 # MONEY-10 rollover slice and integration dependencies
 
-Status: implementation candidate on `t3/money-10-mcp-delivery`, rebased onto
-`origin/main` at `0e684ae4` with MONEY-09 (durable day close) integrated.
+Status: implementation candidate on `feat/money-001-core-ux`, rebased onto
+`main` with MONEY-09 (durable day close) and the MONEY-001-A continuity slice
+integrated.
 
 ## What this branch delivers
 
@@ -19,6 +20,27 @@ Status: implementation candidate on `t3/money-10-mcp-delivery`, rebased onto
   bridge/variance rows, the single-transaction rollover function,
   `money_rollover_close_snapshot_summary`, and the ledger correction trigger.
   Journal position `0107` follows MONEY-09's `0104`–`0106` migrations.
+- `drizzle/0111_money_11_optional_close_rollover.sql`: optional close, reviewed
+  finalization with retained unverified-day evidence, and the finalization
+  variant of the atomic rollover RPC.
+- `drizzle/0112_money_001_a_period_continuity.sql`: the `superseded` lifecycle,
+  the controlled `money_continue_period` RPC, the atomic
+  `money_record_routine_movement` continue-and-insert path, the guard/transition
+  extensions, rollover adoption of an already-continued successor, and the
+  predecessor/early-finalization blockers. The routine RPC is the only writer
+  that can start a later tracking window from a routine write; reads never call
+  it. When no period is tracking, the latest period ended by its final-day close
+  can continue the same calendar while staying `ended` with unchanged close
+  evidence, and finalization later adopts that successor by its exact date-chain
+  range. A non-finalized superseded period still accepts its own routine dates.
+  Every routine write with a resolved period uses that RPC so a rollover that
+  commits between application resolution and insert cannot be bypassed by a
+  direct stale insert. The routine write, continuation and rollover adoption
+  share one owner-scoped ascending period lock, which also removes the
+  continuation/adoption deadlock. Rollover stores opening evidence built from
+  the validated cutoff and the database clock, preserves an adopted opening's
+  correction history, records an explicit `evidenceUpgrade` when an initialized
+  opening becomes reconciled, and refuses a cutoff conflict.
 - Wire contracts (`packages/contracts/src/money-rollover.ts`), Hono routes
   (`GET /api/money/periods/:id/rollover/preview`,
   `POST /api/money/periods/:id/rollover`), typed api-client methods, a web
@@ -31,20 +53,15 @@ Status: implementation candidate on `t3/money-10-mcp-delivery`, rebased onto
 
 ## MONEY-09 integration (implemented here)
 
-1. **Finished source state.** Rollover requires
-   `money_periods.lifecycle = 'ended'` and `active_date = end_date`. Close
-   evidence is complete when every day from the first retained close (the
-   inferred tracking start) through the source end has exactly one close. A period
-   created on a month boundary but tracked from a later active date therefore
-   rolls over normally: its untracked leading calendar days are not evidence
-   gaps. An actual missing day inside the tracked range blocks the preview and
-   the atomic write, and the blocker names the first missing date. Because the
-   first retained close is the only tracking-start evidence used here, loss of
-   that first close cannot be distinguished from an intentional later start.
-   Repair of missing retained evidence requires an operational recovery; the
-   product has no backfill action. The durable
-   day close is the only normal producer of the finished state; a tracking
-   source fails the preview before the panel is rendered.
+1. **Finished source state.** MONEY-001-A supersedes the original
+   `lifecycle = 'ended'` / `active_date = end_date` precondition. A still-tracking
+   period is a legal finalization source: the explicit rollover reviews every
+   inclusive date, lists retained closes and every unverified/unclosed date
+   (including leading dates), and requires a retained acknowledgment note with
+   the exact reviewed count. No close row is fabricated. A fully closed source
+   keeps the original behavior. A rolled-over period remains ineligible. The
+   atomic write repeats the review and count check so a stale preview cannot
+   bypass the acknowledgment.
 2. **Close snapshots.** `MoneyRolloverSourceContext.closeSnapshots` is read from
    `money_day_closes` by `money_rollover_close_snapshot_summary`. Every retained
    close is compared with the same canonical aggregates used by the MONEY-09
@@ -68,8 +85,11 @@ Status: implementation candidate on `t3/money-10-mcp-delivery`, rebased onto
    serialize with rollover. Concurrent obligation writes can deadlock; the
    database aborts one transaction and the affected operation can be retried.
 4. **Preview surface.** `money-day-close-panel.tsx` and
-   `money-rollover-panel.tsx` remain separate components; the Money page renders
-   close evidence for the selected period and rollover only for an ended source.
+   `money-rollover-panel.tsx` remain separate secondary components; the Money
+   page renders close evidence for the selected period and rollover for a
+   tracking, superseded or ended source. MONEY-001-A added the retained
+   unverified-days acknowledgment and moved both tools below the primary
+   summary / quick entry / unified history.
    The successor copies the source's latest effective `money_policy_versions`
    settings (never the mutable `money_periods.settings` copy) and layers explicit
    overrides. Unpaid occurrences are read through bounded pages with an explicit
@@ -102,17 +122,102 @@ Status: implementation candidate on `t3/money-10-mcp-delivery`, rebased onto
   rebase/complete-setup action before the first successor day is closed; the
   current MONEY-08 rebase accepts a past active date in a tracking period, so a
   late rollover can still complete setup without moving the date to today.
-- `p_provenance` is composed by the application and is not independently
-  revalidated by the rollover RPC; a direct SQL caller can pass arbitrary JSON,
-  as with the other Money RPCs. The RPC does validate every input that changes
-  cash, policy, or the close/reconciliation gate.
+- `p_provenance` may carry descriptive surface/correction JSON, but retained
+  opening evidence is not trusted from it: the RPC builds `opening.source`,
+  `cutoffDate` and `recordedAt` from the validated mode/cutoff and the database
+  clock, and refuses a provenance cutoff that disagrees with the validated
+  cutoff. A `carry_forward` opening must use exactly the source period end as
+  its scalar cutoff, so a carried balance cannot be stored beside a different
+  retained close date. Continuation/adoption identity is never read from this
+  JSON: it comes from the real adjacent date chain and the exact requested
+  range. Other cash, policy and close/reconciliation inputs are validated as
+  before.
+- An adopted opening with an equal amount keeps its correction history and
+  verified evidence. Upgrading an initialized opening to reconciled records an
+  `evidenceUpgrade` with the previous and new evidence instead of replacing the
+  provenance; a retained verified cutoff that differs from the approved cutoff
+  is a conflict. A later normal opening correction preserves that recorded
+  upgrade history instead of dropping it with the replaced active fields.
+- A retained available day-start baseline remains authoritative when the
+  current budget plan is missing; the plan is required only for the derived
+  start-of-day path. New MCP close receipts bind the effective `countsInDaily`
+  classification. Receipts written before the explicit-null change still replay
+  when that field is omitted, while a changed receipt shape (including explicit
+  `true` against a legacy omitted flag) conflicts.
+- A continued successor that already has an opening is never overwritten by
+  finalization. The approved amount must match exactly; a differing amount is a
+  conflict, and a reconciled opening cannot be downgraded.
 - The variance read is bounded at 500 rows. It reports truncation rather than
   silently shortening the history; it does not paginate beyond that bound.
 
 ## Verification run on this branch
 
-- Full migration journal applied cleanly to a disposable PostgreSQL 17 cluster
-  (all entries through `0107_money_10_period_rollover`).
+- MONEY-001-A F04 focused checks in the current patch: `npm run domain:test`,
+  `npm run application:test`, `npm run contracts:test` and
+  `npm run data-access:test` pass; `domain`, `application`, `contracts`,
+  `data-access`, `api-client`, `web` and `server` typechecks pass. The
+  application suite covers the setup-gated daily reference, the shared
+  createExpense/continuation guard, atomic delegation, superseded-range
+  backfill, cross-window update refusal, predecessor/early-finalization
+  blockers, adoption range validation and the superseded lifecycle vocabulary.
+  The data-access suite proves every routine write with a resolved period uses
+  the atomic RPC (not a direct insert) and receives the guard-resolved booking
+  day. The receipt test proves a pre-change close receipt with an omitted
+  `countsInDaily` still replays, while an explicit `false` or another changed
+  field conflicts.
+- MONEY-001-A F04 focused checks in this fix pass: `npm run application:test`
+  (807 passed) and the money-focused web Vitest suite (85 passed) pass;
+  `application` and `web` typechecks pass; ESLint on every changed TS/TSX file
+  passes. The application suite covers the missing-opening initialization on a
+  non-finalized superseded period, tracking/superseded same-day finalization
+  refusal in both opening modes, predecessor/early-finalization blockers, and
+  adoption range validation.
+- The prior MONEY-001-A F04 review-fix round passed `npm run
+  application:test` (878 passed), `npm run data-access:test` (285 passed) and
+  the money-focused web Vitest suite (233 passed, 3 skipped); `application`,
+  `data-access` and `web` typechecks and changed-file ESLint passed. The
+  application and web tests cover the retained day-start baseline with a
+  missing current plan, the tracking-period quick entry default across a
+  divergent owner/period midnight, and the legacy omitted-`countsInDaily`
+  receipt replay.
+- The Sol medium review-fix round passes `npm run application:test` (879
+  passed), `npm run data-access:test` (285 passed) and 185 money-focused web
+  Vitest tests (3 skipped); `application`, `data-access` and `web` typechecks,
+  changed-file ESLint and `check:architecture` pass. New coverage proves a
+  timestamped backfill into a superseded period uses that period's timezone, a
+  normal opening correction preserves the adoption `evidenceUpgrade`, new MCP
+  close receipts bind the effective `countsInDaily` while legacy omitted-flag
+  receipts replay and explicit `true` conflicts, and an out-of-cutoff
+  carry-forward is refused before any receipt.
+- The disposable PostgreSQL proofs pass against `pg17dev` (all 105 migrations
+  through `0112_money_001_a_period_continuity`):
+  `money-001-a-period-continuity-verify.mjs` (continuation through the atomic
+  routine RPC, future-date refusal, direct continuation-grant denial, routine
+  backfill, concurrent routine writes converging on one successor,
+  unknown-opening initialization with retained `continuedFrom` provenance then
+  adoption, out-of-period preflight/correction/soft-delete, superseded/tracking
+  same-day refusal, adoption conflicts and forged provenance, a paused routine
+  resolution that is refused after rollover with no movement/receipt,
+  equal-amount adoption that preserves corrections and records the evidence
+  upgrade, a normal opening correction that preserves the recorded upgrade, a
+  provenance/retained-cutoff conflict that leaves no mutation, a carried
+  opening cutoff that differs from the source end and leaves no receipt, and a
+  synchronized routine/rollover adoption with no deadlock),
+  `money-001-a-optional-close-rollover-verify.mjs` (database-clock-anchored
+  optional close and reviewed finalization), and
+  `money-10-rollover-verify.mjs` (rollover, verified opening, early
+  finalization refusal and post-close success).
+- Not run in this fix pass: the browser `money-001-core.e2e.spec.ts` journeys.
+  The continuity journey now starts from the default unknown opening,
+  initializes the superseded opening through the owner form, then adopts the
+  continued successor; it is registered in `scripts/e2e/assert-disposable-report.mjs`
+  but remains unproven here. Run the Money E2E project before merge.
+
+### Earlier MONEY-09/MONEY-10 proof runs (before the continuity slice was added)
+- Full migration journal applied cleanly to a disposable PostgreSQL cluster
+  (all entries through `0111_money_11_optional_close_rollover`), including the
+  MONEY-001-A finalization rules and the `money-001-a-optional-close-rollover-verify.mjs`
+  proof.
 - `scripts/db/money-10-rollover-verify.mjs` passed against that cluster. It
   finishes the source and middle periods through real `money_close_day` calls,
   asserts two retained close snapshots compare cleanly with restated totals, then

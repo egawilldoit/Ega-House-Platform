@@ -129,6 +129,7 @@ export type MoneyTrackedCashBoundary = typeof MONEY_TRACKED_CASH_BOUNDARY;
 
 export const MONEY_PERIOD_LIFECYCLES = [
   "tracking",
+  "superseded",
   "ended",
   "rolled_over",
 ] as const;
@@ -177,6 +178,8 @@ export type MoneyLedgerRow = Readonly<{
   bookingDate: string;
   occurredAt: string | null;
   periodId: string | null;
+  /** Stable retry identity; exposed so one history can reuse the expense editor. */
+  idempotencyKey: string;
   version: number;
   deletedAt: string | null;
   createdAt: string;
@@ -204,6 +207,13 @@ export type MoneyOpeningProvenance = Readonly<{
 export type MoneyPeriodProvenance = Readonly<{
   opening: MoneyOpeningProvenance | null;
   createdFrom: "web" | "mcp";
+  /**
+   * Set only by the automatic-continuation write: the tracking period whose
+   * calendar window this range continues. It is descriptive provenance and is
+   * never used as the identity check for rollover adoption; the database
+   * validates the real date chain instead.
+   */
+  continuedFrom?: string | null;
 }>;
 
 export type MoneyPeriodSettings = Readonly<Record<string, unknown>>;
@@ -218,6 +228,12 @@ export type MoneyPeriod = Readonly<{
   lifecycle: MoneyPeriodLifecycle;
   initialization: MoneyPeriodInitialization;
   openingMovementId: string | null;
+  /**
+   * Explicit owner confirmation that the initial obligation set was reviewed.
+   * Read-only derivation of day-start guidance is unavailable until this is
+   * true, because the obligation baseline cannot otherwise be proven.
+   */
+  dayStartSetupCompleted: boolean;
   provenance: MoneyPeriodProvenance;
   settings: MoneyPeriodSettings;
   version: number;
@@ -462,6 +478,65 @@ export type MoneyDayCloseTransitionFailure =
   | "invalid_period"
   | "date_not_active"
   | "date_after_active";
+
+/** The one tracking period a date-edit rule may compare against. */
+export type MoneyTrackingPeriodWindow = Readonly<{
+  id: string;
+  startDate: string;
+  endDate: string;
+}>;
+
+/**
+ * Whether an existing movement/expense may change its booking date. A row
+ * assigned to a period may move only while that same period is tracking. A
+ * legacy null-period row may move only when its current booking date is inside
+ * the live tracking window; with no configured period it keeps the legacy
+ * free-edit behavior. The web UI and both write use cases consume this one
+ * rule instead of re-deriving it.
+ */
+export function moneyBookingDateEditable(input: Readonly<{
+  periodId: string | null;
+  bookingDate: string;
+  trackingPeriod: MoneyTrackingPeriodWindow | null;
+}>): boolean {
+  if (input.periodId !== null) {
+    return input.periodId === input.trackingPeriod?.id;
+  }
+  if (input.trackingPeriod === null) return true;
+  return (
+    input.bookingDate >= input.trackingPeriod.startDate &&
+    input.bookingDate <= input.trackingPeriod.endDate
+  );
+}
+
+export type MoneyActiveDateMoveFailure =
+  | "period_not_tracking"
+  | "invalid_date"
+  | "out_of_period"
+  | "behind_retained_close";
+
+/**
+ * Calendar advancement is independent of the optional day close (MONEY-001
+ * ID-07). Inside a tracking period the active date may move to any valid later
+ * or earlier date without producing a close. The one retained boundary is
+ * close evidence: the active date can never move to or behind a closed date,
+ * because that would silently reopen attested history.
+ */
+export function moneyActiveDateMoveFailure(
+  period: Pick<MoneyPeriod, "startDate" | "endDate" | "lifecycle">,
+  targetDate: string,
+  latestClosedDate: string | null,
+): MoneyActiveDateMoveFailure | null {
+  if (period.lifecycle !== "tracking") return "period_not_tracking";
+  if (!isIsoDate(targetDate)) return "invalid_date";
+  if (targetDate < period.startDate || targetDate > period.endDate) {
+    return "out_of_period";
+  }
+  if (latestClosedDate !== null && targetDate <= latestClosedDate) {
+    return "behind_retained_close";
+  }
+  return null;
+}
 
 /** The next period state after closing exactly the currently tracked day. */
 export function moneyDayCloseTransition(
@@ -744,6 +819,14 @@ function parseCloseFinalPurchase(
       return failure(`${field}.countsInDaily`, "countsInDaily must be a boolean.");
     }
     countsInDaily = input.countsInDaily;
+  } else {
+    // Resolve the one canonical classification now so the close fingerprint and
+    // the created movement cannot disagree about a final purchase.
+    countsInDaily = defaultCountsInDaily(
+      "expense",
+      purpose,
+      category.value,
+    );
   }
 
   const idempotencyKey = parseBoundedText(
@@ -913,12 +996,31 @@ export function isMoneyAmountMinor(
 }
 
 /**
- * Product defaults from the frozen shared contract. MONEY-07 defines the
- * fixed-payment default; this module treats every recorded expense
- * (emergency included) as daily-included unless the owner overrides it.
+ * Fixed-commitment expense categories. A bill or subscription is not
+ * discretionary when the caller has not supplied an explicit purpose.
  */
-export function defaultCountsInDaily(kind: MoneyKind): boolean {
-  return kind === "expense";
+const MONEY_FIXED_EXPENSE_CATEGORIES: ReadonlySet<ExpenseCategory> = new Set([
+  "bills",
+  "subscriptions",
+]);
+
+/**
+ * One canonical prospective discretionary-classification rule (MONEY-001
+ * Q19/FR-006). Fixed expenses, fixed obligation payments, savings transfers,
+ * income, openings and reconciliation adjustments are excluded; flexible and
+ * emergency expenses are included; bills/subscriptions default to fixed when no
+ * purpose is supplied. An explicit `countsInDaily` always wins, so historical
+ * and owner-overridden classifications are never rewritten.
+ */
+export function defaultCountsInDaily(
+  kind: MoneyKind,
+  purpose: MoneyPurpose | null = null,
+  category: ExpenseCategory | null = null,
+): boolean {
+  if (kind !== "expense") return false;
+  if (purpose === "fixed") return false;
+  if (purpose !== null) return true;
+  return !(category !== null && MONEY_FIXED_EXPENSE_CATEGORIES.has(category));
 }
 
 /** The only direction each non-adjustment kind can have. */
@@ -1310,6 +1412,95 @@ export function classifyDateInPeriod(
   return "in_period";
 }
 
+export const MONEY_PROJECTION_CUTOFF_BASES = [
+  "explicit_date",
+  "active_day",
+  "local_today",
+  "period_end",
+  "local_today_no_period",
+] as const;
+export type MoneyProjectionCutoffBasis =
+  (typeof MONEY_PROJECTION_CUTOFF_BASES)[number];
+
+export type MoneyProjectionCutoff = Readonly<{
+  /** Inclusive booking-date cutoff used by cash, reserves and daily guidance. */
+  date: string;
+  basis: MoneyProjectionCutoffBasis;
+  localToday: string;
+  /** True when `localToday` was clamped to the period's inclusive range. */
+  clampedToPeriod: boolean;
+}>;
+
+/**
+ * Resolve the effective financial projection cutoff (MONEY-001 Q11/Q12/Q22).
+ *
+ * This is deliberately separate from the optional active tracking cursor and
+ * from a selected historical day:
+ * - an explicit requested date keeps its historical meaning;
+ * - `mode = active_day` keeps the active-date meaning;
+ * - the ordinary current view uses owner-local today for a tracking period
+ *   (clamped to its inclusive range) and the period end for an ended or
+ *   rolled-over period, so a lagging active cursor never makes the primary
+ *   cards stale.
+ *
+ * The retained day-start baseline and day-close evidence stay keyed by the
+ * selected day and are not changed by this projection.
+ */
+export function resolveMoneyProjectionCutoff(input: Readonly<{
+  localToday: string;
+  period: Pick<
+    MoneyPeriod,
+    "startDate" | "endDate" | "activeDate" | "lifecycle"
+  > | null;
+  requestedDate?: string | null;
+  requestedMode?: "today" | "active_day" | null;
+}>): MoneyProjectionCutoff {
+  if (input.requestedDate) {
+    return {
+      date: input.requestedDate,
+      basis: "explicit_date",
+      localToday: input.localToday,
+      clampedToPeriod: false,
+    };
+  }
+  if (!input.period) {
+    return {
+      date: input.localToday,
+      basis: "local_today_no_period",
+      localToday: input.localToday,
+      clampedToPeriod: false,
+    };
+  }
+  if (input.requestedMode === "active_day") {
+    return {
+      date: input.period.activeDate,
+      basis: "active_day",
+      localToday: input.localToday,
+      clampedToPeriod: false,
+    };
+  }
+  if (input.period.lifecycle !== "tracking") {
+    return {
+      date: input.period.endDate,
+      basis: "period_end",
+      localToday: input.localToday,
+      clampedToPeriod: false,
+    };
+  }
+  const date =
+    input.localToday < input.period.startDate
+      ? input.period.startDate
+      : input.localToday > input.period.endDate
+        ? input.period.endDate
+        : input.localToday;
+  return {
+    date,
+    basis: "local_today",
+    localToday: input.localToday,
+    clampedToPeriod: date !== input.localToday,
+  };
+}
+
 function parseCountsInDaily(
   raw: unknown,
   fallback: boolean,
@@ -1461,7 +1652,7 @@ export function parseCreateMovementInput(
 
   const countsInDaily = parseCountsInDaily(
     input.countsInDaily,
-    defaultCountsInDaily(kind.value),
+    defaultCountsInDaily(kind.value, purpose, category),
   );
   if (!countsInDaily.ok) return countsInDaily;
 

@@ -68,6 +68,8 @@ function preview(overrides: Partial<MoneyRolloverPreview> = {}): MoneyRolloverPr
     pendingOccurrencesTruncated: false,
     priorCorrectionBridges: [],
     priorCorrectionBridgesTruncated: false,
+    continuationSuccessor: null,
+    unfinalizedPredecessor: null,
     generatedObligations: [],
     carriedOccurrences: [],
     weekWindows: [],
@@ -89,6 +91,83 @@ test("rollover panel always offers the acceptance note for a verified balance", 
   assert.match(html, /name="acceptClosingDifferenceNote"/);
   assert.match(html, /verified balance differs/);
   assert.match(html, /savings target versus transfers difference/);
+});
+
+test("rollover panel does not render unknown close evidence as zero", () => {
+  const html = renderToStaticMarkup(
+    <MoneyRolloverPanel
+      preview={preview({
+        closeSnapshots: { available: false, reason: "close_snapshot_unavailable" },
+        unverifiedDayCount: 0,
+        unverifiedDates: [],
+      })}
+      previewUnavailableReason={null}
+      action={async () => ({ ok: true, error: null })}
+    />,
+  );
+  assert.match(html, /Unavailable — retained close evidence could not be read/);
+  assert.doesNotMatch(html, />None</);
+});
+
+test("rollover panel lists retained closed dates for review", () => {
+  const html = renderToStaticMarkup(
+    <MoneyRolloverPanel
+      preview={preview({
+        closeSnapshots: {
+          available: true,
+          closeCount: 2,
+          closedDates: ["2026-11-02", "2026-11-03"],
+          periodDayCount: 3,
+          requiredCloseCount: 3,
+          trackedFromDate: "2026-11-02",
+          missingCloseDates: ["2026-11-01"],
+          unverifiedDayCount: 1,
+          completeCloseEvidence: false,
+          lastClosedDate: "2026-11-03",
+          comparableToRestatedTotals: true,
+          restatedDifferenceCount: 0,
+          restatedDifferences: [],
+          paidObligationCount: 0,
+          paidObligationMismatchCount: 0,
+          countedVisitCount: 0,
+          countedVisitMismatchCount: 0,
+          savingsTargetMinor: 12_000,
+          savingsTransferredMinor: 12_000,
+        },
+        unverifiedDayCount: 1,
+        unverifiedDates: ["2026-11-01"],
+      })}
+      previewUnavailableReason={null}
+      action={async () => ({ ok: true, error: null })}
+    />,
+  );
+  assert.match(html, /Show the 2 previously closed dates/);
+  assert.match(html, /2026-11-02, 2026-11-03/);
+});
+
+test("rollover panel explains adoption of an already-continued period", () => {
+  const base = preview();
+  const html = renderToStaticMarkup(
+    <MoneyRolloverPanel
+      preview={{
+        ...base,
+        source: { ...base.source, lifecycle: "superseded" },
+        continuationSuccessor: {
+          periodId: "44444444-4444-4444-8444-444444444444",
+          startDate: "2026-12-01",
+          endDate: "2026-12-31",
+          activeDate: "2026-12-05",
+          initialization: "uninitialized",
+          openingAmountMinor: null,
+        },
+      }}
+      previewUnavailableReason={null}
+      action={async () => ({ ok: true, error: null })}
+    />,
+  );
+  assert.match(html, /calendar already continued into the period/);
+  assert.match(html, /2026-12-01–2026-12-31/);
+  assert.match(html, /keeps its recorded\s+movements unchanged/);
 });
 
 test("rollover panel discloses a prior verified-opening variance", () => {
@@ -131,6 +210,25 @@ test("rollover panel discloses a truncated variance history", () => {
   assert.match(html, /only part of this period/i);
 });
 
+
+test("rollover panel discloses unverified dates and requires a retained acknowledgment", () => {
+  const html = renderToStaticMarkup(
+    <MoneyRolloverPanel
+      preview={preview({
+        unverifiedDates: ["2026-11-01", "2026-11-21", "2026-11-22"],
+        unverifiedDayCount: 3,
+        unverifiedDaysAcknowledged: false,
+        requiresUnverifiedDaysAcknowledgment: true,
+      })}
+      previewUnavailableReason={null}
+      action={async () => ({ ok: true, error: null })}
+    />,
+  );
+  assert.match(html, /name="acceptUnverifiedDaysNote"/);
+  assert.match(html, /3 reviewed · acknowledgment required/);
+  assert.match(html, /2026-11-01, 2026-11-21, 2026-11-22/);
+  assert.match(html, /server refuses rollover while the acknowledgment is missing/i);
+});
 
 test("rollover confirmation submits its form", () => {
   const html = renderToStaticMarkup(

@@ -105,6 +105,7 @@ function makeRepository(state: Partial<FakeState> = {}) {
   const calls: {
     find: string[];
     create: number;
+    createInputs: Array<{ countsInDaily: boolean; periodId?: string | null | undefined }>;
     list: ExpenseListRecordQuery[];
     update: ExpenseUpdateRecordInput[];
     delete: Array<{
@@ -112,7 +113,7 @@ function makeRepository(state: Partial<FakeState> = {}) {
       nowIso: string;
       expectedVersion?: number;
     }>;
-  } = { find: [], create: 0, list: [], update: [], delete: [] };
+  } = { find: [], create: 0, createInputs: [], list: [], update: [], delete: [] };
 
   const repository: ExpenseRepository = {
     async findByIdempotencyKey(_actor, key) {
@@ -122,8 +123,12 @@ function makeRepository(state: Partial<FakeState> = {}) {
       }
       return { ok: true, value: state.racedExisting ?? null };
     },
-    async create(_actor, _input) {
+    async create(_actor, input) {
       calls.create += 1;
+      calls.createInputs.push({
+        countsInDaily: input.countsInDaily,
+        periodId: input.periodId,
+      });
       return state.createResults?.shift() ?? { ok: true, value: expense() };
     },
     async get() {
@@ -166,6 +171,26 @@ test("create persists a validated expense and reports a fresh receipt", async ()
   assert.equal(result.data.replayed, false);
   assert.equal(calls.create, 1);
   assert.deepEqual(calls.find, ["key-1"]);
+});
+
+test("create persists the canonical category classification default", async () => {
+  const coffee = makeRepository();
+  const coffeeResult = await createExpense(ACTOR, coffee.repository, CREATE_BODY);
+  assert.equal(coffeeResult.ok, true);
+  assert.deepEqual(coffee.calls.createInputs, [
+    { countsInDaily: true, periodId: null },
+  ]);
+
+  const bill = makeRepository();
+  const billResult = await createExpense(ACTOR, bill.repository, {
+    ...CREATE_BODY,
+    category: "bills",
+    idempotencyKey: "bill-1",
+  });
+  assert.equal(billResult.ok, true);
+  assert.deepEqual(bill.calls.createInputs, [
+    { countsInDaily: false, periodId: null },
+  ]);
 });
 
 test("create replays the prior receipt for the same canonical payload", async () => {

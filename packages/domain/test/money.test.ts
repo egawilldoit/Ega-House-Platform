@@ -15,9 +15,11 @@ import {
   classifyDateInPeriod,
   defaultCountsInDaily,
   isMoneyAmountMinor,
+  moneyBookingDateEditable,
   moneyTimezoneOrDefault,
   parseCreateMoneyPeriodInput,
   parseCreateMovementInput,
+  parseMoneyDayCloseInput,
   parseMoneyListQuery,
   parseMoneySettings,
   parseMoneyStateQuery,
@@ -25,6 +27,7 @@ import {
   parseUpdateMoneySettingsInput,
   periodAcceptsRoutineEntries,
   periodsOverlap,
+  resolveMoneyProjectionCutoff,
   validateOpeningAgainstPeriod,
   type MoneyPeriod,
 } from "../src/money";
@@ -34,6 +37,137 @@ test("MONEY-08 protects disjoint reserves and releases matched funding once", ()
   assert.equal(before.safeFlexibleMinor, 33_900);
   assert.equal(calculateMoneyReserves({ recordedCashMinor: 58_900, unpaidCommitmentsMinor: 0, savingsTargetMinor: 20_000, savingsFundedMinor: 0, emergencyTargetMinor: 5_000, emergencyUsedMinor: 0 }).safeFlexibleMinor, 33_900);
   assert.equal(calculateMoneyReserves({ recordedCashMinor: 48_900, unpaidCommitmentsMinor: 10_000, savingsTargetMinor: 20_000, savingsFundedMinor: 20_000, emergencyTargetMinor: 5_000, emergencyUsedMinor: 0 }).safeFlexibleMinor, 33_900);
+});
+
+test("MONEY-001 projection cutoff separates today, active cursor, history and period end", () => {
+  const tracking = {
+    startDate: "2026-11-01",
+    endDate: "2026-11-30",
+    activeDate: "2026-11-21",
+    lifecycle: "tracking" as const,
+  };
+  assert.deepEqual(
+    resolveMoneyProjectionCutoff({
+      localToday: "2026-11-23",
+      period: tracking,
+    }),
+    {
+      date: "2026-11-23",
+      basis: "local_today",
+      localToday: "2026-11-23",
+      clampedToPeriod: false,
+    },
+  );
+  assert.deepEqual(
+    resolveMoneyProjectionCutoff({
+      localToday: "2026-12-05",
+      period: tracking,
+    }),
+    {
+      date: "2026-11-30",
+      basis: "local_today",
+      localToday: "2026-12-05",
+      clampedToPeriod: true,
+    },
+  );
+  assert.deepEqual(
+    resolveMoneyProjectionCutoff({
+      localToday: "2026-12-05",
+      period: { ...tracking, lifecycle: "ended" },
+    }),
+    {
+      date: "2026-11-30",
+      basis: "period_end",
+      localToday: "2026-12-05",
+      clampedToPeriod: false,
+    },
+  );
+  assert.equal(
+    resolveMoneyProjectionCutoff({
+      localToday: "2026-10-20",
+      period: tracking,
+    }).date,
+    "2026-11-01",
+  );
+  assert.equal(
+    resolveMoneyProjectionCutoff({
+      localToday: "2026-11-23",
+      period: tracking,
+      requestedMode: "active_day",
+    }).date,
+    "2026-11-21",
+  );
+  assert.equal(
+    resolveMoneyProjectionCutoff({
+      localToday: "2026-11-23",
+      period: tracking,
+      requestedDate: "2026-11-12",
+    }).date,
+    "2026-11-12",
+  );
+  const ended = resolveMoneyProjectionCutoff({
+    localToday: "2026-11-23",
+    period: { ...tracking, lifecycle: "ended" },
+  });
+  assert.equal(ended.date, "2026-11-30");
+  assert.equal(ended.basis, "period_end");
+  // An explicit historical date keeps its meaning even for an ended period.
+  assert.equal(
+    resolveMoneyProjectionCutoff({
+      localToday: "2026-11-23",
+      period: { ...tracking, lifecycle: "ended" },
+      requestedDate: "2026-11-12",
+    }).date,
+    "2026-11-12",
+  );
+});
+
+test("booking-date editability follows one tracking-period rule", () => {
+  const trackingPeriod = {
+    id: "period-tracking",
+    startDate: "2026-11-01",
+    endDate: "2026-11-30",
+  };
+  assert.equal(
+    moneyBookingDateEditable({
+      periodId: "period-tracking",
+      bookingDate: "2026-11-10",
+      trackingPeriod,
+    }),
+    true,
+  );
+  assert.equal(
+    moneyBookingDateEditable({
+      periodId: "period-ended",
+      bookingDate: "2026-10-10",
+      trackingPeriod,
+    }),
+    false,
+  );
+  assert.equal(
+    moneyBookingDateEditable({
+      periodId: null,
+      bookingDate: "2026-11-10",
+      trackingPeriod,
+    }),
+    true,
+  );
+  assert.equal(
+    moneyBookingDateEditable({
+      periodId: null,
+      bookingDate: "2026-10-10",
+      trackingPeriod,
+    }),
+    false,
+  );
+  assert.equal(
+    moneyBookingDateEditable({
+      periodId: null,
+      bookingDate: "2026-10-10",
+      trackingPeriod: null,
+    }),
+    true,
+  );
 });
 
 test("MONEY-08 daily reference floors centimes and subtracts counted spending once", () => {
@@ -87,6 +221,7 @@ function period(overrides: Partial<MoneyPeriod> = {}): MoneyPeriod {
     activeDate: "2026-11-11",
     lifecycle: "tracking",
     initialization: "initialized",
+    dayStartSetupCompleted: true,
     openingMovementId: "00000000-0000-4000-8000-000000000002",
     provenance: {
       opening: {
@@ -123,7 +258,12 @@ test("the shared movement vocabulary is frozen exactly as the contract requires"
   ]);
   assert.deepEqual(MONEY_DIRECTIONS, ["in", "out"]);
   assert.deepEqual(MONEY_PURPOSES, ["fixed", "flexible", "emergency"]);
-  assert.deepEqual(MONEY_PERIOD_LIFECYCLES, ["tracking", "ended", "rolled_over"]);
+  assert.deepEqual(MONEY_PERIOD_LIFECYCLES, [
+    "tracking",
+    "superseded",
+    "ended",
+    "rolled_over",
+  ]);
   assert.deepEqual(MONEY_PERIOD_INITIALIZATIONS, [
     "uninitialized",
     "initialized",
@@ -318,6 +458,10 @@ test("period overlap and date classification use inclusive boundaries", () => {
 
 test("only tracking periods accept routine entries", () => {
   assert.equal(periodAcceptsRoutineEntries(period()), true);
+  assert.equal(
+    periodAcceptsRoutineEntries(period({ lifecycle: "superseded" })),
+    false,
+  );
   assert.equal(periodAcceptsRoutineEntries(period({ lifecycle: "ended" })), false);
   assert.equal(
     periodAcceptsRoutineEntries(period({ lifecycle: "rolled_over" })),
@@ -343,12 +487,84 @@ test("opening cutoff validation and canonical payloads are stable", () => {
   assert.equal(moneyTimezoneOrDefault("UTC"), "UTC");
 });
 
-test("countsInDaily defaults true for expenses and false for the other kinds", () => {
+test("countsInDaily uses one prospective financial classification rule", () => {
   assert.equal(defaultCountsInDaily("expense"), true);
+  assert.equal(defaultCountsInDaily("expense", null, "coffee"), true);
+  assert.equal(defaultCountsInDaily("expense", null, "work_tools"), true);
+  assert.equal(defaultCountsInDaily("expense", "flexible"), true);
+  assert.equal(defaultCountsInDaily("expense", "emergency"), true);
+  assert.equal(defaultCountsInDaily("expense", "fixed"), false);
+  assert.equal(defaultCountsInDaily("expense", null, "bills"), false);
+  assert.equal(defaultCountsInDaily("expense", null, "subscriptions"), false);
+  // An explicit discretionary purpose wins over the category inference.
+  assert.equal(defaultCountsInDaily("expense", "flexible", "bills"), true);
   assert.equal(defaultCountsInDaily("income"), false);
   assert.equal(defaultCountsInDaily("opening"), false);
   assert.equal(defaultCountsInDaily("savings_transfer"), false);
   assert.equal(defaultCountsInDaily("reconciliation_adjustment"), false);
+});
+
+test("create and close classification defaults persist the canonical rule", () => {
+  const fixed = parseCreateMovementInput({
+    kind: "expense",
+    amountMinor: 3_000,
+    category: "bills",
+    needVsWant: "need",
+    bookingDate: "2026-11-11",
+    idempotencyKey: "fixed-expense",
+  });
+  assert.equal(fixed.ok, true);
+  if (fixed.ok) assert.equal(fixed.value.countsInDaily, false);
+
+  const fixedPurpose = parseCreateMovementInput({
+    kind: "expense",
+    amountMinor: 3_000,
+    category: "coffee",
+    needVsWant: "need",
+    purpose: "fixed",
+    bookingDate: "2026-11-11",
+    idempotencyKey: "fixed-purpose",
+  });
+  assert.equal(fixedPurpose.ok, true);
+  if (fixedPurpose.ok) assert.equal(fixedPurpose.value.countsInDaily, false);
+
+  const override = parseCreateMovementInput({
+    kind: "expense",
+    amountMinor: 3_000,
+    category: "bills",
+    needVsWant: "need",
+    countsInDaily: true,
+    bookingDate: "2026-11-11",
+    idempotencyKey: "fixed-override",
+  });
+  assert.equal(override.ok, true);
+  if (override.ok) assert.equal(override.value.countsInDaily, true);
+
+  const invalid = parseCreateMovementInput({
+    kind: "expense",
+    amountMinor: 3_000,
+    category: "coffee",
+    needVsWant: "need",
+    countsInDaily: "yes",
+    bookingDate: "2026-11-11",
+    idempotencyKey: "invalid-classification",
+  });
+  assert.equal(invalid.ok, false);
+
+  const close = parseMoneyDayCloseInput({
+    version: 3,
+    operationId: "abababab-abab-4bab-8bab-abababababab",
+    finalPurchases: [
+      {
+        amountMinor: 3_000,
+        category: "bills",
+        needVsWant: "need",
+        idempotencyKey: "close-bill",
+      },
+    ],
+  });
+  assert.equal(close.ok, true);
+  if (close.ok) assert.equal(close.value.finalPurchases[0]?.countsInDaily, false);
 });
 
 test("income is a positive inflow with no invented expense fields", () => {

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { createMcpAuthInfo } from "@/lib/mcp/auth-info";
+import { canonicalMutationFingerprint } from "@/lib/mcp/mutation-idempotency";
 import { getPermissionsForProfile } from "@/lib/mcp/permissions";
 import { createMcpWriteToolHandlers } from "@/lib/mcp/write-tool-handlers";
 
@@ -292,8 +293,11 @@ describe("ega_money_close_day receipt fingerprint", () => {
     const { handlers, hashes } = handlerWithRecordedHashes();
     await handlers.closeMoneyDay(authInfo, closeInput());
     await handlers.closeMoneyDay(authInfo, closeInput());
-    expect(hashes).toHaveLength(2);
-    expect(hashes[0]).toBe(hashes[1]);
+    // Every close with an omitted purchase flag checks the effective
+    // fingerprint first and the pre-change compatibility shape second.
+    expect(hashes).toHaveLength(4);
+    const primary = hashes.filter((_hash, index) => index % 2 === 0);
+    expect(primary[0]).toBe(primary[1]);
 
     await handlers.closeMoneyDay(authInfo, { ...closeInput(), note: "different" });
     await handlers.closeMoneyDay(authInfo, {
@@ -310,9 +314,11 @@ describe("ega_money_close_day receipt fingerprint", () => {
         closeInput().finalPurchases[1]!,
       ],
     });
-    expect(hashes[2]).not.toBe(hashes[0]);
-    expect(hashes[3]).not.toBe(hashes[0]);
-    expect(hashes[4]).not.toBe(hashes[0]);
+    const nextPrimary = hashes.filter((_hash, index) => index % 2 === 0);
+    expect(nextPrimary).toHaveLength(5);
+    expect(nextPrimary[2]).not.toBe(nextPrimary[0]);
+    expect(nextPrimary[3]).not.toBe(nextPrimary[0]);
+    expect(nextPrimary[4]).not.toBe(nextPrimary[0]);
   });
 
   it("keeps purchase ordering semantically irrelevant", async () => {
@@ -322,6 +328,138 @@ describe("ega_money_close_day receipt fingerprint", () => {
       ...closeInput(),
       finalPurchases: [...closeInput().finalPurchases].reverse(),
     });
-    expect(hashes[0]).toBe(hashes[1]);
+    expect(hashes).toHaveLength(4);
+    expect(hashes[0]).toBe(hashes[2]);
+    expect(hashes[1]).toBe(hashes[3]);
+  });
+
+  it("hashes an omitted flag as its effective daily classification", async () => {
+    const { handlers, hashes } = handlerWithRecordedHashes();
+    const billsPurchase = {
+      amountMinor: 900,
+      category: "bills",
+      needVsWant: "need" as const,
+      countsInDaily: undefined,
+      idempotencyKey: "close-bills-1",
+    };
+    await handlers.closeMoneyDay(authInfo, {
+      ...closeInput(),
+      finalPurchases: [billsPurchase],
+    });
+    await handlers.closeMoneyDay(authInfo, {
+      ...closeInput(),
+      finalPurchases: [{ ...billsPurchase, countsInDaily: false }],
+    });
+    // A bill defaults to excluded from daily spend; the omitted flag must
+    // therefore hash exactly like the explicit effective `false`, not like
+    // the old null compatibility shape. The explicit call has no separate
+    // compatibility shape because its legacy fingerprint is the same hash.
+    expect(hashes).toHaveLength(3);
+    expect(hashes[0]).toBe(hashes[2]);
+    expect(hashes[0]).not.toBe(hashes[1]);
+  });
+
+  it("replays a pre-change receipt whose purchase omitted countsInDaily", async () => {
+    const input = closeInput();
+    const omitted = {
+      ...input,
+      finalPurchases: [
+        {
+          amountMinor: input.finalPurchases[0]!.amountMinor,
+          category: input.finalPurchases[0]!.category,
+          needVsWant: input.finalPurchases[0]!.needVsWant,
+          countsInDaily: undefined,
+          idempotencyKey: input.finalPurchases[0]!.idempotencyKey,
+        },
+        input.finalPurchases[1]!,
+      ],
+    };
+    // Seed the receipt exactly as the pre-change handler hashed it: an omitted
+    // countsInDaily stayed null in the semantic input.
+    const legacyHash = canonicalMutationFingerprint("ega_money_close_day", {
+      periodId: null,
+      version: input.version,
+      date: null,
+      note: "Closed with chicken",
+      finalPurchases: omitted.finalPurchases
+        .map((purchase) => ({
+          amountMinor: purchase.amountMinor,
+          category: purchase.category,
+          note: null,
+          merchant: null,
+          needVsWant: purchase.needVsWant,
+          paymentMethod: null,
+          purpose: ("purpose" in purchase ? purchase.purpose : null) ?? null,
+          countsInDaily: purchase.countsInDaily ?? null,
+          idempotencyKey: purchase.idempotencyKey,
+        }))
+        .sort((left, right) =>
+          left.idempotencyKey.localeCompare(right.idempotencyKey),
+        ),
+    });
+    const hashes: string[] = [];
+    const client = {
+      rpc: async (_name: string, args: Record<string, unknown>) => {
+        hashes.push(String(args.p_args_hash));
+        return {
+          data: [
+            args.p_args_hash === legacyHash
+              ? {
+                  claim_outcome: "REPLAY",
+                  claim_token: null,
+                  existing_result: {
+                    ok: true,
+                    replayed: true,
+                    dayClose: { id: "legacy-close" },
+                  },
+                }
+              : {
+                  claim_outcome: "CONFLICT",
+                  claim_token: null,
+                  existing_result: null,
+                },
+          ],
+          error: null,
+        };
+      },
+    };
+    const handlers = createMcpWriteToolHandlers(
+      { createUserClient: () => client as never },
+      true,
+      RESOURCE,
+    );
+
+    const replayed = await handlers.closeMoneyDay(authInfo, omitted);
+    expect(replayed.isError).toBeFalsy();
+    expect(
+      (replayed.structuredContent as { replayed?: boolean } | undefined)?.replayed,
+    ).toBe(true);
+
+    // The legacy receipt stored the omitted flag as null. An explicit `true`
+    // is the same effective classification for new receipts, but it is not
+    // the same pre-change receipt payload and must not replay that operation
+    // as if the caller had omitted the field.
+    const explicitTrue = await handlers.closeMoneyDay(authInfo, {
+      ...omitted,
+      finalPurchases: [
+        { ...omitted.finalPurchases[0]!, countsInDaily: true },
+        omitted.finalPurchases[1]!,
+      ],
+    });
+    expect(explicitTrue.isError).toBe(true);
+    expect(
+      (explicitTrue.structuredContent as { error?: { code?: string } }).error?.code,
+    ).toBe("CONFLICT");
+
+    const changedAmount = await handlers.closeMoneyDay(authInfo, {
+      ...omitted,
+      finalPurchases: [
+        { ...omitted.finalPurchases[0]!, amountMinor: 1200 },
+        omitted.finalPurchases[1]!,
+      ],
+    });
+    expect(changedAmount.isError).toBe(true);
+    expect(hashes[0]).not.toBe(legacyHash);
+    expect(hashes[1]).toBe(legacyHash);
   });
 });

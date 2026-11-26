@@ -82,12 +82,15 @@ test("current reserves use the one canonical cutoff read shared with close evide
         };
       },
     } as unknown as MoneyBudgetRepository,
+    cutoffDate: "2026-11-13",
+    localToday: "2026-11-13",
   });
-  assert.deepEqual(cutoffs, [{ periodId: period.id, cutoff: period.activeDate }]);
+  assert.deepEqual(cutoffs, [{ periodId: period.id, cutoff: "2026-11-13" }]);
   assert.equal(result.ok, true);
   if (result.ok && result.data.available) {
     assert.equal(result.data.reserves.unpaidCommitmentsMinor, 10_000);
     assert.equal(result.data.reserves.safeFlexibleMinor, 33_900);
+    assert.equal(result.data.dailyReference.available, false);
   }
 });
 
@@ -107,6 +110,8 @@ test("an unavailable canonical reserve read stays unavailable, never zero", asyn
         };
       },
     } as unknown as MoneyBudgetRepository,
+    cutoffDate: "2026-11-11",
+    localToday: "2026-11-11",
   });
   assert.deepEqual(result, {
     ok: true,
@@ -115,8 +120,43 @@ test("an unavailable canonical reserve read stays unavailable, never zero", asyn
       currency: "MAD",
       reason: "opening_unknown",
       cutoffDate: "2026-11-11",
+      dailyReference: {
+        available: false,
+        currency: "MAD",
+        date: "2026-11-11",
+        basis: null,
+        reason: "opening_unknown",
+      },
     },
   });
+});
+
+
+test("a reserve cutoff outside the selected period stays unavailable, never invented", async () => {
+  let reads = 0;
+  const result = await getCurrentMoneyReserves(ACTOR, {
+    period: periodRecord(),
+    periods: {
+      async getReserveInputs() {
+        reads += 1;
+        return { ok: true as const, value: { available: false as const, reason: "opening_unknown" } };
+      },
+    } as unknown as MoneyPeriodRepository,
+    budgets: {
+      async getPlan() {
+        return { ok: true as const, value: { savingsTargetMinor: 0, emergencyTargetMinor: 0 } };
+      },
+    } as unknown as MoneyBudgetRepository,
+    cutoffDate: "2026-10-31",
+    localToday: "2026-11-13",
+  });
+  assert.equal(reads, 0);
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.data.available, false);
+  if (result.data.available) return;
+  assert.equal(result.data.reason, "cutoff_outside_period");
+  assert.equal(result.data.dailyReference.available, false);
 });
 
 
@@ -168,6 +208,7 @@ function periodRecord(overrides: Partial<MoneyPeriod> = {}): MoneyPeriod {
     activeDate: "2026-11-11",
     lifecycle: "tracking",
     initialization: "initialized",
+    dayStartSetupCompleted: true,
     openingMovementId: "00000000-0000-4000-8000-000000000002",
     provenance: {
       opening: {
@@ -207,7 +248,6 @@ function makeRepository(options: { periods?: MoneyPeriod[] } = {}) {
     const {
       ownerUserId: _owner,
       createFingerprint: _fp,
-      idempotencyKey: _key,
       ...rest
     } = row;
     return rest;
@@ -343,9 +383,21 @@ function makeRepository(options: { periods?: MoneyPeriod[] } = {}) {
       }
       return { ok: true, value: { inflowsMinor, outflowsMinor, recordCount, truncated: false } };
     },
-    findById: UNUSED,
+    async findById(_actor, id) {
+      return { ok: true, value: periods.find((candidate) => candidate.id === id) ?? null };
+    },
     findByExactRange: UNUSED,
-    findOverlapping: UNUSED,
+    async findOverlapping(actor, range) {
+      return {
+        ok: true,
+        value: periods.filter(
+          (period) =>
+            period.startDate <= range.endDate &&
+            range.startDate <= period.endDate &&
+            (period.id !== "other-owner-period" || actor.userId === "other-owner"),
+        ),
+      };
+    },
     create: UNUSED,
     update: UNUSED,
     getOpening: UNUSED,
@@ -507,6 +559,189 @@ test("an excluded expense still lowers cash and raises expense totals while dail
   if (!totals.ok) return;
   assert.equal(totals.data.totals.expenseTotalMinor, 1100);
   assert.equal(totals.data.totals.dailyIncludedSpendMinor, 0);
+});
+
+test("the canonical expense classification keeps fixed spending out of the daily allowance", async () => {
+  const { repository, periodRepository, rows } = makeRepository({
+    periods: [periodRecord()],
+  });
+  rows.push(
+    movement({
+      kind: "opening",
+      direction: "in",
+      amountMinor: 50_000,
+      category: null,
+      needVsWant: null,
+      countsInDaily: false,
+      bookingDate: "2026-11-01",
+    }),
+  );
+
+  const fixed = await createMovement(
+    ACTOR,
+    repository,
+    {
+      kind: "expense",
+      amountMinor: 3_000,
+      category: "bills",
+      needVsWant: "need",
+      bookingDate: "2026-11-11",
+      idempotencyKey: "bill-1",
+    },
+    { periods: periodRepository },
+  );
+  assert.equal(fixed.ok, true);
+  if (!fixed.ok) return;
+  assert.equal(fixed.data.movement.countsInDaily, false);
+  assert.equal(rows[1]?.countsInDaily, false);
+
+  const flexible = await createMovement(
+    ACTOR,
+    repository,
+    {
+      kind: "expense",
+      amountMinor: 1_100,
+      category: "work_tools",
+      needVsWant: "want",
+      bookingDate: "2026-11-11",
+      idempotencyKey: "tools-1",
+    },
+    { periods: periodRepository },
+  );
+  assert.equal(flexible.ok, true);
+  if (!flexible.ok) return;
+  assert.equal(flexible.data.movement.countsInDaily, true);
+
+  const override = await createMovement(
+    ACTOR,
+    repository,
+    {
+      kind: "expense",
+      amountMinor: 500,
+      category: "bills",
+      needVsWant: "need",
+      countsInDaily: true,
+      bookingDate: "2026-11-11",
+      idempotencyKey: "bill-override",
+    },
+    { periods: periodRepository },
+  );
+  assert.equal(override.ok, true);
+  if (!override.ok) return;
+  assert.equal(override.data.movement.countsInDaily, true);
+
+  const totals = await getMoneyMovementTotals(
+    ACTOR,
+    repository,
+    { cutoff: "2026-11-11" },
+    { cutoff: "2026-11-11" },
+  );
+  assert.equal(totals.ok, true);
+  if (!totals.ok) return;
+  // Fixed 3,000 + flexible 1,100 + override 500 all reduce cash once; only the
+  // flexible and explicit override count toward discretionary daily spending.
+  assert.equal(totals.data.totals.expenseTotalMinor, 4_600);
+  assert.equal(totals.data.totals.dailyIncludedSpendMinor, 1_600);
+  const cash = await getMoneyCashPosition(
+    ACTOR,
+    periodRepository,
+    periodRecord(),
+    OPENING_500,
+  );
+  assert.equal(cash.ok, true);
+  if (cash.ok && cash.data.available) {
+    assert.equal(cash.data.recordedCashMinor, 45_400);
+  }
+});
+
+test("a created timestamp must resolve to the supplied booking day in the period timezone", async () => {
+  const casablanca = makeRepository({ periods: [periodRecord()] });
+  const matched = await createMovement(
+    ACTOR,
+    casablanca.repository,
+    {
+      kind: "expense",
+      amountMinor: 1_100,
+      category: "coffee",
+      needVsWant: "want",
+      bookingDate: "2026-11-11",
+      occurredAt: "2026-11-10T23:30:00.000Z",
+      idempotencyKey: "midnight-match",
+    },
+    { periods: casablanca.periodRepository },
+  );
+  assert.equal(matched.ok, true);
+
+  const conflicting = await createMovement(
+    ACTOR,
+    casablanca.repository,
+    {
+      kind: "expense",
+      amountMinor: 1_100,
+      category: "coffee",
+      needVsWant: "want",
+      bookingDate: "2026-11-10",
+      occurredAt: "2026-11-10T23:30:00.000Z",
+      idempotencyKey: "midnight-conflict",
+    },
+    { periods: casablanca.periodRepository },
+  );
+  assert.equal(conflicting.ok, false);
+  if (!conflicting.ok) {
+    assert.equal(conflicting.code, "validation");
+    assert.match(conflicting.errorMessage, /Booking date/);
+  }
+
+  const losAngeles = makeRepository({
+    periods: [periodRecord({ timezone: "America/Los_Angeles" })],
+  });
+  const laMatched = await createMovement(
+    ACTOR,
+    losAngeles.repository,
+    {
+      kind: "expense",
+      amountMinor: 1_100,
+      category: "coffee",
+      needVsWant: "want",
+      bookingDate: "2026-11-23",
+      occurredAt: "2026-11-23T08:30:00.000Z",
+      idempotencyKey: "la-match",
+    },
+    { periods: losAngeles.periodRepository },
+  );
+  assert.equal(laMatched.ok, true);
+
+  const laConflicting = await createMovement(
+    ACTOR,
+    losAngeles.repository,
+    {
+      kind: "expense",
+      amountMinor: 1_100,
+      category: "coffee",
+      needVsWant: "want",
+      bookingDate: "2026-11-22",
+      occurredAt: "2026-11-23T08:30:00.000Z",
+      idempotencyKey: "la-conflict",
+    },
+    { periods: losAngeles.periodRepository },
+  );
+  assert.equal(laConflicting.ok, false);
+
+  const dateOnly = await createMovement(
+    ACTOR,
+    casablanca.repository,
+    {
+      kind: "expense",
+      amountMinor: 900,
+      category: "coffee",
+      needVsWant: "want",
+      bookingDate: "2026-11-11",
+      idempotencyKey: "date-only",
+    },
+    { periods: casablanca.periodRepository },
+  );
+  assert.equal(dateOnly.ok, true);
+  if (dateOnly.ok) assert.equal(dateOnly.data.movement.occurredAt, null);
 });
 
 test("a real savings transfer reduces cash once and funds savings once; a correction restores invariants", async () => {
@@ -672,27 +907,34 @@ test("recorded cash is unavailable (never zero) when the opening is unknown", as
   }
 });
 
-test("create rejects a booking date outside the tracking period instead of moving it", async () => {
+test("create delegates a post-window booking to the atomic continuation insert", async () => {
   const period = periodRecord({ id: "period-1" });
   const { repository, periodRepository } = makeRepository({ periods: [period] });
 
+  // The read guard never supersedes anything; it asks the repository to
+  // continue and insert together, so a failed financial write cannot leave a
+  // durable period change. The injected clock keeps 2026-12-01 a past date in
+  // the period timezone so the continuation branch is reachable.
   const outside = await createMovement(
     ACTOR,
     repository,
     incomeInput({ bookingDate: "2026-12-01" }),
-    { periods: periodRepository },
+    {
+      periods: periodRepository,
+      now: new Date("2026-12-05T12:00:00.000Z"),
+    },
   );
-  assert.equal(outside.ok, false);
-  if (!outside.ok) {
-    assert.equal(outside.code, "validation");
-    assert.match(outside.errorMessage, /outside the tracking period/);
-  }
+  assert.equal(outside.ok, true);
+  if (outside.ok) assert.equal(outside.data.movement.periodId, null);
 
   const inside = await createMovement(
     ACTOR,
     repository,
-    incomeInput({ bookingDate: "2026-11-20" }),
-    { periods: periodRepository },
+    incomeInput({ bookingDate: "2026-11-20", idempotencyKey: "income-inside" }),
+    {
+      periods: periodRepository,
+      now: new Date("2026-12-05T12:00:00.000Z"),
+    },
   );
   assert.equal(inside.ok, true);
   if (inside.ok) assert.equal(inside.data.movement.periodId, "period-1");
@@ -700,7 +942,7 @@ test("create rejects a booking date outside the tracking period instead of movin
 
 test("update rejects moving the booking date outside the tracking period", async () => {
   const period = periodRecord({ id: "period-1" });
-  const { repository, periodRepository } = makeRepository({ periods: [period] });
+  const { repository, periodRepository, rows } = makeRepository({ periods: [period] });
   const created = await createMovement(ACTOR, repository, incomeInput(), {
     periods: periodRepository,
   });
@@ -716,6 +958,116 @@ test("update rejects moving the booking date outside the tracking period", async
   );
   assert.equal(outside.ok, false);
   if (!outside.ok) assert.equal(outside.code, "validation");
+  // The failed cross-window edit neither moved the row nor advanced the
+  // calendar; period_id still matches the original period.
+  assert.equal(rows[0]?.bookingDate, "2026-11-09");
+  assert.equal(rows[0]?.periodId, "period-1");
+});
+
+test("an amount-only correction survives after the source period is rolled over", async () => {
+  const period = periodRecord({
+    lifecycle: "rolled_over",
+    activeDate: "2026-11-30",
+  });
+  const { repository, periodRepository, rows } = makeRepository({ periods: [period] });
+  const historical = movement({
+    kind: "income",
+    direction: "in",
+    category: null,
+    needVsWant: null,
+    countsInDaily: false,
+    bookingDate: "2026-11-10",
+    idempotencyKey: "historical-income",
+    amountMinor: 20_000,
+  });
+  rows.push(historical);
+
+  const corrected = await updateMovement(
+    ACTOR,
+    repository,
+    historical.id,
+    {
+      version: 1,
+      amountMinor: 21_000,
+      bookingDate: historical.bookingDate,
+    },
+    { periods: periodRepository },
+  );
+  assert.equal(corrected.ok, true);
+  if (corrected.ok) {
+    assert.equal(corrected.data.amountMinor, 21_000);
+    assert.equal(corrected.data.bookingDate, "2026-11-10");
+    assert.equal(corrected.data.version, 2);
+  }
+});
+
+test("a historical movement date cannot be moved into a different period", async () => {
+  const period = periodRecord({
+    id: "historical-period",
+    lifecycle: "rolled_over",
+    activeDate: "2026-11-30",
+  });
+  const { repository, periodRepository, rows } = makeRepository({ periods: [period] });
+  const historical = movement({
+    kind: "income",
+    direction: "in",
+    category: null,
+    needVsWant: null,
+    countsInDaily: false,
+    bookingDate: "2026-11-10",
+    periodId: "historical-period",
+    idempotencyKey: "historical-date",
+  });
+  rows.push(historical);
+
+  const moved = await updateMovement(
+    ACTOR,
+    repository,
+    historical.id,
+    { version: 1, bookingDate: "2026-12-05" },
+    { periods: periodRepository },
+  );
+  assert.equal(moved.ok, false);
+  if (!moved.ok) {
+    assert.equal(moved.code, "validation");
+    assert.match(moved.errorMessage, /original booking date/);
+  }
+});
+
+test("an occurredAt change cannot smuggle an old bookingDate past the guard", async () => {
+  const period = periodRecord({
+    id: "historical-period",
+    lifecycle: "rolled_over",
+    activeDate: "2026-11-30",
+  });
+  const { repository, periodRepository, rows } = makeRepository({ periods: [period] });
+  const historical = movement({
+    kind: "income",
+    direction: "in",
+    category: null,
+    needVsWant: null,
+    countsInDaily: false,
+    bookingDate: "2026-11-10",
+    periodId: "historical-period",
+    idempotencyKey: "historical-dual-date",
+  });
+  rows.push(historical);
+
+  const moved = await updateMovement(
+    ACTOR,
+    repository,
+    historical.id,
+    {
+      version: 1,
+      bookingDate: "2026-11-10",
+      occurredAt: "2026-12-05T12:00:00.000Z",
+    },
+    { periods: periodRepository },
+  );
+  assert.equal(moved.ok, false);
+  if (!moved.ok) {
+    assert.equal(moved.code, "validation");
+  }
 });
 
 test("listMovements returns the effective cutoff and only that owner's rows", async () => {

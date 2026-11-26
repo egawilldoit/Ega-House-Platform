@@ -49,5 +49,20 @@ test("forwards the acceptance note for a savings difference", async () => {
   const data = form();
   data.set("acceptClosingDifferenceNote", "Savings transfer was delayed");
   expect(await rolloverMoneyPeriodAction(data)).toEqual({ ok: true, error: null });
-  expect(mocks.rollover).toHaveBeenCalledWith(expect.anything(), expect.anything(), expect.objectContaining({ acceptClosingDifferenceNote: "Savings transfer was delayed" }), expect.anything(), expect.anything());
+  expect(mocks.rollover).toHaveBeenCalledWith(expect.anything(), expect.anything(), expect.objectContaining({ acceptClosingDifferenceNote: "Savings transfer was delayed", acceptUnverifiedDaysNote: null }), expect.anything(), expect.anything());
+});
+
+test("forwards the retained unverified-days acknowledgment", async () => {
+  const data = form();
+  data.set("acceptUnverifiedDaysNote", "Reviewed Nov 21-22 as unverified");
+  expect(await rolloverMoneyPeriodAction(data)).toEqual({ ok: true, error: null });
+  expect(mocks.rollover).toHaveBeenCalledWith(
+    expect.anything(),
+    expect.anything(),
+    expect.objectContaining({
+      acceptUnverifiedDaysNote: "Reviewed Nov 21-22 as unverified",
+    }),
+    expect.anything(),
+    expect.anything(),
+  );
 });

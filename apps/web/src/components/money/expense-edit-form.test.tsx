@@ -71,6 +71,36 @@ describe("ExpenseEditForm", () => {
     expect(submitUpdate.mock.calls[0]?.[1]).not.toHaveProperty("occurredAt");
   });
 
+  it("keeps the date read-only for historical periods and still saves an amount correction", async () => {
+    const submitUpdate = vi.fn<ExpenseEditFormProps["submitUpdate"]>(async () => ({
+      ok: true as const,
+      expense: BASE_EXPENSE,
+    }));
+    await act(async () =>
+      root.render(
+        <ExpenseEditForm
+          ownerKey="owner-a"
+          expense={BASE_EXPENSE}
+          canChangeOccurredAt={false}
+          submitUpdate={submitUpdate}
+          fetchLatest={vi.fn()}
+        />,
+      ),
+    );
+    expect(
+      container.querySelector(`#expense-edit-occurred-${BASE_EXPENSE.id}`),
+    ).toBeNull();
+    expect(container.textContent).toContain(
+      "Historical periods keep their original date",
+    );
+    await act(async () => setAmount("30.00"));
+    await save();
+    expect(submitUpdate.mock.calls[0]?.[1]).not.toHaveProperty("occurredAt");
+    expect(submitUpdate.mock.calls[0]?.[1]).toMatchObject({
+      amountMinor: 3000,
+    });
+  });
+
   it("ignores a pending save after changing expense", async () => {
     let resolve!: (value: ExpenseEditSubmitResult) => void;
     const submitUpdate = vi.fn(() => new Promise<ExpenseEditSubmitResult>((done) => { resolve = done; }));

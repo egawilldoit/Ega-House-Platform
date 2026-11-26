@@ -2,6 +2,9 @@ import type { AuthInfo } from "@modelcontextprotocol/server";
 import type { CallToolResult } from "@modelcontextprotocol/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import type { ExpenseCategory } from "@ega/domain/expenses";
+import { defaultCountsInDaily } from "@ega/domain/money";
+
 import type { McpDatabase } from "@/lib/mcp/mcp-database.types";
 import {
   acceptedContent,
@@ -64,6 +67,19 @@ function resultFromPayload(payload: Record<string, unknown>): CallToolResult {
   return {
     content: [{ type: "text", text: JSON.stringify(payload) }],
     structuredContent: payload,
+  };
+}
+
+function inProgressMutationResult(): CallToolResult {
+  return {
+    ...resultFromPayload({
+      ok: false,
+      error: {
+        code: "IN_PROGRESS",
+        message: "This operation is already executing; retry shortly.",
+      },
+    }),
+    isError: true,
   };
 }
 
@@ -136,22 +152,33 @@ async function withExclusiveMutation(
   operationId: string,
   semanticInput: Record<string, unknown>,
   mutate: () => Promise<CallToolResult>,
+  compatibilityInputs: readonly Record<string, unknown>[] = [],
 ): Promise<CallToolResult> {
   const fingerprint = canonicalMutationFingerprint(toolName, semanticInput);
   const claim = await claimMcpMutation(client, toolName, operationId, fingerprint);
   if (claim.outcome === "IN_PROGRESS") {
-    return {
-      ...resultFromPayload({
-        ok: false,
-        error: { code: "IN_PROGRESS", message: "This operation is already executing; retry shortly." },
-      } as unknown as Record<string, unknown>),
-      isError: true,
-    };
+    return inProgressMutationResult();
   }
   if (claim.outcome === "REPLAY") {
     return resultFromPayload(claim.result);
   }
   if (claim.outcome === "CONFLICT") {
+    // A conflict can be a genuinely changed request or a pre-change receipt
+    // that normalized an omitted field differently. Compatibility fingerprints
+    // only look up an existing receipt; they never claim or mutate, so a
+    // request that matches no retained receipt still reports CONFLICT.
+    for (const input of compatibilityInputs) {
+      const legacyFingerprint = canonicalMutationFingerprint(toolName, input);
+      if (legacyFingerprint === fingerprint) continue;
+      const legacy = await claimMcpMutation(
+        client,
+        toolName,
+        operationId,
+        legacyFingerprint,
+      );
+      if (legacy.outcome === "IN_PROGRESS") return inProgressMutationResult();
+      if (legacy.outcome === "REPLAY") return resultFromPayload(legacy.result);
+    }
     return {
       ...resultFromPayload({
         ok: false,
@@ -993,6 +1020,7 @@ export function createMcpWriteToolHandlers(
         settingsOverrides?: Record<string, unknown> | null;
         allowUncoveredDays?: boolean;
         acceptClosingDifferenceNote?: string | null;
+        acceptUnverifiedDaysNote?: string | null;
       },
     ): Promise<CallToolResult> {
       try {
@@ -1010,6 +1038,8 @@ export function createMcpWriteToolHandlers(
           allowUncoveredDays: input.allowUncoveredDays ?? false,
           acceptClosingDifferenceNote:
             input.acceptClosingDifferenceNote ?? null,
+          acceptUnverifiedDaysNote:
+            input.acceptUnverifiedDaysNote ?? null,
         };
         return await withExclusiveMutation(
           client,
@@ -1050,8 +1080,8 @@ export function createMcpWriteToolHandlers(
         assertWritesEnabled(writesEnabled);
         requireMcpPermission(authInfo, "personal_ops.write");
         const client = dependencies.createUserClient(authInfo!.token);
-        const finalPurchases = (input.finalPurchases ?? [])
-          .map((purchase) => ({
+        const receiptPurchases = (input.finalPurchases ?? []).map(
+          (purchase) => ({
             amountMinor: purchase.amountMinor,
             category: purchase.category,
             note: canonicalReceiptText(purchase.note),
@@ -1059,8 +1089,32 @@ export function createMcpWriteToolHandlers(
             needVsWant: purchase.needVsWant,
             paymentMethod: purchase.paymentMethod ?? null,
             purpose: purchase.purpose ?? null,
-            countsInDaily: purchase.countsInDaily ?? true,
+            countsInDaily: purchase.countsInDaily,
             idempotencyKey: purchase.idempotencyKey,
+          }),
+        );
+        // New receipts bind the effective daily classification, matching the
+        // application close fingerprint. The pre-change receipt normalized an
+        // omitted flag to null; that shape is only a compatibility lookup for
+        // an existing receipt and never creates a new one.
+        const semanticPurchases = receiptPurchases
+          .map(({ countsInDaily, ...purchase }) => ({
+            ...purchase,
+            countsInDaily:
+              countsInDaily ??
+              defaultCountsInDaily(
+                "expense",
+                purchase.purpose,
+                purchase.category as ExpenseCategory,
+              ),
+          }))
+          .sort((left, right) =>
+            left.idempotencyKey.localeCompare(right.idempotencyKey),
+          );
+        const legacyPurchases = receiptPurchases
+          .map(({ countsInDaily, ...purchase }) => ({
+            ...purchase,
+            countsInDaily: countsInDaily ?? null,
           }))
           .sort((left, right) =>
             left.idempotencyKey.localeCompare(right.idempotencyKey),
@@ -1074,9 +1128,18 @@ export function createMcpWriteToolHandlers(
             version: input.version,
             date: input.date ?? null,
             note: canonicalReceiptText(input.note),
-            finalPurchases,
+            finalPurchases: semanticPurchases,
           },
           () => moneyHandlers.closeMoneyDay(authInfo, input as never),
+          [
+            {
+              periodId: input.periodId ?? null,
+              version: input.version,
+              date: input.date ?? null,
+              note: canonicalReceiptText(input.note),
+              finalPurchases: legacyPurchases,
+            },
+          ],
         );
       } catch (error) {
         return errorResult(error);

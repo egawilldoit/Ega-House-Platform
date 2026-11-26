@@ -111,6 +111,7 @@ export type McpMoneyRolloverInput = Readonly<{
   settingsOverrides?: Record<string, unknown> | null;
   allowUncoveredDays?: boolean;
   acceptClosingDifferenceNote?: string | null;
+  acceptUnverifiedDaysNote?: string | null;
 }>;
 
 type ToolPayload = {
@@ -227,38 +228,59 @@ export function createMcpMoneyPeriodHandlers(
         );
         if (!result.ok) return mapApplicationError(result);
         const state = result.data;
+        const cutoffDate =
+          state.dateResolution.projectionCutoffDate ??
+          state.period?.activeDate ??
+          state.localToday;
         const reserveResult = state.period
           ? await getCurrentMoneyReserves(actor, {
               period: state.period,
               periods: new SupabaseMoneyPeriodRepository(client as never),
               budgets: new SupabaseMoneyBudgetRepository(client as never),
+              cutoffDate,
+              localToday: state.localToday,
             })
           : null;
         const reserves = reserveResult?.ok
           ? reserveResult.data
-          : { available: false as const, currency: "MAD" as const, reason: "reserve_inputs_incomplete", cutoffDate: state.period?.activeDate ?? now.toISOString().slice(0, 10) };
+          : {
+              available: false as const,
+              currency: "MAD" as const,
+              reason: "reserve_inputs_incomplete",
+              cutoffDate,
+              dailyReference: {
+                available: false as const,
+                currency: "MAD" as const,
+                date: cutoffDate,
+                basis: null,
+                reason: "reserve_inputs_incomplete",
+              },
+            };
+        const dailyReference = reserves.dailyReference;
         return resultFromPayload({
           ok: true,
           ...state,
           analytics: {
             dayStartBaseline: state.dayStartBaseline,
-            setupComplete: state.dayStartBaseline
-              ? state.dayStartBaseline.unavailableReason !== "initial_setup_incomplete"
-              : null,
-            setupNextStep: state.dayStartBaseline?.unavailableReason === "initial_setup_incomplete"
-              ? "Add initial obligations, then explicitly call ega_money_rebase_day_start_baseline to complete setup and record the baseline. An empty obligation list is valid if there are none."
-              : null,
-            available: state.dayStartBaseline?.dailyReference?.available === true,
-            historical: state.dayStartBaseline?.dailyReference?.historical === true,
-            allowanceAvailable: state.dayStartBaseline?.dailyReference?.allowanceAvailable === true,
-            reason: state.dayStartBaselineUnavailable
-              ? "baseline_unavailable"
-              : state.dayStartBaseline?.dailyReference && !state.dayStartBaseline.dailyReference.available
-                ? state.dayStartBaseline.dailyReference.reason
+            projectionCutoffDate: state.dateResolution.projectionCutoffDate,
+            projectionBasis: state.dateResolution.projectionBasis,
+            projectionClampedToPeriod:
+              state.dateResolution.projectionClampedToPeriod,
+            setupComplete: state.period?.dayStartSetupCompleted ?? null,
+            setupNextStep:
+              state.period && !state.period.dayStartSetupCompleted
+                ? "Add initial obligations, then explicitly call ega_money_rebase_day_start_baseline to complete setup and record the baseline. An empty obligation list is valid if there are none."
                 : null,
-            method: state.dayStartBaseline?.dailyReference?.available
-              ? state.dayStartBaseline.dailyReference.algorithm
-              : "safe-flexible-start-of-day-v1",
+            available: dailyReference.available === true,
+            historical: dailyReference.available === true && dailyReference.historical === true,
+            allowanceAvailable:
+              dailyReference.available === true && dailyReference.allowanceAvailable === true,
+            reason: dailyReference.available
+              ? null
+              : dailyReference.reason === "no_days_left"
+                ? "no_days_left"
+                : "baseline_unavailable",
+            method: dailyReference.available ? dailyReference.algorithm : null,
             reserves,
           },
         });
@@ -446,6 +468,8 @@ export function createMcpMoneyPeriodHandlers(
             allowUncoveredDays: input.allowUncoveredDays ?? false,
             acceptClosingDifferenceNote:
               input.acceptClosingDifferenceNote ?? null,
+            acceptUnverifiedDaysNote:
+              input.acceptUnverifiedDaysNote ?? null,
           },
           input.operationId,
           { now, timezone, surface: "mcp" },
