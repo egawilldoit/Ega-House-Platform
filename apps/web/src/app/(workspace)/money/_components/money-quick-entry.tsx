@@ -225,7 +225,7 @@ export function MoneyQuickEntry({
               className="h-11 w-full"
             />
             <p className="text-xs text-[color:var(--muted-foreground)]">
-              Owner-local date. A later valid date works even when earlier days are unclosed.
+              Date in the tracking period timezone. A later valid date works even when earlier days are unclosed.
             </p>
           </div>
           {kind === "expense" ? (

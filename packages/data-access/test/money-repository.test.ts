@@ -717,6 +717,61 @@ test("routine movement creation uses the atomic continue-and-insert RPC", async 
   assert.equal(fake.calls.length, 0, "the atomic path never issues a plain insert");
 });
 
+test("a resolved routine period also uses the atomic lifecycle lock, not a direct insert", async () => {
+  const ROUTINE_ROW = {
+    id: "00000000-0000-4000-8000-000000000097",
+    kind: "expense",
+    direction: "out",
+    occurred_at: null,
+    booking_date: "2026-11-25",
+    amount_minor: 900,
+    currency: "MAD",
+    category: "coffee",
+    note: null,
+    merchant: null,
+    need_vs_want: "want",
+    payment_method: null,
+    purpose: "flexible",
+    counts_in_daily: true,
+    period_id: PERIOD_ID,
+    idempotency_key: "resolved-1",
+    version: 1,
+    deleted_at: null,
+    created_at: "2026-11-25T10:00:00.000Z",
+    updated_at: "2026-11-25T10:00:00.000Z",
+  };
+  const fake = new FakeSupabase([{ data: ROUTINE_ROW, error: null }]);
+  const result = await new SupabaseMoneyRepository(
+    fake as unknown as SupabaseClient,
+  ).create(ACTOR, {
+    values: {
+      kind: "expense",
+      direction: "out",
+      amountMinor: 900,
+      category: "coffee",
+      note: null,
+      merchant: null,
+      needVsWant: "want",
+      paymentMethod: null,
+      purpose: "flexible",
+      countsInDaily: true,
+      bookingDate: "2026-11-25",
+      occurredAt: null,
+      idempotencyKey: "resolved-1",
+    },
+    createFingerprint: "e".repeat(64),
+    periodId: PERIOD_ID,
+    requiresContinuation: false,
+  });
+  assert.equal(result.ok, true);
+  if (result.ok) assert.equal(result.value.periodId, PERIOD_ID);
+  assert.equal(fake.rpcCalls.length, 1);
+  assert.equal(fake.rpcCalls[0]?.name, "money_record_routine_movement");
+  assert.equal(fake.rpcCalls[0]?.params.p_booking_date, "2026-11-25");
+  assert.equal("period_id" in (fake.rpcCalls[0]?.params ?? {}), false);
+  assert.equal(fake.calls.length, 0, "a resolved routine write never issues a plain insert");
+});
+
 test("movement list applies the kind exclusion before the bounded page window", async () => {
   const fake = new FakeSupabase();
   fake.push("personal_expenses", { data: [], error: null });

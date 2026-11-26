@@ -1356,6 +1356,65 @@ test("a retained day-start baseline keeps its evidence and targets", async () =>
   assert.deepEqual(money.ensured, []);
 });
 
+test("a retained day-start baseline survives a missing current budget plan", async () => {
+  const money = makeRepository();
+  const created = await createMoneyPeriod(ACTOR, money.repository, CREATE_BODY, {
+    now: NOW,
+    timezone: "Africa/Casablanca",
+  });
+  assert.equal(created.ok, true);
+  if (!created.ok) return;
+  money.setBaseline("2026-11-23", {
+    date: "2026-11-23",
+    version: 3,
+    availability: "available",
+    unavailableReason: null,
+    cashMinor: 100_000,
+    commitmentsMinor: 0,
+    savingsTargetMinor: 10_000,
+    savingsFundedMinor: 0,
+    emergencyTargetMinor: 5_000,
+    emergencyUsedMinor: 0,
+  });
+  money.setReserveInputs({
+    available: true,
+    recordedCashMinor: 115_000,
+    unpaidCommitmentsMinor: 0,
+    savingsFundedMinor: 0,
+    emergencyUsedMinor: 0,
+  });
+  money.setDailyTotal({ amountMinor: 5_000, complete: true });
+
+  const reserves = await getCurrentMoneyReserves(ACTOR, {
+    period: created.data.period,
+    periods: money.repository,
+    budgets: {
+      async getPlan() {
+        return { ok: true as const, value: null };
+      },
+    } as unknown as MoneyBudgetRepository,
+    cutoffDate: "2026-11-23",
+    localToday: "2026-11-23",
+  });
+  assert.equal(reserves.ok, true);
+  if (!reserves.ok) return;
+  // Current reserves still need the live plan, so they stay explicitly
+  // unavailable instead of inventing targets.
+  assert.equal(reserves.data.available, false);
+  if (reserves.data.available) return;
+  assert.equal(reserves.data.reason, "reserve_inputs_incomplete");
+  // Retained day-start guidance is independent evidence and must survive the
+  // missing plan; it keeps its own historical targets.
+  const daily = reserves.data.dailyReference;
+  assert.equal(daily.available, true);
+  if (!daily.available) return;
+  assert.equal(daily.basis, "day_start_baseline");
+  assert.equal(daily.safePoolMinor, 85_000);
+  assert.equal(daily.referenceMinor, 10_625);
+  assert.equal(daily.dailyRemainingMinor, 5_625);
+  assert.deepEqual(money.baselineReads, ["2026-11-23"]);
+});
+
 test("historical and start-of-period cutoffs never fabricate a derived baseline", async () => {
   const money = makeRepository();
   const created = await createMoneyPeriod(ACTOR, money.repository, CREATE_BODY, {
@@ -1726,6 +1785,7 @@ function expenseRepository() {
     | Readonly<{
         periodId: string | null;
         requiresContinuation: boolean;
+        bookingDate: string | undefined;
       }>
     | null = null;
   const repository: ExpenseRepository = {
@@ -1736,6 +1796,7 @@ function expenseRepository() {
       lastCreate = {
         periodId: input.periodId ?? null,
         requiresContinuation: input.requiresContinuation === true,
+        bookingDate: input.periodBookingDate ?? input.values.bookingDate,
       };
       created = {
         id: "eeeeeeee-0000-4000-8000-000000000001",
@@ -1846,6 +1907,7 @@ test("routine expense creation delegates continuation to the atomic insert", asy
   assert.deepEqual(expenses.lastCreate(), {
     periodId: created.data.period.id,
     requiresContinuation: false,
+    bookingDate: "2026-11-03",
   });
 
   // A date before the tracking window is a historical correction, never an
@@ -1905,6 +1967,7 @@ test("routine expense creation delegates continuation to the atomic insert", asy
   assert.deepEqual(expenses.lastCreate(), {
     periodId: null,
     requiresContinuation: true,
+    bookingDate: "2026-11-08",
   });
   // The read guard alone never superseded the source.
   assert.equal(
@@ -1967,6 +2030,7 @@ test("a non-finalized superseded period still accepts its own routine dates", as
   assert.deepEqual(expenses.lastCreate(), {
     periodId: sourceId,
     requiresContinuation: false,
+    bookingDate: "2026-11-20",
   });
 
   // Once the superseded period is finalized, its range is historical only.
@@ -1989,6 +2053,78 @@ test("a non-finalized superseded period still accepts its own routine dates", as
   if (!afterFinalization.ok) {
     assert.equal(afterFinalization.code, "validation");
   }
+});
+
+test("a timestamped backfill derives its day in the superseded period timezone", async () => {
+  const money = makeRepository();
+  const expenses = expenseRepository();
+  // The retained source owns Pacific/Kiritimati, while the later tracking
+  // period uses America/Los_Angeles. The instant is 1 November in the source
+  // period but 31 October in the tracking zone, a date that no period owns.
+  // Resolving the day in the tracking zone would reject a valid backfill.
+  const created = await createMoneyPeriod(
+    ACTOR,
+    money.repository,
+    {
+      ...CREATE_BODY,
+      startDate: "2026-11-01",
+      endDate: "2026-11-30",
+      timezone: "Pacific/Kiritimati",
+      activeDate: "2026-11-01",
+      opening: { ...CREATE_BODY.opening, cutoffDate: "2026-10-31" },
+    },
+    { now: NOW, timezone: "Pacific/Kiritimati" },
+  );
+  assert.equal(created.ok, true);
+  if (!created.ok) return;
+
+  const sourceId = created.data.period.id;
+  const source = money.periods.get(sourceId)!;
+  money.periods.set(sourceId, {
+    ownerUserId: ACTOR.userId,
+    period: {
+      ...source.period,
+      lifecycle: "superseded",
+      version: source.period.version + 1,
+    },
+  });
+  money.periods.set("ffffffff-ffff-4fff-8fff-ffffffffffff", {
+    ownerUserId: ACTOR.userId,
+    period: {
+      ...source.period,
+      id: "ffffffff-ffff-4fff-8fff-ffffffffffff",
+      startDate: "2026-12-01",
+      endDate: "2026-12-31",
+      activeDate: "2026-12-01",
+      timezone: "America/Los_Angeles",
+      lifecycle: "tracking",
+      initialization: "uninitialized",
+      openingMovementId: null,
+      provenance: {
+        opening: null,
+        createdFrom: "web",
+        continuedFrom: sourceId,
+      },
+    },
+  });
+
+  const backfill = await createExpense(
+    ACTOR,
+    expenses.repository,
+    {
+      ...EXPENSE_BODY,
+      occurredAt: "2026-11-01T05:00:00.000Z",
+      idempotencyKey: "expense-guard-superseded-timezone",
+    },
+    { periods: money.repository, now: NOW },
+  );
+  assert.equal(backfill.ok, true);
+  if (backfill.ok) assert.equal(backfill.data.expense.periodId, sourceId);
+  assert.deepEqual(expenses.lastCreate(), {
+    periodId: sourceId,
+    requiresContinuation: false,
+    bookingDate: "2026-11-01",
+  });
 });
 
 test("a non-finalized superseded period initializes only its missing opening", async () => {

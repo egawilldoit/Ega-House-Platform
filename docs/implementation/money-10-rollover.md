@@ -30,6 +30,14 @@ integrated.
   predecessor/early-finalization blockers. The routine RPC is the only writer
   that can start a later tracking window from a routine write; reads never call
   it. A non-finalized superseded period still accepts its own routine dates.
+  Every routine write with a resolved period uses that RPC so a rollover that
+  commits between application resolution and insert cannot be bypassed by a
+  direct stale insert. The routine write, continuation and rollover adoption
+  share one owner-scoped ascending period lock, which also removes the
+  continuation/adoption deadlock. Rollover stores opening evidence built from
+  the validated cutoff and the database clock, preserves an adopted opening's
+  correction history, records an explicit `evidenceUpgrade` when an initialized
+  opening becomes reconciled, and refuses a cutoff conflict.
 - Wire contracts (`packages/contracts/src/money-rollover.ts`), Hono routes
   (`GET /api/money/periods/:id/rollover/preview`,
   `POST /api/money/periods/:id/rollover`), typed api-client methods, a web
@@ -111,12 +119,28 @@ integrated.
   rebase/complete-setup action before the first successor day is closed; the
   current MONEY-08 rebase accepts a past active date in a tracking period, so a
   late rollover can still complete setup without moving the date to today.
-- `p_provenance` is composed by the application and is not independently
-  revalidated by the rollover RPC; a direct SQL caller can pass arbitrary JSON,
-  as with the other Money RPCs. The RPC does validate every input that changes
-  cash, policy, or the close/reconciliation gate. Continuation/adoption identity
-  is never read from this JSON: it comes from the real adjacent date chain and
-  the exact requested range.
+- `p_provenance` may carry descriptive surface/correction JSON, but retained
+  opening evidence is not trusted from it: the RPC builds `opening.source`,
+  `cutoffDate` and `recordedAt` from the validated mode/cutoff and the database
+  clock, and refuses a provenance cutoff that disagrees with the validated
+  cutoff. A `carry_forward` opening must use exactly the source period end as
+  its scalar cutoff, so a carried balance cannot be stored beside a different
+  retained close date. Continuation/adoption identity is never read from this
+  JSON: it comes from the real adjacent date chain and the exact requested
+  range. Other cash, policy and close/reconciliation inputs are validated as
+  before.
+- An adopted opening with an equal amount keeps its correction history and
+  verified evidence. Upgrading an initialized opening to reconciled records an
+  `evidenceUpgrade` with the previous and new evidence instead of replacing the
+  provenance; a retained verified cutoff that differs from the approved cutoff
+  is a conflict. A later normal opening correction preserves that recorded
+  upgrade history instead of dropping it with the replaced active fields.
+- A retained available day-start baseline remains authoritative when the
+  current budget plan is missing; the plan is required only for the derived
+  start-of-day path. New MCP close receipts bind the effective `countsInDaily`
+  classification. Receipts written before the explicit-null change still replay
+  when that field is omitted, while a changed receipt shape (including explicit
+  `true` against a legacy omitted flag) conflicts.
 - A continued successor that already has an opening is never overwritten by
   finalization. The approved amount must match exactly; a differing amount is a
   conflict, and a reconciled opening cannot be downgraded.
@@ -133,9 +157,11 @@ integrated.
   createExpense/continuation guard, atomic delegation, superseded-range
   backfill, cross-window update refusal, predecessor/early-finalization
   blockers, adoption range validation and the superseded lifecycle vocabulary.
-  The data-access suite proves the atomic continue-and-insert RPC receives the
-  guard-resolved booking day. The receipt test proves an omitted
-  `countsInDaily` hashes differently from an explicit value.
+  The data-access suite proves every routine write with a resolved period uses
+  the atomic RPC (not a direct insert) and receives the guard-resolved booking
+  day. The receipt test proves a pre-change close receipt with an omitted
+  `countsInDaily` still replays, while an explicit `false` or another changed
+  field conflicts.
 - MONEY-001-A F04 focused checks in this fix pass: `npm run application:test`
   (807 passed) and the money-focused web Vitest suite (85 passed) pass;
   `application` and `web` typechecks pass; ESLint on every changed TS/TSX file
@@ -143,6 +169,23 @@ integrated.
   non-finalized superseded period, tracking/superseded same-day finalization
   refusal in both opening modes, predecessor/early-finalization blockers, and
   adoption range validation.
+- The prior MONEY-001-A F04 review-fix round passed `npm run
+  application:test` (878 passed), `npm run data-access:test` (285 passed) and
+  the money-focused web Vitest suite (233 passed, 3 skipped); `application`,
+  `data-access` and `web` typechecks and changed-file ESLint passed. The
+  application and web tests cover the retained day-start baseline with a
+  missing current plan, the tracking-period quick entry default across a
+  divergent owner/period midnight, and the legacy omitted-`countsInDaily`
+  receipt replay.
+- The Sol medium review-fix round passes `npm run application:test` (879
+  passed), `npm run data-access:test` (285 passed) and 185 money-focused web
+  Vitest tests (3 skipped); `application`, `data-access` and `web` typechecks,
+  changed-file ESLint and `check:architecture` pass. New coverage proves a
+  timestamped backfill into a superseded period uses that period's timezone, a
+  normal opening correction preserves the adoption `evidenceUpgrade`, new MCP
+  close receipts bind the effective `countsInDaily` while legacy omitted-flag
+  receipts replay and explicit `true` conflicts, and an out-of-cutoff
+  carry-forward is refused before any receipt.
 - The disposable PostgreSQL proofs pass against `pg17dev` (all 105 migrations
   through `0112_money_001_a_period_continuity`):
   `money-001-a-period-continuity-verify.mjs` (continuation through the atomic
@@ -150,7 +193,13 @@ integrated.
   backfill, concurrent routine writes converging on one successor,
   unknown-opening initialization with retained `continuedFrom` provenance then
   adoption, out-of-period preflight/correction/soft-delete, superseded/tracking
-  same-day refusal, adoption conflicts and forged provenance),
+  same-day refusal, adoption conflicts and forged provenance, a paused routine
+  resolution that is refused after rollover with no movement/receipt,
+  equal-amount adoption that preserves corrections and records the evidence
+  upgrade, a normal opening correction that preserves the recorded upgrade, a
+  provenance/retained-cutoff conflict that leaves no mutation, a carried
+  opening cutoff that differs from the source end and leaves no receipt, and a
+  synchronized routine/rollover adoption with no deadlock),
   `money-001-a-optional-close-rollover-verify.mjs` (database-clock-anchored
   optional close and reviewed finalization), and
   `money-10-rollover-verify.mjs` (rollover, verified opening, early

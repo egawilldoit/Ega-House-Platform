@@ -1,4 +1,7 @@
-import { zonedWallTimeToUtcIso } from "@ega/domain/time-context";
+import {
+  getLocalDateInTimezone,
+  zonedWallTimeToUtcIso,
+} from "@ega/domain/time-context";
 
 /**
  * Convert an owner-entered `datetime-local` wall time into the financial
@@ -27,6 +30,27 @@ export function moneyWriteTimezone(input: Readonly<{
 }>): string {
   const periodTimezone = input.trackingPeriodTimezone?.trim();
   return periodTimezone ? periodTimezone : input.ownerTimezone;
+}
+
+/**
+ * The default booking day for a new routine entry. The tracking Money period
+ * owns the calendar even when the owner's general time context is on the other
+ * side of midnight; the owner zone is only the fallback before any period
+ * exists. This keeps the prefilled date aligned with the server's
+ * period-timezone booking rule.
+ */
+export function moneyDefaultBookingDate(input: Readonly<{
+  now: Date;
+  trackingPeriodTimezone: string | null;
+  ownerTimezone: string;
+}>): string {
+  return getLocalDateInTimezone(
+    input.now,
+    moneyWriteTimezone({
+      trackingPeriodTimezone: input.trackingPeriodTimezone,
+      ownerTimezone: input.ownerTimezone,
+    }),
+  );
 }
 
 export function moneyWallTimeToOccurredAt(input: Readonly<{

@@ -208,7 +208,12 @@ export class SupabaseExpenseRepository implements ExpenseRepository {
     actor: AuthenticatedActor,
     input: ExpenseCreateRecordInput,
   ): Promise<RepositoryResult<PersonalExpense>> {
-    if (input.requiresContinuation) {
+    // Every routine write with a resolved period goes through the atomic RPC.
+    // A stale application resolution must not land in a period that a
+    // concurrent rollover finalized; the RPC revalidates the lifecycle under
+    // the shared owner lock. The direct insert stays only for the legacy
+    // no-period account, where no lifecycle can race.
+    if (input.requiresContinuation || typeof input.periodId === "string") {
       const values = input.values;
       const result = await recordRoutineMovement(this.supabase, {
         bookingDate: input.periodBookingDate ?? values.bookingDate,

@@ -522,6 +522,31 @@ test("routine expense creation uses the resolved day in the atomic RPC", async (
   assert.equal(fake.calls.length, 0);
 });
 
+test("a resolved routine period also uses the atomic lifecycle lock, not a direct insert", async () => {
+  const stored = {
+    ...ROW,
+    booking_date: "2026-11-25",
+    period_id: ID,
+    purpose: null,
+    counts_in_daily: true,
+  };
+  const fake = new FakeSupabase([], [{ data: stored, error: null }]);
+  const result = await repository(fake).create(ACTOR, {
+    values: { ...CREATE_VALUES, bookingDate: "2026-11-25" },
+    createFingerprint: FINGERPRINT,
+    periodId: ID,
+    periodBookingDate: "2026-11-25",
+    requiresContinuation: false,
+    countsInDaily: true,
+  });
+  assert.equal(result.ok, true);
+  if (result.ok) assert.equal(result.value.periodId, ID);
+  assert.equal(fake.rpcCalls.length, 1);
+  assert.equal(fake.rpcCalls[0]?.name, "money_record_routine_movement");
+  assert.equal(fake.rpcCalls[0]?.params.p_booking_date, "2026-11-25");
+  assert.equal(fake.calls.length, 0, "a resolved routine write never issues a plain insert");
+});
+
 test("summarize failure is a failure, never a zero-shaped success", async () => {
   const fake = new FakeSupabase([{ data: null, error: { code: "42501", message: "denied" } }]);
   const result = await repository(fake).summarize(ACTOR, {

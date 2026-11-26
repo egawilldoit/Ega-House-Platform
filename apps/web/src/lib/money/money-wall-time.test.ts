@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  moneyDefaultBookingDate,
   moneyWallTimeToOccurredAt,
   moneyWriteTimezone,
 } from "./money-wall-time";
@@ -25,6 +26,27 @@ describe("moneyWriteTimezone", () => {
         ownerTimezone: "Africa/Casablanca",
       }),
     ).toBe("Africa/Casablanca");
+  });
+});
+
+describe("moneyDefaultBookingDate", () => {
+  it("uses the tracking period's day even when the owner is before midnight", () => {
+    // 00:30 on Nov 26 in Casablanca is still 16:30 on Nov 25 in Los Angeles.
+    const now = new Date("2026-11-26T00:30:00.000Z");
+    expect(
+      moneyDefaultBookingDate({
+        now,
+        trackingPeriodTimezone: "Africa/Casablanca",
+        ownerTimezone: "America/Los_Angeles",
+      }),
+    ).toBe("2026-11-26");
+    expect(
+      moneyDefaultBookingDate({
+        now,
+        trackingPeriodTimezone: null,
+        ownerTimezone: "America/Los_Angeles",
+      }),
+    ).toBe("2026-11-25");
   });
 });
 

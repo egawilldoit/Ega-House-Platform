@@ -32,6 +32,34 @@ ALTER TABLE public.money_periods
 REVOKE UPDATE ("lifecycle") ON TABLE public.money_periods FROM authenticated;
 --> statement-breakpoint
 
+-- One owner-scoped lock order shared by the routine write, the continuation and
+-- the explicit rollover. Taking every period in ascending (start_date, id)
+-- order first means a later single-row lock can only wait behind a transaction
+-- that already holds the whole set; no path can hold a later period and then
+-- wait for an earlier one. In particular, a routine write must never hold the
+-- tracking row while the rollover holds an earlier source and waits for that
+-- same tracking row (the old continuation/adoption deadlock).
+CREATE OR REPLACE FUNCTION public.money_lock_owner_periods(p_owner uuid)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $period_lock$
+BEGIN
+  IF p_owner IS NULL THEN
+    RAISE EXCEPTION 'An owner is required to lock Money periods.' USING ERRCODE = '42501';
+  END IF;
+  PERFORM period."id"
+  FROM public.money_periods AS period
+  WHERE period."owner_user_id" = p_owner
+  ORDER BY period."start_date", period."id"
+  FOR UPDATE;
+END
+$period_lock$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION public.money_lock_owner_periods(uuid) FROM PUBLIC, anon, authenticated;
+--> statement-breakpoint
+
 -- Period update guard: keep every existing invariant, add the one controlled
 -- lifecycle extension and keep the successor link append-only.
 CREATE OR REPLACE FUNCTION public.enforce_money_period_update()
@@ -338,6 +366,7 @@ DECLARE
   v_period public.money_periods;
   v_opening public.personal_expenses;
   v_previous_active_date date;
+  v_merged_provenance jsonb;
 BEGIN
   IF v_owner IS NULL THEN
     RAISE EXCEPTION 'Authentication is required.' USING ERRCODE = '42501';
@@ -418,23 +447,40 @@ BEGIN
       END IF;
     END IF;
 
+    -- Opening initialization merges into the existing descriptive provenance.
+    -- A continuation successor keeps its `continuedFrom` pointer even when the
+    -- caller omits it from the update payload. An adopted opening also keeps
+    -- its system-recorded `evidenceUpgrade` history: a normal correction
+    -- replaces the active opening fields but must not erase how the verified
+    -- evidence was established. Caller-supplied upgrade JSON is not evidence
+    -- and is removed; only this database path can retain a recorded upgrade.
+    v_merged_provenance := COALESCE(v_period."provenance", '{}'::jsonb)
+      || COALESCE(p_provenance, '{}'::jsonb);
+    IF jsonb_typeof(v_merged_provenance -> 'opening') = 'object' THEN
+      IF jsonb_typeof(v_period."provenance" -> 'opening') = 'object'
+         AND (v_period."provenance" -> 'opening') ? 'evidenceUpgrade' THEN
+        v_merged_provenance := jsonb_set(
+          v_merged_provenance,
+          '{opening,evidenceUpgrade}',
+          v_period."provenance" -> 'opening' -> 'evidenceUpgrade',
+          true
+        );
+      ELSE
+        v_merged_provenance := v_merged_provenance #- '{opening,evidenceUpgrade}';
+      END IF;
+    END IF;
+    IF v_period."provenance" ? 'continuedFrom' THEN
+      v_merged_provenance := v_merged_provenance || jsonb_build_object(
+        'continuedFrom', v_period."provenance" -> 'continuedFrom'
+      );
+    END IF;
+
     UPDATE public.money_periods
     SET "active_date" = COALESCE(p_active_date, "active_date"),
         "settings" = COALESCE(p_settings, "settings"),
         "initialization" = p_initialization,
         "opening_movement_id" = v_opening."id",
-        -- Opening initialization merges into the existing descriptive
-        -- provenance. A continuation successor keeps its `continuedFrom`
-        -- pointer even when the caller omits it from the update payload.
-        "provenance" = COALESCE(v_period."provenance", '{}'::jsonb)
-          || COALESCE(p_provenance, '{}'::jsonb)
-          || CASE
-               WHEN v_period."provenance" ? 'continuedFrom'
-                 THEN jsonb_build_object(
-                   'continuedFrom', v_period."provenance" -> 'continuedFrom'
-                 )
-               ELSE '{}'::jsonb
-             END,
+        "provenance" = v_merged_provenance,
         "version" = "version" + 1,
         "updated_at" = p_updated_at
     WHERE "id" = p_period_id AND "owner_user_id" = v_owner
@@ -500,12 +546,10 @@ BEGIN
     RAISE EXCEPTION 'A booking date is required.' USING ERRCODE = '23514';
   END IF;
 
-  -- Lock the owner's whole period set in a stable order so concurrent first
-  -- writes in a new month converge on one successor.
-  PERFORM id FROM public.money_periods
-   WHERE owner_user_id = v_owner
-   ORDER BY start_date, id
-   FOR UPDATE;
+  -- Lock the owner's whole period set in the shared stable order so concurrent
+  -- first writes in a new month converge on one successor and no caller can
+  -- invert the lock order against the explicit rollover.
+  PERFORM public.money_lock_owner_periods(v_owner);
 
   SELECT * INTO v_tracking
   FROM public.money_periods
@@ -694,6 +738,12 @@ BEGIN
     RAISE EXCEPTION 'The routine write receipt is incomplete.' USING ERRCODE = '23514';
   END IF;
 
+  -- Take the shared owner-scoped lock before resolving any row. The routine
+  -- write, continuation and rollover adoption all enter through the same
+  -- ascending order, so a concurrent rollover cannot invert the order and
+  -- deadlock, and the lifecycle re-read below happens under that lock.
+  PERFORM public.money_lock_owner_periods(v_owner);
+
   -- Lock the target period through the insert. A concurrent rollover cannot
   -- finalize the range between period resolution and the financial write.
   --
@@ -862,6 +912,9 @@ DECLARE
   v_continuation_opening integer;
   v_policy_version integer;
   v_provenance jsonb;
+  v_opening_provenance jsonb;
+  v_existing_opening_provenance jsonb;
+  v_evidence_upgrade jsonb;
   v_predecessor public.money_periods;
 BEGIN
   IF v_owner IS NULL THEN
@@ -874,6 +927,12 @@ BEGIN
   IF p_operation_id IS NULL OR btrim(p_operation_id) = '' THEN
     RAISE EXCEPTION 'A stable operation id is required.' USING ERRCODE = '23514';
   END IF;
+
+  -- The same owner-scoped lock order as the routine write and continuation.
+  -- The source and the adopted successor are already covered by this lock, so
+  -- a routine write cannot hold the tracking row while this transaction holds
+  -- an earlier source and waits for it.
+  PERFORM public.money_lock_owner_periods(v_owner);
 
   SELECT * INTO v_source
   FROM public.money_periods
@@ -989,6 +1048,16 @@ BEGIN
         USING ERRCODE = '23514';
     END IF;
   END IF;
+  -- A carried opening is the source's modeled cash at its close, so its
+  -- retained cutoff is exactly the source end. A scalar cutoff that disagrees
+  -- cannot be stored beside a provenance object that claims to carry this
+  -- balance.
+  IF p_opening_mode = 'carry_forward'
+     AND p_opening_cutoff_date IS DISTINCT FROM v_source.end_date THEN
+    RAISE EXCEPTION 'A carried opening must use the source period end (%) as its cutoff.',
+      v_source.end_date
+      USING ERRCODE = '23514';
+  END IF;
   IF p_settings IS NOT NULL AND jsonb_typeof(p_settings) <> 'object' THEN
     RAISE EXCEPTION 'Successor settings overrides must be a JSON object.'
       USING ERRCODE = '23514';
@@ -1020,6 +1089,48 @@ BEGIN
     RAISE EXCEPTION 'Cancelling or carrying forward unpaid occurrences needs a reason.'
       USING ERRCODE = '23514';
   END IF;
+
+  -- Retained opening evidence is constructed from the validated scalar inputs
+  -- and the trusted database clock. Caller-supplied provenance may describe the
+  -- surface and retain corrections, but it cannot move the verified cutoff or
+  -- timestamp. A conflicting cutoff is refused instead of being stored beside
+  -- the validated one.
+  IF p_provenance IS NOT NULL AND jsonb_typeof(p_provenance) <> 'object' THEN
+    RAISE EXCEPTION 'Rollover provenance must be a JSON object.' USING ERRCODE = '23514';
+  END IF;
+  IF p_provenance IS NOT NULL
+     AND p_provenance ? 'opening'
+     AND jsonb_typeof(p_provenance -> 'opening') NOT IN ('null', 'object') THEN
+    RAISE EXCEPTION 'Opening provenance must be an object or null.' USING ERRCODE = '23514';
+  END IF;
+  IF p_provenance IS NOT NULL
+     AND jsonb_typeof(p_provenance -> 'opening') = 'object' THEN
+    IF (p_provenance -> 'opening' ->> 'source') IS DISTINCT FROM p_opening_mode THEN
+      RAISE EXCEPTION 'The opening provenance source must match the approved opening mode.'
+        USING ERRCODE = '23514';
+    END IF;
+    IF (p_provenance -> 'opening' ->> 'cutoffDate')
+       IS DISTINCT FROM p_opening_cutoff_date::text THEN
+      RAISE EXCEPTION 'The opening provenance cutoff does not match the validated opening cutoff.'
+        USING ERRCODE = '40001';
+    END IF;
+    IF COALESCE(jsonb_typeof(p_provenance -> 'opening' -> 'corrections'), 'array')
+       IS DISTINCT FROM 'array' THEN
+      RAISE EXCEPTION 'Opening provenance corrections must be an array.'
+        USING ERRCODE = '23514';
+    END IF;
+  END IF;
+
+  v_opening_provenance := jsonb_build_object(
+    'source', p_opening_mode,
+    'recordedAt', to_char(v_now AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
+    'cutoffDate', p_opening_cutoff_date,
+    'evidence', p_opening_evidence,
+    'note', p_opening_note,
+    'corrections', COALESCE(p_provenance -> 'opening' -> 'corrections', '[]'::jsonb)
+  );
+  v_provenance := (COALESCE(p_provenance, '{}'::jsonb) - 'opening')
+    || jsonb_build_object('opening', v_opening_provenance);
 
   -- Adoption of a continuation-created successor. The identity comes from the
   -- real date chain (the immediate next period that starts the day after the
@@ -1212,7 +1323,7 @@ BEGIN
     ) VALUES (
       v_successor_id, v_owner, p_start_date, p_end_date, 'MAD', btrim(p_timezone),
       p_active_date, 'tracking', 'uninitialized', NULL, false,
-      p_provenance, v_successor_settings,
+      v_provenance, v_successor_settings,
       1, v_now, v_now
     );
 
@@ -1230,7 +1341,7 @@ BEGIN
     UPDATE public.money_periods
     SET initialization = p_initialized,
         opening_movement_id = v_opening_id,
-        provenance = p_provenance,
+        provenance = v_provenance,
         version = version + 1,
         updated_at = v_now
     WHERE id = v_successor_id AND owner_user_id = v_owner;
@@ -1269,11 +1380,19 @@ BEGIN
       AND kind = 'opening'
       AND deleted_at IS NULL;
 
-    v_provenance := COALESCE(v_continuation.provenance, '{}'::jsonb)
-      || COALESCE(p_provenance, '{}'::jsonb)
-      || jsonb_build_object('continuedFrom', v_source.id);
+    v_existing_opening_provenance := v_continuation.provenance -> 'opening';
+    IF jsonb_typeof(v_existing_opening_provenance) IS DISTINCT FROM 'object' THEN
+      v_existing_opening_provenance := NULL;
+    END IF;
 
     IF v_continuation_opening IS NULL THEN
+      v_provenance := COALESCE(v_continuation.provenance, '{}'::jsonb)
+        || (COALESCE(p_provenance, '{}'::jsonb) - 'opening')
+        || jsonb_build_object(
+             'opening', v_opening_provenance,
+             'continuedFrom', v_source.id
+           );
+
       INSERT INTO public.personal_expenses (
         owner_user_id, occurred_at, amount_minor, currency, category, note, merchant,
         need_vs_want, payment_method, idempotency_key, create_fingerprint, kind,
@@ -1297,11 +1416,72 @@ BEGIN
         RAISE EXCEPTION 'The continued period already has a different opening amount. Reload and review it instead of overwriting.'
           USING ERRCODE = '40001';
       END IF;
+      IF v_continuation.initialization = 'uninitialized' THEN
+        RAISE EXCEPTION 'The continued period has an opening recovery row but is not initialized. Reload and review it instead of rewriting the evidence.'
+          USING ERRCODE = '23514';
+      END IF;
       IF v_continuation.initialization = 'reconciled'
          AND p_initialized <> 'reconciled' THEN
         RAISE EXCEPTION 'A reconciled continued opening cannot lose its verified evidence.'
           USING ERRCODE = '23514';
       END IF;
+
+      IF v_continuation.initialization = 'reconciled' THEN
+        -- The retained verified cutoff is evidence. A different approved
+        -- cutoff cannot silently rewrite it; the owner must reload and review.
+        IF v_existing_opening_provenance IS NOT NULL
+           AND (v_existing_opening_provenance ->> 'cutoffDate')
+               IS DISTINCT FROM p_opening_cutoff_date::text THEN
+          RAISE EXCEPTION 'The retained verified opening cutoff % does not match the approved cutoff %. Reload and review the opening instead of rewriting its evidence.',
+            COALESCE(v_existing_opening_provenance ->> 'cutoffDate', 'unknown'),
+            p_opening_cutoff_date
+            USING ERRCODE = '40001';
+        END IF;
+        -- Equal-amount adoption keeps the retained leading, cutoff and
+        -- correction history exactly as recorded.
+        v_opening_provenance := COALESCE(
+          v_existing_opening_provenance,
+          v_opening_provenance
+        );
+      ELSIF p_initialized = 'reconciled' THEN
+        -- Evidence upgrade, not an overwrite. The active verified evidence is
+        -- built from the validated cutoff and the trusted database clock, while
+        -- the previous evidence and every retained correction stay explicit.
+        v_evidence_upgrade := jsonb_build_object(
+          'at', to_char(v_now AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
+          'fromInitialization', v_continuation.initialization,
+          'from', COALESCE(v_existing_opening_provenance, 'null'::jsonb),
+          'toInitialization', p_initialized,
+          'toSource', p_opening_mode,
+          'toCutoffDate', p_opening_cutoff_date
+        );
+        v_opening_provenance := COALESCE(v_existing_opening_provenance, '{}'::jsonb)
+          || jsonb_build_object(
+               'source', p_opening_mode,
+               'recordedAt', to_char(v_now AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
+               'cutoffDate', p_opening_cutoff_date,
+               'evidence', p_opening_evidence,
+               'note', p_opening_note,
+               'corrections', COALESCE(
+                 v_existing_opening_provenance -> 'corrections',
+                 '[]'::jsonb
+               ),
+               'evidenceUpgrade', v_evidence_upgrade
+             );
+      ELSE
+        v_opening_provenance := COALESCE(
+          v_existing_opening_provenance,
+          v_opening_provenance
+        );
+      END IF;
+
+      v_provenance := COALESCE(v_continuation.provenance, '{}'::jsonb)
+        || (COALESCE(p_provenance, '{}'::jsonb) - 'opening' - 'evidenceUpgrade')
+        || jsonb_build_object(
+             'opening', v_opening_provenance,
+             'continuedFrom', v_source.id
+           );
+
       IF v_continuation.initialization IS DISTINCT FROM p_initialized
          OR v_continuation.provenance IS DISTINCT FROM v_provenance THEN
         UPDATE public.money_periods

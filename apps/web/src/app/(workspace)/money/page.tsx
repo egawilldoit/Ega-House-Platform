@@ -34,6 +34,7 @@ import {
 } from "@ega/domain/money";
 import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
 import { RefreshOnFocus } from "@/components/refresh-on-focus";
+import { moneyDefaultBookingDate } from "@/lib/money/money-wall-time";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentUser } from "@/lib/services/auth-service";
 import { getWebTimeContext } from "@/lib/services/time-context-service";
@@ -265,6 +266,14 @@ export default async function MoneyPage({ searchParams }: Props) {
   const trackingPeriod =
     moneyState?.history.find((entry) => entry.lifecycle === "tracking") ??
     (moneyState?.period?.lifecycle === "tracking" ? moneyState.period : null);
+  // The tracking period timezone owns a Money write day. Prefilling the owner
+  // date instead would show one day while the server books the other around
+  // midnight; the owner zone is only the fallback before any period exists.
+  const defaultBookingDate = moneyDefaultBookingDate({
+    now: new Date(),
+    trackingPeriodTimezone: trackingPeriod?.timezone ?? null,
+    ownerTimezone: timezone,
+  });
   const totalsCutoff =
     moneyState?.cash.cutoffDate ?? moneyState?.dateResolution.resolvedDate ?? localToday;
   const selectedPeriodLabel = moneyState?.period
@@ -295,7 +304,7 @@ export default async function MoneyPage({ searchParams }: Props) {
         </section>
       )}
 
-      <MoneyQuickEntry ownerKey={user.id} defaultBookingDate={localToday} />
+      <MoneyQuickEntry ownerKey={user.id} defaultBookingDate={defaultBookingDate} />
 
       <MoneyHistory
         ownerKey={user.id}

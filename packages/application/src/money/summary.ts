@@ -263,8 +263,10 @@ async function readCurrentDailyReference(input: Readonly<{
   period: MoneyPeriod;
   cutoffDate: string;
   localToday: string;
-  savingsTargetMinor: number;
-  emergencyTargetMinor: number;
+  /** Current plan targets. Only the derived path needs them; a retained
+   * available baseline carries its own targets as evidence. */
+  savingsTargetMinor: number | null;
+  emergencyTargetMinor: number | null;
 }>): Promise<MoneyDailyReferenceProjection> {
   if (!input.periods.getDayStartBaseline) {
     return unavailableDailyReference(
@@ -345,6 +347,19 @@ async function readCurrentDailyReference(input: Readonly<{
     return unavailableDailyReference(
       input.cutoffDate,
       "day_start_baseline_missing",
+    );
+  }
+
+  // The derived path needs the current plan for its targets. A retained
+  // baseline above never reaches this check: it already carries its own
+  // historical targets, so a missing current plan cannot erase it.
+  if (
+    input.savingsTargetMinor === null ||
+    input.emergencyTargetMinor === null
+  ) {
+    return unavailableDailyReference(
+      input.cutoffDate,
+      "reserve_inputs_incomplete",
     );
   }
 
@@ -439,21 +454,42 @@ export async function getCurrentMoneyReserves(actor: AuthenticatedActor, input: 
       plan.error.code,
     );
   }
-  if (
-    !reserveInputs.value.available ||
-    !plan.value ||
-    plan.value.savingsTargetMinor === null ||
-    plan.value.emergencyTargetMinor === null
-  ) {
-    const reason = !reserveInputs.value.available
-      ? reserveInputs.value.reason
-      : "reserve_inputs_incomplete";
+  if (!reserveInputs.value.available) {
+    const reason = reserveInputs.value.reason;
     return applicationSuccess({
       available: false,
       currency: "MAD",
       reason,
       cutoffDate,
       dailyReference: unavailableDailyReference(cutoffDate, reason),
+    });
+  }
+
+  // Read retained day-start guidance before deciding whether the current plan
+  // is complete. A retained available baseline carries its own historical
+  // targets and remains authoritative even when the plan row is missing; only
+  // the derived path needs the live plan.
+  const dailyReference = await readCurrentDailyReference({
+    actor,
+    periods: input.periods,
+    period,
+    cutoffDate,
+    localToday: input.localToday,
+    savingsTargetMinor: plan.value?.savingsTargetMinor ?? null,
+    emergencyTargetMinor: plan.value?.emergencyTargetMinor ?? null,
+  });
+
+  if (
+    !plan.value ||
+    plan.value.savingsTargetMinor === null ||
+    plan.value.emergencyTargetMinor === null
+  ) {
+    return applicationSuccess({
+      available: false,
+      currency: "MAD",
+      reason: "reserve_inputs_incomplete",
+      cutoffDate,
+      dailyReference,
     });
   }
 
@@ -464,15 +500,6 @@ export async function getCurrentMoneyReserves(actor: AuthenticatedActor, input: 
     savingsFundedMinor: reserveInputs.value.savingsFundedMinor,
     emergencyTargetMinor: plan.value.emergencyTargetMinor,
     emergencyUsedMinor: reserveInputs.value.emergencyUsedMinor,
-  });
-  const dailyReference = await readCurrentDailyReference({
-    actor,
-    periods: input.periods,
-    period,
-    cutoffDate,
-    localToday: input.localToday,
-    savingsTargetMinor: plan.value.savingsTargetMinor,
-    emergencyTargetMinor: plan.value.emergencyTargetMinor,
   });
 
   return applicationSuccess({

@@ -13,7 +13,10 @@ import {
   defaultCountsInDaily,
   moneyBookingDateEditable,
 } from "@ega/domain/money";
-import { getLocalDateInTimezone } from "@ega/domain/time-context";
+import {
+  addDaysToIsoDate,
+  getLocalDateInTimezone,
+} from "@ega/domain/time-context";
 
 import type { AuthenticatedActor } from "../auth/actor";
 import type { MoneyPeriodRepository } from "../money/ports";
@@ -160,10 +163,95 @@ async function routineEntryGuard(
     }
     anchorTimezone = existing.value[0]?.timezone ?? null;
   }
+  const instant = entry.occurredAt ? new Date(entry.occurredAt) : null;
   const bookingDate =
-    entry.occurredAt && anchorTimezone
-      ? getLocalDateInTimezone(new Date(entry.occurredAt), anchorTimezone)
+    instant && anchorTimezone
+      ? getLocalDateInTimezone(instant, anchorTimezone)
       : (entry.bookingDate ?? null);
+
+  // The tracking period owns the current day in its own timezone. This fast
+  // path keeps an ordinary timestamped write on its existing read count.
+  if (
+    instant &&
+    tracking.value &&
+    bookingDate !== null &&
+    bookingDate >= tracking.value.startDate &&
+    bookingDate <= tracking.value.endDate
+  ) {
+    return resolveRoutineEntry(
+      actor,
+      periods,
+      bookingDate,
+      tracking.value,
+      now,
+    );
+  }
+
+  if (instant) {
+    // A retained superseded period may use a different timezone from the
+    // tracking period. The target period owns the calendar for its own dates,
+    // so look for exactly the period whose own local day contains the instant
+    // instead of deriving the day in the tracking timezone. UTC dates shift by
+    // at most one day under every IANA offset, so the ±1-day window covers all
+    // candidates without scanning the whole history.
+    const utcDate = getLocalDateInTimezone(instant, "UTC");
+    const nearby = await periods.findOverlapping(actor, {
+      startDate: addDaysToIsoDate(utcDate, -1),
+      endDate: addDaysToIsoDate(utcDate, 1),
+    });
+    if (!nearby.ok) {
+      return failureFor(
+        nearby.error.code,
+        "Unable to check Money periods right now.",
+      );
+    }
+    const matches = nearby.value
+      .filter(
+        (period) =>
+          period.lifecycle === "tracking" ||
+          period.lifecycle === "superseded",
+      )
+      .map((period) => ({
+        period,
+        date: getLocalDateInTimezone(instant, period.timezone),
+      }))
+      .filter(
+        ({ period, date }) =>
+          date >= period.startDate && date <= period.endDate,
+      )
+      .sort((left, right) =>
+        right.period.startDate.localeCompare(left.period.startDate),
+      );
+    // An instant can straddle two different period calendars at a timezone
+    // boundary. The current tracking period is the active target; otherwise
+    // the latest retained period is the deterministic choice.
+    const target =
+      matches.find(({ period }) => period.lifecycle === "tracking") ??
+      matches[0];
+    if (target) {
+      const resolved = await resolveRoutineEntry(
+        actor,
+        periods,
+        target.date,
+        tracking.value,
+        now,
+      );
+      if (!resolved.ok) return resolved;
+      if (resolved.data?.periodId !== target.period.id) {
+        return applicationFailure(
+          "The supplied occurrence time does not fall inside that Money period's day. Send the wall time with the period's UTC offset or record the day explicitly.",
+          "validation",
+        );
+      }
+      return resolved;
+    }
+  }
+
+  // No target period's own calendar contains the instant (or the entry is
+  // date-only). The normal guard supplies the continuation or actionable
+  // historical-path result. The database re-derives the day in the final
+  // period timezone under the owner lock, so a stale target cannot land in a
+  // finalized period.
   return resolveRoutineEntry(
     actor,
     periods,

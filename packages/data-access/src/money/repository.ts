@@ -1056,7 +1056,13 @@ export class SupabaseMoneyRepository implements MoneyMovementRepository {
     actor: AuthenticatedActor,
     input: MoneyCreateRecordInput,
   ): Promise<RepositoryResult<MoneyLedgerRow>> {
-    if (input.requiresContinuation) {
+    // Every routine write with a resolved period goes through the atomic RPC.
+    // The application resolution is only a preview: a concurrent rollover can
+    // finalize that period before a direct insert. The RPC re-reads the
+    // lifecycle under the shared owner lock and owns `period_id`, so a stale
+    // read cannot land a movement in a finalized range. The direct insert stays
+    // only for the legacy no-period account, where no lifecycle can race.
+    if (input.requiresContinuation || typeof input.periodId === "string") {
       const values = input.values;
       const result = await recordRoutineMovement(this.supabase, {
         bookingDate: values.bookingDate,

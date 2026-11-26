@@ -45,6 +45,11 @@ const G = "77777777-7777-4777-8777-777777777777";
 const H = "88888888-8888-4888-8888-888888888888";
 const I = "99999999-9999-4999-8999-999999999999";
 const J = "aaaaaaaa-9999-4999-8999-999999999999";
+const K = "bbbbbbbb-9999-4999-8999-999999999999";
+const L = "cccccccc-9999-4999-8999-999999999999";
+const M = "dddddddd-9999-4999-8999-999999999999";
+const N = "eeeeeeee-9999-4999-8999-999999999999";
+const O = "ffffffff-9999-4999-8999-999999999999";
 const RESOURCE = "https://ega.example.com/api/mcp";
 const READ = ["today.read", "timer.read", "personal_ops.read"];
 const WRITE = [...READ, "personal_ops.write"];
@@ -56,7 +61,7 @@ const url = argv[argv.indexOf("--url") + 1];
 if (!url) throw new Error("Missing --url");
 
 const sql = postgres(url, {
-  max: 2,
+  max: 4,
   onnotice: () => {},
   types: {
     date: { to: 1082, from: [1082], serialize: (value) => value, parse: (value) => value },
@@ -89,6 +94,35 @@ async function user(owner, fn, clientId = null) {
         role: "authenticated",
         aud: clientId ? RESOURCE : "authenticated",
         ...(clientId ? { client_id: clientId } : {}),
+      }),
+    ]);
+    return fn(tx);
+  });
+}
+
+async function waitForLockWait(applicationName, timeoutMs = 5_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const rows = await sql.unsafe(
+      "SELECT count(*)::int n FROM pg_stat_activity WHERE application_name = $1 AND wait_event_type = 'Lock'",
+      [applicationName],
+    );
+    if (rows[0].n > 0) return;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  throw new Error(`Timed out waiting for ${applicationName} to block on a row lock.`);
+}
+
+async function beginAs(owner, applicationName, fn) {
+  return sql.begin(async (tx) => {
+    await tx.unsafe("SET LOCAL ROLE authenticated");
+    await tx.unsafe("SELECT set_config('application_name', $1, true)", [applicationName]);
+    await tx.unsafe("SELECT set_config('request.jwt.claim.sub', $1, true)", [owner]);
+    await tx.unsafe("SELECT set_config('request.jwt.claims', $1, true)", [
+      JSON.stringify({
+        sub: owner,
+        role: "authenticated",
+        aud: "authenticated",
       }),
     ]);
     return fn(tx);
@@ -188,8 +222,8 @@ async function main() {
     await sql.unsafe("GRANT USAGE ON SCHEMA public, auth TO anon, authenticated");
     await sql.unsafe("CREATE TABLE auth.users (id uuid PRIMARY KEY, email text NOT NULL)");
     await sql.unsafe(
-      "INSERT INTO auth.users VALUES ($1,'a@example.test'),($2,'b@example.test'),($3,'c@example.test'),($4,'d@example.test'),($5,'e@example.test'),($6,'f@example.test'),($7,'g@example.test'),($8,'h@example.test'),($9,'i@example.test'),($10,'j@example.test')",
-      [A, B, C, D, E, F, G, H, I, J],
+      "INSERT INTO auth.users VALUES ($1,'a@example.test'),($2,'b@example.test'),($3,'c@example.test'),($4,'d@example.test'),($5,'e@example.test'),($6,'f@example.test'),($7,'g@example.test'),($8,'h@example.test'),($9,'i@example.test'),($10,'j@example.test'),($11,'k@example.test'),($12,'l@example.test'),($13,'m@example.test'),($14,'n@example.test'),($15,'o@example.test')",
+      [A, B, C, D, E, F, G, H, I, J, K, L, M, N, O],
     );
     await sql.unsafe("UPDATE auth.users SET email='ab.mortaki@gmail.com' WHERE id=$1", [A]);
     await sql.unsafe(
@@ -578,6 +612,29 @@ async function main() {
         ) AS result`,
         args,
       );
+    const updateContinuationOpening = (owner, periodId, amount, initialization, provenance) =>
+      user(owner, async (tx) => {
+        const [current] = await tx.unsafe(
+          "SELECT version FROM public.money_periods WHERE id=$1 AND owner_user_id=$2",
+          [periodId, owner],
+        );
+        return tx.unsafe(
+          `SELECT * FROM public.money_update_period(
+            $1::uuid,$2::integer,NULL::date,NULL::jsonb,$3::integer,$4::text,$5::text,
+            $6::jsonb,$7::text,$8::timestamptz
+          )`,
+          [
+            periodId,
+            current.version,
+            amount,
+            hex("d"),
+            provenance.opening.note,
+            provenance,
+            initialization,
+            new Date().toISOString(),
+          ],
+        );
+      });
 
     // Finalizing the continuation successor before its superseded predecessor
     // must be blocked explicitly, not fail later as an overlap.
@@ -1670,6 +1727,727 @@ async function main() {
     );
     await sql.unsafe("DELETE FROM public.personal_expenses WHERE id=$1", [legacyRowId]);
     console.log("[PREFLIGHT] out-of-period rows are reported, correctable and soft-deletable");
+
+    // --- A stale routine resolution cannot land after rollover -------------
+    // Resolve a non-finalized superseded period on one connection, pause, let
+    // the explicit rollover finalize it on another connection, then continue
+    // the stale routine transaction. The atomic path must revalidate the
+    // lifecycle under the shared lock and write no movement or receipt.
+    const kSourceStart = addDays(today, -70);
+    const kSourceEnd = addDays(today, -40);
+    const kCreated = await user(K, (tx) =>
+      createPeriod(tx, kSourceStart, kSourceEnd, kSourceStart, 100000),
+    );
+    const kSourceId = kCreated[0].id;
+    await user(K, (tx) =>
+      recordRoutine(tx, {
+        bookingDate: addDays(today, -20),
+        amountMinor: 1400,
+        category: "household",
+        needVsWant: "need",
+        idempotencyKey: "money-f04-k-continuation",
+        fingerprint: hex("c"),
+      }),
+    );
+    const kPeriods = await sql.unsafe(
+      `SELECT id, start_date, end_date, lifecycle, version
+       FROM public.money_periods WHERE owner_user_id=$1 ORDER BY start_date`,
+      [K],
+    );
+    assert(
+      kPeriods.length === 2 &&
+        kPeriods[0].id === kSourceId &&
+        kPeriods[0].lifecycle === "superseded" &&
+        kPeriods[1].lifecycle === "tracking",
+      "the stale-resolution fixture has one superseded source and one tracking successor",
+    );
+    const kSuccessor = kPeriods[1];
+    const kSourceVersion = kPeriods[0].version;
+    const kRollover = (tx, operationId) =>
+      callRollover(tx, [
+        kSourceId,
+        kSourceVersion,
+        kSuccessor.start_date,
+        kSuccessor.end_date,
+        kSuccessor.start_date,
+        "Africa/Casablanca",
+        "initialized",
+        false,
+        100000,
+        kSourceEnd,
+        null,
+        "Finalized after review",
+        hex("d"),
+        {
+          opening: {
+            source: "carry_forward",
+            recordedAt: `${kSuccessor.start_date}T09:00:00.000Z`,
+            cutoffDate: kSourceEnd,
+            evidence: null,
+            note: "Finalized after review",
+            corrections: [],
+          },
+          createdFrom: "web",
+        },
+        null,
+        operationId,
+        hex("e"),
+        "carry_forward",
+        null,
+        null,
+        null,
+        "Reviewed every unverified day",
+        (Date.parse(kSourceEnd) - Date.parse(kSourceStart)) / 86_400_000 + 1,
+        { modeledClosingCashMinor: 100000, pendingOccurrenceCount: 0 },
+        [],
+        [],
+        `${kSuccessor.start_date}T09:00:00.000Z`,
+      ]);
+
+    let markResolved;
+    let releaseStale;
+    const staleResolved = new Promise((resolve) => {
+      markResolved = resolve;
+    });
+    const staleRelease = new Promise((resolve) => {
+      releaseStale = resolve;
+    });
+    const staleTransaction = beginAs(K, "f04-stale-routine", async (tx) => {
+      const [resolved] = await tx.unsafe(
+        `SELECT id, lifecycle FROM public.money_periods
+         WHERE owner_user_id=$1 AND lifecycle='superseded'
+           AND $2::date BETWEEN start_date AND end_date`,
+        [K, kSourceEnd],
+      );
+      markResolved(resolved);
+      await staleRelease;
+      return recordRoutine(tx, {
+        bookingDate: kSourceEnd,
+        amountMinor: 1300,
+        category: "coffee",
+        idempotencyKey: "money-f04-k-stale",
+        fingerprint: hex("f"),
+      });
+    });
+    const staleResolution = await staleResolved;
+    assert(
+      staleResolution.id === kSourceId &&
+        staleResolution.lifecycle === "superseded",
+      "the stale transaction resolved the source before finalization",
+    );
+    await user(K, (tx) => kRollover(tx, "f04-k-stale-rollover"));
+    releaseStale();
+    let staleAfterRolloverDenied = false;
+    try {
+      await staleTransaction;
+    } catch (error) {
+      staleAfterRolloverDenied = error.code === "23514";
+    }
+    assert(
+      staleAfterRolloverDenied,
+      "a routine write that resolved a period before rollover is refused after finalization",
+    );
+    const staleMovement = await sql.unsafe(
+      `SELECT count(*)::int n FROM public.personal_expenses
+       WHERE owner_user_id=$1 AND idempotency_key=$2`,
+      [K, "money-f04-k-stale"],
+    );
+    assert(
+      staleMovement[0].n === 0,
+      "the stale routine write creates no movement after the period was finalized",
+    );
+    const kReceipts = await sql.unsafe(
+      "SELECT count(*)::int n FROM public.money_period_rollovers WHERE owner_user_id=$1 AND source_period_id=$2",
+      [K, kSourceId],
+    );
+    assert(
+      kReceipts[0].n === 1,
+      "the stale routine write creates no second receipt beside the rollover",
+    );
+    console.log("[STALE] a paused routine resolution cannot land after rollover");
+
+    // --- Equal-amount adoption keeps corrections and upgrades evidence -----
+    const lSourceStart = addDays(today, -40);
+    const lSourceEnd = addDays(today, -11);
+    const lCreated = await user(L, (tx) =>
+      createPeriod(tx, lSourceStart, lSourceEnd, lSourceStart, 100000),
+    );
+    const lSourceId = lCreated[0].id;
+    await user(L, (tx) =>
+      recordRoutine(tx, {
+        bookingDate: today,
+        amountMinor: 2100,
+        category: "groceries",
+        needVsWant: "need",
+        idempotencyKey: "money-f04-l-continuation",
+        fingerprint: hex("c"),
+      }),
+    );
+    const lSuccessor = (
+      await sql.unsafe(
+        "SELECT * FROM public.money_periods WHERE owner_user_id=$1 AND lifecycle='tracking'",
+        [L],
+      )
+    )[0];
+    const lSourceVersion = (
+      await sql.unsafe("SELECT version FROM public.money_periods WHERE id=$1", [lSourceId])
+    )[0].version;
+    await updateContinuationOpening(L, lSuccessor.id, 99000, "initialized", {
+      opening: {
+        source: "user_entered",
+        recordedAt: `${lSuccessor.start_date}T08:00:00.000Z`,
+        cutoffDate: lSuccessor.start_date,
+        evidence: null,
+        note: "counted",
+        corrections: [],
+      },
+      createdFrom: "web",
+    });
+    await updateContinuationOpening(L, lSuccessor.id, 97000, "initialized", {
+      opening: {
+        source: "user_entered",
+        recordedAt: `${lSuccessor.start_date}T09:00:00.000Z`,
+        cutoffDate: lSuccessor.start_date,
+        evidence: null,
+        note: "recount",
+        corrections: [
+          {
+            at: `${lSuccessor.start_date}T09:00:00.000Z`,
+            amountMinor: 97000,
+            previousAmountMinor: 99000,
+            ledgerVersion: 2,
+            source: "user_entered",
+            note: "recount",
+          },
+        ],
+      },
+      createdFrom: "web",
+    });
+    const forgedRecordedAt = "1999-01-01T00:00:00.000Z";
+    const lRolloverArgs = (cutoffDate, operationId) => [
+      lSourceId,
+      lSourceVersion,
+      lSuccessor.start_date,
+      lSuccessor.end_date,
+      lSuccessor.start_date,
+      "Africa/Casablanca",
+      "reconciled",
+      false,
+      97000,
+      cutoffDate,
+      "Verified bank balance",
+      "Finalized after review",
+      hex("d"),
+      {
+        opening: {
+          source: "verified_source",
+          recordedAt: forgedRecordedAt,
+          cutoffDate,
+          evidence: "Verified bank balance",
+          note: "Finalized after review",
+          corrections: [],
+        },
+        createdFrom: "web",
+      },
+      null,
+      operationId,
+      hex("e"),
+      "verified_source",
+      null,
+      null,
+      "Accepted difference",
+      "Reviewed every unverified day",
+      30,
+      { modeledClosingCashMinor: 100000, pendingOccurrenceCount: 0 },
+      [],
+      [],
+      `${lSuccessor.start_date}T09:00:00.000Z`,
+    ];
+
+    const provenanceMismatchArgs = lRolloverArgs(
+      lSourceEnd,
+      "f04-l-provenance-cutoff-mismatch",
+    );
+    provenanceMismatchArgs[13] = {
+      ...provenanceMismatchArgs[13],
+      opening: {
+        ...provenanceMismatchArgs[13].opening,
+        cutoffDate: addDays(lSourceEnd, 1),
+      },
+    };
+    let provenanceCutoffMismatchDenied = false;
+    try {
+      await user(L, (tx) => callRollover(tx, provenanceMismatchArgs));
+    } catch (error) {
+      provenanceCutoffMismatchDenied = error.code === "40001";
+    }
+    assert(
+      provenanceCutoffMismatchDenied,
+      "a provenance cutoff that disagrees with the validated cutoff is refused",
+    );
+    const lBlockedReceipts = await sql.unsafe(
+      "SELECT count(*)::int n FROM public.money_period_rollovers WHERE owner_user_id=$1 AND source_period_id=$2",
+      [L, lSourceId],
+    );
+    assert(lBlockedReceipts[0].n === 0, "the provenance cutoff conflict leaves no receipt");
+
+    await user(L, (tx) => callRollover(tx, lRolloverArgs(lSourceEnd, "f04-l-adopt")));
+    const lAfter = (
+      await sql.unsafe(
+        "SELECT initialization, provenance FROM public.money_periods WHERE id=$1",
+        [lSuccessor.id],
+      )
+    )[0];
+    assert(
+      lAfter.initialization === "reconciled",
+      "the equal-amount adoption upgrades the retained opening evidence",
+    );
+    const lOpening = lAfter.provenance?.opening;
+    assert(
+      Array.isArray(lOpening?.corrections) &&
+        lOpening.corrections.length === 1 &&
+        lOpening.corrections[0].previousAmountMinor === 99000,
+      "the equal-amount adoption preserves the retained correction history",
+    );
+    assert(
+      lOpening?.source === "verified_source" &&
+        lOpening?.cutoffDate === lSourceEnd &&
+        lOpening?.evidence === "Verified bank balance",
+      "the upgraded opening uses the validated verified evidence",
+    );
+    assert(
+      lOpening?.recordedAt !== forgedRecordedAt &&
+        Date.parse(lOpening?.recordedAt) > Date.parse("2026-01-01T00:00:00.000Z"),
+      "the upgraded opening timestamp comes from the database clock, not the caller payload",
+    );
+    assert(
+      lOpening?.evidenceUpgrade?.from?.source === "user_entered" &&
+        lOpening?.evidenceUpgrade?.from?.cutoffDate === lSuccessor.start_date &&
+        lOpening?.evidenceUpgrade?.toCutoffDate === lSourceEnd,
+      "the evidence upgrade records the previous and validated cutoff explicitly",
+    );
+    const lOpeningRows = await sql.unsafe(
+      `SELECT count(*)::int n, min(amount_minor)::int amount
+       FROM public.personal_expenses
+       WHERE owner_user_id=$1 AND period_id=$2 AND kind='opening' AND deleted_at IS NULL`,
+      [L, lSuccessor.id],
+    );
+    assert(
+      lOpeningRows[0].n === 1 && lOpeningRows[0].amount === 97000,
+      "the equal-amount adoption keeps exactly one opening movement",
+    );
+    const lReceipt = (
+      await sql.unsafe(
+        "SELECT opening_amount_minor, closing_cutoff_date FROM public.money_period_rollovers WHERE owner_user_id=$1 AND source_period_id=$2",
+        [L, lSourceId],
+      )
+    )[0];
+    assert(
+      lReceipt.opening_amount_minor === 97000 && lReceipt.closing_cutoff_date === lSourceEnd,
+      "the receipt and the retained provenance agree on the validated cutoff",
+    );
+    console.log("[PROVENANCE] equal-amount adoption preserves corrections and records the evidence upgrade");
+
+    // A normal opening correction after adoption replaces the active opening
+    // fields but must retain the recorded evidence-upgrade history.
+    await updateContinuationOpening(L, lSuccessor.id, 96000, "reconciled", {
+      opening: {
+        source: "verified_source",
+        recordedAt: `${lSuccessor.start_date}T12:00:00.000Z`,
+        cutoffDate: lSuccessor.start_date,
+        evidence: "Recount statement",
+        note: "recounted after adoption",
+        corrections: [],
+      },
+      createdFrom: "web",
+    });
+    const lCorrected = (
+      await sql.unsafe(
+        "SELECT initialization, provenance FROM public.money_periods WHERE id=$1",
+        [lSuccessor.id],
+      )
+    )[0];
+    const lCorrectedOpening = lCorrected.provenance?.opening;
+    assert(
+      lCorrected.initialization === "reconciled" &&
+        lCorrectedOpening?.note === "recounted after adoption" &&
+        lCorrectedOpening?.evidence === "Recount statement" &&
+        lCorrectedOpening?.cutoffDate === lSuccessor.start_date,
+      "a normal opening correction updates the active opening evidence",
+    );
+    assert(
+      lCorrectedOpening?.evidenceUpgrade?.toCutoffDate === lSourceEnd &&
+        lCorrectedOpening?.evidenceUpgrade?.from?.source === "user_entered" &&
+        lCorrectedOpening?.evidenceUpgrade?.from?.cutoffDate ===
+          lSuccessor.start_date,
+      "a normal opening correction preserves the adoption evidence-upgrade history",
+    );
+    const lCorrectedRows = await sql.unsafe(
+      `SELECT count(*)::int n, min(amount_minor)::int amount
+       FROM public.personal_expenses
+       WHERE owner_user_id=$1 AND period_id=$2 AND kind='opening' AND deleted_at IS NULL`,
+      [L, lSuccessor.id],
+    );
+    assert(
+      lCorrectedRows[0].n === 1 && lCorrectedRows[0].amount === 96000,
+      "the correction keeps exactly one updated opening movement",
+    );
+    console.log("[PROVENANCE] a normal opening correction preserves the recorded evidence upgrade");
+
+    // --- A retained verified cutoff cannot be silently rewritten ------------
+    const mCreated = await user(M, (tx) =>
+      createPeriod(tx, lSourceStart, lSourceEnd, lSourceStart, 100000),
+    );
+    const mSourceId = mCreated[0].id;
+    await user(M, (tx) =>
+      recordRoutine(tx, {
+        bookingDate: today,
+        amountMinor: 2200,
+        category: "household",
+        needVsWant: "need",
+        idempotencyKey: "money-f04-m-continuation",
+        fingerprint: hex("c"),
+      }),
+    );
+    const mSuccessor = (
+      await sql.unsafe(
+        "SELECT * FROM public.money_periods WHERE owner_user_id=$1 AND lifecycle='tracking'",
+        [M],
+      )
+    )[0];
+    const mSourceVersion = (
+      await sql.unsafe("SELECT version FROM public.money_periods WHERE id=$1", [mSourceId])
+    )[0].version;
+    await updateContinuationOpening(M, mSuccessor.id, 97000, "reconciled", {
+      opening: {
+        source: "verified_source",
+        recordedAt: `${mSuccessor.start_date}T09:00:00.000Z`,
+        cutoffDate: mSuccessor.start_date,
+        evidence: "Retained bank statement",
+        note: "verified at the successor start",
+        corrections: [],
+      },
+      createdFrom: "web",
+    });
+    let retainedCutoffMismatchDenied = false;
+    try {
+      await user(M, (tx) =>
+        callRollover(tx, [
+          mSourceId,
+          mSourceVersion,
+          mSuccessor.start_date,
+          mSuccessor.end_date,
+          mSuccessor.start_date,
+          "Africa/Casablanca",
+          "reconciled",
+          false,
+          97000,
+          lSourceEnd,
+          "Verified bank balance",
+          "Finalized after review",
+          hex("d"),
+          {
+            opening: {
+              source: "verified_source",
+              recordedAt: `${mSuccessor.start_date}T10:00:00.000Z`,
+              cutoffDate: lSourceEnd,
+              evidence: "Verified bank balance",
+              note: "Finalized after review",
+              corrections: [],
+            },
+            createdFrom: "web",
+          },
+          null,
+          "f04-m-retained-cutoff-mismatch",
+          hex("e"),
+          "verified_source",
+          null,
+          null,
+          "Accepted difference",
+          "Reviewed every unverified day",
+          30,
+          { modeledClosingCashMinor: 100000, pendingOccurrenceCount: 0 },
+          [],
+          [],
+          `${mSuccessor.start_date}T10:00:00.000Z`,
+        ]),
+      );
+    } catch (error) {
+      retainedCutoffMismatchDenied = error.code === "40001";
+    }
+    assert(
+      retainedCutoffMismatchDenied,
+      "a retained verified cutoff that differs from the approved cutoff is refused",
+    );
+    const mAfter = (
+      await sql.unsafe(
+        "SELECT initialization, provenance FROM public.money_periods WHERE id=$1",
+        [mSuccessor.id],
+      )
+    )[0];
+    assert(
+      mAfter.initialization === "reconciled" &&
+        mAfter.provenance?.opening?.cutoffDate === mSuccessor.start_date,
+      "the refused adoption leaves the retained verified cutoff unchanged",
+    );
+    const mReceipts = await sql.unsafe(
+      "SELECT count(*)::int n FROM public.money_period_rollovers WHERE owner_user_id=$1 AND source_period_id=$2",
+      [M, mSourceId],
+    );
+    assert(mReceipts[0].n === 0, "the retained cutoff conflict leaves no receipt");
+    console.log("[PROVENANCE] a retained verified cutoff mismatch is refused without mutation");
+
+    // --- Continuation and adoption share one lock order --------------------
+    // The holder keeps the later tracking row locked. The routine write takes
+    // the owner-scoped lock first, so it waits while holding the earlier source;
+    // the rollover then waits behind the routine write instead of holding the
+    // source and waiting for the tracking row. Releasing the holder lets both
+    // transactions finish without a deadlock (40P01).
+    const nSourceStart = addDays(today, -90);
+    const nSourceEnd = addDays(today, -61);
+    const nCreated = await user(N, (tx) =>
+      createPeriod(tx, nSourceStart, nSourceEnd, nSourceStart, 100000),
+    );
+    const nSourceId = nCreated[0].id;
+    await user(N, (tx) =>
+      recordRoutine(tx, {
+        bookingDate: addDays(today, -60),
+        amountMinor: 1500,
+        category: "coffee",
+        needVsWant: "want",
+        idempotencyKey: "money-f04-n-first-continuation",
+        fingerprint: hex("c"),
+      }),
+    );
+    const nFirstSuccessor = (
+      await sql.unsafe(
+        "SELECT * FROM public.money_periods WHERE owner_user_id=$1 AND lifecycle='tracking'",
+        [N],
+      )
+    )[0];
+    const nSourceVersion = (
+      await sql.unsafe("SELECT version FROM public.money_periods WHERE id=$1", [nSourceId])
+    )[0].version;
+
+    let markHolderReady;
+    let releaseHolder;
+    const holderReady = new Promise((resolve) => {
+      markHolderReady = resolve;
+    });
+    const holderRelease = new Promise((resolve) => {
+      releaseHolder = resolve;
+    });
+    const holder = sql.begin(async (tx) => {
+      await tx.unsafe(
+        "SELECT 1 FROM public.money_periods WHERE id=$1 FOR UPDATE",
+        [nFirstSuccessor.id],
+      );
+      markHolderReady();
+      await holderRelease;
+    });
+    await holderReady;
+
+    const routineWait = beginAs(N, "f04-lock-routine", (tx) =>
+      recordRoutine(tx, {
+        bookingDate: addDays(today, -30),
+        amountMinor: 1600,
+        category: "household",
+        needVsWant: "need",
+        idempotencyKey: "money-f04-n-lock-routine",
+        fingerprint: hex("d"),
+      }),
+    );
+    await waitForLockWait("f04-lock-routine");
+
+    const rolloverWait = beginAs(N, "f04-lock-rollover", (tx) =>
+      callRollover(tx, [
+        nSourceId,
+        nSourceVersion,
+        nFirstSuccessor.start_date,
+        nFirstSuccessor.end_date,
+        nFirstSuccessor.start_date,
+        "Africa/Casablanca",
+        "initialized",
+        false,
+        100000,
+        nSourceEnd,
+        null,
+        "Finalized after review",
+        hex("d"),
+        {
+          opening: {
+            source: "carry_forward",
+            recordedAt: `${nFirstSuccessor.start_date}T09:00:00.000Z`,
+            cutoffDate: nSourceEnd,
+            evidence: null,
+            note: "Finalized after review",
+            corrections: [],
+          },
+          createdFrom: "web",
+        },
+        null,
+        "f04-n-lock-rollover",
+        hex("e"),
+        "carry_forward",
+        null,
+        null,
+        null,
+        "Reviewed every unverified day",
+        (Date.parse(nSourceEnd) - Date.parse(nSourceStart)) / 86_400_000 + 1,
+        { modeledClosingCashMinor: 100000, pendingOccurrenceCount: 0 },
+        [],
+        [],
+        `${nFirstSuccessor.start_date}T09:00:00.000Z`,
+      ]),
+    );
+    await waitForLockWait("f04-lock-rollover");
+    releaseHolder();
+
+    const settled = await Promise.allSettled([holder, routineWait, rolloverWait]);
+    const deadlocked = settled.some(
+      (entry) =>
+        entry.status === "rejected" &&
+        entry.reason &&
+        entry.reason.code === "40P01",
+    );
+    assert(!deadlocked, "continuation and adoption do not deadlock under the shared lock order");
+    assert(
+      settled[1].status === "fulfilled" || settled[2].status === "fulfilled",
+      "at least one synchronized continuation/adoption transaction completes",
+    );
+    const nPeriods = await sql.unsafe(
+      `SELECT count(*)::int n, count(*) FILTER (WHERE lifecycle='tracking')::int tracking
+       FROM public.money_periods WHERE owner_user_id=$1`,
+      [N],
+    );
+    assert(
+      nPeriods[0].tracking === 1,
+      "the synchronized writes leave exactly one tracking period",
+    );
+    console.log("[LOCK] routine write and rollover adoption serialize without deadlock");
+
+    // --- A carried opening cutoff is exactly the source end -----------------
+    const oSourceStart = addDays(today, -40);
+    const oSourceEnd = addDays(today, -11);
+    const oCreated = await user(O, (tx) =>
+      createPeriod(tx, oSourceStart, oSourceEnd, oSourceStart, 100000),
+    );
+    const oSourceId = oCreated[0].id;
+    await user(O, (tx) =>
+      recordRoutine(tx, {
+        bookingDate: today,
+        amountMinor: 1800,
+        category: "household",
+        needVsWant: "need",
+        idempotencyKey: "money-f04-o-continuation",
+        fingerprint: hex("c"),
+      }),
+    );
+    const oSuccessor = (
+      await sql.unsafe(
+        "SELECT * FROM public.money_periods WHERE owner_user_id=$1 AND lifecycle='tracking'",
+        [O],
+      )
+    )[0];
+    const oSourceVersion = (
+      await sql.unsafe("SELECT version FROM public.money_periods WHERE id=$1", [
+        oSourceId,
+      ])
+    )[0].version;
+    const oRolloverArgs = (cutoffDate, operationId) => [
+      oSourceId,
+      oSourceVersion,
+      oSuccessor.start_date,
+      oSuccessor.end_date,
+      oSuccessor.start_date,
+      "Africa/Casablanca",
+      "initialized",
+      false,
+      100000,
+      cutoffDate,
+      null,
+      "Finalized after review",
+      hex("d"),
+      {
+        opening: {
+          source: "carry_forward",
+          recordedAt: `${oSuccessor.start_date}T09:00:00.000Z`,
+          cutoffDate,
+          evidence: null,
+          note: "Finalized after review",
+          corrections: [],
+        },
+        createdFrom: "web",
+      },
+      null,
+      operationId,
+      hex("e"),
+      "carry_forward",
+      null,
+      null,
+      null,
+      "Reviewed every unverified day",
+      (Date.parse(oSourceEnd) - Date.parse(oSourceStart)) / 86_400_000 + 1,
+      { modeledClosingCashMinor: 100000, pendingOccurrenceCount: 0 },
+      [],
+      [],
+      `${oSuccessor.start_date}T09:00:00.000Z`,
+    ];
+
+    let oCutoffMismatchDenied = false;
+    try {
+      await user(O, (tx) =>
+        callRollover(
+          tx,
+          oRolloverArgs(oSuccessor.start_date, "f04-o-carry-cutoff-mismatch"),
+        ),
+      );
+    } catch (error) {
+      oCutoffMismatchDenied =
+        error.code === "23514" && /source period end/.test(error.message);
+    }
+    assert(
+      oCutoffMismatchDenied,
+      "a carried opening cutoff that is not the source end is refused",
+    );
+    const oBlocked = await sql.unsafe(
+      `SELECT
+         (SELECT count(*)::int FROM public.money_period_rollovers
+           WHERE owner_user_id=$1 AND source_period_id=$2) AS receipts,
+         (SELECT lifecycle FROM public.money_periods WHERE id=$2) AS source_lifecycle,
+         (SELECT lifecycle FROM public.money_periods WHERE id=$3) AS successor_lifecycle,
+         (SELECT initialization FROM public.money_periods WHERE id=$3) AS successor_initialization,
+         (SELECT jsonb_typeof(provenance -> 'opening') FROM public.money_periods WHERE id=$3) AS successor_opening_type`,
+      [O, oSourceId, oSuccessor.id],
+    );
+    assert(
+      oBlocked[0].receipts === 0 &&
+        oBlocked[0].source_lifecycle === "superseded" &&
+        oBlocked[0].successor_lifecycle === "tracking" &&
+        oBlocked[0].successor_initialization === "uninitialized" &&
+        oBlocked[0].successor_opening_type === "null",
+      "the carried cutoff mismatch leaves the source, successor and receipt unchanged",
+    );
+
+    await user(O, (tx) =>
+      callRollover(tx, oRolloverArgs(oSourceEnd, "f04-o-carry-cutoff-valid")),
+    );
+    const oAfter = await sql.unsafe(
+      `SELECT
+         (SELECT count(*)::int FROM public.money_period_rollovers
+           WHERE owner_user_id=$1 AND source_period_id=$2) AS receipts,
+         initialization,
+         provenance -> 'opening' ->> 'cutoffDate' AS cutoff
+       FROM public.money_periods WHERE id=$3`,
+      [O, oSourceId, oSuccessor.id],
+    );
+    assert(
+      oAfter[0].receipts === 1 &&
+        oAfter[0].initialization === "initialized" &&
+        oAfter[0].cutoff === oSourceEnd,
+      "a carried opening with the exact source end cutoff is retained",
+    );
+    console.log("[CARRY] a carried opening cutoff must equal the source period end");
 
     // --- Gap limit ----------------------------------------------------------
     await user(B, (tx) =>

@@ -92,10 +92,14 @@ surface is trusted:
      <previous period id> }` (provenance is JSONB; no new column);
    - an unavailable day-start baseline (`initial_setup_incomplete`) through the
      existing create path.
-9. Unique/race behavior: the transaction lock plus the one-tracking invariant
-   makes concurrent first expenses converge on one successor. A stable
-   continuation identity (`continuedFrom` + range) makes a retry return the same
-   period.
+9. Unique/race behavior: one owner-scoped period lock, taken in ascending
+   `(start_date, id)` order, serializes the routine write, continuation and
+   explicit rollover. The one-tracking invariant makes concurrent first
+   expenses converge on one successor. A stable continuation identity
+   (`continuedFrom` + range) makes a retry return the same period. The same lock
+   order prevents the continuation/adoption deadlock: a routine write can no
+   longer hold the tracking row while the rollover holds an earlier source and
+   waits for that tracking row.
 10. Reads never call this RPC. No close, opening, receipt or financial row is
     created by a GET.
 
@@ -104,10 +108,16 @@ resolves the same period target and inserts the financial row in the same
 database transaction, so a validation, idempotency or RLS failure rolls the
 supersession back. The application `resolveRoutineEntry` rule only prepares the
 target/message and delegates the atomic write; `createMovement` and
-`createExpense` share it. Web, HTTP and MCP therefore keep one rule, and MCP
-write grants and idempotency stay at the same boundary. A booking-date edit that
-would leave the row's current period is refused instead of advancing the
-calendar, so an update can never keep a stale `period_id`.
+`createExpense` share it. Every routine write that has a resolved period — not
+only a continuation — uses that RPC, because an application read is only a
+preview: a concurrent rollover can finalize the period before a direct insert.
+The RPC re-reads the lifecycle under the shared owner lock and owns `period_id`,
+so a stale resolution writes no movement. The direct insert remains only for the
+legacy/no-period account, where no period lifecycle exists to race. Web, HTTP
+and MCP therefore keep one rule, and MCP write grants and idempotency stay at the
+same boundary. A booking-date edit that would leave the row's current period is
+refused instead of advancing the calendar, so an update can never keep a stale
+`period_id`.
 
 ## Opening initialization and later reconciliation
 
@@ -193,6 +203,27 @@ calendar, so an update can never keep a stale `period_id`.
 7. Cross-owner, read-only MCP grant and unauthenticated calls → denied; zero
    writes.
 8. Reads (`/money`, MCP reads) never call the continuation RPC.
+9. A routine write that resolved a period, then paused while an explicit
+   rollover finalized it, is refused under the shared lock and creates no
+   movement. A continuation and a rollover adoption driven concurrently under a
+   deliberately held row lock complete without a deadlock.
+10. Equal-amount adoption preserves the successor's correction history and
+    records an explicit evidence upgrade; a conflicting provenance cutoff is
+    refused, and the stored opening timestamp/cutoff come from the database
+    clock and validated input.
+11. A retained available day-start baseline remains available when the current
+    budget plan is missing; only the derived path requires plan targets.
+12. A pre-change MCP close receipt with an omitted `countsInDaily` replays
+    through the compatibility shape, while a changed receipt (including an
+    explicit `true` against a legacy omitted flag) conflicts. New receipts bind
+    the effective daily classification. Quick entry's default booking date
+    follows the tracking period across a divergent owner/period midnight.
+13. A timestamped backfill whose instant is in a superseded period's own
+    timezone day is accepted even when the tracking-zone date belongs to no
+    period; a stale or finalized target still writes no movement.
+14. A normal opening correction after adoption preserves `evidenceUpgrade`, and
+    a `carry_forward` cutoff that differs from the source end is refused before
+    any receipt or provenance is retained.
 
 ## Implementation notes
 
@@ -227,9 +258,19 @@ calendar, so an update can never keep a stale `period_id`.
   = false` and `provenance = { opening: null, createdFrom, continuedFrom }`.
   Rollover adoption inserts exactly one canonical opening movement when none
   exists, merges the approved opening provenance, and upgrades initialization.
-  If the successor already has an opening, the approved amount must match
-  exactly; a different amount is a conflict, never an overwrite. An already
-  reconciled opening cannot be downgraded.
+  The retained opening evidence is built from the validated opening cutoff and
+  the trusted database clock: caller provenance may describe the surface or
+  keep corrections, but a conflicting cutoff is refused and a caller timestamp
+  is not stored. If the successor already has an opening, the approved amount
+  must match exactly; a different amount is a conflict, never an overwrite. A
+  same-amount adoption preserves the existing leading, cutoff, evidence and
+  correction history. An initialized opening may be explicitly upgraded to
+  reconciled only by recording an `evidenceUpgrade` that retains the previous
+  evidence; an already reconciled opening cannot be downgraded or have its
+  retained verified cutoff silently rewritten. Normal opening corrections after
+  adoption replace the active opening fields but preserve the recorded
+  `evidenceUpgrade` history. A `carry_forward` opening must use exactly the
+  source period end as its scalar cutoff before any provenance is retained.
 - **Lifecycle guard.** `superseded` is excluded from the approved `ended`
   meaning. The update guard allows only `tracking -> superseded` and
   `superseded -> rolled_over`; the close transition guard refuses
@@ -243,10 +284,15 @@ calendar, so an update can never keep a stale `period_id`.
   of switching to the owner preference timezone; the owner time context is only
   a fallback before any period exists. The server action derives `bookingDate`
   from a supplied instant in that zone and rejects a divergent explicit date.
-  Reads keep the owner time context (`timezone`, `localToday`) and the period
-  timezone separately and expose `periodTimezone`, so a divergence is visible
-  rather than silently merged; the current projection cutoff remains
-  owner-local today clamped to the period.
+  A timestamped backfill into a non-finalized superseded period derives its day
+  in that target period's own timezone, not the tracking period's, and the
+  database repeats the derivation under the owner lock before inserting. Quick
+  entry pre-fills its default booking date from the tracking period timezone,
+  not the owner date, so a divergent owner/period midnight does not show one
+  day while the server books the other. Reads keep the owner time context
+  (`timezone`, `localToday`) and the period timezone separately and expose
+  `periodTimezone`, so a divergence is visible rather than silently merged; the
+  current projection cutoff remains owner-local today clamped to the period.
 
 ## Explicit non-goals
 

@@ -60,7 +60,9 @@ test("one primary summary shows recorded cash, safe to spend and the daily refer
 
 test("one quick entry posts every movement kind through the shared movement use case", () => {
   assert.match(source, /MoneyQuickEntry/);
-  assert.match(source, /defaultBookingDate=\{localToday\}/);
+  assert.match(source, /defaultBookingDate=\{defaultBookingDate\}/);
+  assert.match(source, /moneyDefaultBookingDate\(/);
+  assert.match(source, /trackingPeriodTimezone:\s*trackingPeriod\?\.timezone/);
   assert.match(quickEntrySource, /createMovementAction/);
   for (const kind of ["expense", "income", "savings_transfer", "reconciliation_adjustment"]) {
     assert.match(quickEntrySource, new RegExp(kind));
