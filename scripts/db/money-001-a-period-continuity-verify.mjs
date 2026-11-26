@@ -9,8 +9,13 @@
  *     reference, close row, successor link or opening, and exactly one later
  *     tracking period owns the booking;
  *   - a retry and two concurrent routine writes converge on the same successor;
- *   - an unknown-opening superseded predecessor is initialized exactly once and
- *     can then be finalized; active dates and settings stay closed;
+ *   - a future booking date cannot continue the window, and the internal
+ *     continuation RPC is not executable by authenticated callers directly;
+ *   - an unknown-opening superseded predecessor is initialized exactly once,
+ *     keeps its `continuedFrom` provenance, and can then be finalized; active
+ *     dates and settings stay closed;
+ *   - a legacy out-of-period row is reported by the migration preflight, an
+ *     in-range correction succeeds, and a soft delete still succeeds;
  *   - a gap larger than 366 days is refused instead of creating empty periods;
  *   - a booking before the window or inside a finalized period is refused;
  *   - a non-finalized superseded period accepts routine entry for its own dates;
@@ -253,9 +258,29 @@ async function main() {
       ),
     );
 
-    const continued = await user(A, (tx) => continuePeriod(tx, today));
-    assert(continued.length === 1, "continuation returns exactly one period");
-    const successor = continued[0];
+    // The only reachable continuation path is the atomic routine RPC. A direct
+    // money_continue_period call is not granted to authenticated callers.
+    const continued = await user(A, (tx) =>
+      recordRoutine(tx, {
+        bookingDate: today,
+        amountMinor: 1500,
+        category: "groceries",
+        needVsWant: "need",
+        idempotencyKey: "money-f04-first-continuation",
+        fingerprint: hex("a"),
+      }),
+    );
+    const successorPeriods = await sql.unsafe(
+      `SELECT * FROM public.money_periods
+       WHERE owner_user_id=$1 AND lifecycle='tracking'`,
+      [A],
+    );
+    assert(successorPeriods.length === 1, "continuation leaves exactly one tracking period");
+    const successor = successorPeriods[0];
+    assert(
+      continued[0].period_id === successor.id,
+      "the routine movement lands in the continuation successor",
+    );
     assert(
       successor.lifecycle === "tracking" &&
         successor.start_date === expectedStart &&
@@ -319,16 +344,57 @@ async function main() {
 
     // Same date, including on a month end. A retry must never create a second
     // successor because today + 1 can fall outside the continued month.
-    const retry = await user(A, (tx) => continuePeriod(tx, today));
+    const retry = await user(A, (tx) =>
+      recordRoutine(tx, {
+        bookingDate: today,
+        amountMinor: 1600,
+        category: "household",
+        needVsWant: "need",
+        idempotencyKey: "money-f04-continuation-retry",
+        fingerprint: hex("b"),
+      }),
+    );
     assert(
-      retry[0].id === successor.id,
-      "a retry inside the continued window returns the same period",
+      retry[0].period_id === successor.id,
+      "a retry inside the continued window stays in the same period",
     );
     const periodCountAfterRetry = await sql.unsafe(
       "SELECT count(*)::int n FROM public.money_periods WHERE owner_user_id=$1",
       [A],
     );
     assert(periodCountAfterRetry[0].n === 2, "the retry creates no second successor");
+
+    // A future date must not supersede the current window, even through the
+    // atomic routine RPC. Only owner-local today or earlier may continue.
+    let futureContinuationDenied = false;
+    try {
+      await user(A, (tx) =>
+        recordRoutine(tx, {
+          bookingDate: addDays(expectedEnd, 1),
+          amountMinor: 1700,
+          category: "coffee",
+          idempotencyKey: "money-f04-future-continuation",
+          fingerprint: hex("c"),
+        }),
+      );
+    } catch (error) {
+      futureContinuationDenied =
+        error.code === "23514" && /in the future/.test(error.message);
+    }
+    assert(
+      futureContinuationDenied,
+      "a future booking date cannot continue the tracking window",
+    );
+    const afterFuture = await sql.unsafe(
+      `SELECT count(*)::int n,
+              count(*) FILTER (WHERE lifecycle='tracking')::int tracking
+       FROM public.money_periods WHERE owner_user_id=$1`,
+      [A],
+    );
+    assert(
+      afterFuture[0].n === 2 && afterFuture[0].tracking === 1,
+      "the refused future continuation leaves the calendar unchanged",
+    );
 
     // The continued period contains a real movement before finalization. The
     // atomic routine RPC owns both the period resolution and the insert.
@@ -411,11 +477,42 @@ async function main() {
     // range are historical corrections.
     let beforeDenied = false;
     try {
-      await user(A, (tx) => continuePeriod(tx, addDays(sourceStart, -1)));
+      await user(A, (tx) =>
+        recordRoutine(tx, {
+          bookingDate: addDays(sourceStart, -1),
+          amountMinor: 1800,
+          idempotencyKey: "money-f04-before-window",
+          fingerprint: hex("d"),
+        }),
+      );
     } catch (error) {
       beforeDenied = error.code === "23514";
     }
-    assert(beforeDenied, "continuation refuses a date before the current window");
+    assert(beforeDenied, "a date before the tracking window is refused");
+
+    // The continuation RPC itself is internal: authenticated callers cannot
+    // invoke it directly, so a superseded window cannot be left without the
+    // movement that required it.
+    let directContinuationDenied = false;
+    try {
+      await user(A, (tx) => continuePeriod(tx, today));
+    } catch (error) {
+      directContinuationDenied = error.code === "42501";
+    }
+    assert(
+      directContinuationDenied,
+      "authenticated callers cannot execute money_continue_period directly",
+    );
+    const internalGrant = await sql.unsafe(
+      `SELECT
+         has_function_privilege('authenticated','public.money_continue_period(date)','EXECUTE') AS authenticated_execute,
+         has_function_privilege('authenticated','public.money_record_routine_movement(date,text,text,timestamptz,integer,text,text,text,text,text,text,boolean,text,text)','EXECUTE') AS routine_execute`,
+    );
+    assert(
+      internalGrant[0].authenticated_execute === false &&
+        internalGrant[0].routine_execute === true,
+      "continuation is reachable only through the atomic routine function",
+    );
 
     // The lifecycle guard itself (not only the grant) keeps `superseded` out of
     // the approved `ended` meaning.
@@ -590,7 +687,7 @@ async function main() {
        WHERE owner_user_id=$1 AND period_id=$2 AND kind <> 'opening' AND deleted_at IS NULL`,
       [A, successor.id],
     );
-    assert(preserved[0].n === 1, "the movement already recorded in the successor is preserved");
+    assert(preserved[0].n === 3, "the movements already recorded in the successor are preserved");
     const successorState = (
       await sql.unsafe(
         "SELECT initialization, opening_movement_id FROM public.money_periods WHERE id=$1",
@@ -669,9 +766,13 @@ async function main() {
     try {
       await user(B, (tx) => continuePeriod(tx, today));
     } catch (error) {
-      crossOwnerDenied = error.code === "23514";
+      crossOwnerDenied = error.code === "42501";
     }
-    assert(crossOwnerDenied, "owner B has no tracking period to continue");    const bPeriods = await user(B, (tx) =>
+    assert(
+      crossOwnerDenied,
+      "the internal continuation RPC is not executable even for another owner",
+    );
+    const bPeriods = await user(B, (tx) =>
       tx.unsafe("SELECT count(*)::int n FROM public.money_periods"),
     );
     assert(bPeriods[0].n === 0, "the refused cross-owner call writes nothing");
@@ -690,7 +791,19 @@ async function main() {
     // --- Opening mismatch on an existing continued opening -----------------
     const cCreated = await user(C, (tx) => createPeriod(tx, sourceStart, sourceEnd, sourceStart, 100000));
     const cSourceId = cCreated[0].id;
-    const cSuccessor = (await user(C, (tx) => continuePeriod(tx, today)))[0];
+    await user(C, (tx) =>
+      recordRoutine(tx, {
+        bookingDate: today,
+        idempotencyKey: "money-f04-c-continuation",
+        fingerprint: hex("b"),
+      }),
+    );
+    const cSuccessor = (
+      await sql.unsafe(
+        "SELECT * FROM public.money_periods WHERE owner_user_id=$1 AND lifecycle='tracking'",
+        [C],
+      )
+    )[0];
     const cSourceVersion = (
       await sql.unsafe("SELECT version FROM public.money_periods WHERE id=$1", [cSourceId])
     )[0].version;
@@ -833,7 +946,19 @@ async function main() {
     // --- Adoption identity is the date chain, not provenance JSON -----------
     const dCreated = await user(D, (tx) => createPeriod(tx, sourceStart, sourceEnd, sourceStart, 100000));
     const dSourceId = dCreated[0].id;
-    const dSuccessor = (await user(D, (tx) => continuePeriod(tx, today)))[0];
+    await user(D, (tx) =>
+      recordRoutine(tx, {
+        bookingDate: today,
+        idempotencyKey: "money-f04-d-continuation",
+        fingerprint: hex("b"),
+      }),
+    );
+    const dSuccessor = (
+      await sql.unsafe(
+        "SELECT * FROM public.money_periods WHERE owner_user_id=$1 AND lifecycle='tracking'",
+        [D],
+      )
+    )[0];
     // Forge the descriptive provenance pointer. The real date chain still
     // identifies the continued period, so adoption must succeed without a
     // duplicate and a direct caller cannot steer adoption with this JSON.
@@ -1132,6 +1257,25 @@ async function main() {
       "continuation leaves the unknown-opening source non-finalized",
     );
 
+    // A superseded period can itself be a continuation successor (a chain).
+    // Seed that descriptive pointer so initializing its opening proves the
+    // merge path keeps it instead of replacing provenance.
+    const iContinuedFrom = "bbbbbbbb-9999-4999-8999-999999999999";
+    await sql.unsafe(
+      `UPDATE public.money_periods
+       SET provenance = COALESCE(provenance, '{}'::jsonb)
+             || jsonb_build_object('continuedFrom', $2::text),
+           version = version + 1,
+           updated_at = now()
+       WHERE id=$1`,
+      [iSourceId, iContinuedFrom],
+    );
+    const iSourceVersion = (
+      await sql.unsafe("SELECT version FROM public.money_periods WHERE id=$1", [
+        iSourceId,
+      ])
+    )[0].version;
+
     const iSummaryBefore = await user(I, (tx) =>
       tx.unsafe(
         "SELECT public.money_rollover_close_snapshot_summary($1::uuid) AS summary",
@@ -1152,7 +1296,7 @@ async function main() {
             $1::uuid,$2::integer,$3::date,NULL::jsonb,NULL::integer,NULL::text,
             NULL::text,NULL::jsonb,NULL::text,now()::timestamptz
           )`,
-          [iSourceId, iSource.version, addDays(iStart, 1)],
+          [iSourceId, iSourceVersion, addDays(iStart, 1)],
         ),
       );
     } catch (error) {
@@ -1171,7 +1315,7 @@ async function main() {
         )`,
         [
           iSourceId,
-          iSource.version,
+          iSourceVersion,
           50000,
           hex("a"),
           {
@@ -1205,6 +1349,11 @@ async function main() {
         iOpening[0].amount_minor === 50000 &&
         iOpening[0].booking_date === iStart,
       "the superseded opening is one canonical opening movement on its start date",
+    );
+    assert(
+      iInitialized[0].provenance?.continuedFrom === iContinuedFrom &&
+        iInitialized[0].provenance?.opening?.source === "user_entered",
+      "initializing the superseded opening preserves continuation provenance",
     );
 
     let iSecondOpeningDenied = false;
@@ -1374,14 +1523,14 @@ async function main() {
       "verified finalization on the source's own end date is blocked",
     );
 
-    await user(J, (tx) =>
-      recordRoutine(tx, {
-        bookingDate: jFuture,
-        amountMinor: 1900,
-        category: "coffee",
-        idempotencyKey: "money-f04-j-successor",
-        fingerprint: hex("f"),
-      }),
+    // The continuation rule now refuses a future date, so this state is only
+    // reachable from legacy/manual lifecycle data. Keep the finalization guard
+    // honest for that retained state.
+    await sql.unsafe(
+      `UPDATE public.money_periods
+       SET lifecycle='superseded', version=version+1, updated_at=now()
+       WHERE id=$1 AND owner_user_id=$2`,
+      [jSourceId, J],
     );
     const jState = (
       await sql.unsafe(
@@ -1391,7 +1540,7 @@ async function main() {
     )[0];
     assert(
       jState.lifecycle === "superseded" && jState.end_date === today,
-      "a future-dated routine write supersedes the period that owns today",
+      "the legacy fixture is a superseded period that still owns today",
     );
     jVersion = jState.version;
 
@@ -1423,20 +1572,135 @@ async function main() {
     assert(jReceipts[0].n === 0, "blocked same-day finalizations leave no receipt");
     console.log("[EARLY] tracking and superseded sources cannot finalize on their own end date");
 
+    // --- Period-date preflight, soft delete and corrections ----------------
+    // A legacy row can predate the invariant. The migration preflight must
+    // report it instead of silently creating undeletable history, while a soft
+    // delete or an in-range correction still succeeds.
+    await user(E, (tx) =>
+      createPeriod(tx, sourceStart, sourceEnd, sourceStart, 100000),
+    );
+    const ePeriodId = (
+      await sql.unsafe(
+        "SELECT id FROM public.money_periods WHERE owner_user_id=$1 ORDER BY start_date LIMIT 1",
+        [E],
+      )
+    )[0].id;
+    const legacyRow = await sql.unsafe(
+      `INSERT INTO public.personal_expenses
+       (owner_user_id,period_id,booking_date,kind,direction,amount_minor,currency,
+        category,need_vs_want,purpose,counts_in_daily,idempotency_key,create_fingerprint)
+       VALUES ($1,$2,$3::date,'expense','out',900,'MAD',
+        'coffee','want','flexible',true,'money-f04-preflight-row',repeat('a',64))
+       RETURNING id`,
+      [E, ePeriodId, sourceEnd],
+    );
+    const legacyRowId = legacyRow[0].id;
+    await sql.unsafe(
+      `UPDATE public.personal_expenses
+       SET booking_date=$1::date, version=version+1, updated_at=now()
+       WHERE id=$2`,
+      [addDays(sourceStart, 5), legacyRowId],
+    );
+    const correctedInRange = await sql.unsafe(
+      "SELECT booking_date FROM public.personal_expenses WHERE id=$1",
+      [legacyRowId],
+    );
+    assert(
+      correctedInRange[0].booking_date === addDays(sourceStart, 5),
+      "an in-range booking-date correction still succeeds",
+    );
+
+    await sql.unsafe(
+      'ALTER TABLE public.personal_expenses DISABLE TRIGGER "personal_expenses_period_date_guard"',
+    );
+    await sql.unsafe(
+      `UPDATE public.personal_expenses
+       SET booking_date=$1::date, version=version+1, updated_at=now()
+       WHERE id=$2`,
+      [addDays(sourceEnd, 60), legacyRowId],
+    );
+    await sql.unsafe(
+      'ALTER TABLE public.personal_expenses ENABLE TRIGGER "personal_expenses_period_date_guard"',
+    );
+    let preflightDenied = false;
+    try {
+      await sql.unsafe("SELECT public.money_assert_period_booking_dates()");
+    } catch (error) {
+      preflightDenied = error.code === "23514" && /outside their period/.test(error.message);
+    }
+    assert(
+      preflightDenied,
+      "the migration preflight reports an active movement outside its period",
+    );
+
+    await sql.unsafe(
+      `UPDATE public.personal_expenses
+       SET deleted_at=now(), version=version+1, updated_at=now()
+       WHERE id=$1`,
+      [legacyRowId],
+    );
+    await sql.unsafe("SELECT public.money_assert_period_booking_dates()");
+    const softDeletedLegacy = await sql.unsafe(
+      "SELECT deleted_at FROM public.personal_expenses WHERE id=$1",
+      [legacyRowId],
+    );
+    assert(
+      softDeletedLegacy[0].deleted_at !== null,
+      "a legacy out-of-range row can still be soft-deleted",
+    );
+
+    let directOutOfRangeDenied = false;
+    try {
+      await user(E, (tx) =>
+        tx.unsafe(
+          `INSERT INTO public.personal_expenses
+           (owner_user_id,period_id,booking_date,kind,direction,amount_minor,currency,
+            idempotency_key,create_fingerprint)
+           VALUES ($1,$2,$3::date,'expense','out',1000,'MAD',
+            'money-f04-out-of-range',repeat('b',64))`,
+          [E, ePeriodId, addDays(sourceEnd, 10)],
+        ),
+      );
+    } catch (error) {
+      directOutOfRangeDenied = error.code === "23514";
+    }
+    assert(
+      directOutOfRangeDenied,
+      "an active movement cannot be written outside its period",
+    );
+    await sql.unsafe("DELETE FROM public.personal_expenses WHERE id=$1", [legacyRowId]);
+    console.log("[PREFLIGHT] out-of-period rows are reported, correctable and soft-deletable");
+
     // --- Gap limit ----------------------------------------------------------
-    const eCreated = await user(E, (tx) => createPeriod(tx, sourceStart, sourceEnd, sourceStart, 100000));
+    await user(B, (tx) =>
+      createPeriod(
+        tx,
+        addDays(today, -800),
+        addDays(today, -400),
+        addDays(today, -800),
+        100000,
+      ),
+    );
     let gapDenied = false;
     try {
-      await user(E, (tx) => continuePeriod(tx, addDays(sourceEnd, 400)));
+      await user(B, (tx) =>
+        recordRoutine(tx, {
+          bookingDate: addDays(today, -10),
+          amountMinor: 1900,
+          category: "coffee",
+          idempotencyKey: "money-f04-gap",
+          fingerprint: hex("e"),
+        }),
+      );
     } catch (error) {
       gapDenied = error.code === "23514" && /366 days/.test(error.message);
     }
     assert(gapDenied, "a gap larger than 366 days requires explicit period creation");
-    const ePeriods = await sql.unsafe(
+    const bPeriodsAfterGap = await sql.unsafe(
       "SELECT count(*)::int n FROM public.money_periods WHERE owner_user_id=$1",
-      [E],
+      [B],
     );
-    assert(ePeriods[0].n === 1, "the refused gap creates no period");
+    assert(bPeriodsAfterGap[0].n === 1, "the refused gap creates no period");
 
     console.log("MONEY-001-A period-continuity proof passed");
   } catch (error) {

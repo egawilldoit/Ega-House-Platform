@@ -966,11 +966,13 @@ function daysBetween(from: string, to: string): number {
 /**
  * Routine entry policy. A tracking period owns dates inside its window. A date
  * after it is a controlled continuation (the database closes the routine window
- * as `superseded` and creates exactly one later tracking period). A date inside
- * a non-finalized `superseded` period is still routine entry for that period's
- * own dates: `superseded` closes the forward window, it is not finalization
- * approval, so the owner can still record a forgotten expense. Finalized
- * (`ended`/`rolled_over`) ranges remain explicit historical corrections.
+ * as `superseded` and creates exactly one later tracking period), but only up
+ * to the owner-local today in the source period timezone: a future date must not
+ * supersede the current window. A date inside a non-finalized `superseded`
+ * period is still routine entry for that period's own dates: `superseded`
+ * closes the forward window, it is not finalization approval, so the owner can
+ * still record a forgotten expense. Finalized (`ended`/`rolled_over`) ranges
+ * remain explicit historical corrections.
  *
  * Reads never mutate the calendar. `bookingDate === null` means the instant was
  * not resolved yet; the existing tracking period is returned unchanged.
@@ -984,6 +986,8 @@ export async function resolveRoutineEntry(
   bookingDate: string | null,
   /** Pre-loaded tracking period to avoid a second read. `undefined` loads it. */
   preloadedTracking?: MoneyPeriod | null,
+  /** The instant that defines owner-local today; defaults to now. */
+  now: Date = new Date(),
 ): Promise<ApplicationResult<MoneyRoutineEntryTarget | null>> {
   if (bookingDate !== null && !isIsoDate(bookingDate)) {
     return applicationFailure("Use a valid calendar date.", "validation");
@@ -1030,6 +1034,13 @@ export async function resolveRoutineEntry(
   }
 
   if (current && bookingDate > current.endDate) {
+    const localToday = getLocalDateInTimezone(now, current.timezone);
+    if (bookingDate > localToday) {
+      return applicationFailure(
+        `The date ${bookingDate} is in the future. A routine write can continue the calendar only up to today (${localToday}) in the period timezone ${current.timezone}.`,
+        "validation",
+      );
+    }
     if (daysBetween(current.endDate, bookingDate) > 366) {
       return applicationFailure(
         `The date ${bookingDate} is more than 366 days after the tracking period ${current.startDate}–${current.endDate}. Create a Money period explicitly before recording it.`,

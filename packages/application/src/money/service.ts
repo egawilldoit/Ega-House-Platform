@@ -73,6 +73,8 @@ export type MovementWriteOptions = Readonly<{
     "findTracking" | "list" | "findOverlapping"
   > &
     Partial<Pick<MoneyPeriodRepository, "findById">>;
+  /** The instant that defines owner-local today; defaults to now. */
+  now?: Date;
 }>;
 
 export function movementReceiptFingerprint(values: MoneyCreateValues): string {
@@ -143,6 +145,8 @@ export async function createMovement(
     actor,
     options.periods,
     values.bookingDate,
+    undefined,
+    options.now,
   );
   if (!period.ok) {
     return applicationFailure(period.errorMessage, period.code);
@@ -365,6 +369,8 @@ export async function updateMovement(
       actor,
       options.periods,
       bookingDate,
+      undefined,
+      options.now,
     );
     if (!guard.ok) {
       return applicationFailure(guard.errorMessage, guard.code);

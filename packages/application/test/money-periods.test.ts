@@ -1809,18 +1809,35 @@ const EXPENSE_BODY = {
 test("routine expense creation delegates continuation to the atomic insert", async () => {
   const money = makeRepository();
   const expenses = expenseRepository();
-  const created = await createMoneyPeriod(ACTOR, money.repository, CREATE_BODY, {
-    now: NOW,
-    timezone: "Africa/Casablanca",
-  });
+  // The tracking window ends before owner-local today (2026-11-11 in
+  // Africa/Casablanca), so the continuation branch itself is reachable.
+  const created = await createMoneyPeriod(
+    ACTOR,
+    money.repository,
+    {
+      ...CREATE_BODY,
+      startDate: "2026-11-01",
+      endDate: "2026-11-05",
+      activeDate: "2026-11-05",
+      opening: { ...CREATE_BODY.opening, cutoffDate: "2026-10-31" },
+    },
+    {
+      now: NOW,
+      timezone: "Africa/Casablanca",
+    },
+  );
   assert.equal(created.ok, true);
   if (!created.ok) return;
 
   const inRange = await createExpense(
     ACTOR,
     expenses.repository,
-    EXPENSE_BODY,
-    { periods: money.repository },
+    {
+      ...EXPENSE_BODY,
+      occurredAt: "2026-11-03T12:00:00.000Z",
+      idempotencyKey: "expense-guard-in-range",
+    },
+    { periods: money.repository, now: NOW },
   );
   assert.equal(inRange.ok, true);
   if (inRange.ok) {
@@ -1841,7 +1858,7 @@ test("routine expense creation delegates continuation to the atomic insert", asy
       occurredAt: "2026-10-30T12:00:00.000Z",
       idempotencyKey: "expense-guard-before",
     },
-    { periods: money.repository },
+    { periods: money.repository, now: NOW },
   );
   assert.equal(beforeWindow.ok, false);
   if (!beforeWindow.ok) {
@@ -1849,18 +1866,40 @@ test("routine expense creation delegates continuation to the atomic insert", asy
     assert.match(beforeWindow.errorMessage, /outside the tracking period/);
   }
 
-  // A date after the tracking window is not continued by the read guard. The
-  // request carries `requiresContinuation`, so the repository can continue and
-  // insert in one database transaction.
+  // A future booking must not supersede the current window: only dates up to
+  // owner-local today in the source period timezone may continue the calendar.
+  const future = await createExpense(
+    ACTOR,
+    expenses.repository,
+    {
+      ...EXPENSE_BODY,
+      occurredAt: "2026-11-12T12:00:00.000Z",
+      idempotencyKey: "expense-guard-future",
+    },
+    { periods: money.repository, now: NOW },
+  );
+  assert.equal(future.ok, false);
+  if (!future.ok) {
+    assert.equal(future.code, "validation");
+    assert.match(future.errorMessage, /in the future/);
+  }
+  assert.equal(
+    money.periods.get(created.data.period.id)?.period.lifecycle,
+    "tracking",
+  );
+
+  // A date after the tracking window that is not in the future is not
+  // continued by the read guard. The request carries `requiresContinuation`,
+  // so the repository can continue and insert in one database transaction.
   const afterWindow = await createExpense(
     ACTOR,
     expenses.repository,
     {
       ...EXPENSE_BODY,
-      occurredAt: "2026-12-02T12:00:00.000Z",
+      occurredAt: "2026-11-08T12:00:00.000Z",
       idempotencyKey: "expense-guard-continue",
     },
-    { periods: money.repository },
+    { periods: money.repository, now: NOW },
   );
   assert.equal(afterWindow.ok, true);
   assert.deepEqual(expenses.lastCreate(), {
@@ -1964,10 +2003,12 @@ test("a non-finalized superseded period initializes only its missing opening", a
   if (!created.ok) return;
   const sourceId = created.data.period.id;
   const source = money.periods.get(sourceId)!;
+  const continuedFrom = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
   const superseded = {
     ...source.period,
     lifecycle: "superseded" as const,
     version: source.period.version + 1,
+    provenance: { ...source.period.provenance, continuedFrom },
   };
   money.periods.set(sourceId, { ownerUserId: ACTOR.userId, period: superseded });
 
@@ -2009,6 +2050,7 @@ test("a non-finalized superseded period initializes only its missing opening", a
   assert.equal(initialized.data.initialization, "initialized");
   assert.notEqual(initialized.data.openingMovementId, null);
   assert.equal(initialized.data.activeDate, superseded.activeDate);
+  assert.equal(initialized.data.provenance.continuedFrom, continuedFrom);
 
   // Once the opening exists, the superseded range is no longer a settings
   // target; later corrections require the explicit historical path.

@@ -913,12 +913,16 @@ test("create delegates a post-window booking to the atomic continuation insert",
 
   // The read guard never supersedes anything; it asks the repository to
   // continue and insert together, so a failed financial write cannot leave a
-  // durable period change.
+  // durable period change. The injected clock keeps 2026-12-01 a past date in
+  // the period timezone so the continuation branch is reachable.
   const outside = await createMovement(
     ACTOR,
     repository,
     incomeInput({ bookingDate: "2026-12-01" }),
-    { periods: periodRepository },
+    {
+      periods: periodRepository,
+      now: new Date("2026-12-05T12:00:00.000Z"),
+    },
   );
   assert.equal(outside.ok, true);
   if (outside.ok) assert.equal(outside.data.movement.periodId, null);
@@ -927,7 +931,10 @@ test("create delegates a post-window booking to the atomic continuation insert",
     ACTOR,
     repository,
     incomeInput({ bookingDate: "2026-11-20", idempotencyKey: "income-inside" }),
-    { periods: periodRepository },
+    {
+      periods: periodRepository,
+      now: new Date("2026-12-05T12:00:00.000Z"),
+    },
   );
   assert.equal(inside.ok, true);
   if (inside.ok) assert.equal(inside.data.movement.periodId, "period-1");

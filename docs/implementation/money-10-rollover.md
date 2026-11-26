@@ -1,8 +1,8 @@
 # MONEY-10 rollover slice and integration dependencies
 
-Status: implementation candidate on `feat/money-001-core-ux` (uncommitted
-working patch), rebased onto `main` with MONEY-09 (durable day close) and the
-MONEY-001-A continuity slice integrated.
+Status: implementation candidate on `feat/money-001-core-ux`, rebased onto
+`main` with MONEY-09 (durable day close) and the MONEY-001-A continuity slice
+integrated.
 
 ## What this branch delivers
 
@@ -20,10 +20,10 @@ MONEY-001-A continuity slice integrated.
   bridge/variance rows, the single-transaction rollover function,
   `money_rollover_close_snapshot_summary`, and the ledger correction trigger.
   Journal position `0107` follows MONEY-09's `0104`–`0106` migrations.
-- `drizzle/0109_money_11_optional_close_rollover.sql`: optional close, reviewed
+- `drizzle/0111_money_11_optional_close_rollover.sql`: optional close, reviewed
   finalization with retained unverified-day evidence, and the finalization
   variant of the atomic rollover RPC.
-- `drizzle/0110_money_001_a_period_continuity.sql`: the `superseded` lifecycle,
+- `drizzle/0112_money_001_a_period_continuity.sql`: the `superseded` lifecycle,
   the controlled `money_continue_period` RPC, the atomic
   `money_record_routine_movement` continue-and-insert path, the guard/transition
   extensions, rollover adoption of an already-continued successor, and the
@@ -143,13 +143,16 @@ MONEY-001-A continuity slice integrated.
   non-finalized superseded period, tracking/superseded same-day finalization
   refusal in both opening modes, predecessor/early-finalization blockers, and
   adoption range validation.
-- The disposable PostgreSQL proofs pass against `pg17dev` (all 103 migrations
-  through `0110_money_001_a_period_continuity`):
-  `money-001-a-period-continuity-verify.mjs` (continuation, routine backfill,
-  concurrent routine writes converging on one successor, unknown-opening
-  initialization then adoption, superseded/tracking same-day refusal, adoption
-  conflicts and forged provenance), `money-001-a-optional-close-rollover-verify.mjs`
-  (database-clock-anchored optional close and reviewed finalization), and
+- The disposable PostgreSQL proofs pass against `pg17dev` (all 105 migrations
+  through `0112_money_001_a_period_continuity`):
+  `money-001-a-period-continuity-verify.mjs` (continuation through the atomic
+  routine RPC, future-date refusal, direct continuation-grant denial, routine
+  backfill, concurrent routine writes converging on one successor,
+  unknown-opening initialization with retained `continuedFrom` provenance then
+  adoption, out-of-period preflight/correction/soft-delete, superseded/tracking
+  same-day refusal, adoption conflicts and forged provenance),
+  `money-001-a-optional-close-rollover-verify.mjs` (database-clock-anchored
+  optional close and reviewed finalization), and
   `money-10-rollover-verify.mjs` (rollover, verified opening, early
   finalization refusal and post-close success).
 - Not run in this fix pass: the browser `money-001-core.e2e.spec.ts` journeys.
@@ -158,9 +161,9 @@ MONEY-001-A continuity slice integrated.
   continued successor; it is registered in `scripts/e2e/assert-disposable-report.mjs`
   but remains unproven here. Run the Money E2E project before merge.
 
-### Earlier MONEY-09/MONEY-10 proof runs (before 0110 was added)
+### Earlier MONEY-09/MONEY-10 proof runs (before the continuity slice was added)
 - Full migration journal applied cleanly to a disposable PostgreSQL cluster
-  (all entries through `0109_money_11_optional_close_rollover`), including the
+  (all entries through `0111_money_11_optional_close_rollover`), including the
   MONEY-001-A finalization rules and the `money-001-a-optional-close-rollover-verify.mjs`
   proof.
 - `scripts/db/money-10-rollover-verify.mjs` passed against that cluster. It

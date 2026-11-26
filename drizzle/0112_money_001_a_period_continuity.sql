@@ -125,6 +125,47 @@ REVOKE ALL ON FUNCTION public.enforce_money_period_update() FROM PUBLIC;
 -- and the atomic routine function owns `period_id`, but the table itself must
 -- also reject a direct stale reference: a row whose booking date is outside the
 -- period it names is not an acceptable ledger state.
+--
+-- Preflight the rows that already exist. Turning the invariant on over bad data
+-- would make those rows impossible to correct (their next update fails) and
+-- impossible to soft-delete. Fail the migration with an actionable message
+-- instead; soft-deleted history is excluded because it is already read-only.
+CREATE OR REPLACE FUNCTION public.money_assert_period_booking_dates()
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $preflight$
+DECLARE
+  v_invalid integer;
+  v_examples text;
+BEGIN
+  SELECT count(*)::integer,
+         string_agg(
+           format('%s (%s outside %s–%s)',
+             movement."id", movement."booking_date",
+             period."start_date", period."end_date"),
+           ', ' ORDER BY movement."id"
+         )
+    INTO v_invalid, v_examples
+  FROM public.personal_expenses AS movement
+  JOIN public.money_periods AS period ON period."id" = movement."period_id"
+  WHERE movement."deleted_at" IS NULL
+    AND (movement."booking_date" < period."start_date"
+         OR movement."booking_date" > period."end_date");
+
+  IF v_invalid > 0 THEN
+    RAISE EXCEPTION 'Found % active personal_expenses rows whose booking date is outside their period. Repair or soft-delete them before applying this migration. Examples: %',
+      v_invalid, v_examples
+      USING ERRCODE = '23514';
+  END IF;
+END
+$preflight$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION public.money_assert_period_booking_dates() FROM PUBLIC, anon, authenticated;
+--> statement-breakpoint
+SELECT public.money_assert_period_booking_dates();
+--> statement-breakpoint
 CREATE OR REPLACE FUNCTION public.enforce_personal_expense_period_date()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -135,6 +176,12 @@ DECLARE
   v_end date;
   v_owner uuid;
 BEGIN
+  -- A soft delete only stamps deleted_at. Allow it even for a legacy invalid
+  -- row so bad history can be retired instead of becoming undeletable; the
+  -- existing update guard keeps deleted rows read-only afterwards.
+  IF TG_OP = 'UPDATE' AND NEW."deleted_at" IS NOT NULL THEN
+    RETURN NEW;
+  END IF;
   IF NEW."period_id" IS NULL THEN
     RETURN NEW;
   END IF;
@@ -376,7 +423,18 @@ BEGIN
         "settings" = COALESCE(p_settings, "settings"),
         "initialization" = p_initialization,
         "opening_movement_id" = v_opening."id",
-        "provenance" = p_provenance,
+        -- Opening initialization merges into the existing descriptive
+        -- provenance. A continuation successor keeps its `continuedFrom`
+        -- pointer even when the caller omits it from the update payload.
+        "provenance" = COALESCE(v_period."provenance", '{}'::jsonb)
+          || COALESCE(p_provenance, '{}'::jsonb)
+          || CASE
+               WHEN v_period."provenance" ? 'continuedFrom'
+                 THEN jsonb_build_object(
+                   'continuedFrom', v_period."provenance" -> 'continuedFrom'
+                 )
+               ELSE '{}'::jsonb
+             END,
         "version" = "version" + 1,
         "updated_at" = p_updated_at
     WHERE "id" = p_period_id AND "owner_user_id" = v_owner
@@ -428,6 +486,7 @@ DECLARE
   v_policy public.money_policy_versions;
   v_settings jsonb;
   v_policy_id uuid;
+  v_today date;
   v_now timestamptz := statement_timestamp();
 BEGIN
   IF v_owner IS NULL THEN
@@ -463,6 +522,16 @@ BEGIN
   END IF;
   IF p_booking_date < v_tracking.start_date THEN
     RAISE EXCEPTION 'The date % is before the tracking period. Use the explicit historical correction path.', p_booking_date
+      USING ERRCODE = '23514';
+  END IF;
+
+  -- A later routine write continues the calendar only up to owner-local today
+  -- in the source period timezone. A future date would supersede the current
+  -- window before its day has arrived and leave no period that owns today.
+  v_today := (v_now AT TIME ZONE v_tracking."timezone")::date;
+  IF p_booking_date > v_today THEN
+    RAISE EXCEPTION 'The date % is in the future. A routine write can continue the calendar only up to today (%) in the period timezone %.',
+      p_booking_date, v_today, v_tracking."timezone"
       USING ERRCODE = '23514';
   END IF;
 
@@ -566,9 +635,11 @@ BEGIN
 END
 $continue$;
 --> statement-breakpoint
-REVOKE ALL ON FUNCTION public.money_continue_period(date) FROM PUBLIC, anon;
---> statement-breakpoint
-GRANT EXECUTE ON FUNCTION public.money_continue_period(date) TO authenticated;
+-- `money_continue_period` is an internal step of the atomic routine write.
+-- Authenticated callers reach it only through money_record_routine_movement so
+-- supersession and the financial insert share one transaction; a direct call
+-- could leave a superseded window without the movement that required it.
+REVOKE ALL ON FUNCTION public.money_continue_period(date) FROM PUBLIC, anon, authenticated;
 --> statement-breakpoint
 
 -- Atomic routine entry. The application resolves the same policy for its

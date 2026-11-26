@@ -1,7 +1,7 @@
 # MONEY-001-A F04 — Period continuity design
 
-Status: implemented in the working patch on `feat/money-001-core-ux`
-(migration `0110_money_001_a_period_continuity`). No production migration or
+Status: implemented on `feat/money-001-core-ux`
+(migration `0112_money_001_a_period_continuity`). No production migration or
 deployment is part of this patch. The disposable continuity, optional-close and
 MONEY-10 rollover proofs pass against the disposable PostgreSQL cluster; see
 `money-10-rollover.md` for the verification record.
@@ -59,27 +59,31 @@ receipt is rewritten.
 
 ## Automatic continuation (controlled write only)
 
-New SECURITY DEFINER RPC `money_continue_period(p_booking_date date)`, called by
-the application guard only when an authenticated routine **write** needs a date
-after the current tracking window. The RPC derives `createdFrom` (`web`/`mcp`)
-from the verified JWT client convention, so no caller-supplied surface is
-trusted:
+New SECURITY DEFINER RPC `money_continue_period(p_booking_date date)`, invoked
+only by the atomic `money_record_routine_movement` RPC when an authenticated
+routine **write** needs a date after the current tracking window. Authenticated
+callers cannot execute it directly (`EXECUTE` is revoked), so supersession and
+the financial insert always share one transaction. The RPC derives `createdFrom`
+(`web`/`mcp`) from the verified JWT client convention, so no caller-supplied
+surface is trusted:
 
 1. `auth.uid()` owner; MCP `personal_ops.write` grant; no service-role path.
 2. Lock the owner's periods and current tracking period.
 3. If a tracking period covers the booking date, return it (idempotent no-op).
-4. If the date is before the current tracking period and inside a non-finalized
+4. Reject a booking date after owner-local today in the source period timezone:
+   a future date must not supersede the window before its day arrives.
+5. If the date is before the current tracking period and inside a non-finalized
    `superseded` period, accept it for that period's own range (a superseded
    window is not finalization approval). Any date before the window that is not
    in a non-finalized superseded period is rejected as a historical correction.
-5. Compute the smallest successor range that starts at `tracking.end_date + 1`
+6. Compute the smallest successor range that starts at `tracking.end_date + 1`
    and ends at the last day of the booking date's calendar month (capped at 366
    days). Reject a gap larger than 366 days with an explicit period-setup
    requirement instead of creating a chain of empty periods.
-6. Mark the previous tracking period `superseded` (no `finalization_reference`,
+7. Mark the previous tracking period `superseded` (no `finalization_reference`,
    no close, no successor link yet). Do **not** set `successor_period_id`; that
    column keeps its finalization meaning.
-7. Insert exactly one `tracking` successor with:
+8. Insert exactly one `tracking` successor with:
    - `initialization = 'uninitialized'`, `opening_movement_id = null`;
    - `active_date = booking date` (or the successor start when the booking date
      is later; the date is still inside the new range);
@@ -88,12 +92,12 @@ trusted:
      <previous period id> }` (provenance is JSONB; no new column);
    - an unavailable day-start baseline (`initial_setup_incomplete`) through the
      existing create path.
-8. Unique/race behavior: the transaction lock plus the one-tracking invariant
+9. Unique/race behavior: the transaction lock plus the one-tracking invariant
    makes concurrent first expenses converge on one successor. A stable
    continuation identity (`continuedFrom` + range) makes a retry return the same
    period.
-9. Reads never call this RPC. No close, opening, receipt or financial row is
-   created by a GET.
+10. Reads never call this RPC. No close, opening, receipt or financial row is
+    created by a GET.
 
 The continuation is never committed on its own. `money_record_routine_movement`
 resolves the same period target and inserts the financial row in the same

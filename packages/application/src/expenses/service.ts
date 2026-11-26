@@ -121,6 +121,8 @@ export type CreateExpenseOptions = Readonly<{
     "findTracking" | "list" | "findOverlapping"
   > &
     Partial<Pick<MoneyPeriodRepository, "findById">>;
+  /** The instant that defines owner-local today; defaults to now. */
+  now?: Date;
 }>;
 
 /**
@@ -134,6 +136,7 @@ async function routineEntryGuard(
   actor: AuthenticatedActor,
   periods: NonNullable<CreateExpenseOptions["periods"]>,
   entry: Readonly<{ occurredAt?: string; bookingDate?: string }>,
+  now: Date = new Date(),
 ): Promise<ApplicationResult<MoneyRoutineEntryTarget | null>> {
   const tracking = await periods.findTracking(actor);
   if (!tracking.ok) {
@@ -166,6 +169,7 @@ async function routineEntryGuard(
     periods,
     bookingDate,
     tracking.value,
+    now,
   );
 }
 
@@ -199,6 +203,7 @@ export async function createExpense(
       actor,
       options.periods,
       { occurredAt: values.occurredAt, bookingDate: values.bookingDate },
+      options.now,
     );
     if (!guard.ok) return guard;
     periodId = guard.data?.periodId ?? null;
@@ -377,9 +382,12 @@ export async function updateExpense(
         );
       }
 
-      const guard = await routineEntryGuard(actor, options.periods, {
-        bookingDate: effectiveDate,
-      });
+      const guard = await routineEntryGuard(
+        actor,
+        options.periods,
+        { bookingDate: effectiveDate },
+        now,
+      );
       if (!guard.ok) return guard;
       // A date move never advances the calendar and never leaves `period_id`
       // pointing at a different period than the new booking date. Cross-period
