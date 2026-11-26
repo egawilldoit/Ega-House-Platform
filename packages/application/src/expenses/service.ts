@@ -10,13 +10,17 @@ import {
 } from "@ega/domain/expenses";
 import {
   MONEY_DEFAULT_TIMEZONE,
+  defaultCountsInDaily,
   moneyBookingDateEditable,
 } from "@ega/domain/money";
 import { getLocalDateInTimezone } from "@ega/domain/time-context";
 
 import type { AuthenticatedActor } from "../auth/actor";
 import type { MoneyPeriodRepository } from "../money/ports";
-import { routineEntryGuardFailure } from "../money/periods";
+import {
+  resolveRoutineEntry,
+  type MoneyRoutineEntryTarget,
+} from "../money/periods";
 import { sha256Hex } from "../shared/hash";
 import {
   applicationFailure,
@@ -106,25 +110,31 @@ function replayOutcome(
 
 export type CreateExpenseOptions = Readonly<{
   /**
-   * Optional period guard. When supplied, a configured tracking period only
-   * accepts a routine expense whose owner-local booking date falls inside its
-   * inclusive range. Accounts with no period keep the existing behavior; an
-   * ended/rolled-over account must use the explicit historical correction path.
+   * Optional period guard. When supplied, a configured tracking period owns
+   * its inclusive range, a non-finalized `superseded` period still owns its own
+   * dates, and a later date asks the database to continue atomically. Ended
+   * and rolled-over ranges are historical corrections. Accounts with no period
+   * keep the existing behavior.
    */
-  periods?: Pick<MoneyPeriodRepository, "findTracking" | "list"> &
+  periods?: Pick<
+    MoneyPeriodRepository,
+    "findTracking" | "list" | "findOverlapping"
+  > &
     Partial<Pick<MoneyPeriodRepository, "findById">>;
 }>;
 
 /**
- * One tracking-period gate for routine writes, shared by create and by any
- * update that moves the booking instant. Ended/rolled-over periods accept
- * entries only through the explicit historical correction path.
+ * One routine-entry gate for routine writes, shared by create and by any
+ * update that moves the booking instant. The application layer is canonical:
+ * it resolves the target period (or asks the database to continue atomically),
+ * so the same rule covers the expense surfaces, the Money quick entry, HTTP and
+ * MCP.
  */
 async function routineEntryGuard(
   actor: AuthenticatedActor,
   periods: NonNullable<CreateExpenseOptions["periods"]>,
   entry: Readonly<{ occurredAt?: string; bookingDate?: string }>,
-): Promise<ApplicationResult<{ periodId: string | null }> | null> {
+): Promise<ApplicationResult<MoneyRoutineEntryTarget | null>> {
   const tracking = await periods.findTracking(actor);
   if (!tracking.ok) {
     return failureFor(
@@ -132,38 +142,31 @@ async function routineEntryGuard(
       "Unable to check the tracking period right now.",
     );
   }
-  if (tracking.value) {
-    // A timestamped edit is resolved in the period timezone and must not be
-    // overridden by an explicit stale bookingDate. The DB derives the day from
-    // the timestamp, so the guard must do the same.
-    const bookingDate = entry.occurredAt
-      ? getLocalDateInTimezone(
-          new Date(entry.occurredAt),
-          tracking.value.timezone,
-        )
-      : (entry.bookingDate ?? null);
-    if (bookingDate === null) {
-      return applicationSuccess({ periodId: tracking.value.id });
+  // A timestamped write is resolved in the period timezone and must not be
+  // overridden by an explicit stale bookingDate. When no period is tracking,
+  // the latest retained period is the timezone anchor for a superseded
+  // re-record. The DB derives the same day from the timestamp and period.
+  let anchorTimezone = tracking.value?.timezone ?? null;
+  if (!anchorTimezone && entry.occurredAt) {
+    const existing = await periods.list(actor, 1);
+    if (!existing.ok) {
+      return failureFor(
+        existing.error.code,
+        "Unable to check Money periods right now.",
+      );
     }
-    const guardMessage = routineEntryGuardFailure(tracking.value, bookingDate);
-    return guardMessage
-      ? applicationFailure(guardMessage, "validation")
-      : applicationSuccess({ periodId: tracking.value.id });
+    anchorTimezone = existing.value[0]?.timezone ?? null;
   }
-  const existing = await periods.list(actor, 1);
-  if (!existing.ok) {
-    return failureFor(
-      existing.error.code,
-      "Unable to check Money periods right now.",
-    );
-  }
-  if (existing.value.length > 0) {
-    return applicationFailure(
-      "There is no tracking period. Ended or rolled-over periods accept entries only through the explicit historical correction path.",
-      "validation",
-    );
-  }
-  return applicationSuccess({ periodId: null });
+  const bookingDate =
+    entry.occurredAt && anchorTimezone
+      ? getLocalDateInTimezone(new Date(entry.occurredAt), anchorTimezone)
+      : (entry.bookingDate ?? null);
+  return resolveRoutineEntry(
+    actor,
+    periods,
+    bookingDate,
+    tracking.value,
+  );
 }
 
 export async function createExpense(
@@ -189,22 +192,31 @@ export async function createExpense(
   if (existing.value) return replayOutcome(existing.value, createFingerprint);
 
   let periodId: string | null = null;
+  let periodBookingDate = values.bookingDate;
+  let requiresContinuation = false;
   if (options.periods) {
     const guard = await routineEntryGuard(
       actor,
       options.periods,
-      { occurredAt: values.occurredAt },
+      { occurredAt: values.occurredAt, bookingDate: values.bookingDate },
     );
-    if (guard) {
-      if (!guard.ok) return guard;
-      periodId = guard.data.periodId;
-    }
+    if (!guard.ok) return guard;
+    periodId = guard.data?.periodId ?? null;
+    periodBookingDate = guard.data?.bookingDate ?? values.bookingDate;
+    // The database continues the calendar and inserts this row atomically.
+    requiresContinuation = guard.data?.requiresContinuation ?? false;
   }
 
   const created = await repository.create(actor, {
     values,
     createFingerprint,
     periodId,
+    periodBookingDate,
+    requiresContinuation,
+    // The legacy expense form has no purpose field; the category is the only
+    // financial meaning it carries. The canonical rule then excludes fixed
+    // categories and includes ordinary discretionary spending.
+    countsInDaily: defaultCountsInDaily("expense", null, values.category),
   });
   if (created.ok) {
     return applicationSuccess({ expense: created.value, replayed: false });
@@ -368,8 +380,22 @@ export async function updateExpense(
       const guard = await routineEntryGuard(actor, options.periods, {
         bookingDate: effectiveDate,
       });
-      if (guard) {
-        if (!guard.ok) return guard;
+      if (!guard.ok) return guard;
+      // A date move never advances the calendar and never leaves `period_id`
+      // pointing at a different period than the new booking date. Cross-period
+      // moves are explicit corrections; the row keeps its original period.
+      const targetPeriodId = guard.data?.periodId ?? null;
+      const staysInOwnPeriod =
+        existing.periodId !== null
+          ? targetPeriodId === existing.periodId
+          : tracking.value
+            ? targetPeriodId === tracking.value.id
+            : targetPeriodId === null;
+      if (guard.data?.requiresContinuation || !staysInOwnPeriod) {
+        return applicationFailure(
+          "Moving this expense outside its current period is an explicit correction. Record an adjustment instead of moving the date.",
+          "validation",
+        );
       }
     }
   }

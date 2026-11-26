@@ -20,6 +20,7 @@ import {
 } from "@ega/domain/expenses";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import { recordRoutineMovement } from "../money/routine-entry";
 import {
   isSupabaseUniqueConstraintViolation,
   sanitizeSupabaseError,
@@ -142,7 +143,7 @@ function toInsertPayload(
     need_vs_want: values.needVsWant,
     payment_method: values.paymentMethod,
     purpose: null,
-    counts_in_daily: true,
+    counts_in_daily: input.countsInDaily,
     period_id: input.periodId ?? null,
     idempotency_key: values.idempotencyKey,
     create_fingerprint: input.createFingerprint,
@@ -207,6 +208,43 @@ export class SupabaseExpenseRepository implements ExpenseRepository {
     actor: AuthenticatedActor,
     input: ExpenseCreateRecordInput,
   ): Promise<RepositoryResult<PersonalExpense>> {
+    if (input.requiresContinuation) {
+      const values = input.values;
+      const result = await recordRoutineMovement(this.supabase, {
+        bookingDate: input.periodBookingDate ?? values.bookingDate,
+        kind: "expense",
+        direction: "out",
+        occurredAt: values.occurredAt,
+        amountMinor: values.amountMinor,
+        category: values.category,
+        note: values.note,
+        merchant: values.merchant,
+        needVsWant: values.needVsWant,
+        paymentMethod: values.paymentMethod,
+        purpose: null,
+        countsInDaily: input.countsInDaily,
+        idempotencyKey: values.idempotencyKey,
+        createFingerprint: input.createFingerprint,
+      });
+      if (!result.ok) {
+        if (
+          result.error &&
+          typeof result.error === "object" &&
+          isSupabaseUniqueConstraintViolation(
+            result.error as ExpenseSupabaseError,
+            IDEMPOTENCY_CONSTRAINT,
+          )
+        ) {
+          return { ok: false, error: { code: "conflict" } };
+        }
+        return {
+          ok: false,
+          error: expenseFailure(result.error as ExpenseSupabaseError),
+        };
+      }
+      return { ok: true, value: toRecord(result.row as unknown as ExpenseRow) };
+    }
+
     const { data, error } = await this.supabase
       .from(TABLE)
       .insert(toInsertPayload(actor, input))

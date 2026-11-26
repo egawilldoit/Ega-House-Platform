@@ -110,6 +110,7 @@ const PERIOD_ROW = {
   active_date: "2026-11-30",
   lifecycle: "ended",
   initialization: "initialized",
+  day_start_setup_completed: true,
   opening_movement_id: null,
   provenance: { opening: null, createdFrom: "web" },
   settings: { savingsTargetMinor: 12_000 },
@@ -248,11 +249,62 @@ test("correction bridge reads reject a missing or inaccessible period", async ()
   assert.equal(fake.calls.some((call) => call.table === "money_period_rollover_bridges"), false);
 });
 
+test("source context exposes an unfinalized superseded predecessor", async () => {
+  const { client } = fakeClient({
+    money_periods: [
+      { data: PERIOD_ROW, error: null },
+      { data: { successor_period_id: null }, error: null },
+      { data: null, error: null },
+      {
+        data: {
+          id: "00000000-0000-4000-8000-000000000097",
+          start_date: "2026-11-01",
+          end_date: "2026-11-11",
+          lifecycle: "superseded",
+          successor_period_id: null,
+        },
+        error: null,
+      },
+    ],
+    "rpc:money_ledger_direction_totals": [
+      {
+        data: [{ inflowsMinor: 0, outflowsMinor: 0, recordCount: 0 }],
+        error: null,
+      },
+    ],
+    money_obligations: [{ data: [], error: null, count: 0 }],
+    money_period_rollovers: [{ data: null, error: null }],
+    "rpc:money_rollover_close_snapshot_summary": [
+      { data: closeSummary(), error: null },
+    ],
+    money_policy_versions: [
+      {
+        data: { policy: { settings: { savingsTargetMinor: null } } },
+        error: null,
+      },
+    ],
+    money_period_rollover_bridges: [{ data: [], error: null, count: 0 }],
+  });
+
+  const result = await new SupabaseMoneyRolloverRepository(
+    client,
+  ).getSourceContext(ACTOR, PERIOD_ID);
+  assert.equal(result.ok, true);
+  if (!result.ok || !result.value) return;
+  assert.deepEqual(result.value.unfinalizedPredecessor, {
+    periodId: "00000000-0000-4000-8000-000000000097",
+    startDate: "2026-11-01",
+    endDate: "2026-11-11",
+    lifecycle: "superseded",
+  });
+});
+
 test("source context reads the effective policy and a bridge truncation flag", async () => {
   const { client, calls, rpcCalls } = fakeClient({
     money_periods: [
       { data: PERIOD_ROW, error: null },
       { data: { successor_period_id: null }, error: null },
+      { data: null, error: null },
     ],
     "rpc:money_ledger_direction_totals": [
       {
@@ -287,6 +339,7 @@ test("source context reads the effective policy and a bridge truncation flag", a
   });
   assert.equal(result.value.priorCorrectionBridges.length, 1);
   assert.equal(result.value.priorCorrectionBridgesTruncated, true);
+  assert.equal(result.value.continuationSuccessor, null);
   assert.deepEqual(result.value.closeSnapshots, {
     available: true,
     closeCount: 18,

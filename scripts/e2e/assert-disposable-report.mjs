@@ -15,7 +15,10 @@ export const journeys = {
   ],
   "money-001-core.e2e.spec.ts": [
     "optional close, reviewed finalization and an accurate primary view",
+    "continuity keeps the superseded range writable and adopts it explicitly",
     "one quick entry and one history remain usable on a phone-sized viewport",
+    "today's expense appears in the current projection without moving the active cursor",
+    "a datetime-local entry stores the instant in the verified owner timezone",
   ],
   "notification-settings.e2e.spec.ts": [
     "notification settings PATCH preserves concurrent fields, rejects conflicts and isolates owners",

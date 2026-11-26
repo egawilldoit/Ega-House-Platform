@@ -7,6 +7,7 @@ import {
   moneyActiveDateMoveFailure,
   parseCreateMoneyPeriodInput,
   parseUpdateMoneySettingsInput,
+  resolveMoneyProjectionCutoff,
   validateOpeningAgainstPeriod,
   type MoneyDayClose,
   type MoneyOpening,
@@ -18,6 +19,7 @@ import {
   type MoneyPeriodInitialization,
   type MoneyPeriodProvenance,
   type MoneyPeriodUpdateValues,
+  type MoneyProjectionCutoffBasis,
 } from "@ega/domain/money";
 import {
   getLocalDateInTimezone,
@@ -82,6 +84,14 @@ export type MoneyStateDateResolution = Readonly<{
     | "active_day"
     | "local_today_no_period";
   periodRelation: "in_period" | "before_period" | "after_period" | "no_period";
+  /**
+   * Financial projection cutoff used by cash, reserves and daily guidance.
+   * Distinct from `resolvedDate` (selected-day evidence) and from the optional
+   * `activeDate` tracking cursor.
+   */
+  projectionCutoffDate: string;
+  projectionBasis: MoneyProjectionCutoffBasis;
+  projectionClampedToPeriod: boolean;
 }>;
 
 export type MoneyStatePeriodSummary = Readonly<{
@@ -93,6 +103,7 @@ export type MoneyStatePeriodSummary = Readonly<{
   activeDate: string;
   lifecycle: MoneyPeriod["lifecycle"];
   initialization: MoneyPeriodInitialization;
+  dayStartSetupCompleted: boolean;
   version: number;
 }>;
 
@@ -218,8 +229,11 @@ function buildOpeningProvenance(
 function buildPeriodProvenance(
   opening: MoneyOpeningProvenance | null,
   createdFrom: "web" | "mcp",
+  continuedFrom: string | null = null,
 ): MoneyPeriodProvenance {
-  return { opening, createdFrom };
+  return continuedFrom
+    ? { opening, createdFrom, continuedFrom }
+    : { opening, createdFrom };
 }
 
 function openingFingerprint(opening: MoneyOpeningInput): string {
@@ -256,6 +270,7 @@ function summarizePeriod(period: MoneyPeriod): MoneyStatePeriodSummary {
     activeDate: period.activeDate,
     lifecycle: period.lifecycle,
     initialization: period.initialization,
+    dayStartSetupCompleted: period.dayStartSetupCompleted,
     version: period.version,
   };
 }
@@ -387,22 +402,6 @@ export async function getMoneyState(
     opening = openingResult.value;
   }
 
-  let cash: MoneyCashPosition;
-  if (!selected) {
-    cash = {
-      available: false,
-      currency: "MAD",
-      reason: "No money period is configured yet.",
-      cutoffDate: localToday,
-    };
-  } else {
-    const cashResult = await getMoneyCashPosition(actor, repository, selected, opening);
-    if (!cashResult.ok) {
-      return cashResult;
-    }
-    cash = cashResult.data;
-  }
-
   const overview = await repository.ledgerOverview(actor, {
     periodId: selected?.id ?? null,
     startDate: selected?.startDate ?? localToday,
@@ -456,6 +455,47 @@ export async function getMoneyState(
   const periodRelation = selected
     ? classifyDateInPeriod(resolvedDate, selected)
     : ("no_period" as const);
+  const projection = resolveMoneyProjectionCutoff({
+    localToday,
+    period: selected,
+    requestedDate,
+    requestedMode,
+  });
+
+  let cash: MoneyCashPosition;
+  if (!selected) {
+    cash = {
+      available: false,
+      currency: "MAD",
+      reason: "No money period is configured yet.",
+      cutoffDate: projection.date,
+    };
+  } else if (
+    projection.date < selected.startDate ||
+    projection.date > selected.endDate
+  ) {
+    // The canonical reserve read only defines cutoffs inside its own period.
+    // Keep cash on the same effective cutoff and report unavailable instead of
+    // summing ledger rows from other periods.
+    cash = {
+      available: false,
+      currency: "MAD",
+      reason: "cutoff_outside_period",
+      cutoffDate: projection.date,
+    };
+  } else {
+    const cashResult = await getMoneyCashPosition(
+      actor,
+      repository,
+      selected,
+      opening,
+      projection.date,
+    );
+    if (!cashResult.ok) {
+      return cashResult;
+    }
+    cash = cashResult.data;
+  }
 
   let dayStartBaseline: MoneyState["dayStartBaseline"] = null;
   let dayStartBaselineUnavailable = false;
@@ -572,6 +612,9 @@ export async function getMoneyState(
       resolvedDate,
       basis,
       periodRelation,
+      projectionCutoffDate: projection.date,
+      projectionBasis: projection.basis,
+      projectionClampedToPeriod: projection.clampedToPeriod,
     },
     history,
     historyUnavailable: false,
@@ -675,7 +718,9 @@ export async function createMoneyPeriod(
 /**
  * Update the active date, settings and/or the single opening movement. A stale
  * version conflicts; ended/rolled-over periods refuse routine settings changes
- * and direct the caller to the explicit historical correction path.
+ * and direct the caller to the explicit historical correction path. A
+ * non-finalized `superseded` period accepts only the initialization of a
+ * missing opening, so a continued range can still be reviewed and finalized.
  */
 export async function updateMoneySettings(
   actor: AuthenticatedActor,
@@ -725,9 +770,22 @@ export async function updateMoneySettings(
       "conflict",
     );
   }
-  if (period.lifecycle !== "tracking") {
+  // A superseded period is not finalized. When it was created by automatic
+  // continuation its opening may still be unknown, and finalization cannot
+  // review cash without it. Accept exactly one path on that non-finalized
+  // range: initialize the missing opening. Active dates, settings and later
+  // corrections stay closed until the explicit rollover review.
+  const supersededOpeningInitialization =
+    period.lifecycle === "superseded" &&
+    period.openingMovementId === null &&
+    values.opening !== undefined &&
+    values.activeDate === undefined &&
+    values.settings === undefined;
+  if (period.lifecycle !== "tracking" && !supersededOpeningInitialization) {
     return applicationFailure(
-      `This period is ${period.lifecycle.replaceAll("_", " ")}. Only a tracking period accepts routine settings changes; use the explicit historical correction path.`,
+      period.lifecycle === "superseded" && period.openingMovementId === null
+        ? "This superseded period is not finalized. Only its missing opening can be initialized; active dates, settings and later corrections require the explicit finalization review."
+        : `This period is ${period.lifecycle.replaceAll("_", " ")}. Only a tracking period accepts routine settings changes; use the explicit historical correction path.`,
       "validation",
     );
   }
@@ -844,6 +902,7 @@ export async function updateMoneySettings(
       provenance: buildPeriodProvenance(
         buildOpeningProvenance(values.opening, now.toISOString(), corrections),
         period.provenance.createdFrom,
+        period.provenance.continuedFrom ?? null,
       ),
       initialization: nextInitialization,
       createFingerprint: openingFingerprint(values.opening),
@@ -869,6 +928,11 @@ export function routineEntryGuardFailure(
   bookingDate: string,
 ): string | null {
   if (!isIsoDate(bookingDate)) return "Use a valid calendar date.";
+  if (period.lifecycle === "superseded") {
+    return classifyDateInPeriod(bookingDate, period) === "in_period"
+      ? null
+      : `The date ${bookingDate} is outside the non-finalized superseded period ${period.startDate}–${period.endDate}. Use the explicit historical correction path.`;
+  }
   if (period.lifecycle !== "tracking") {
     return `This period is ${period.lifecycle.replaceAll("_", " ")}. Use the explicit historical correction path for ${bookingDate}.`;
   }
@@ -879,38 +943,149 @@ export function routineEntryGuardFailure(
 }
 
 /**
- * Routine entry guard. A configured tracking period is the only target for a
- * new routine movement; a date outside it must be corrected explicitly instead
- * of being silently moved. Existing accounts without a period keep working.
+ * Where one routine booking belongs. `periodId` is the already-existing period
+ * for an in-window or non-finalized superseded date. `requiresContinuation`
+ * means the date is after the tracking window; the database must continue the
+ * calendar and insert the financial row in ONE transaction.
  */
-export async function assertRoutineEntryAllowed(
+export type MoneyRoutineEntryTarget = Readonly<{
+  periodId: string | null;
+  timezone: string;
+  requiresContinuation: boolean;
+  /** The booking day the target was resolved for; null before resolution. */
+  bookingDate: string | null;
+}>;
+
+function daysBetween(from: string, to: string): number {
+  return Math.round(
+    (Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) /
+      86_400_000,
+  );
+}
+
+/**
+ * Routine entry policy. A tracking period owns dates inside its window. A date
+ * after it is a controlled continuation (the database closes the routine window
+ * as `superseded` and creates exactly one later tracking period). A date inside
+ * a non-finalized `superseded` period is still routine entry for that period's
+ * own dates: `superseded` closes the forward window, it is not finalization
+ * approval, so the owner can still record a forgotten expense. Finalized
+ * (`ended`/`rolled_over`) ranges remain explicit historical corrections.
+ *
+ * Reads never mutate the calendar. `bookingDate === null` means the instant was
+ * not resolved yet; the existing tracking period is returned unchanged.
+ */
+export async function resolveRoutineEntry(
   actor: AuthenticatedActor,
-  repository: Pick<MoneyPeriodRepository, "findTracking" | "list">,
-  bookingDate: string,
-): Promise<ApplicationResult<MoneyPeriod | null>> {
-  if (!isIsoDate(bookingDate)) {
+  repository: Pick<
+    MoneyPeriodRepository,
+    "findTracking" | "list" | "findOverlapping"
+  >,
+  bookingDate: string | null,
+  /** Pre-loaded tracking period to avoid a second read. `undefined` loads it. */
+  preloadedTracking?: MoneyPeriod | null,
+): Promise<ApplicationResult<MoneyRoutineEntryTarget | null>> {
+  if (bookingDate !== null && !isIsoDate(bookingDate)) {
     return applicationFailure("Use a valid calendar date.", "validation");
   }
-  const tracking = await repository.findTracking(actor);
-  if (!tracking.ok) {
-    return fromRepository(tracking, "Unable to check the tracking period right now.");
+  let current: MoneyPeriod | null;
+  if (preloadedTracking !== undefined) {
+    current = preloadedTracking;
+  } else {
+    const tracking = await repository.findTracking(actor);
+    if (!tracking.ok) {
+      return fromRepository(tracking, "Unable to check the tracking period right now.");
+    }
+    current = tracking.value;
   }
-  if (!tracking.value) {
+  if (bookingDate === null) {
+    if (!current) {
+      const existing = await repository.list(actor, 1);
+      if (!existing.ok) {
+        return fromRepository(existing, "Unable to check Money periods right now.");
+      }
+      if (existing.value.length > 0) {
+        return applicationFailure(
+          "There is no tracking period. Ended, superseded or rolled-over periods accept entries only through the explicit historical correction path.",
+          "validation",
+        );
+      }
+      return applicationSuccess(null);
+    }
+    return applicationSuccess({
+      periodId: current.id,
+      timezone: current.timezone,
+      requiresContinuation: false,
+      bookingDate: null,
+    });
+  }
+
+  if (current && bookingDate >= current.startDate && bookingDate <= current.endDate) {
+    return applicationSuccess({
+      periodId: current.id,
+      timezone: current.timezone,
+      requiresContinuation: false,
+      bookingDate,
+    });
+  }
+
+  if (current && bookingDate > current.endDate) {
+    if (daysBetween(current.endDate, bookingDate) > 366) {
+      return applicationFailure(
+        `The date ${bookingDate} is more than 366 days after the tracking period ${current.startDate}–${current.endDate}. Create a Money period explicitly before recording it.`,
+        "validation",
+      );
+    }
+    return applicationSuccess({
+      periodId: null,
+      timezone: current.timezone,
+      requiresContinuation: true,
+      bookingDate,
+    });
+  }
+
+  // Before the tracking window (or with no tracking period): only a
+  // non-finalized superseded period may accept routine entry for its own range.
+  // A genuinely empty account keeps the legacy no-period behavior without a
+  // second overlapping read.
+  if (!current) {
     const existing = await repository.list(actor, 1);
     if (!existing.ok) {
       return fromRepository(existing, "Unable to check Money periods right now.");
     }
-    if (existing.value.length > 0) {
-      return applicationFailure(
-        "There is no tracking period. Ended or rolled-over periods accept entries only through the explicit historical correction path.",
-        "validation",
-      );
-    }
-    return applicationSuccess(null);
+    if (existing.value.length === 0) return applicationSuccess(null);
   }
-  const message = routineEntryGuardFailure(tracking.value, bookingDate);
-  if (message) return applicationFailure(message, "validation");
-  return applicationSuccess(tracking.value);
+  const overlapping = await repository.findOverlapping(actor, {
+    startDate: bookingDate,
+    endDate: bookingDate,
+  });
+  if (!overlapping.ok) {
+    return fromRepository(overlapping, "Unable to check Money periods right now.");
+  }
+  const superseded = overlapping.value
+    .filter((period) => period.lifecycle === "superseded")
+    .sort((left, right) => right.startDate.localeCompare(left.startDate))[0];
+  if (superseded) {
+    return applicationSuccess({
+      periodId: superseded.id,
+      timezone: superseded.timezone,
+      requiresContinuation: false,
+      bookingDate,
+    });
+  }
+
+  if (current) {
+    return applicationFailure(
+      routineEntryGuardFailure(current, bookingDate) ??
+        "Use the explicit historical correction path for this date.",
+      "validation",
+    );
+  }
+
+  return applicationFailure(
+    "There is no tracking period. Ended, superseded or rolled-over periods accept entries only through the explicit historical correction path.",
+    "validation",
+  );
 }
 
 // Keep the exact canonical create payload available for MCP full-input

@@ -31,6 +31,7 @@ function endedPeriod(overrides: Partial<MoneyPeriod> = {}): MoneyPeriod {
     activeDate: "2026-11-30",
     lifecycle: "ended",
     initialization: "initialized",
+    dayStartSetupCompleted: true,
     openingMovementId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
     provenance: { opening: null, createdFrom: "web" },
     settings: { savingsTargetMinor: 12_000 },
@@ -177,11 +178,77 @@ function context(overrides: Partial<MoneyRolloverSourceContext> = {}): MoneyRoll
     },
     priorCorrectionBridges: [],
     priorCorrectionBridgesTruncated: false,
+    continuationSuccessor: null,
+    unfinalizedPredecessor: null,
     existingSuccessorPeriodId: null,
     existingRollover: null,
     ...overrides,
   };
 }
+
+test("a continued successor is adopted only with its exact range", async () => {
+  const superseded = endedPeriod({
+    lifecycle: "superseded",
+    activeDate: "2026-11-30",
+    initialization: "uninitialized",
+    openingMovementId: null,
+  });
+  const continuationSuccessor = {
+    periodId: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+    startDate: "2026-12-01",
+    endDate: "2027-03-31",
+    activeDate: "2027-03-05",
+    initialization: "uninitialized" as const,
+    openingAmountMinor: null,
+  };
+  const fake = fakeRepository(
+    context({
+      period: superseded,
+      continuationSuccessor,
+      modeledClosingCashMinor: 68_900,
+    }),
+  );
+  const operation = "750e8400-e29b-41d4-a716-446655440010";
+  const mismatch = await rolloverMoneyPeriod(
+    actor,
+    { repository: fake.repository, obligations: noTemplates },
+    baseInput(),
+    operation,
+    { now: new Date("2027-03-10T09:00:00.000Z") },
+  );
+  assert.equal(mismatch.ok, false);
+  if (!mismatch.ok) {
+    assert.equal(mismatch.code, "conflict");
+    assert.match(mismatch.errorMessage, /already covers 2026-12-01–2027-03-31/);
+  }
+  assert.equal(fake.writes.length, 0);
+
+  const matched = await rolloverMoneyPeriod(
+    actor,
+    { repository: fake.repository, obligations: noTemplates },
+    baseInput({ startDate: "2026-12-01", endDate: "2027-03-31" }),
+    operation,
+    { now: new Date("2027-03-10T09:00:00.000Z") },
+  );
+  assert.equal(matched.ok, true);
+  assert.equal(fake.writes.length, 1);
+  assert.equal(fake.writes[0]!.targets.startDate, "2026-12-01");
+  assert.equal(fake.writes[0]!.targets.endDate, "2027-03-31");
+
+  // The preview defaults to the existing continuation range instead of the
+  // source's full-length default, so the panel requests the adoptable range.
+  const preview = await getMoneyRolloverPreviewForPeriod(
+    actor,
+    { repository: fake.repository, obligations: noTemplates },
+    superseded.id,
+    { now: new Date("2027-03-10T09:00:00.000Z") },
+  );
+  assert.equal(preview.ok, true);
+  if (!preview.ok) return;
+  assert.deepEqual(preview.data.targets.startDate, "2026-12-01");
+  assert.deepEqual(preview.data.targets.endDate, "2027-03-31");
+  assert.deepEqual(preview.data.continuationSuccessor, continuationSuccessor);
+});
 
 test("carry-forward creates one successor opening from modeled closing cash", async () => {
   const fake = fakeRepository(context());
@@ -261,11 +328,89 @@ test("a tracking period is a legal rollover source after review", async () => {
     { repository: fake.repository, obligations: noTemplates },
     baseInput(),
     "750e8400-e29b-41d4-a716-446655440002",
+    { now: new Date("2026-12-05T09:00:00.000Z") },
   );
   assert.equal(result.ok, true);
   assert.equal(fake.writes.length, 1);
   assert.equal(fake.writes[0].unverifiedDaysCount, 0);
   assert.equal(fake.writes[0].unverifiedDaysNote, null);
+});
+
+test("a continued successor is blocked until its predecessor is finalized", async () => {
+  const fake = fakeRepository(
+    context({
+      period: endedPeriod({ lifecycle: "tracking" }),
+      unfinalizedPredecessor: {
+        periodId: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+        startDate: "2026-11-01",
+        endDate: "2026-11-11",
+        lifecycle: "superseded",
+      },
+    }),
+  );
+  const preview = await getMoneyRolloverPreview(
+    actor,
+    { repository: fake.repository, obligations: noTemplates },
+    baseInput(),
+    { now: new Date("2026-12-05T09:00:00.000Z") },
+  );
+  assert.equal(preview.ok, true);
+  if (preview.ok) {
+    assert.equal(preview.data.ready, false);
+    assert.match(
+      preview.data.blockers.join(" "),
+      /Finalize the preceding period 2026-11-01–2026-11-11 first/,
+    );
+  }
+
+  const result = await rolloverMoneyPeriod(
+    actor,
+    { repository: fake.repository, obligations: noTemplates },
+    baseInput(),
+    "750e8400-e29b-41d4-a716-446655440012",
+    { now: new Date("2026-12-05T09:00:00.000Z") },
+  );
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.equal(result.code, "validation");
+  assert.equal(fake.writes.length, 0);
+});
+
+test("early carry-forward finalization cannot strand the current day", async () => {
+  const fake = fakeRepository(
+    context({
+      period: endedPeriod({
+        lifecycle: "tracking",
+        startDate: "2026-12-01",
+        endDate: "2026-12-10",
+        activeDate: "2026-12-05",
+      }),
+    }),
+  );
+  const input = baseInput({
+    startDate: "2026-12-11",
+    endDate: "2026-12-31",
+  });
+  const preview = await getMoneyRolloverPreview(
+    actor,
+    { repository: fake.repository, obligations: noTemplates },
+    input,
+    { now: new Date("2026-12-05T09:00:00.000Z") },
+  );
+  assert.equal(preview.ok, true);
+  if (preview.ok) {
+    assert.equal(preview.data.ready, false);
+    assert.match(preview.data.blockers.join(" "), /outside a writable period/);
+  }
+
+  const result = await rolloverMoneyPeriod(
+    actor,
+    { repository: fake.repository, obligations: noTemplates },
+    input,
+    "750e8400-e29b-41d4-a716-446655440013",
+    { now: new Date("2026-12-05T09:00:00.000Z") },
+  );
+  assert.equal(result.ok, false);
+  assert.equal(fake.writes.length, 0);
 });
 
 test("early tracking verification cannot invent a future balance cutoff", async () => {
@@ -301,7 +446,7 @@ test("early tracking verification cannot invent a future balance cutoff", async 
   assert.equal(fake.writes.length, 0);
 });
 
-test("a tracking source at its end date may use a verified cutoff", async () => {
+test("a tracking source at its end date cannot use a same-day verified cutoff", async () => {
   const fake = fakeRepository(
     context({
       period: endedPeriod({
@@ -325,8 +470,66 @@ test("a tracking source at its end date may use a verified cutoff", async () => 
     "750e8400-e29b-41d4-a716-446655440017",
     { now: new Date("2026-11-30T09:00:00.000Z") },
   );
-  assert.equal(result.ok, true);
-  assert.equal(fake.writes.length, 1);
+  assert.equal(result.ok, false);
+  if (!result.ok) {
+    assert.equal(result.code, "validation");
+    assert.match(result.errorMessage, /outside a writable period/);
+  }
+  assert.equal(fake.writes.length, 0);
+});
+
+test("a superseded source that still owns today cannot finalize", async () => {
+  for (const mode of ["carry_forward", "verified_source"] as const) {
+    const fake = fakeRepository(
+      context({
+        period: endedPeriod({
+          lifecycle: "superseded",
+          startDate: "2026-11-20",
+          endDate: "2026-11-30",
+          activeDate: "2026-11-28",
+        }),
+      }),
+    );
+    const input = baseInput({
+      startDate: "2026-12-01",
+      endDate: "2026-12-19",
+      ...(mode === "verified_source"
+        ? {
+            opening: {
+              mode: "verified_source",
+              amountMinor: 68_900,
+              cutoffDate: "2026-11-30",
+              evidence: "counted cash on the last day",
+              note: null,
+            },
+          }
+        : {}),
+    });
+    const preview = await getMoneyRolloverPreview(
+      actor,
+      { repository: fake.repository, obligations: noTemplates },
+      input,
+      { now: new Date("2026-11-30T09:00:00.000Z") },
+    );
+    assert.equal(preview.ok, true);
+    if (preview.ok) {
+      assert.equal(preview.data.ready, false);
+      assert.match(
+        preview.data.blockers.join(" "),
+        /outside a writable period/,
+      );
+    }
+    const result = await rolloverMoneyPeriod(
+      actor,
+      { repository: fake.repository, obligations: noTemplates },
+      input,
+      `750e8400-e29b-41d4-a716-44665544002${mode === "carry_forward" ? "0" : "1"}`,
+      { now: new Date("2026-11-30T09:00:00.000Z") },
+    );
+    assert.equal(result.ok, false);
+    if (!result.ok) assert.equal(result.code, "validation");
+    assert.equal(fake.writes.length, 0);
+  }
 });
 
 test("a late tracking source may use a verified cutoff covering its end", async () => {

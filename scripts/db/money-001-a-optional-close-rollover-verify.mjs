@@ -1,15 +1,17 @@
 #!/usr/bin/env node
 /**
  * Disposable PostgreSQL proof for MONEY-001-A: optional day close and reviewed
- * finalization with unverified days.
+ * finalization with unverified days. Every date is anchored to the database
+ * clock so the source has genuinely ended and finalization is late, not early.
  *
  * Scenario:
- *   - Nov 1–30 tracking period with a known opening and complete baseline.
- *   - Close Nov 20 through the real `money_close_day` path.
- *   - Leave Nov 21 and 22 unclosed; move the active date to Nov 23 through the
- *     real settings RPC (`money_update_period`).
- *   - Record and read a Nov 23 expense. Exactly one close row exists, the Nov 20
- *     snapshot is unchanged and no close was fabricated for 21/22/23.
+ *   - A 30-day tracking period ending two days ago, with a known opening and a
+ *     complete baseline.
+ *   - Close one middle day through the real `money_close_day` path.
+ *   - Leave two subsequent days unclosed; move the active date forward through
+ *     the real settings RPC (`money_update_period`).
+ *   - Record and read a later expense. Exactly one close row exists, its
+ *     snapshot is unchanged and no close was fabricated for skipped days.
  *   - Preview/roll over from the still-tracking source: missing acknowledgment is
  *     refused, a stale count conflicts, and the acknowledged rollover creates
  *     exactly one successor opening/link while retaining the review evidence.
@@ -46,6 +48,15 @@ function assert(ok, message) {
 function hex(char) {
   return char.repeat(64);
 }
+function addDays(iso, days) {
+  const value = new Date(`${iso}T00:00:00Z`);
+  value.setUTCDate(value.getUTCDate() + days);
+  return value.toISOString().slice(0, 10);
+}
+function endOfMonth(iso) {
+  const [year, month] = iso.split("-").map(Number);
+  return new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10);
+}
 
 async function user(owner, fn, clientId = null) {
   return sql.begin(async (tx) => {
@@ -71,16 +82,16 @@ const close = (tx, periodId, version, date, operationId, fingerprint, note = "CL
     `SELECT public.money_close_day(
       $1::uuid,$2::integer,$3::date,$4::text,$5::uuid,$6::text,$7::uuid[],$8::timestamptz
     ) AS result`,
-    [periodId, version, date, note, operationId, fingerprint, [], "2026-11-20T20:00:00.000Z"],
+    [periodId, version, date, note, operationId, fingerprint, [], `${date}T20:00:00.000Z`],
   );
 
 const updateActiveDate = (tx, periodId, version, date) =>
   tx.unsafe(
     `SELECT * FROM public.money_update_period(
       $1,$2,$3::date,NULL::jsonb,NULL::integer,NULL::text,NULL::text,
-      NULL::jsonb,NULL::text,'2026-11-23T09:00:00.000Z'::timestamptz
+      NULL::jsonb,NULL::text,$4::timestamptz
     )`,
-    [periodId, version, date],
+    [periodId, version, date, `${date}T09:00:00.000Z`],
   );
 
 async function main() {
@@ -123,6 +134,21 @@ async function main() {
     }
     console.log(`[MIGRATE] ${tags.length} migrations through ${tags.at(-1)}`);
 
+    // Anchor the whole reviewed-finalization story to the database clock. The
+    // source ends two days ago, so finalizing it is late, not early; the
+    // successor starts yesterday. This keeps the proof valid on every run date
+    // and still exercises a real "yesterday" finalization boundary.
+    const clock = await sql.unsafe(
+      "SELECT (now() AT TIME ZONE 'Africa/Casablanca')::date AS today",
+    );
+    const today = clock[0].today;
+    const periodEnd = addDays(today, -2);
+    const periodStart = addDays(periodEnd, -29);
+    const closeDate = addDays(periodStart, 19);
+    const laterDate = addDays(periodStart, 22);
+    const successorStart = addDays(periodEnd, 1);
+    const successorEnd = endOfMonth(successorStart);
+
     // The new reviewed-finalization signature is additive: the previous
     // 25-argument RPC remains as a compatibility overload for fully closed
     // sources, and cannot carry a fake unverified-day acknowledgment.
@@ -149,16 +175,16 @@ async function main() {
         VALUES (${A}::uuid,${clientId},${RESOURCE},'proof','active',${profile},${sql.json(permissions)},1,now())`;
     }
 
-    // --- One known period, complete baseline, explicit Nov 20 close ----------
+    // --- One known period, complete baseline, explicit close ----------------
     const created = await user(A, (tx) =>
       tx.unsafe(`SELECT (p).id AS id, (p).version AS version
         FROM (SELECT public.money_create_period(
-          '2026-11-01'::date,'2026-11-30'::date,'Africa/Casablanca'::text,
-          '2026-11-20'::date,'initialized'::text,100000::integer,'2026-11-01'::date,
+          '${periodStart}'::date,'${periodEnd}'::date,'Africa/Casablanca'::text,
+          '${closeDate}'::date,'initialized'::text,100000::integer,'${periodStart}'::date,
           repeat('a',64)::text,
-          '{"opening":{"source":"user_entered","recordedAt":"2026-11-01T00:00:00.000Z","cutoffDate":"2026-11-01","evidence":null,"note":null,"corrections":[]}}'::jsonb,
+          '{"opening":{"source":"user_entered","recordedAt":"${periodStart}T00:00:00.000Z","cutoffDate":"${periodStart}","evidence":null,"note":null,"corrections":[]}}'::jsonb,
           '{"savingsTargetMinor":12000,"emergencyTargetMinor":3000}'::jsonb,
-          '2026-11-20T08:00:00.000Z'::timestamptz) AS p) created`),
+          now()::timestamptz) AS p) created`),
     );
     const periodId = created[0].id;
     await user(A, (tx) =>
@@ -166,9 +192,9 @@ async function main() {
     );
     const baseline = await sql.unsafe(
       `SELECT availability FROM public.money_day_start_baselines
-       WHERE owner_user_id=$1 AND period_id=$2 AND date='2026-11-20'
+       WHERE owner_user_id=$1 AND period_id=$2 AND date=$3
        ORDER BY version DESC LIMIT 1`,
-      [A, periodId],
+      [A, periodId, closeDate],
     );
     assert(
       baseline.length === 1 && baseline[0].availability === "available",
@@ -203,15 +229,15 @@ async function main() {
         tx,
         periodId,
         beforeClose.version,
-        "2026-11-20",
+        closeDate,
         "a0000000-0000-4000-8000-000000000001",
         hex("b"),
       ),
     );
     assert(
       closed[0].result.status === "closed" &&
-        closed[0].result.period.active_date === "2026-11-21",
-      "closing Nov 20 retains evidence and advances exactly one day",
+        closed[0].result.period.active_date === addDays(closeDate, 1),
+      "closing the selected day retains evidence and advances exactly one day",
     );
     const closeSnapshotBefore = await sql.unsafe(
       `SELECT close_date, close_fingerprint, snapshot, period_version_after
@@ -226,7 +252,7 @@ async function main() {
     )[0];
     let rewindDenied = false;
     try {
-      await user(A, (tx) => updateActiveDate(tx, periodId, afterClose.version, "2026-11-20"));
+      await user(A, (tx) => updateActiveDate(tx, periodId, afterClose.version, closeDate));
     } catch (error) {
       rewindDenied = error.code === "23514";
     }
@@ -314,13 +340,13 @@ async function main() {
       assert(denied, `a direct insert cannot pre-seed ${label}`);
     }
 
-    // --- Skip Nov 21/22 and record Nov 23 -----------------------------------
+    // --- Skip the unclosed days and record the later reviewed day -----------
     const advanced = await user(A, (tx) =>
-      updateActiveDate(tx, periodId, afterClose.version, "2026-11-23"),
+      updateActiveDate(tx, periodId, afterClose.version, laterDate),
     );
     assert(
-      advanced.length === 1 && advanced[0].active_date === "2026-11-23",
-      "the active date advances to Nov 23 without a close",
+      advanced.length === 1 && advanced[0].active_date === laterDate,
+      "the active date advances without a close",
     );
     const closesAfterAdvance = await sql.unsafe(
       "SELECT count(*)::int n FROM public.money_day_closes WHERE owner_user_id=$1 AND period_id=$2",
@@ -333,8 +359,8 @@ async function main() {
         `INSERT INTO public.personal_expenses
          (owner_user_id,period_id,booking_date,kind,direction,amount_minor,currency,
           category,need_vs_want,purpose,counts_in_daily,idempotency_key,create_fingerprint)
-         VALUES ($1,$2,'2026-11-23','expense','out',1250,'MAD',
-          'coffee','want','flexible',true,'money-001-a-nov-23',repeat('c',64))
+         VALUES ($1,$2,'${laterDate}','expense','out',1250,'MAD',
+          'coffee','want','flexible',true,'money-001-a-later-day',repeat('c',64))
          RETURNING id`,
         [A, periodId],
       ),
@@ -348,9 +374,9 @@ async function main() {
     );
     assert(
       expenseRow.length === 1 &&
-        expenseRow[0].booking_date === "2026-11-23" &&
+        expenseRow[0].booking_date === laterDate &&
         expenseRow[0].amount_minor === 1250,
-      "the Nov 23 expense persists exactly once through the owner path",
+      "the later expense persists exactly once through the owner path",
     );
     const closeSnapshotAfter = await sql.unsafe(
       `SELECT close_date, close_fingerprint, snapshot, period_version_after
@@ -360,16 +386,16 @@ async function main() {
     assert(
       closeSnapshotAfter.length === 1 &&
         JSON.stringify(closeSnapshotAfter[0]) === JSON.stringify(closeSnapshotBefore[0]),
-      "the Nov 20 close evidence is unchanged after the later booking",
+      "the retained close evidence is unchanged after the later booking",
     );
     const fabricated = await sql.unsafe(
       `SELECT close_date FROM public.money_day_closes
        WHERE owner_user_id=$1 AND period_id=$2
-         AND close_date IN ('2026-11-21','2026-11-22','2026-11-23')`,
-      [A, periodId],
+         AND close_date IN ($3::date,$4::date,$5::date)`,
+      [A, periodId, addDays(closeDate, 1), addDays(closeDate, 2), laterDate],
     );
     assert(fabricated.length === 0, "no close rows were fabricated for skipped dates");
-    console.log("[CLOSE] optional close: Nov 23 booking works with Nov 21/22 unverified and no fake closes");
+    console.log("[CLOSE] optional close: a later booking works with unclosed days and no fake closes");
 
     // --- Local cash oracle matches the web-facing calculation ---------------
     const oracle = await sql.unsafe(
@@ -381,17 +407,17 @@ async function main() {
            AND movement.period_id=period.id
            AND movement.deleted_at IS NULL
            AND movement.kind <> 'opening'
-           AND movement.booking_date <= '2026-11-23'
+           AND movement.booking_date <= $3::date
        ),0)::integer AS recorded_cash
        FROM public.money_periods AS period
        JOIN public.personal_expenses AS opening
          ON opening.id=period.opening_movement_id AND opening.owner_user_id=period.owner_user_id
        WHERE period.id=$1 AND period.owner_user_id=$2`,
-      [periodId, A],
+      [periodId, A, laterDate],
     );
     assert(
       oracle[0].recorded_cash === 98750,
-      "independent ledger oracle records cash once through Nov 23",
+      "independent ledger oracle records cash once through the later day",
     );
 
     // --- Finalization reviews every unverified date -------------------------
@@ -409,17 +435,17 @@ async function main() {
         assessment.requiredCloseCount === 30 &&
         assessment.unverifiedDayCount === 29 &&
         assessment.completeCloseEvidence === false &&
-        assessment.trackedFromDate === "2026-11-20" &&
-        JSON.stringify(assessment.closedDates) === JSON.stringify(["2026-11-20"]),
+        assessment.trackedFromDate === closeDate &&
+        JSON.stringify(assessment.closedDates) === JSON.stringify([closeDate]),
       "the preview exposes retained closes and the exact unverified count",
     );
     assert(
       assessment.missingCloseDates.length === 29 &&
-        assessment.missingCloseDates[0] === "2026-11-01" &&
-        assessment.missingCloseDates.includes("2026-11-21") &&
-        assessment.missingCloseDates.includes("2026-11-22") &&
-        assessment.missingCloseDates.includes("2026-11-30") &&
-        !assessment.missingCloseDates.includes("2026-11-20"),
+        assessment.missingCloseDates[0] === periodStart &&
+        assessment.missingCloseDates.includes(addDays(closeDate, 1)) &&
+        assessment.missingCloseDates.includes(addDays(closeDate, 2)) &&
+        assessment.missingCloseDates.includes(periodEnd) &&
+        !assessment.missingCloseDates.includes(closeDate),
       "leading and skipped unverified dates are listed exactly",
     );
     console.log("[FINALIZE] exact closed dates and 29 unverified dates are visible before approval");
@@ -427,22 +453,22 @@ async function main() {
     const closeArgs = (operationId, note, count, acceptedNote = null) => [
       periodId,
       advanced[0].version,
-      "2026-12-01",
-      "2026-12-31",
-      "2026-12-01",
+      successorStart,
+      successorEnd,
+      successorStart,
       "Africa/Casablanca",
       "initialized",
       false,
       98750,
-      "2026-11-30",
+      periodEnd,
       null,
       "Carried forward from the reviewed source",
       hex("d"),
       {
         opening: {
           source: "carry_forward",
-          recordedAt: "2026-12-01T09:00:00.000Z",
-          cutoffDate: "2026-11-30",
+          recordedAt: `${successorStart}T09:00:00.000Z`,
+          cutoffDate: periodEnd,
           evidence: null,
           note: "Carried forward from the reviewed source",
           corrections: [],
@@ -461,7 +487,7 @@ async function main() {
       { modeledClosingCashMinor: 98750, pendingOccurrenceCount: 0 },
       [],
       [],
-      "2026-12-01T09:00:00.000Z",
+      `${successorStart}T09:00:00.000Z`,
     ];
     const callRollover = (tx, args) =>
       tx.unsafe(
@@ -483,7 +509,7 @@ async function main() {
       missingDetail = error.detail ?? "";
     }
     assert(
-      missingNoteDenied && /2026-11-21/.test(missingDetail),
+      missingNoteDenied && missingDetail.includes(addDays(closeDate, 1)),
       "finalization rejects a missing acknowledgment and names the unverified dates",
     );
     let staleCountDenied = false;
@@ -506,7 +532,7 @@ async function main() {
         tx,
         closeArgs(
           "money-001-a-ok",
-          "Reviewed Nov 1–19 and 21–30 as unverified; no close rows invented",
+          "Reviewed every unverified day; no close rows invented",
           29,
           "Savings target versus transfers reviewed",
         ),
@@ -516,7 +542,7 @@ async function main() {
     assert(first[0].result.replayed === false, "the acknowledged finalization is not a replay");
     assert(
       record.unverified_days_count === 29 &&
-        /Reviewed Nov 1/.test(record.unverified_days_note ?? ""),
+        /Reviewed every unverified day/.test(record.unverified_days_note ?? ""),
       "the reviewed count and note are retained on the receipt",
     );
     const periods = await sql.unsafe(
@@ -531,9 +557,9 @@ async function main() {
       source.lifecycle === "rolled_over" &&
         source.successor_period_id === successor.id &&
         successor.lifecycle === "tracking" &&
-        successor.start_date === "2026-12-01" &&
-        successor.end_date === "2026-12-31" &&
-        successor.active_date === "2026-12-01",
+        successor.start_date === successorStart &&
+        successor.end_date === successorEnd &&
+        successor.active_date === successorStart,
       "the tracking source links one successor and the successor is the only tracking period",
     );
     const successorOpenings = await sql.unsafe(
@@ -558,14 +584,14 @@ async function main() {
        WHERE owner_user_id=$1 AND period_id=$2 AND kind <> 'opening' AND deleted_at IS NULL`,
       [A, periodId],
     );
-    assert(sourceExpenses[0].n === 1, "the Nov 23 expense was not duplicated into the successor");
+    assert(sourceExpenses[0].n === 1, "the later expense was not duplicated into the successor");
 
     const replay = await user(A, (tx) =>
       callRollover(
         tx,
         closeArgs(
           "money-001-a-ok",
-          "Reviewed Nov 1–19 and 21–30 as unverified; no close rows invented",
+          "Reviewed every unverified day; no close rows invented",
           29,
           "Savings target versus transfers reviewed",
         ),

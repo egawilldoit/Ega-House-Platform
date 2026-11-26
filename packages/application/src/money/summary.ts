@@ -1,4 +1,10 @@
-import { calculateMoneyReserves, type MoneyOpening, type MoneyPeriod } from "@ega/domain/money";
+import {
+  calculateMoneyDailyReference,
+  calculateMoneyReserves,
+  type MoneyOpening,
+  type MoneyPeriod,
+  type MoneyPeriodLifecycle,
+} from "@ega/domain/money";
 import type { MoneyDirection, MoneyKind } from "@ega/domain/money";
 import type { ExpenseCategory } from "@ega/domain/expenses";
 import {
@@ -134,6 +140,39 @@ export type MoneyReserveProjection =
   | Readonly<{ available: false; currency: "MAD"; reason: string; cutoffDate: string }>
   | Readonly<{ available: true; currency: "MAD"; cutoffDate: string; reserves: ReturnType<typeof calculateMoneyReserves> }>;
 
+/**
+ * Current daily guidance at the effective projection cutoff (MONEY-001 Q11).
+ * `basis` says whether the inputs are retained day-start evidence or a
+ * read-only derivation from the day-start ledger and the current period plan;
+ * a missing or incomplete baseline is never presented as zero.
+ */
+export type MoneyDailyReferenceProjection =
+  | Readonly<{
+      available: false;
+      currency: "MAD";
+      date: string;
+      basis: null;
+      reason: string;
+    }>
+  | Readonly<{
+      available: true;
+      currency: "MAD";
+      date: string;
+      basis: "day_start_baseline" | "derived_start_of_day";
+      historical: boolean;
+      allowanceAvailable: boolean;
+      algorithm: string;
+      daysRemaining: number;
+      safePoolMinor: number;
+      referenceMinor: number;
+      dailyIncludedExpenseMinor: number;
+      dailyRemainingMinor: number;
+    }>;
+
+/** One current read model so cash, reserves and daily guidance describe one date. */
+export type MoneyCurrentReserveProjection = MoneyReserveProjection &
+  Readonly<{ dailyReference: MoneyDailyReferenceProjection }>;
+
 /** Compose canonical cash, obligation, and reserve totals in the application layer. */
 export function projectMoneyReserves(input: Readonly<{
   cutoffDate: string;
@@ -155,18 +194,233 @@ export function projectMoneyReserves(input: Readonly<{
     reserves: calculateMoneyReserves({ recordedCashMinor, unpaidCommitmentsMinor, savingsTargetMinor, savingsFundedMinor, emergencyTargetMinor, emergencyUsedMinor }) };
 }
 
+function unavailableDailyReference(
+  date: string,
+  reason: string,
+): MoneyDailyReferenceProjection {
+  return { available: false, currency: "MAD", date, basis: null, reason };
+}
+
+function projectDailyReference(input: Readonly<{
+  date: string;
+  basis: "day_start_baseline" | "derived_start_of_day";
+  startCashMinor: number | null;
+  startCommitmentsMinor: number | null;
+  startSavingsTargetMinor: number | null;
+  savingsFundedBeforeMinor: number | null;
+  startEmergencyTargetMinor: number | null;
+  emergencyUsedBeforeMinor: number | null;
+  periodEnd: string;
+  periodLifecycle: MoneyPeriodLifecycle;
+  dailyIncludedExpenseMinor: number;
+}>): MoneyDailyReferenceProjection {
+  const reference = calculateMoneyDailyReference({
+    startCashMinor: input.startCashMinor,
+    startCommitmentsMinor: input.startCommitmentsMinor,
+    startSavingsTargetMinor: input.startSavingsTargetMinor,
+    savingsFundedBeforeMinor: input.savingsFundedBeforeMinor,
+    startEmergencyTargetMinor: input.startEmergencyTargetMinor,
+    emergencyUsedBeforeMinor: input.emergencyUsedBeforeMinor,
+    periodEnd: input.periodEnd,
+    selectedDate: input.date,
+    dailyIncludedExpenseMinor: input.dailyIncludedExpenseMinor,
+    periodLifecycle: input.periodLifecycle,
+  });
+  if (!reference.available) {
+    return unavailableDailyReference(input.date, reference.reason);
+  }
+  return {
+    available: true,
+    currency: "MAD",
+    date: input.date,
+    basis: input.basis,
+    historical: reference.historical,
+    allowanceAvailable: reference.allowanceAvailable,
+    algorithm: reference.algorithm,
+    daysRemaining: reference.daysRemaining,
+    safePoolMinor: reference.safePoolMinor,
+    referenceMinor: reference.referenceMinor,
+    dailyIncludedExpenseMinor: reference.dailyIncludedExpenseMinor,
+    dailyRemainingMinor: reference.dailyRemainingMinor,
+  };
+}
+
+/**
+ * Daily guidance for the effective cutoff without writing anything.
+ *
+ * A retained available day-start baseline is authoritative and keeps its
+ * historical meaning. When that exact day has no retained row, derive the
+ * actual start-of-day ledger inputs from the canonical reserve read at the
+ * exclusive prior-day cutoff (`cutoffDate - 1`): cash, unpaid commitments and
+ * funded/emergency totals are then genuinely before the selected day. The
+ * current period plan supplies the targets. This is explicitly labelled
+ * guidance, never a fabricated historical baseline, and it is only offered for
+ * the owner's current tracking day. Incomplete reads stay unavailable.
+ */
+async function readCurrentDailyReference(input: Readonly<{
+  actor: AuthenticatedActor;
+  periods: MoneyPeriodRepository;
+  period: MoneyPeriod;
+  cutoffDate: string;
+  localToday: string;
+  savingsTargetMinor: number;
+  emergencyTargetMinor: number;
+}>): Promise<MoneyDailyReferenceProjection> {
+  if (!input.periods.getDayStartBaseline) {
+    return unavailableDailyReference(
+      input.cutoffDate,
+      "day_start_baseline_unavailable",
+    );
+  }
+  const baselineResult = await input.periods.getDayStartBaseline(
+    input.actor,
+    input.period.id,
+    input.cutoffDate,
+  );
+  if (!baselineResult.ok) {
+    return unavailableDailyReference(
+      input.cutoffDate,
+      "day_start_baseline_unavailable",
+    );
+  }
+
+  const readDailyTotal = async (): Promise<number | null> => {
+    if (!input.periods.getDailyIncludedExpenseTotal) return null;
+    const totalResult = await input.periods.getDailyIncludedExpenseTotal(
+      input.actor,
+      input.period.id,
+      input.cutoffDate,
+    );
+    if (!totalResult.ok || !totalResult.value.complete) return null;
+    return totalResult.value.amountMinor;
+  };
+
+  const baseline = baselineResult.value;
+  if (baseline) {
+    if (baseline.availability !== "available") {
+      return unavailableDailyReference(
+        input.cutoffDate,
+        baseline.unavailableReason ?? "baseline_unavailable",
+      );
+    }
+    const dailyTotal = await readDailyTotal();
+    if (dailyTotal === null) {
+      return unavailableDailyReference(
+        input.cutoffDate,
+        "daily_expense_total_unavailable",
+      );
+    }
+    return projectDailyReference({
+      date: input.cutoffDate,
+      basis: "day_start_baseline",
+      startCashMinor: baseline.cashMinor,
+      startCommitmentsMinor: baseline.commitmentsMinor,
+      startSavingsTargetMinor: baseline.savingsTargetMinor,
+      savingsFundedBeforeMinor: baseline.savingsFundedMinor,
+      startEmergencyTargetMinor: baseline.emergencyTargetMinor,
+      emergencyUsedBeforeMinor: baseline.emergencyUsedMinor,
+      periodEnd: input.period.endDate,
+      periodLifecycle: input.period.lifecycle,
+      dailyIncludedExpenseMinor: dailyTotal,
+    });
+  }
+
+  // Read-only derivation is only honest once the owner explicitly completed
+  // the initial obligation setup. Before that the obligation baseline is
+  // unknown, so a derived daily number would invent a plan the owner never
+  // confirmed. A retained baseline still speaks for its own day.
+  if (!input.period.dayStartSetupCompleted) {
+    return unavailableDailyReference(
+      input.cutoffDate,
+      "initial_setup_incomplete",
+    );
+  }
+
+  const canDeriveCurrentDay =
+    input.period.lifecycle === "tracking" &&
+    input.cutoffDate === input.localToday &&
+    input.cutoffDate > input.period.startDate &&
+    input.cutoffDate <= input.period.endDate;
+  if (!canDeriveCurrentDay) {
+    return unavailableDailyReference(
+      input.cutoffDate,
+      "day_start_baseline_missing",
+    );
+  }
+
+  const startOfDay = await input.periods.getReserveInputs(
+    input.actor,
+    input.period.id,
+    addDaysToIsoDate(input.cutoffDate, -1),
+  );
+  if (!startOfDay.ok) {
+    return unavailableDailyReference(
+      input.cutoffDate,
+      "start_of_day_inputs_unavailable",
+    );
+  }
+  if (!startOfDay.value.available) {
+    return unavailableDailyReference(
+      input.cutoffDate,
+      startOfDay.value.reason || "start_of_day_inputs_unavailable",
+    );
+  }
+
+  const dailyTotal = await readDailyTotal();
+  if (dailyTotal === null) {
+    return unavailableDailyReference(
+      input.cutoffDate,
+      "daily_expense_total_unavailable",
+    );
+  }
+  return projectDailyReference({
+    date: input.cutoffDate,
+    basis: "derived_start_of_day",
+    startCashMinor: startOfDay.value.recordedCashMinor,
+    startCommitmentsMinor: startOfDay.value.unpaidCommitmentsMinor,
+    startSavingsTargetMinor: input.savingsTargetMinor,
+    savingsFundedBeforeMinor: startOfDay.value.savingsFundedMinor,
+    startEmergencyTargetMinor: input.emergencyTargetMinor,
+    emergencyUsedBeforeMinor: startOfDay.value.emergencyUsedMinor,
+    periodEnd: input.period.endDate,
+    periodLifecycle: input.period.lifecycle,
+    dailyIncludedExpenseMinor: dailyTotal,
+  });
+}
+
 /** Shared current reserve read. Cash, commitments, funded savings and emergency
  * usage come from the one canonical database read that also backs close
  * evidence, so the two surfaces cannot disagree on their predicate. The plan
- * remains the owner of the savings and emergency targets. */
+ * remains the owner of the savings and emergency targets.
+ *
+ * `cutoffDate` and `localToday` are the caller-resolved effective projection
+ * cutoff and owner-local date. Both cash and daily guidance use this one date,
+ * so a lagging active tracking cursor cannot make the current view stale. */
 export async function getCurrentMoneyReserves(actor: AuthenticatedActor, input: Readonly<{
   period: MoneyPeriod;
   periods: MoneyPeriodRepository;
   budgets: MoneyBudgetRepository;
-}>): Promise<ApplicationResult<MoneyReserveProjection>> {
-  const { period } = input;
+  cutoffDate: string;
+  localToday: string;
+}>): Promise<ApplicationResult<MoneyCurrentReserveProjection>> {
+  const { period, cutoffDate } = input;
+  if (cutoffDate < period.startDate || cutoffDate > period.endDate) {
+    // An explicit historical date can fall outside the selected period. The
+    // canonical reserve read only defines cutoffs inside its own period, so
+    // report unavailable instead of failing the whole Money state.
+    return applicationSuccess({
+      available: false,
+      currency: "MAD",
+      reason: "cutoff_outside_period",
+      cutoffDate,
+      dailyReference: unavailableDailyReference(
+        cutoffDate,
+        "cutoff_outside_period",
+      ),
+    });
+  }
   const [reserveInputs, plan] = await Promise.all([
-    input.periods.getReserveInputs(actor, period.id, period.activeDate),
+    input.periods.getReserveInputs(actor, period.id, cutoffDate),
     input.budgets.getPlan(actor, {
       periodId: period.id,
       periodStartDate: period.startDate,
@@ -185,28 +439,49 @@ export async function getCurrentMoneyReserves(actor: AuthenticatedActor, input: 
       plan.error.code,
     );
   }
-  if (!reserveInputs.value.available || !plan.value) {
+  if (
+    !reserveInputs.value.available ||
+    !plan.value ||
+    plan.value.savingsTargetMinor === null ||
+    plan.value.emergencyTargetMinor === null
+  ) {
+    const reason = !reserveInputs.value.available
+      ? reserveInputs.value.reason
+      : "reserve_inputs_incomplete";
     return applicationSuccess({
       available: false,
       currency: "MAD",
-      reason: !reserveInputs.value.available
-        ? reserveInputs.value.reason
-        : "reserve_inputs_incomplete",
-      cutoffDate: period.activeDate,
+      reason,
+      cutoffDate,
+      dailyReference: unavailableDailyReference(cutoffDate, reason),
     });
   }
-  return applicationSuccess(
-    projectMoneyReserves({
-      cutoffDate: period.activeDate,
-      recordedCashMinor: reserveInputs.value.recordedCashMinor,
-      unpaidCommitmentsMinor: reserveInputs.value.unpaidCommitmentsMinor,
-      savingsTargetMinor: plan.value.savingsTargetMinor,
-      savingsFundedMinor: reserveInputs.value.savingsFundedMinor,
-      emergencyTargetMinor: plan.value.emergencyTargetMinor,
-      emergencyUsedMinor: reserveInputs.value.emergencyUsedMinor,
-      complete: true,
-    }),
-  );
+
+  const reserves = calculateMoneyReserves({
+    recordedCashMinor: reserveInputs.value.recordedCashMinor,
+    unpaidCommitmentsMinor: reserveInputs.value.unpaidCommitmentsMinor,
+    savingsTargetMinor: plan.value.savingsTargetMinor,
+    savingsFundedMinor: reserveInputs.value.savingsFundedMinor,
+    emergencyTargetMinor: plan.value.emergencyTargetMinor,
+    emergencyUsedMinor: reserveInputs.value.emergencyUsedMinor,
+  });
+  const dailyReference = await readCurrentDailyReference({
+    actor,
+    periods: input.periods,
+    period,
+    cutoffDate,
+    localToday: input.localToday,
+    savingsTargetMinor: plan.value.savingsTargetMinor,
+    emergencyTargetMinor: plan.value.emergencyTargetMinor,
+  });
+
+  return applicationSuccess({
+    available: true,
+    currency: "MAD",
+    cutoffDate,
+    reserves,
+    dailyReference,
+  });
 }
 
 /**

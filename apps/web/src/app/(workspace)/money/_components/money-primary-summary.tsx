@@ -1,6 +1,6 @@
 import type {
   ApplicationResult,
-  MoneyReserveProjection,
+  MoneyCurrentReserveProjection,
   MoneyState,
 } from "@ega/application";
 
@@ -8,7 +8,7 @@ import { formatMad } from "./money-format";
 
 type MoneyPrimarySummaryProps = {
   moneyState: MoneyState | null;
-  reserve: ApplicationResult<MoneyReserveProjection> | null;
+  reserve: ApplicationResult<MoneyCurrentReserveProjection> | null;
 };
 
 function unavailable(label: string, reason: string) {
@@ -29,7 +29,8 @@ export function MoneyPrimarySummary({ moneyState, reserve }: MoneyPrimarySummary
   const cash = moneyState?.cash ?? null;
   const reserves = reserve?.ok && reserve.data.available ? reserve.data.reserves : null;
   const reserveCutoff = reserve?.ok && reserve.data.available ? reserve.data.cutoffDate : null;
-  const reference = moneyState?.dayStartBaseline?.dailyReference ?? null;
+  const daily = reserve?.ok ? reserve.data.dailyReference : null;
+  const reference = daily?.available ? daily : null;
   const safeFlexible = reserves?.safeFlexibleMinor ?? null;
   const negativeSafe = safeFlexible !== null && safeFlexible < 0;
 
@@ -109,16 +110,18 @@ export function MoneyPrimarySummary({ moneyState, reserve }: MoneyPrimarySummary
 
         <div data-testid="money-daily-reference-card">
           <dt className="text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
-            {reference?.available && reference.historical
+            {reference?.historical
               ? "Historical daily reference"
               : "Daily reference"}
           </dt>
           <dd className="mt-1 text-[length:var(--text-section)] font-semibold tabular-nums">
-            {reference?.available ? (
+            {reference ? (
               <span
                 data-testid="money-daily-reference"
                 data-minor={reference.referenceMinor}
                 data-remaining={reference.dailyRemainingMinor}
+                data-date={reference.date}
+                data-basis={reference.basis}
               >
                 {formatMad(reference.referenceMinor)}
               </span>
@@ -127,9 +130,13 @@ export function MoneyPrimarySummary({ moneyState, reserve }: MoneyPrimarySummary
             )}
           </dd>
           <dd className="mt-1 text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
-            {reference?.available ? (
+            {reference ? (
               <>
-                Day-start reference · remaining today{" "}
+                Day-start reference ·{" "}
+                {reference.basis === "derived_start_of_day"
+                  ? "derived from the prior-day ledger and current plan"
+                  : "stored day-start"}{" "}
+                · {reference.date} · remaining today{" "}
                 <span data-testid="money-daily-remaining" data-minor={reference.dailyRemainingMinor}>
                   {formatMad(reference.dailyRemainingMinor)}
                 </span>{" "}
@@ -140,9 +147,9 @@ export function MoneyPrimarySummary({ moneyState, reserve }: MoneyPrimarySummary
             ) : (
               unavailable(
                 "Daily reference",
-                moneyState?.dayClosesUnavailable
-                  ? "retained close evidence could not be loaded"
-                  : "the day-start baseline or complete daily expense data is missing",
+                daily && !daily.available
+                  ? daily.reason
+                  : "current reserves could not be loaded",
               )
             )}
           </dd>

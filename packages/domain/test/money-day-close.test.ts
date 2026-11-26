@@ -18,6 +18,7 @@ function period(patch: Partial<MoneyPeriod> = {}): MoneyPeriod {
     activeDate: "2026-11-29",
     lifecycle: "tracking",
     initialization: "initialized",
+    dayStartSetupCompleted: true,
     openingMovementId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
     provenance: { opening: null, createdFrom: "web" },
     settings: {},
@@ -100,7 +101,7 @@ test("close input requires a UUID operation and rejects unknown fields", () => {
   if (valid.ok) {
     assert.equal(valid.value.expectedVersion, 3);
     assert.equal(valid.value.finalPurchases.length, 1);
-    assert.equal(valid.value.finalPurchases[0]!.countsInDaily, null);
+    assert.equal(valid.value.finalPurchases[0]!.countsInDaily, true);
   }
 
   const unknown = parseMoneyDayCloseInput({

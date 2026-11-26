@@ -47,7 +47,10 @@ export type McpMoneyDependencies = {
   ) => TimeContextRepository;
   periodRepositoryFactory?: (
     client: SupabaseClient<McpDatabase>,
-  ) => Pick<MoneyPeriodRepository, "findTracking" | "list">;
+  ) => Pick<
+    MoneyPeriodRepository,
+    "findTracking" | "list" | "findOverlapping"
+  >;
   now?: () => Date;
 };
 

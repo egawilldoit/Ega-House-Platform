@@ -46,6 +46,7 @@ import {
   isSupabaseUniqueConstraintViolation,
   sanitizeSupabaseError,
 } from "../supabase/errors";
+import { recordRoutineMovement } from "./routine-entry";
 
 /**
  * Request-scoped Supabase adapters for Money.
@@ -63,7 +64,7 @@ const LEDGER_TABLE = "personal_expenses";
 const IDEMPOTENCY_CONSTRAINT = "personal_expenses_owner_idempotency_key_unique";
 
 const PERIOD_COLUMNS =
-  "id, owner_user_id, start_date, end_date, currency, timezone, active_date, lifecycle, initialization, opening_movement_id, provenance, settings, version, created_at, updated_at";
+  "id, owner_user_id, start_date, end_date, currency, timezone, active_date, lifecycle, initialization, opening_movement_id, day_start_setup_completed, provenance, settings, version, created_at, updated_at";
 
 const OPENING_COLUMNS =
   "id, amount_minor, currency, booking_date, version, created_at, updated_at";
@@ -122,6 +123,7 @@ type PeriodRow = {
   lifecycle: string;
   initialization: string;
   opening_movement_id: string | null;
+  day_start_setup_completed: boolean;
   provenance: unknown;
   settings: unknown;
   version: number;
@@ -187,6 +189,8 @@ function toProvenance(value: unknown): MoneyPeriodProvenance {
   return {
     opening: toOpeningProvenance(value.opening),
     createdFrom: value.createdFrom === "mcp" ? "mcp" : "web",
+    continuedFrom:
+      typeof value.continuedFrom === "string" ? value.continuedFrom : null,
   };
 }
 
@@ -206,6 +210,7 @@ function toPeriod(row: PeriodRow): MoneyPeriod {
     initialization: String(row.initialization) as MoneyPeriodInitialization,
     openingMovementId:
       row.opening_movement_id == null ? null : String(row.opening_movement_id),
+    dayStartSetupCompleted: row.day_start_setup_completed === true,
     provenance: toProvenance(row.provenance),
     settings: toSettings(row.settings),
     version: Number(row.version),
@@ -1051,6 +1056,43 @@ export class SupabaseMoneyRepository implements MoneyMovementRepository {
     actor: AuthenticatedActor,
     input: MoneyCreateRecordInput,
   ): Promise<RepositoryResult<MoneyLedgerRow>> {
+    if (input.requiresContinuation) {
+      const values = input.values;
+      const result = await recordRoutineMovement(this.supabase, {
+        bookingDate: values.bookingDate,
+        kind: values.kind,
+        direction: values.direction,
+        occurredAt: values.occurredAt,
+        amountMinor: values.amountMinor,
+        category: values.category,
+        note: values.note,
+        merchant: values.merchant,
+        needVsWant: values.needVsWant,
+        paymentMethod: values.paymentMethod,
+        purpose: values.purpose,
+        countsInDaily: values.countsInDaily,
+        idempotencyKey: values.idempotencyKey,
+        createFingerprint: input.createFingerprint,
+      });
+      if (!result.ok) {
+        if (
+          result.error &&
+          typeof result.error === "object" &&
+          isSupabaseUniqueConstraintViolation(
+            result.error as MoneySupabaseError,
+            IDEMPOTENCY_CONSTRAINT,
+          )
+        ) {
+          return { ok: false, error: { code: "conflict" } };
+        }
+        return {
+          ok: false,
+          error: moneyFailure(result.error as MoneySupabaseError),
+        };
+      }
+      return { ok: true, value: toRecord(result.row as unknown as MovementRow) };
+    }
+
     const { data, error } = await this.supabase
       .from(LEDGER_TABLE)
       .insert(toInsertPayload(actor, input))

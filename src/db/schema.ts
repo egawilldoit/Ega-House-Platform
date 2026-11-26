@@ -1602,6 +1602,9 @@ export const moneyPeriods = pgTable(
       .default("uninitialized")
       .notNull(),
     openingMovementId: uuid("opening_movement_id"),
+    dayStartSetupCompleted: boolean("day_start_setup_completed")
+      .default(false)
+      .notNull(),
     successorPeriodId: uuid("successor_period_id"),
     rolledOverAt: timestamp("rolled_over_at", { withTimezone: true }),
     /**
@@ -1655,7 +1658,7 @@ export const moneyPeriods = pgTable(
     check("money_periods_timezone_check", sql`btrim(${table.timezone}) <> ''`),
     check(
       "money_periods_lifecycle_check",
-      sql`${table.lifecycle} in ('tracking','ended','rolled_over')`,
+      sql`${table.lifecycle} in ('tracking','superseded','ended','rolled_over')`,
     ),
     check(
       "money_periods_initialization_check",

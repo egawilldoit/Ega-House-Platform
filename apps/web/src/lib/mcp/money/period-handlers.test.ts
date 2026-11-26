@@ -71,6 +71,7 @@ const PERIOD = {
   activeDate: "2026-11-11",
   lifecycle: "tracking",
   initialization: "initialized",
+  dayStartSetupCompleted: true,
   openingMovementId: "00000000-0000-4000-8000-000000000003",
   provenance: {
     opening: {
@@ -135,6 +136,9 @@ const STATE = {
     resolvedDate: "2026-11-11",
     basis: "active_day",
     periodRelation: "in_period",
+    projectionCutoffDate: "2026-11-13",
+    projectionBasis: "local_today",
+    projectionClampedToPeriod: false,
   },
   history: [],
   historyUnavailable: false,
@@ -211,7 +215,7 @@ describe("Money MCP tools", () => {
   it("denies state to legacy workspace-only grants and allows explicit readers", async () => {
     mocks.timezoneGet.mockResolvedValue({ ok: true, value: "Africa/Casablanca" });
     mocks.getMoneyState.mockResolvedValue({ ok: true, data: STATE });
-    mocks.getCurrentMoneyReserves.mockResolvedValue({ ok: true, data: { available: true, currency: "MAD", cutoffDate: PERIOD.activeDate, reserves: { recordedCashMinor: 48900 } } });
+    mocks.getCurrentMoneyReserves.mockResolvedValue({ ok: true, data: { available: true, currency: "MAD", cutoffDate: "2026-11-13", reserves: { recordedCashMinor: 48900 }, dailyReference: { available: true, currency: "MAD", date: "2026-11-13", basis: "derived_start_of_day", historical: false, allowanceAvailable: true, algorithm: "safe-flexible-start-of-day-v1", daysRemaining: 18, safePoolMinor: 48900, referenceMinor: 2716, dailyIncludedExpenseMinor: 0, dailyRemainingMinor: 2716 } } });
     const h = handlers();
 
     const denied = await h.moneyState(authInfo(WORKSPACE_PRINCIPAL), {});
@@ -230,10 +234,30 @@ describe("Money MCP tools", () => {
     expect(structured(allowed).analytics).toMatchObject({
       available: true,
       method: "safe-flexible-start-of-day-v1",
+      projectionCutoffDate: "2026-11-13",
+      projectionBasis: "local_today",
+      projectionClampedToPeriod: false,
+      setupComplete: true,
       dayStartBaseline: { dailyReference: { referenceMinor: 2445 } },
-      reserves: { available: true, cutoffDate: PERIOD.activeDate },
+      reserves: {
+        available: true,
+        cutoffDate: "2026-11-13",
+        dailyReference: {
+          available: true,
+          date: "2026-11-13",
+          basis: "derived_start_of_day",
+          referenceMinor: 2716,
+        },
+      },
     });
-    expect(mocks.getCurrentMoneyReserves).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ period: PERIOD }));
+    expect(mocks.getCurrentMoneyReserves).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        period: PERIOD,
+        cutoffDate: "2026-11-13",
+        localToday: "2026-11-13",
+      }),
+    );
   });
 
   it("labels ended-period analytics as historical without a spending allowance", async () => {
@@ -245,10 +269,30 @@ describe("Money MCP tools", () => {
         ...STATE.dayStartBaseline.dailyReference, historical: true, allowanceAvailable: false,
       } },
     } });
-    mocks.getCurrentMoneyReserves.mockResolvedValue({ ok: true, data: { available: false, currency: "MAD", reason: "period_ended", cutoffDate: PERIOD.activeDate } });
+    mocks.getCurrentMoneyReserves.mockResolvedValue({ ok: true, data: {
+      available: true,
+      currency: "MAD",
+      cutoffDate: "2026-11-30",
+      reserves: { recordedCashMinor: 48900 },
+      dailyReference: {
+        available: true,
+        currency: "MAD",
+        date: "2026-11-30",
+        basis: "day_start_baseline",
+        historical: true,
+        allowanceAvailable: false,
+        algorithm: "safe-flexible-start-of-day-v1",
+        daysRemaining: 1,
+        safePoolMinor: 48900,
+        referenceMinor: 48900,
+        dailyIncludedExpenseMinor: 0,
+        dailyRemainingMinor: 48900,
+      },
+    } });
     const result = structured(await handlers().moneyState(authInfo(READER_PRINCIPAL), {}));
     expect(result.analytics).toMatchObject({ available: true, historical: true, allowanceAvailable: false,
-      dayStartBaseline: { dailyReference: { historical: true, allowanceAvailable: false } } });
+      dayStartBaseline: { dailyReference: { historical: true, allowanceAvailable: false } },
+      reserves: { dailyReference: { historical: true, allowanceAvailable: false } } });
   });
 
   it("labels missing analytics unavailable without inventing values", async () => {
@@ -256,19 +300,20 @@ describe("Money MCP tools", () => {
     mocks.getMoneyState.mockResolvedValue({ ok: true, data: {
       ...STATE, dayStartBaseline: null, dayStartBaselineUnavailable: true,
     } });
-    mocks.getCurrentMoneyReserves.mockResolvedValue({ ok: true, data: { available: false, currency: "MAD", reason: "reserve_inputs_incomplete", cutoffDate: PERIOD.activeDate } });
+    mocks.getCurrentMoneyReserves.mockResolvedValue({ ok: true, data: { available: false, currency: "MAD", reason: "reserve_inputs_incomplete", cutoffDate: "2026-11-13", dailyReference: { available: false, currency: "MAD", date: "2026-11-13", basis: null, reason: "day_start_baseline_missing" } } });
     const result = structured(await handlers().moneyState(authInfo(READER_PRINCIPAL), {}));
-    expect(result.analytics).toMatchObject({ available: false, reason: "baseline_unavailable", method: "safe-flexible-start-of-day-v1", dayStartBaseline: null, reserves: { available: false, reason: "reserve_inputs_incomplete" } });
+    expect(result.analytics).toMatchObject({ available: false, reason: "baseline_unavailable", method: null, dayStartBaseline: null, reserves: { available: false, reason: "reserve_inputs_incomplete", dailyReference: { available: false, reason: "day_start_baseline_missing" } } });
   });
 
   it("explains incomplete initial setup and the explicit completion step", async () => {
     mocks.timezoneGet.mockResolvedValue({ ok: true, value: "Africa/Casablanca" });
     mocks.getMoneyState.mockResolvedValue({ ok: true, data: {
       ...STATE,
+      period: { ...STATE.period, dayStartSetupCompleted: false },
       dayStartBaseline: { ...STATE.dayStartBaseline, availability: "unavailable", unavailableReason: "initial_setup_incomplete", dailyReference: null },
       dayStartBaselineUnavailable: true,
     } });
-    mocks.getCurrentMoneyReserves.mockResolvedValue({ ok: true, data: { available: false, currency: "MAD", reason: "reserve_inputs_incomplete", cutoffDate: PERIOD.activeDate } });
+    mocks.getCurrentMoneyReserves.mockResolvedValue({ ok: true, data: { available: false, currency: "MAD", reason: "reserve_inputs_incomplete", cutoffDate: "2026-11-13", dailyReference: { available: false, currency: "MAD", date: "2026-11-13", basis: null, reason: "initial_setup_incomplete" } } });
     const result = structured(await handlers().moneyState(authInfo(READER_PRINCIPAL), {}));
     expect(result.analytics).toMatchObject({ setupComplete: false, setupNextStep: expect.stringContaining("ega_money_rebase_day_start_baseline") });
     expect(result.analytics).toMatchObject({ available: false, reason: "baseline_unavailable", dayStartBaseline: { unavailableReason: "initial_setup_incomplete" } });

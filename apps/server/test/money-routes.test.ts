@@ -147,6 +147,7 @@ const PERIOD_ROW = {
   active_date: "2026-11-11",
   lifecycle: "tracking",
   initialization: "initialized",
+  day_start_setup_completed: true,
   opening_movement_id: null,
   provenance: { opening: null, createdFrom: "web" },
   settings: {},

@@ -53,7 +53,10 @@ export type McpMoneyExpenseDependencies = {
   /** Tracking-period gate shared with web/Hono/personal-ops creation. */
   periodRepositoryFactory?: (
     client: SupabaseClient<McpDatabase>,
-  ) => Pick<MoneyPeriodRepository, "findTracking" | "list">;
+  ) => Pick<
+    MoneyPeriodRepository,
+    "findTracking" | "list" | "findOverlapping"
+  >;
 };
 
 export type McpMoneyLedgerQuery = Readonly<{

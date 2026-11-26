@@ -19,6 +19,10 @@
 --    reviewed count) so the owner's decision remains auditable. The reference
 --    column is deliberately outside the authenticated UPDATE grant, so it
 --    cannot be forged by a direct client update.
+-- 5. A verified opening cutoff is authorized against the trusted database
+--    clock in the stored source-period timezone. The caller timestamp is
+--    retained only for signature compatibility and metadata, never as
+--    evidence that a future financial cutoff is valid.
 --
 -- This migration only replaces guards/functions and adds nullable/defaulted
 -- columns. It never edits an applied migration, never inserts close evidence
@@ -589,6 +593,8 @@ CREATE OR REPLACE FUNCTION public.money_rollover_period(
   p_reconciliation jsonb,
   p_occurrences jsonb,
   p_carried_occurrences jsonb,
+  -- Accepted for signature compatibility only. Every stored timestamp and the
+  -- verified-cutoff boundary come from the trusted database clock below.
   p_created_at timestamptz
 )
 RETURNS jsonb
@@ -621,6 +627,7 @@ DECLARE
   v_successor_settings jsonb;
   v_unverified_count integer := 0;
   v_unverified_dates text;
+  v_now timestamptz := statement_timestamp();
 BEGIN
   IF v_owner IS NULL THEN
     RAISE EXCEPTION 'Authentication is required.' USING ERRCODE = '42501';
@@ -713,8 +720,8 @@ BEGIN
         v_source.end_date
         USING ERRCODE = '23514';
     END IF;
-    IF p_opening_cutoff_date > (p_created_at AT TIME ZONE v_source.timezone)::date THEN
-      RAISE EXCEPTION 'A verified opening cannot be dated after its operation.'
+    IF p_opening_cutoff_date > (v_now AT TIME ZONE v_source.timezone)::date THEN
+      RAISE EXCEPTION 'A verified opening cannot be dated in the future.'
         USING ERRCODE = '23514';
     END IF;
   END IF;
@@ -880,7 +887,7 @@ BEGIN
   SET lifecycle = 'ended',
       finalization_reference = v_successor_id,
       version = version + 1,
-      updated_at = p_created_at
+      updated_at = v_now
   WHERE id = v_source.id AND owner_user_id = v_owner
   RETURNING * INTO v_source;
   IF NOT FOUND THEN
@@ -894,7 +901,7 @@ BEGIN
   ) VALUES (
     v_successor_id, v_owner, p_start_date, p_end_date, 'MAD', btrim(p_timezone),
     p_active_date, 'tracking', 'uninitialized', NULL, p_provenance, v_successor_settings,
-    1, p_created_at, p_created_at
+    1, v_now, v_now
   );
 
   INSERT INTO public.personal_expenses (
@@ -904,7 +911,7 @@ BEGIN
   ) VALUES (
     v_owner, NULL, p_opening_amount_minor, 'MAD', NULL, p_opening_note, NULL,
     NULL, NULL, 'opening:' || v_successor_id, p_opening_create_fingerprint,
-    'opening', 'in', p_start_date, false, v_successor_id, p_created_at, p_created_at
+    'opening', 'in', p_start_date, false, v_successor_id, v_now, v_now
   )
   RETURNING id INTO v_opening_id;
 
@@ -913,7 +920,7 @@ BEGIN
       opening_movement_id = v_opening_id,
       provenance = p_provenance,
       version = version + 1,
-      updated_at = p_created_at
+      updated_at = v_now
   WHERE id = v_successor_id AND owner_user_id = v_owner;
 
   INSERT INTO public.money_policy_versions (
@@ -925,7 +932,7 @@ BEGIN
       'algorithmVersion', 'safe-flexible-start-of-day-v1',
       'rolledOverFrom', v_source.id
     ),
-    p_created_at
+    v_now
   )
   RETURNING id INTO v_policy_id;
 
@@ -936,7 +943,7 @@ BEGIN
     v_owner, v_successor_id, p_active_date, 1, v_policy_id,
     'safe-flexible-start-of-day-v1', 'unavailable', 'initial_setup_incomplete',
     jsonb_build_object('setupComplete', false, 'rolledOverFrom', v_source.id),
-    p_created_at
+    v_now
   );
 
   -- Generated occurrences come from the canonical recurrence rules resolved in
@@ -969,7 +976,7 @@ BEGIN
       '[]'::jsonb,
       v_item->'values'->>'idempotencyKey',
       v_item->>'createFingerprint',
-      1, p_created_at, p_created_at
+      1, v_now, v_now
     )
     ON CONFLICT (owner_user_id, idempotency_key) DO NOTHING;
     IF FOUND THEN
@@ -994,7 +1001,7 @@ BEGIN
           state_effective_date = v_source.end_date,
           state_reason = left(btrim(p_unpaid_reason), 200),
           version = version + 1,
-          updated_at = p_created_at
+          updated_at = v_now
       WHERE id = v_source_occurrence.id
         AND owner_user_id = v_owner
         AND version = v_source_occurrence.version;
@@ -1042,7 +1049,7 @@ BEGIN
         ), 'pending',
         (v_item->>'periodStart')::date, '[]'::jsonb,
         v_item->>'idempotencyKey', v_item->>'createFingerprint',
-        1, p_created_at, p_created_at
+        1, v_now, v_now
       )
       ON CONFLICT (owner_user_id, idempotency_key) DO NOTHING;
       IF FOUND THEN
@@ -1054,7 +1061,7 @@ BEGIN
           state_effective_date = v_source.end_date,
           state_reason = left(btrim(p_unpaid_reason), 200),
           version = version + 1,
-          updated_at = p_created_at
+          updated_at = v_now
       WHERE id = v_source_occurrence.id
         AND owner_user_id = v_owner
         AND version = v_source_occurrence.version;
@@ -1069,10 +1076,10 @@ BEGIN
   UPDATE public.money_periods
   SET lifecycle = 'rolled_over',
       successor_period_id = v_successor_id,
-      rolled_over_at = p_created_at,
+      rolled_over_at = v_now,
       finalization_reference = COALESCE(finalization_reference, v_successor_id),
       version = version + 1,
-      updated_at = p_created_at
+      updated_at = v_now
   WHERE id = v_source.id AND owner_user_id = v_owner
   RETURNING * INTO v_source;
   IF NOT FOUND THEN
@@ -1092,7 +1099,7 @@ BEGIN
     v_modeled_closing, v_source.end_date, p_unpaid_treatment,
     p_reconciliation_accepted_note, p_unverified_days_note, v_unverified_count,
     COALESCE(p_reconciliation, '{}'::jsonb) || jsonb_build_object('closeSummary', v_close_summary),
-    v_generated, v_carried, v_cancelled, p_created_at
+    v_generated, v_carried, v_cancelled, v_now
   )
   RETURNING * INTO v_record;
 

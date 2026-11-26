@@ -107,6 +107,14 @@ export type MoneyRolloverPreview = Readonly<{
   priorCorrectionBridges: readonly MoneyRolloverBridgeRecord[];
   /** True when the bounded bridge read could not prove the full list. */
   priorCorrectionBridgesTruncated: boolean;
+  /**
+   * The tracking period already created by automatic continuation for this
+   * source. Rollover adopts it with exactly this range and establishes its
+   * opening; it never creates a second successor.
+   */
+  continuationSuccessor: MoneyRolloverSourceContext["continuationSuccessor"];
+  /** The preceding unfinalized period that must be finalized first, if any. */
+  unfinalizedPredecessor: MoneyRolloverSourceContext["unfinalizedPredecessor"];
   generatedObligations: readonly Readonly<{
     templateId: string;
     description: string;
@@ -356,6 +364,26 @@ async function prepareRollover(
         "This period already has a successor. Continue from that period instead of creating a second one.",
     };
   }
+  if (source.continuationSuccessor) {
+    if (source.period.lifecycle !== "superseded") {
+      return {
+        ok: false,
+        code: "conflict",
+        message:
+          "A tracking period already continues this source. Finalize that tracking period instead of creating another successor.",
+      };
+    }
+    if (
+      values.startDate !== source.continuationSuccessor.startDate ||
+      values.endDate !== source.continuationSuccessor.endDate
+    ) {
+      return {
+        ok: false,
+        code: "conflict",
+        message: `The continued period already covers ${source.continuationSuccessor.startDate}–${source.continuationSuccessor.endDate}. Finalize it with exactly that range instead of creating a duplicate.`,
+      };
+    }
+  }
 
   const targetsResult = validateMoneyRolloverTargets({
     source: source.period,
@@ -378,11 +406,24 @@ async function prepareRollover(
   }
 
   const localToday = getLocalDateInTimezone(now, source.period.timezone);
+  // Continuity blockers. A continued period cannot be finalized before the
+  // period it continues without orphaning that predecessor. Any finalization
+  // is also refused while an unfinalized source still owns the current local
+  // day (including its end date): the day would stop belonging to any writable
+  // period and a later same-day entry would have no legal target. A source
+  // already ended through a retained final-day close is exempt because closing
+  // that day was itself the explicit decision.
+  const continuityBlockers: string[] = [];
+  if (source.unfinalizedPredecessor) {
+    continuityBlockers.push(
+      `Finalize the preceding period ${source.unfinalizedPredecessor.startDate}–${source.unfinalizedPredecessor.endDate} first. This period continues it and cannot be finalized before its predecessor.`,
+    );
+  }
   // A verified balance is evidence for a cutoff, not a promise about future
   // days. Before the source period has ended in the owner's calendar, its
   // verified balance cannot cover the source end without inventing future
-  // evidence. A late tracking period (end date already passed) may use a
-  // verified balance covering the end even when its active date lagged.
+  // evidence. Keep this specific message ahead of the generic same-day blocker;
+  // the generic blocker below covers the exact end date for both modes.
   if (
     values.opening.mode === "verified_source" &&
     source.period.lifecycle === "tracking" &&
@@ -394,6 +435,15 @@ async function prepareRollover(
       message:
         "A verified opening is only available after the source period ends. Use carry-forward for early finalization or wait until the period end.",
     };
+  }
+  if (
+    (source.period.lifecycle === "tracking" ||
+      source.period.lifecycle === "superseded") &&
+    source.period.endDate >= localToday
+  ) {
+    continuityBlockers.push(
+      `Finalizing now would leave ${localToday} outside a writable period. Finalize after ${source.period.endDate} instead.`,
+    );
   }
 
   let opening: MoneyOpeningInput | null = null;
@@ -407,7 +457,7 @@ async function prepareRollover(
         ok: false,
         code: "validation",
         message:
-          "Closing cash is unknown, so it cannot be carried forward as zero. Initialize the source period or supply a verified opening.",
+          "Closing cash is unknown, so it cannot be carried forward as zero. Initialize the source period's opening first, then reload the review.",
       };
     } else if (source.modeledClosingCashMinor < 0) {
       openingFailure = {
@@ -474,6 +524,7 @@ async function prepareRollover(
 
   const blockers = [
     ...reconciliation.blockers,
+    ...continuityBlockers,
     ...(openingFailure ? [openingFailure.message] : []),
     ...(source.pendingOccurrencesTruncated
       ? [
@@ -546,6 +597,8 @@ function previewOf(prepared: Prepared): MoneyRolloverPreview {
     pendingOccurrencesTruncated: source.pendingOccurrencesTruncated,
     priorCorrectionBridges: source.priorCorrectionBridges,
     priorCorrectionBridgesTruncated: source.priorCorrectionBridgesTruncated,
+    continuationSuccessor: source.continuationSuccessor,
+    unfinalizedPredecessor: source.unfinalizedPredecessor,
     generatedObligations: obligations.map((item) => ({
       templateId: item.values.templateId ?? "",
       description: item.values.description,
@@ -811,7 +864,12 @@ export async function getMoneyRolloverPreviewForPeriod(
   if (!source) {
     return applicationFailure("The source Money period was not found.", "notFound");
   }
-  const range = defaultMoneyRolloverRange(source.period);
+  const range = source.continuationSuccessor
+    ? {
+        startDate: source.continuationSuccessor.startDate,
+        endDate: source.continuationSuccessor.endDate,
+      }
+    : defaultMoneyRolloverRange(source.period);
   return getMoneyRolloverPreview(
     actor,
     dependencies,

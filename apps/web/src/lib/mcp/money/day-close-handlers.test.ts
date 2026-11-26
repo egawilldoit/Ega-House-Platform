@@ -46,6 +46,7 @@ const PERIOD = {
   activeDate: "2026-11-30",
   lifecycle: "tracking" as const,
   initialization: "initialized" as const,
+  dayStartSetupCompleted: true,
   openingMovementId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
   provenance: { opening: null, createdFrom: "mcp" as const },
   settings: {},

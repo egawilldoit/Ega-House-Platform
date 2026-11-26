@@ -1062,7 +1062,7 @@ export function createMcpWriteToolHandlers(
             needVsWant: purchase.needVsWant,
             paymentMethod: purchase.paymentMethod ?? null,
             purpose: purchase.purpose ?? null,
-            countsInDaily: purchase.countsInDaily ?? true,
+            countsInDaily: purchase.countsInDaily ?? null,
             idempotencyKey: purchase.idempotencyKey,
           }))
           .sort((left, right) =>

@@ -20,6 +20,7 @@ import {
 import type { ExpenseDto } from "@ega/contracts/expenses";
 import type { MoneyBudgetPlanDto, MoneyMovementDto } from "@ega/contracts/money";
 import type { MoneyOpeningInput } from "@ega/domain/money";
+import { getLocalDateInTimezone } from "@ega/domain/time-context";
 import {
   SupabaseExpenseRepository,
   SupabaseMoneyBudgetRepository,
@@ -39,6 +40,10 @@ import {
   parseMadAmountToMinor,
   parseOpeningAmountToMinor,
 } from "@/lib/money/money-amount";
+import {
+  moneyWallTimeToOccurredAt,
+  moneyWriteTimezone,
+} from "@/lib/money/money-wall-time";
 import { getWebTimeContext } from "@/lib/services/time-context-service";
 import { updateWebUserPreferences } from "@/lib/services/user-preferences-service";
 
@@ -543,9 +548,15 @@ export type CreateMovementActionInput = {
   paymentMethod?: MoneyMovementDto["paymentMethod"];
   purpose?: MoneyMovementDto["purpose"];
   countsInDaily?: boolean;
-  /** Owner-local booking day; keep the movement date-only unless time is known. */
-  bookingDate: string;
+  /** Booking day. Derived from an exact instant when one is supplied. */
+  bookingDate?: string;
+  /** A real ISO instant supplied by a non-UI client. Preserved as-is. */
   occurredAt?: string | null;
+  /**
+   * A `datetime-local` wall time from the browser, e.g. `2026-11-23T00:30`.
+   * Converted on the server with the verified Money period timezone.
+   */
+  occurredAtWallTime?: string | null;
   note?: string | null;
   merchant?: string | null;
   idempotencyKey: string;
@@ -555,6 +566,9 @@ export type MovementMutationResult =
   | { ok: true; movement: MoneyMovementDto; replayed: boolean }
   | { ok: false; code: ExpenseMutationErrorCode; error: string };
 
+const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const WALL_TIME_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?$/;
+
 export async function createMovementAction(
   input: CreateMovementActionInput,
 ): Promise<MovementMutationResult> {
@@ -562,9 +576,115 @@ export async function createMovementAction(
   if (!user) {
     return { ok: false, code: "UNAUTHENTICATED", error: "Sign in to record money movements." };
   }
+  if (input.occurredAt != null && typeof input.occurredAt !== "string") {
+    return { ok: false, code: "VALIDATION", error: "The occurrence time must be an ISO instant." };
+  }
+  if (
+    input.occurredAtWallTime != null &&
+    (typeof input.occurredAtWallTime !== "string" ||
+      !WALL_TIME_PATTERN.test(input.occurredAtWallTime.trim()))
+  ) {
+    return { ok: false, code: "VALIDATION", error: "Enter a valid local date and time." };
+  }
+  if (
+    input.bookingDate != null &&
+    (typeof input.bookingDate !== "string" ||
+      !ISO_DATE_PATTERN.test(input.bookingDate.trim()))
+  ) {
+    return { ok: false, code: "VALIDATION", error: "Use a valid booking date." };
+  }
+  if (input.occurredAt && input.occurredAtWallTime) {
+    return {
+      ok: false,
+      code: "VALIDATION",
+      error: "Provide either a real occurrence time or a local wall time, not both.",
+    };
+  }
   const client = await createClient();
+  const actor = createAuthenticatedActor(user.id);
+  const periods = new SupabaseMoneyPeriodRepository(client);
+
+  const tracking = await periods.findTracking(actor);
+  if (!tracking.ok) {
+    return {
+      ok: false,
+      code: "INTERNAL",
+      error: "Unable to resolve the Money timezone right now.",
+    };
+  }
+  // One date authority: a configured Money period owns the financial calendar;
+  // the owner time context only fills in before the first period exists.
+  let writeTimezone: string;
+  if (tracking.value) {
+    writeTimezone = tracking.value.timezone;
+  } else {
+    let ownerTimezone: string;
+    try {
+      ownerTimezone = (await getWebTimeContext()).timezone;
+    } catch {
+      return {
+        ok: false,
+        code: "INTERNAL",
+        error: "Unable to resolve the Money timezone right now.",
+      };
+    }
+    writeTimezone = moneyWriteTimezone({
+      trackingPeriodTimezone: null,
+      ownerTimezone,
+    });
+  }
+
+  let bookingDate = input.bookingDate?.trim();
+  let occurredAt = input.occurredAt ?? null;
+  if (input.occurredAtWallTime) {
+    const converted = moneyWallTimeToOccurredAt({
+      wallTime: input.occurredAtWallTime,
+      timezone: writeTimezone,
+    });
+    if (!converted.ok) {
+      return { ok: false, code: "VALIDATION", error: converted.error };
+    }
+    if (bookingDate && bookingDate !== converted.bookingDate) {
+      return {
+        ok: false,
+        code: "VALIDATION",
+        error: "The exact time must fall on the selected booking date.",
+      };
+    }
+    bookingDate = converted.bookingDate;
+    occurredAt = converted.occurredAt;
+  } else if (occurredAt) {
+    const parsed = Date.parse(occurredAt);
+    if (!Number.isFinite(parsed)) {
+      return {
+        ok: false,
+        code: "VALIDATION",
+        error: "The occurrence time must be a valid ISO instant.",
+      };
+    }
+    // The booking day is the day that instant falls on in the Money period
+    // timezone, exactly as the database trigger derives it.
+    const derived = getLocalDateInTimezone(new Date(parsed), writeTimezone);
+    if (bookingDate && bookingDate !== derived) {
+      return {
+        ok: false,
+        code: "VALIDATION",
+        error: "Booking date must match the supplied occurrence time.",
+      };
+    }
+    bookingDate = derived;
+    occurredAt = new Date(parsed).toISOString();
+  }
+  if (!bookingDate) {
+    return {
+      ok: false,
+      code: "VALIDATION",
+      error: "Choose a booking date or an exact occurrence time.",
+    };
+  }
+
   const result = await createMovement(
-    createAuthenticatedActor(user.id),
+    actor,
     new SupabaseMoneyRepository(client),
     {
       kind: input.kind,
@@ -577,13 +697,13 @@ export async function createMovementAction(
       ...(input.countsInDaily !== undefined
         ? { countsInDaily: input.countsInDaily }
         : {}),
-      bookingDate: input.bookingDate,
-      occurredAt: input.occurredAt ?? null,
+      bookingDate,
+      occurredAt,
       note: input.note ?? null,
       merchant: input.merchant ?? null,
       idempotencyKey: input.idempotencyKey,
     },
-    { periods: new SupabaseMoneyPeriodRepository(client) },
+    { periods },
   );
   if (!result.ok) {
     return {

@@ -68,6 +68,8 @@ function preview(overrides: Partial<MoneyRolloverPreview> = {}): MoneyRolloverPr
     pendingOccurrencesTruncated: false,
     priorCorrectionBridges: [],
     priorCorrectionBridgesTruncated: false,
+    continuationSuccessor: null,
+    unfinalizedPredecessor: null,
     generatedObligations: [],
     carriedOccurrences: [],
     weekWindows: [],
@@ -141,6 +143,31 @@ test("rollover panel lists retained closed dates for review", () => {
   );
   assert.match(html, /Show the 2 previously closed dates/);
   assert.match(html, /2026-11-02, 2026-11-03/);
+});
+
+test("rollover panel explains adoption of an already-continued period", () => {
+  const base = preview();
+  const html = renderToStaticMarkup(
+    <MoneyRolloverPanel
+      preview={{
+        ...base,
+        source: { ...base.source, lifecycle: "superseded" },
+        continuationSuccessor: {
+          periodId: "44444444-4444-4444-8444-444444444444",
+          startDate: "2026-12-01",
+          endDate: "2026-12-31",
+          activeDate: "2026-12-05",
+          initialization: "uninitialized",
+          openingAmountMinor: null,
+        },
+      }}
+      previewUnavailableReason={null}
+      action={async () => ({ ok: true, error: null })}
+    />,
+  );
+  assert.match(html, /calendar already continued into the period/);
+  assert.match(html, /2026-12-01–2026-12-31/);
+  assert.match(html, /keeps its recorded\s+movements unchanged/);
 });
 
 test("rollover panel discloses a prior verified-opening variance", () => {

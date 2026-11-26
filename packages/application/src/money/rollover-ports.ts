@@ -42,6 +42,29 @@ export type MoneyRolloverPendingOccurrence = Readonly<{
   category: ExpenseCategory | null;
 }>;
 
+export type MoneyRolloverContinuationSuccessor = Readonly<{
+  periodId: string;
+  startDate: string;
+  endDate: string;
+  activeDate: string;
+  initialization: MoneyPeriod["initialization"];
+  /** Existing opening amount, so a differing adoption is visible in preview. */
+  openingAmountMinor: number | null;
+}>;
+
+/**
+ * The immediately preceding period when it still owns the calendar edge
+ * without a finalized successor link. A continuation successor must not be
+ * finalized before this period: doing so would orphan the predecessor and
+ * leave no legal finalization path.
+ */
+export type MoneyRolloverUnfinalizedPredecessor = Readonly<{
+  periodId: string;
+  startDate: string;
+  endDate: string;
+  lifecycle: MoneyPeriod["lifecycle"];
+}>;
+
 export type MoneyRolloverSourceContext = Readonly<{
   period: MoneyPeriod;
   /** Latest effective policy settings for the source period. */
@@ -59,6 +82,14 @@ export type MoneyRolloverSourceContext = Readonly<{
   priorCorrectionBridges: readonly MoneyRolloverBridgeRecord[];
   /** True when the bounded bridge read could not prove the full list. */
   priorCorrectionBridgesTruncated: boolean;
+  /**
+   * The immediate next period after this source, when it continues the
+   * calendar (tracking or already superseded by a later continuation). This is
+   * the real continuation chain identity; rollover adopts it and never creates
+   * a duplicate. Provenance JSON is not used for identity.
+   */
+  continuationSuccessor: MoneyRolloverContinuationSuccessor | null;
+  unfinalizedPredecessor: MoneyRolloverUnfinalizedPredecessor | null;
   existingSuccessorPeriodId: string | null;
   /** Already-created successor for a replayed operation, if any. */
   existingRollover: MoneyRolloverRecord | null;

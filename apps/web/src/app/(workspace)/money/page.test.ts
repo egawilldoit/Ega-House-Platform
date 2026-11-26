@@ -40,6 +40,8 @@ test("money page honors owner timezone and the shared ledger reads", () => {
 test("one primary summary shows recorded cash, safe to spend and the daily reference", () => {
   assert.match(source, /MoneyPrimarySummary/);
   assert.match(source, /getCurrentMoneyReserves\(actor/);
+  assert.match(source, /cutoffDate: moneyState\.dateResolution\.projectionCutoffDate/);
+  assert.match(source, /localToday: moneyState\.localToday/);
   assert.match(source, /reserve=\{reserveResult\}/);
   assert.match(summarySource, /money-recorded-cash/);
   assert.match(summarySource, /data-minor=\{cash\.recordedCashMinor\}/);
@@ -48,6 +50,8 @@ test("one primary summary shows recorded cash, safe to spend and the daily refer
   assert.match(summarySource, /safeFlexibleMinor/);
   assert.match(summarySource, /money-daily-reference/);
   assert.match(summarySource, /money-daily-remaining/);
+  assert.match(summarySource, /data-date=\{reference\.date\}/);
+  assert.match(summarySource, /data-basis=\{reference\.basis\}/);
   assert.match(summarySource, /Day-start reference/);
   assert.match(summarySource, /unverifiedDayCount/);
   assert.match(summarySource, /unavailable —/i);

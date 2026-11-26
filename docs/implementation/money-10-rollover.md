@@ -1,7 +1,8 @@
 # MONEY-10 rollover slice and integration dependencies
 
-Status: implementation candidate on `t3/money-10-mcp-delivery`, rebased onto
-`origin/main` at `0e684ae4` with MONEY-09 (durable day close) integrated.
+Status: implementation candidate on `feat/money-001-core-ux` (uncommitted
+working patch), rebased onto `main` with MONEY-09 (durable day close) and the
+MONEY-001-A continuity slice integrated.
 
 ## What this branch delivers
 
@@ -19,6 +20,16 @@ Status: implementation candidate on `t3/money-10-mcp-delivery`, rebased onto
   bridge/variance rows, the single-transaction rollover function,
   `money_rollover_close_snapshot_summary`, and the ledger correction trigger.
   Journal position `0107` follows MONEY-09's `0104`–`0106` migrations.
+- `drizzle/0109_money_11_optional_close_rollover.sql`: optional close, reviewed
+  finalization with retained unverified-day evidence, and the finalization
+  variant of the atomic rollover RPC.
+- `drizzle/0110_money_001_a_period_continuity.sql`: the `superseded` lifecycle,
+  the controlled `money_continue_period` RPC, the atomic
+  `money_record_routine_movement` continue-and-insert path, the guard/transition
+  extensions, rollover adoption of an already-continued successor, and the
+  predecessor/early-finalization blockers. The routine RPC is the only writer
+  that can start a later tracking window from a routine write; reads never call
+  it. A non-finalized superseded period still accepts its own routine dates.
 - Wire contracts (`packages/contracts/src/money-rollover.ts`), Hono routes
   (`GET /api/money/periods/:id/rollover/preview`,
   `POST /api/money/periods/:id/rollover`), typed api-client methods, a web
@@ -65,9 +76,9 @@ Status: implementation candidate on `t3/money-10-mcp-delivery`, rebased onto
 4. **Preview surface.** `money-day-close-panel.tsx` and
    `money-rollover-panel.tsx` remain separate secondary components; the Money
    page renders close evidence for the selected period and rollover for a
-   tracking or ended source. MONEY-001-A added the retained unverified-days
-   acknowledgment and moved both tools below the primary summary / quick entry /
-   unified history.
+   tracking, superseded or ended source. MONEY-001-A added the retained
+   unverified-days acknowledgment and moved both tools below the primary
+   summary / quick entry / unified history.
    The successor copies the source's latest effective `money_policy_versions`
    settings (never the mutable `money_periods.settings` copy) and layers explicit
    overrides. Unpaid occurrences are read through bounded pages with an explicit
@@ -103,12 +114,51 @@ Status: implementation candidate on `t3/money-10-mcp-delivery`, rebased onto
 - `p_provenance` is composed by the application and is not independently
   revalidated by the rollover RPC; a direct SQL caller can pass arbitrary JSON,
   as with the other Money RPCs. The RPC does validate every input that changes
-  cash, policy, or the close/reconciliation gate.
+  cash, policy, or the close/reconciliation gate. Continuation/adoption identity
+  is never read from this JSON: it comes from the real adjacent date chain and
+  the exact requested range.
+- A continued successor that already has an opening is never overwritten by
+  finalization. The approved amount must match exactly; a differing amount is a
+  conflict, and a reconciled opening cannot be downgraded.
 - The variance read is bounded at 500 rows. It reports truncation rather than
   silently shortening the history; it does not paginate beyond that bound.
 
 ## Verification run on this branch
 
+- MONEY-001-A F04 focused checks in the current patch: `npm run domain:test`,
+  `npm run application:test`, `npm run contracts:test` and
+  `npm run data-access:test` pass; `domain`, `application`, `contracts`,
+  `data-access`, `api-client`, `web` and `server` typechecks pass. The
+  application suite covers the setup-gated daily reference, the shared
+  createExpense/continuation guard, atomic delegation, superseded-range
+  backfill, cross-window update refusal, predecessor/early-finalization
+  blockers, adoption range validation and the superseded lifecycle vocabulary.
+  The data-access suite proves the atomic continue-and-insert RPC receives the
+  guard-resolved booking day. The receipt test proves an omitted
+  `countsInDaily` hashes differently from an explicit value.
+- MONEY-001-A F04 focused checks in this fix pass: `npm run application:test`
+  (807 passed) and the money-focused web Vitest suite (85 passed) pass;
+  `application` and `web` typechecks pass; ESLint on every changed TS/TSX file
+  passes. The application suite covers the missing-opening initialization on a
+  non-finalized superseded period, tracking/superseded same-day finalization
+  refusal in both opening modes, predecessor/early-finalization blockers, and
+  adoption range validation.
+- The disposable PostgreSQL proofs pass against `pg17dev` (all 103 migrations
+  through `0110_money_001_a_period_continuity`):
+  `money-001-a-period-continuity-verify.mjs` (continuation, routine backfill,
+  concurrent routine writes converging on one successor, unknown-opening
+  initialization then adoption, superseded/tracking same-day refusal, adoption
+  conflicts and forged provenance), `money-001-a-optional-close-rollover-verify.mjs`
+  (database-clock-anchored optional close and reviewed finalization), and
+  `money-10-rollover-verify.mjs` (rollover, verified opening, early
+  finalization refusal and post-close success).
+- Not run in this fix pass: the browser `money-001-core.e2e.spec.ts` journeys.
+  The continuity journey now starts from the default unknown opening,
+  initializes the superseded opening through the owner form, then adopts the
+  continued successor; it is registered in `scripts/e2e/assert-disposable-report.mjs`
+  but remains unproven here. Run the Money E2E project before merge.
+
+### Earlier MONEY-09/MONEY-10 proof runs (before 0110 was added)
 - Full migration journal applied cleanly to a disposable PostgreSQL cluster
   (all entries through `0109_money_11_optional_close_rollover`), including the
   MONEY-001-A finalization rules and the `money-001-a-optional-close-rollover-verify.mjs`

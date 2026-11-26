@@ -102,6 +102,17 @@ function MoneyRolloverForm({
         keeps the old period selectable. Reviewed unclosed days are acknowledged, never closed
         automatically. Unused daily allowance is not carried forward.
       </p>
+      {preview.continuationSuccessor ? (
+        <p role="status" className="mt-2 text-[length:var(--text-meta)]">
+          The calendar already continued into the period{" "}
+          {preview.continuationSuccessor.startDate}–{preview.continuationSuccessor.endDate}.
+          Finalization adopts that period, establishes its opening and keeps its recorded
+          movements unchanged.
+          {preview.continuationSuccessor.openingAmountMinor !== null
+            ? ` Its existing opening is ${formatMinorToMad(preview.continuationSuccessor.openingAmountMinor)}.`
+            : ""}
+        </p>
+      ) : null}
 
       <dl className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <div>

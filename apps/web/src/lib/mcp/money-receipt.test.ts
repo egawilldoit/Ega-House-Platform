@@ -324,4 +324,40 @@ describe("ega_money_close_day receipt fingerprint", () => {
     });
     expect(hashes[0]).toBe(hashes[1]);
   });
+
+  it("hashes an omitted countsInDaily differently from an explicit value", async () => {
+    const { handlers, hashes } = handlerWithRecordedHashes();
+    const input = closeInput();
+    const omitted = {
+      ...input,
+      finalPurchases: [
+        {
+          amountMinor: input.finalPurchases[0]!.amountMinor,
+          category: input.finalPurchases[0]!.category,
+          needVsWant: input.finalPurchases[0]!.needVsWant,
+          idempotencyKey: input.finalPurchases[0]!.idempotencyKey,
+        },
+        input.finalPurchases[1]!,
+      ],
+    };
+    await handlers.closeMoneyDay(authInfo, omitted);
+    await handlers.closeMoneyDay(authInfo, {
+      ...omitted,
+      finalPurchases: [
+        { ...omitted.finalPurchases[0]!, countsInDaily: true },
+        omitted.finalPurchases[1]!,
+      ],
+    });
+    await handlers.closeMoneyDay(authInfo, {
+      ...omitted,
+      finalPurchases: [
+        { ...omitted.finalPurchases[0]!, countsInDaily: false },
+        omitted.finalPurchases[1]!,
+      ],
+    });
+    expect(hashes).toHaveLength(3);
+    expect(hashes[1]).not.toBe(hashes[0]);
+    expect(hashes[2]).not.toBe(hashes[0]);
+    expect(hashes[2]).not.toBe(hashes[1]);
+  });
 });

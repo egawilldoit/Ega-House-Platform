@@ -215,6 +215,7 @@ const PERIOD_ROW = {
   active_date: "2026-11-11",
   lifecycle: "tracking",
   initialization: "initialized",
+  day_start_setup_completed: true,
   opening_movement_id: null,
   provenance: { opening: null, createdFrom: "web" },
   settings: {},
@@ -234,7 +235,7 @@ test("POST /api/money/movements applies the MONEY-03 tracking-period guard and s
     body: JSON.stringify({
       kind: "income",
       amountMinor: 20000,
-      bookingDate: "2026-12-01",
+      bookingDate: "2026-10-31",
       idempotencyKey: "income-late",
     }),
   });

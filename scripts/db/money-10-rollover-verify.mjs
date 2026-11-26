@@ -17,6 +17,7 @@ const C = "33333333-3333-4333-8333-333333333333";
 const D = "44444444-4444-4444-8444-444444444444";
 const E = "55555555-5555-4555-8555-555555555555";
 const F = "66666666-6666-4666-8666-666666666666";
+const G = "77777777-7777-4777-8777-777777777777";
 const RESOURCE = "https://ega.example.com/api/mcp";
 
 const tags = JSON.parse(
@@ -40,6 +41,19 @@ function assert(ok, message) {
 function hex(char) {
   return char.repeat(64);
 }
+function addDays(iso, days) {
+  const value = new Date(`${iso}T00:00:00Z`);
+  value.setUTCDate(value.getUTCDate() + days);
+  return value.toISOString().slice(0, 10);
+}
+
+// Dates are anchored to the database/source-period clock so the verified
+// opening cutoff stays a real past date whenever this proof runs.
+let sourceToday;
+let sourceStart;
+let sourceEnd;
+let successorStart;
+let successorEnd;
 
 async function periodCash(periodId, owner) {
   const rows = await sql.unsafe(
@@ -97,6 +111,7 @@ async function main() {
       [A, B, C, D],
     );
     await sql.unsafe("INSERT INTO auth.users VALUES ($1, 'e@example.test'), ($2, 'f@example.test')", [E, F]);
+    await sql.unsafe("INSERT INTO auth.users VALUES ($1, 'g@example.test')", [G]);
     await sql.unsafe("UPDATE auth.users SET email='ab.mortaki@gmail.com' WHERE id=$1", [A]);
     await sql.unsafe(
       "CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$ SELECT NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid $$",
@@ -119,13 +134,22 @@ async function main() {
     }
     console.log(`[MIGRATE] ${tags.length} migrations through ${tags.at(-1)}`);
 
+    const clock = await sql.unsafe(
+      "SELECT (now() AT TIME ZONE 'Africa/Casablanca')::date AS today",
+    );
+    sourceToday = clock[0].today;
+    sourceStart = addDays(sourceToday, -21);
+    sourceEnd = addDays(sourceToday, -20);
+    successorStart = addDays(sourceToday, -19);
+    successorEnd = addDays(sourceToday, -1);
+
     // --- Owner A: one period with a known opening and mixed movements --------
     const created = await user(A, (tx) =>
       tx.unsafe(`SELECT (p).id AS id, (p).version AS version
         FROM (SELECT public.money_create_period(
-          '2026-11-29'::date,'2026-11-30'::date,'Africa/Casablanca'::text,
-          '2026-11-29'::date,'initialized'::text,68900::integer,'2026-11-29'::date,
-          repeat('a',64)::text,'{"opening":{"source":"user_entered","recordedAt":"2026-11-12T00:00:00.000Z","cutoffDate":"2026-11-12","evidence":null,"note":null,"corrections":[]}}'::jsonb,
+          '${sourceStart}'::date,'${sourceEnd}'::date,'Africa/Casablanca'::text,
+          '${sourceStart}'::date,'initialized'::text,68900::integer,'${sourceStart}'::date,
+          repeat('a',64)::text,'{"opening":{"source":"user_entered","recordedAt":"${sourceStart}T00:00:00.000Z","cutoffDate":"${sourceStart}","evidence":null,"note":null,"corrections":[]}}'::jsonb,
           '{"savingsTargetMinor":12000,"emergencyTargetMinor":3000}'::jsonb,
           now()::timestamptz) AS p) created`),
     );
@@ -143,9 +167,9 @@ async function main() {
         (owner_user_id,amount_minor,currency,note,idempotency_key,create_fingerprint,kind,direction,
          booking_date,counts_in_daily,period_id,category,need_vs_want,purpose)
         VALUES
-          ($1,5000,'MAD','salary','m10-income',repeat('b',64),'income','in','2026-11-29',false,$2,NULL,NULL,NULL),
-          ($1,1100,'MAD','groceries','m10-expense',repeat('c',64),'expense','out','2026-11-29',true,$2,'groceries','need','flexible'),
-          ($1,2000,'MAD','savings','m10-savings',repeat('d',64),'savings_transfer','out','2026-11-29',false,$2,NULL,NULL,NULL)
+          ($1,5000,'MAD','salary','m10-income',repeat('b',64),'income','in','${sourceStart}',false,$2,NULL,NULL,NULL),
+          ($1,1100,'MAD','groceries','m10-expense',repeat('c',64),'expense','out','${sourceStart}',true,$2,'groceries','need','flexible'),
+          ($1,2000,'MAD','savings','m10-savings',repeat('d',64),'savings_transfer','out','${sourceStart}',false,$2,NULL,NULL,NULL)
         RETURNING id, kind`, [A, sourceId]);
       return rows;
     });
@@ -156,7 +180,7 @@ async function main() {
     const template = await sql.unsafe(`INSERT INTO public.money_obligation_templates
         (owner_user_id,kind,description,amount_minor,currency,cadence,due_day_of_month,start_date,
          need_vs_want,purpose,counts_in_daily,category,lifecycle,idempotency_key,create_fingerprint)
-        VALUES ($1,'subscription','Internet',3000,'MAD','monthly',5,'2026-11-01',
+        VALUES ($1,'subscription','Internet',3000,'MAD','monthly',5,'${sourceStart}',
          'need','fixed',false,'subscriptions','active','m10-template',repeat('e',64))
         RETURNING id`, [A]);
     const templateId = template[0].id;
@@ -165,16 +189,17 @@ async function main() {
         (owner_user_id,kind,description,amount_minor,currency,period_start,period_end,due_date,
          need_vs_want,purpose,counts_in_daily,category,state,state_effective_date,state_history,
          idempotency_key,create_fingerprint)
-        VALUES ($1,'bill','Repair',4000,'MAD','2026-11-29','2026-11-30','2026-11-30',
-         'need','fixed',false,'bills','pending','2026-11-29','[]'::jsonb,
+        VALUES ($1,'bill','Repair',4000,'MAD','${sourceStart}','${sourceEnd}','${sourceEnd}',
+         'need','fixed',false,'bills','pending','${sourceStart}','[]'::jsonb,
          'm10-one-off',repeat('f',64))
         RETURNING id`, [A]);
     const oneOffId = oneOff[0].id;
 
     // MONEY-09 precondition through the real durable close. The first-day
-    // baseline is seeded as the fixture owner because this proof deliberately
-    // runs on fixed historical dates that the current-day rebase path rejects;
-    // both close rows and their snapshots are then produced by money_close_day.
+    // baseline is seeded as the fixture owner because the proof deliberately
+    // anchors its periods around the database clock rather than replaying a
+    // live owner workflow; close rows and snapshots are still produced by
+    // money_close_day.
     const policy = await sql.unsafe(
       "SELECT id FROM public.money_policy_versions WHERE owner_user_id=$1 AND period_id=$2 ORDER BY version DESC LIMIT 1",
       [A, sourceId],
@@ -185,7 +210,7 @@ async function main() {
            cash_minor=68900, commitments_minor=0, savings_target_minor=12000,
            savings_funded_minor=0, emergency_target_minor=3000, emergency_used_minor=0,
            inputs='{"setupComplete":true}'::jsonb
-       WHERE owner_user_id=$2 AND period_id=$3 AND date='2026-11-29'`,
+       WHERE owner_user_id=$2 AND period_id=$3 AND date='${sourceStart}'`,
       [policy[0].id, A, sourceId],
     );
     await sql.unsafe(
@@ -195,7 +220,7 @@ async function main() {
       [sourceId, A],
     );
 
-    for (const [index, date] of ["2026-11-29", "2026-11-30"].entries()) {
+    for (const [index, date] of [sourceStart, sourceEnd].entries()) {
       const current = await sql.unsafe(
         "SELECT version FROM public.money_periods WHERE id=$1",
         [sourceId],
@@ -221,7 +246,7 @@ async function main() {
       [sourceId],
     );
     assert(
-      ended[0].lifecycle === "ended" && ended[0].active_date === "2026-11-30",
+      ended[0].lifecycle === "ended" && ended[0].active_date === sourceEnd,
       "source ended through the final durable close",
     );
     const closeRows = await sql.unsafe(
@@ -254,16 +279,16 @@ async function main() {
           kind: "subscription",
           description: "Internet",
           amountMinor: 3000,
-          periodStart: "2026-12-01",
-          periodEnd: "2026-12-31",
-          dueDate: "2026-12-05",
+          periodStart: successorStart,
+          periodEnd: successorEnd,
+          dueDate: addDays(successorStart, 4),
           needVsWant: "need",
           purpose: "fixed",
           countsInDaily: false,
           category: "subscriptions",
-          stateEffectiveDate: "2026-12-01",
+          stateEffectiveDate: successorStart,
           templateId,
-          idempotencyKey: `obligation-template:${templateId}:2026-12-01`,
+          idempotencyKey: `obligation-template:${templateId}:${successorStart}`,
         },
         createFingerprint: hex("1"),
       },
@@ -271,18 +296,18 @@ async function main() {
     const carried = [
       {
         occurrenceId: oneOffId,
-        periodStart: "2026-12-01",
-        periodEnd: "2026-12-19",
-        dueDate: "2026-12-14",
-        idempotencyKey: `rollover-carry:2026-12-01:${oneOffId}`,
+        periodStart: successorStart,
+        periodEnd: successorEnd,
+        dueDate: addDays(successorStart, 13),
+        idempotencyKey: `rollover-carry:${successorStart}:${oneOffId}`,
         createFingerprint: hex("2"),
       },
     ];
     const provenance = {
       opening: {
         source: "carry_forward",
-        recordedAt: "2026-12-01T09:00:00.000Z",
-        cutoffDate: "2026-11-30",
+        recordedAt: `${successorStart}T09:00:00.000Z`,
+        cutoffDate: sourceEnd,
         evidence: null,
         note: "Carried forward from the finished period.",
         corrections: [],
@@ -292,14 +317,14 @@ async function main() {
     const rolloverArgs = (operationId, fingerprint, overrides = {}) => [
       sourceId,
       overrides.expectedVersion ?? ended[0].version,
-      "2026-12-01",
-      "2026-12-19",
-      "2026-12-01",
+      successorStart,
+      successorEnd,
+      successorStart,
       "Africa/Casablanca",
       overrides.initialized ?? "initialized",
       overrides.allowUncoveredDays ?? false,
       overrides.openingAmountMinor ?? 70800,
-      "2026-11-30",
+      sourceEnd,
       null,
       "Carried forward from the finished period.",
       hex("3"),
@@ -316,7 +341,7 @@ async function main() {
       { modeledClosingCashMinor: 70800, pendingOccurrenceCount: 1 },
       overrides.occurrences ?? occurrences,
       overrides.carried ?? carried,
-      "2026-12-01T09:00:00.000Z",
+      `${successorStart}T09:00:00.000Z`,
     ];
     const callRollover = (tx, args) =>
       tx.unsafe(
@@ -357,9 +382,9 @@ async function main() {
     assert(source.successor_period_id === successorId, "source links exactly one successor");
     assert(
       successor.lifecycle === "tracking" &&
-        successor.start_date === "2026-12-01" &&
-        successor.end_date === "2026-12-19" &&
-        successor.active_date === "2026-12-01" &&
+        successor.start_date === successorStart &&
+        successor.end_date === successorEnd &&
+        successor.active_date === successorStart &&
         successor.initialization === "initialized",
       "successor is the single tracking period with the chosen dates",
     );
@@ -389,7 +414,7 @@ async function main() {
       openingRows.length === 1 &&
         openingRows[0].amount_minor === 70800 &&
         openingRows[0].direction === "in" &&
-        openingRows[0].booking_date === "2026-12-01" &&
+        openingRows[0].booking_date === successorStart &&
         openingRows[0].counts_in_daily === false,
       "exactly one carry-forward opening movement exists and is not daily spending",
     );
@@ -401,13 +426,13 @@ async function main() {
     console.log("[OPENING] carried cash is one opening movement, never duplicated income");
 
     const successorObligations = await sql.unsafe(
-      "SELECT state, template_id, due_date, period_start, amount_minor FROM public.money_obligations WHERE owner_user_id=$1 AND period_start >= '2026-12-01' ORDER BY template_id NULLS LAST",
+      `SELECT state, template_id, due_date, period_start, amount_minor FROM public.money_obligations WHERE owner_user_id=$1 AND period_start >= '${successorStart}' ORDER BY template_id NULLS LAST`,
       [A],
     );
     assert(successorObligations.length === 2, "one generated and one carried occurrence exist");
     assert(
       successorObligations.some(
-        (row) => row.template_id === templateId && row.state === "pending" && row.due_date === "2026-12-05",
+        (row) => row.template_id === templateId && row.state === "pending" && row.due_date === addDays(successorStart, 4),
       ),
       "the template regenerated a pending occurrence with a new period identity",
     );
@@ -485,7 +510,7 @@ async function main() {
         adjustment[0].direction === "out" &&
         adjustment[0].counts_in_daily === false &&
         adjustment[0].period_id === successorId &&
-        adjustment[0].booking_date === "2026-12-01",
+        adjustment[0].booking_date === successorStart,
       "the bridge is a non-daily reconciliation adjustment in the successor",
     );
 
@@ -526,7 +551,7 @@ async function main() {
           -1100,
           -2100,
           2,
-          "2026-11-29",
+          sourceStart,
           "2026-12-02T09:00:00.000Z",
         ],
       );
@@ -575,8 +600,8 @@ async function main() {
         (owner_user_id,amount_minor,currency,note,idempotency_key,create_fingerprint,kind,direction,
          booking_date,counts_in_daily,period_id,category,need_vs_want,purpose)
        VALUES
-         ($1,12000,'MAD','savings funding','m10-middle-income',repeat('8',64),'income','in','2026-12-01',false,$2,NULL,NULL,NULL),
-         ($1,12000,'MAD','savings transfer','m10-middle-savings',repeat('7',64),'savings_transfer','out','2026-12-01',false,$2,NULL,NULL,NULL)`,
+         ($1,12000,'MAD','savings funding','m10-middle-income',repeat('8',64),'income','in','${successorStart}',false,$2,NULL,NULL,NULL),
+         ($1,12000,'MAD','savings transfer','m10-middle-savings',repeat('7',64),'savings_transfer','out','${successorStart}',false,$2,NULL,NULL,NULL)`,
       [A, successorId],
     );
     const successorExpense = await sql.unsafe(
@@ -584,7 +609,7 @@ async function main() {
         (owner_user_id,amount_minor,currency,note,idempotency_key,create_fingerprint,kind,direction,
          booking_date,counts_in_daily,period_id,category,need_vs_want,purpose)
        VALUES ($1,1000,'MAD','middle expense','m10-middle-expense',repeat('9',64),'expense','out',
-         '2026-12-10',true,$2,'groceries','need','flexible')
+         '${addDays(successorStart, 9)}',true,$2,'groceries','need','flexible')
        RETURNING id`,
       [A, successorId],
     );
@@ -611,8 +636,8 @@ async function main() {
     console.log("[POLICY] successor explicit setup yields an available day-start baseline");
     const successorDays = [];
     for (
-      let cursor = new Date("2026-12-01T00:00:00Z");
-      cursor <= new Date("2026-12-19T00:00:00Z");
+      let cursor = new Date(`${successorStart}T00:00:00Z`);
+      cursor <= new Date(`${successorEnd}T00:00:00Z`);
       cursor.setUTCDate(cursor.getUTCDate() + 1)
     ) {
       successorDays.push(cursor.toISOString().slice(0, 10));
@@ -644,7 +669,7 @@ async function main() {
     );
     assert(
       successorEnded[0].lifecycle === "ended" &&
-        successorEnded[0].active_date === "2026-12-19",
+        successorEnded[0].active_date === successorEnd,
       "middle period ended through its final close",
     );
     await user(A, (tx) =>
@@ -672,6 +697,8 @@ async function main() {
     );
     console.log("[CLOSE] later correction is disclosed as a restated close snapshot");
 
+    const verifiedStart = addDays(successorEnd, 1);
+    const verifiedEnd = addDays(verifiedStart, 30);
     const verifiedArgs = rolloverArgs("m10-op-2", hex("6"), {
       expectedVersion: successorEnded[0].version,
       initialized: "reconciled",
@@ -686,16 +713,16 @@ async function main() {
             kind: "subscription",
             description: "Internet",
             amountMinor: 3000,
-            periodStart: "2027-01-01",
-            periodEnd: "2027-01-31",
-            dueDate: "2027-01-05",
+            periodStart: verifiedStart,
+            periodEnd: verifiedEnd,
+            dueDate: addDays(verifiedStart, 4),
             needVsWant: "need",
             purpose: "fixed",
             countsInDaily: false,
             category: "subscriptions",
-            stateEffectiveDate: "2027-01-01",
+            stateEffectiveDate: verifiedStart,
             templateId,
-            idempotencyKey: `obligation-template:${templateId}:2027-01-01`,
+            idempotencyKey: `obligation-template:${templateId}:${verifiedStart}`,
           },
           createFingerprint: hex("4"),
         },
@@ -704,18 +731,18 @@ async function main() {
     });
     // Source ID must be the successor for the second rollover.
     verifiedArgs[0] = successorId;
-    verifiedArgs[2] = "2027-01-01";
-    verifiedArgs[3] = "2027-01-31";
-    verifiedArgs[4] = "2027-01-01";
+    verifiedArgs[2] = verifiedStart;
+    verifiedArgs[3] = verifiedEnd;
+    verifiedArgs[4] = verifiedStart;
     verifiedArgs[8] = 67800;
-    verifiedArgs[9] = "2026-12-19";
+    verifiedArgs[9] = successorEnd;
     verifiedArgs[10] = "verified statement";
     verifiedArgs[11] = "Verified opening";
     verifiedArgs[13] = {
       opening: {
         source: "verified_source",
-        recordedAt: "2027-01-01T09:00:00.000Z",
-        cutoffDate: "2026-12-19",
+        recordedAt: `${verifiedStart}T09:00:00.000Z`,
+        cutoffDate: successorEnd,
         evidence: "verified statement",
         note: "Verified opening",
         corrections: [],
@@ -723,14 +750,14 @@ async function main() {
       createdFrom: "web",
     };
     verifiedArgs[14] = { savingsTargetMinor: null, emergencyTargetMinor: null };
-    verifiedArgs[26] = "2027-01-01T09:00:00.000Z";
+    verifiedArgs[26] = `${verifiedStart}T09:00:00.000Z`;
     const invalidCutoffArgs = [...verifiedArgs];
-    invalidCutoffArgs[9] = "2026-12-18";
+    invalidCutoffArgs[9] = addDays(successorEnd, -1);
     invalidCutoffArgs[13] = {
       ...verifiedArgs[13],
       opening: {
         ...verifiedArgs[13].opening,
-        cutoffDate: "2026-12-18",
+        cutoffDate: addDays(successorEnd, -1),
       },
     };
     invalidCutoffArgs[15] = "m10-invalid-verified-cutoff";
@@ -746,6 +773,121 @@ async function main() {
       cutoffDenied,
       "a verified opening before the source end is rejected by the RPC",
     );
+
+    // The verified cutoff is authorized by the trusted database clock, never by
+    // the caller's timestamp. A forged future caller time plus a future cutoff
+    // must still be refused and must leave every durable row untouched.
+    const futureCutoff = addDays(sourceToday, 30);
+    const futureStart = futureCutoff;
+    const forgedFutureArgs = [...verifiedArgs];
+    forgedFutureArgs[2] = futureStart;
+    forgedFutureArgs[3] = addDays(futureStart, 30);
+    forgedFutureArgs[4] = futureStart;
+    forgedFutureArgs[9] = futureCutoff;
+    forgedFutureArgs[13] = {
+      opening: {
+        source: "verified_source",
+        recordedAt: `${addDays(sourceToday, 400)}T00:00:00.000Z`,
+        cutoffDate: futureCutoff,
+        evidence: "forged future statement",
+        note: "Forged future opening",
+        corrections: [],
+      },
+      createdFrom: "web",
+    };
+    forgedFutureArgs[15] = "m10-forged-future";
+    forgedFutureArgs[16] = hex("7");
+    forgedFutureArgs[26] = `${addDays(sourceToday, 400)}T00:00:00.000Z`;
+    const forgedBefore = {
+      periods: (
+        await sql.unsafe(
+          "SELECT count(*)::int AS n FROM public.money_periods WHERE owner_user_id=$1",
+          [A],
+        )
+      )[0].n,
+      receipts: (
+        await sql.unsafe(
+          "SELECT count(*)::int AS n FROM public.money_period_rollovers WHERE owner_user_id=$1",
+          [A],
+        )
+      )[0].n,
+      obligations: (
+        await sql.unsafe(
+          "SELECT count(*)::int AS n FROM public.money_obligations WHERE owner_user_id=$1",
+          [A],
+        )
+      )[0].n,
+      source: (
+        await sql.unsafe(
+          "SELECT lifecycle, successor_period_id, version FROM public.money_periods WHERE id=$1",
+          [successorId],
+        )
+      )[0],
+    };
+    let forgedDenied = false;
+    let forgedMessage = "";
+    try {
+      await user(A, (tx) => callRollover(tx, forgedFutureArgs));
+    } catch (error) {
+      forgedDenied = error.code === "23514" && /future/.test(error.message);
+      forgedMessage = error.message;
+    }
+    assert(
+      forgedDenied,
+      `a verified opening dated in the future is refused even with a forged caller timestamp (${forgedMessage})`,
+    );
+    const forgedAfter = {
+      periods: (
+        await sql.unsafe(
+          "SELECT count(*)::int AS n FROM public.money_periods WHERE owner_user_id=$1",
+          [A],
+        )
+      )[0].n,
+      receipts: (
+        await sql.unsafe(
+          "SELECT count(*)::int AS n FROM public.money_period_rollovers WHERE owner_user_id=$1",
+          [A],
+        )
+      )[0].n,
+      obligations: (
+        await sql.unsafe(
+          "SELECT count(*)::int AS n FROM public.money_obligations WHERE owner_user_id=$1",
+          [A],
+        )
+      )[0].n,
+      source: (
+        await sql.unsafe(
+          "SELECT lifecycle, successor_period_id, version FROM public.money_periods WHERE id=$1",
+          [successorId],
+        )
+      )[0],
+      futurePeriods: (
+        await sql.unsafe(
+          "SELECT count(*)::int AS n FROM public.money_periods WHERE owner_user_id=$1 AND start_date=$2::date",
+          [A, futureStart],
+        )
+      )[0].n,
+      futureOpenings: (
+        await sql.unsafe(
+          "SELECT count(*)::int AS n FROM public.personal_expenses WHERE owner_user_id=$1 AND kind='opening' AND booking_date=$2::date",
+          [A, futureStart],
+        )
+      )[0].n,
+    };
+    assert(
+      forgedAfter.periods === forgedBefore.periods &&
+        forgedAfter.receipts === forgedBefore.receipts &&
+        forgedAfter.obligations === forgedBefore.obligations &&
+        forgedAfter.source.lifecycle === forgedBefore.source.lifecycle &&
+        forgedAfter.source.successor_period_id ===
+          forgedBefore.source.successor_period_id &&
+        forgedAfter.source.version === forgedBefore.source.version &&
+        forgedAfter.futurePeriods === 0 &&
+        forgedAfter.futureOpenings === 0,
+      "a refused future verified opening creates no successor, opening, receipt or lifecycle change",
+    );
+    console.log("[F05] trusted database time rejects a forged future verified cutoff without mutation");
+
     let restatedRolloverDenied = false;
     try {
       await user(A, (tx) => callRollover(tx, verifiedArgs));
@@ -834,7 +976,7 @@ async function main() {
           -2600,
           -3100,
           4,
-          "2026-11-29",
+          sourceStart,
           "2027-01-02T09:00:00.000Z",
         ],
       );
@@ -863,7 +1005,7 @@ async function main() {
         (owner_user_id,amount_minor,currency,note,idempotency_key,create_fingerprint,kind,direction,
          booking_date,counts_in_daily,period_id,category,need_vs_want,purpose)
        VALUES ($1,300,'MAD','second correction','m10-second-correction',repeat('8',64),
-         'expense','out','2026-11-29',true,$2,'groceries','need','flexible')
+         'expense','out','${sourceStart}',true,$2,'groceries','need','flexible')
        RETURNING id`,
       [A, sourceId],
     );
@@ -898,7 +1040,7 @@ async function main() {
           (owner_user_id,amount_minor,currency,note,idempotency_key,create_fingerprint,kind,direction,
            booking_date,counts_in_daily,period_id,category,need_vs_want,purpose)
          VALUES ($1,700,'MAD','legacy backdated','m10-legacy-backdated',repeat('7',64),'expense','out',
-           '2026-11-30',true,NULL,'groceries','need','flexible')
+           '${sourceEnd}',true,NULL,'groceries','need','flexible')
          RETURNING id`,
         [A],
       ),
@@ -921,7 +1063,7 @@ async function main() {
     await user(A, (tx) =>
       tx.unsafe(
         `UPDATE public.personal_expenses
-         SET booking_date='2026-12-05', version=version+1, updated_at=now()
+         SET booking_date='${addDays(successorStart, 4)}', version=version+1, updated_at=now()
          WHERE id=$1 AND owner_user_id=$2`,
         [legacyId, A],
       ),
@@ -945,7 +1087,7 @@ async function main() {
     const snapshotBeforeDelete = await sql.unsafe(
       `SELECT snapshot ->> 'recordedCashMinor' AS recorded_cash
        FROM public.money_day_closes
-       WHERE owner_user_id=$1 AND period_id=$2 AND close_date='2026-11-29'`,
+       WHERE owner_user_id=$1 AND period_id=$2 AND close_date='${sourceStart}'`,
       [A, sourceId],
     );
     const successorCashBefore = await periodCash(successorId, A);
@@ -989,7 +1131,7 @@ async function main() {
       "the verified opening cash is never altered by a later source correction",
     );
     const snapshotAfterDelete = await sql.unsafe(
-      `SELECT count(*)::int AS n, max(snapshot ->> 'recordedCashMinor') FILTER (WHERE close_date='2026-11-29') AS recorded_cash
+      `SELECT count(*)::int AS n, max(snapshot ->> 'recordedCashMinor') FILTER (WHERE close_date='${sourceStart}') AS recorded_cash
        FROM public.money_day_closes
        WHERE owner_user_id=$1 AND period_id=$2`,
       [A, sourceId],
@@ -1031,7 +1173,7 @@ async function main() {
         A,
         (tx) =>
           tx.unsafe(
-            "SELECT public.money_apply_rollover_bridge($1::uuid,$2::uuid,0,-1,1,'2026-11-29'::date,now())",
+            `SELECT public.money_apply_rollover_bridge($1::uuid,$2::uuid,0,-1,1,'${sourceStart}'::date,now())`,
             [sourceId, expenseId],
           ),
         "m10-reader",
@@ -1679,6 +1821,139 @@ async function main() {
     }
     assert(directInsertDenied, "clients cannot insert rollover receipts directly");
     console.log("[RLS] rollover receipts are owner-readable and not client-writable");
+
+    // --- Early finalization is anchored to the trusted database clock ------
+    // A tracking period that still owns today cannot be finalized in either
+    // opening mode: the current day would stop belonging to a writable period.
+    // The same source may finalize only after its final day is explicitly
+    // closed, which proves the guard is about the calendar edge, not a blanket
+    // refusal of same-day work.
+    const gStart = addDays(sourceToday, -4);
+    const gSuccessorStart = addDays(sourceToday, 1);
+    const gCreated = await user(G, (tx) =>
+      tx.unsafe(`SELECT (p).id AS id, (p).version AS version
+        FROM (SELECT public.money_create_period(
+          '${gStart}'::date,'${sourceToday}'::date,'Africa/Casablanca'::text,
+          '${gStart}'::date,'initialized'::text,10000::integer,'${gStart}'::date,
+          repeat('9',64)::text,'{"opening":{"source":"user_entered","recordedAt":"${gStart}T00:00:00.000Z","cutoffDate":"${gStart}","evidence":null,"note":null,"corrections":[]}}'::jsonb,
+          '{"savingsTargetMinor":0,"emergencyTargetMinor":0}'::jsonb, now()::timestamptz) AS p) created`),
+    );
+    const gPeriodId = gCreated[0].id;
+    await user(G, (tx) =>
+      tx.unsafe("SELECT public.money_rebase_day_start_baseline($1::uuid)", [gPeriodId]),
+    );
+    const gVersionAfterRebase = (
+      await sql.unsafe("SELECT version FROM public.money_periods WHERE id=$1", [
+        gPeriodId,
+      ])
+    )[0].version;
+    const gEarlyArgs = (mode, operationId) => [
+      gPeriodId,
+      gVersionAfterRebase,
+      gSuccessorStart,
+      addDays(gSuccessorStart, 20),
+      gSuccessorStart,
+      "Africa/Casablanca",
+      mode === "carry_forward" ? "initialized" : "reconciled",
+      false,
+      10000,
+      sourceToday,
+      mode === "verified_source" ? "Verified same-day statement" : null,
+      null,
+      hex("d"),
+      {
+        opening: {
+          source: mode,
+          recordedAt: `${gSuccessorStart}T09:00:00.000Z`,
+          cutoffDate: sourceToday,
+          evidence: mode === "verified_source" ? "Verified same-day statement" : null,
+          note: null,
+          corrections: [],
+        },
+        createdFrom: "web",
+      },
+      null,
+      operationId,
+      hex("e"),
+      mode,
+      null,
+      null,
+      mode === "verified_source" ? "Reviewed the same-day statement" : null,
+      null,
+      0,
+      { modeledClosingCashMinor: 10000, pendingOccurrenceCount: 0 },
+      [],
+      [],
+      `${gSuccessorStart}T09:00:00.000Z`,
+    ];
+    for (const mode of ["carry_forward", "verified_source"]) {
+      let blocked = false;
+      let message = "";
+      try {
+        await user(G, (tx) =>
+          callRollover(tx, gEarlyArgs(mode, `m10-op-same-day-${mode}`)),
+        );
+      } catch (error) {
+        blocked =
+          error.code === "23514" && /outside a writable period/.test(error.message);
+        message = error.message;
+      }
+      assert(
+        blocked,
+        `same-day ${mode} finalization is refused by the database clock (${message})`,
+      );
+    }
+    const gBlockedState = await sql.unsafe(
+      "SELECT lifecycle, successor_period_id FROM public.money_periods WHERE id=$1",
+      [gPeriodId],
+    );
+    assert(
+      gBlockedState[0].lifecycle === "tracking" &&
+        gBlockedState[0].successor_period_id === null,
+      "a blocked same-day finalization leaves the source tracking",
+    );
+
+    let gCursor = gStart;
+    for (let index = 1; index <= 5; index += 1) {
+      const gVersion = (
+        await sql.unsafe("SELECT version FROM public.money_periods WHERE id=$1", [
+          gPeriodId,
+        ])
+      )[0].version;
+      await user(G, (tx) =>
+        tx.unsafe(
+          `SELECT public.money_close_day($1::uuid,$2::integer,$3::date,$4::text,$5::uuid,$6::text,$7::uuid[],now())`,
+          [
+            gPeriodId,
+            gVersion,
+            gCursor,
+            "CLOSED",
+            `c0de9000-0000-4000-8000-00000000000${index}`,
+            hex("9"),
+            [],
+          ],
+        ),
+      );
+      gCursor = addDays(gCursor, 1);
+    }
+    const gEnded = await sql.unsafe(
+      "SELECT lifecycle, version FROM public.money_periods WHERE id=$1",
+      [gPeriodId],
+    );
+    assert(
+      gEnded[0].lifecycle === "ended",
+      "the explicit final-day close ends the period",
+    );
+    const gFinalized = await user(G, (tx) =>
+      callRollover(tx, [
+        ...gEarlyArgs("carry_forward", "m10-op-after-close"),
+      ].map((value, index) => (index === 1 ? gEnded[0].version : value))),
+    );
+    assert(
+      gFinalized[0].result.rollover.successor_period_id,
+      "the same source finalizes once its final day is explicitly closed",
+    );
+    console.log("[EARLY] same-day finalization is blocked until the final day is explicitly closed");
 
     // Hold rollover after it has read cash and created its successor, then start
     // a correction before commit. The correction must wait and bridge afterward.

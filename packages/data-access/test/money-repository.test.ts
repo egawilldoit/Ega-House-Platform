@@ -26,6 +26,7 @@ const PERIOD_ROW = {
   active_date: "2026-11-11",
   lifecycle: "tracking",
   initialization: "initialized",
+  day_start_setup_completed: true,
   opening_movement_id: OPENING_ID,
   provenance: {
     opening: {
@@ -652,6 +653,68 @@ test("permission and unique failures map to forbidden and conflict", async () =>
   });
   assert.equal(duplicateResult.ok, false);
   if (!duplicateResult.ok) assert.equal(duplicateResult.error.code, "conflict");
+});
+
+test("routine movement creation uses the atomic continue-and-insert RPC", async () => {
+  const ROUTINE_ROW = {
+    id: "00000000-0000-4000-8000-000000000099",
+    kind: "expense",
+    direction: "out",
+    occurred_at: null,
+    booking_date: "2026-12-02",
+    amount_minor: 1_100,
+    currency: "MAD",
+    category: "coffee",
+    note: null,
+    merchant: null,
+    need_vs_want: "want",
+    payment_method: null,
+    purpose: "flexible",
+    counts_in_daily: true,
+    period_id: "00000000-0000-4000-8000-000000000098",
+    idempotency_key: "routine-1",
+    version: 1,
+    deleted_at: null,
+    created_at: "2026-12-02T10:00:00.000Z",
+    updated_at: "2026-12-02T10:00:00.000Z",
+  };
+  const fake = new FakeSupabase([{ data: ROUTINE_ROW, error: null }]);
+  const result = await new SupabaseMoneyRepository(
+    fake as unknown as SupabaseClient,
+  ).create(ACTOR, {
+    values: {
+      kind: "expense",
+      direction: "out",
+      amountMinor: 1_100,
+      category: "coffee",
+      note: null,
+      merchant: null,
+      needVsWant: "want",
+      paymentMethod: null,
+      purpose: "flexible",
+      countsInDaily: true,
+      bookingDate: "2026-12-02",
+      occurredAt: null,
+      idempotencyKey: "routine-1",
+    },
+    createFingerprint: "f".repeat(64),
+    periodId: null,
+    requiresContinuation: true,
+  });
+  assert.equal(result.ok, true);
+  if (result.ok) {
+    assert.equal(result.value.periodId, ROUTINE_ROW.period_id);
+    assert.equal(result.value.bookingDate, "2026-12-02");
+  }
+  assert.equal(fake.rpcCalls.length, 1);
+  const rpc = fake.rpcCalls[0]!;
+  assert.equal(rpc.name, "money_record_routine_movement");
+  assert.equal(rpc.params.p_booking_date, "2026-12-02");
+  assert.equal(rpc.params.p_kind, "expense");
+  assert.equal(rpc.params.p_idempotency_key, "routine-1");
+  assert.equal(rpc.params.p_create_fingerprint, "f".repeat(64));
+  assert.equal("owner_user_id" in rpc.params, false);
+  assert.equal(fake.calls.length, 0, "the atomic path never issues a plain insert");
 });
 
 test("movement list applies the kind exclusion before the bounded page window", async () => {

@@ -243,6 +243,12 @@ export type MoneyCreateRecordInput = Readonly<{
   values: MoneyCreateValues;
   createFingerprint: string;
   periodId: string | null;
+  /**
+   * True when the booking date is after the tracking window. The database
+   * continues the calendar and inserts the movement in one transaction; a
+   * failed insert never leaves a superseded source behind.
+   */
+  requiresContinuation?: boolean;
 }>;
 
 export type MoneyListRecordQuery = Readonly<{

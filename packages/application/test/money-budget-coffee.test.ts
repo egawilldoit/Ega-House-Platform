@@ -42,6 +42,7 @@ const PERIOD_ROW: MoneyPeriod = {
   activeDate: "2026-11-09",
   lifecycle: "tracking",
   initialization: "initialized",
+  dayStartSetupCompleted: true,
   openingMovementId: null,
   provenance: { opening: null, createdFrom: "web" },
   settings: {},

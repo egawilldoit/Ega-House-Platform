@@ -10,6 +10,7 @@ import type {
 } from "@ega/contracts/money";
 import {
   EXPENSE_CATEGORY_LABELS,
+  defaultCountsInDaily,
 } from "@ega/domain/money";
 import {
   EXPENSE_CATEGORY_VALUES,
@@ -311,7 +312,15 @@ export function MoneyDayClosePanel({
                         }
                         className="rounded border border-ega-border bg-transparent px-2 py-1 text-[length:var(--text-body)]"
                       >
-                        <option value="">Default (included)</option>
+                        <option value="">
+                          {defaultCountsInDaily(
+                            "expense",
+                            row.purpose || null,
+                            row.category,
+                          )
+                            ? "Default (included)"
+                            : "Default (excluded)"}
+                        </option>
                         <option value="included">Included</option>
                         <option value="excluded">Excluded</option>
                       </select>

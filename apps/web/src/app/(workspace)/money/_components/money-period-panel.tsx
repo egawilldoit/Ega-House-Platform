@@ -89,6 +89,15 @@ export function MoneyPeriodPanel({
   const [settingsError, setSettingsError] = useState<string | null>(null);
   const [rebaseError, setRebaseError] = useState<string | null>(null);
 
+  const [historicalOpeningMode, setHistoricalOpeningMode] = useState("known");
+  const [historicalOpeningAmount, setHistoricalOpeningAmount] = useState("");
+  const [historicalOpeningCutoff, setHistoricalOpeningCutoff] = useState(
+    period?.startDate ?? "",
+  );
+  const [historicalOpeningEvidence, setHistoricalOpeningEvidence] = useState("");
+  const [historicalOpeningNote, setHistoricalOpeningNote] = useState("");
+  const [historicalOpeningError, setHistoricalOpeningError] = useState<string | null>(null);
+
   async function handleCreate(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setCreateError(null);
@@ -143,6 +152,28 @@ export function MoneyPeriodPanel({
     const result = await rebaseAction(formData);
     if (!result.ok) {
       setRebaseError(result.error);
+      return;
+    }
+    router.refresh();
+  }
+
+  async function handleHistoricalOpening(
+    event: React.FormEvent<HTMLFormElement>,
+  ) {
+    event.preventDefault();
+    if (!period) return;
+    setHistoricalOpeningError(null);
+    const formData = new FormData();
+    formData.set("periodId", period.id);
+    formData.set("version", String(period.version));
+    formData.set("openingMode", historicalOpeningMode);
+    formData.set("openingAmount", historicalOpeningAmount);
+    formData.set("openingCutoffDate", historicalOpeningCutoff);
+    formData.set("openingEvidence", historicalOpeningEvidence);
+    formData.set("openingNote", historicalOpeningNote);
+    const result = await updateAction(formData);
+    if (!result.ok) {
+      setHistoricalOpeningError(result.error);
       return;
     }
     router.refresh();
@@ -234,8 +265,11 @@ export function MoneyPeriodPanel({
 
       {period && period.lifecycle !== "tracking" ? (
         <p role="status" className="mt-2 text-[length:var(--text-meta)]">
-          This period is {period.lifecycle.replaceAll("_", " ")}. Routine settings are
-          closed; use the historical correction path.
+          {period.lifecycle === "superseded"
+            ? opening.status === "unknown"
+              ? "This period is superseded but not finalized. Its own dates still accept routine entries; initialize the missing opening to review and finalize it."
+              : "This period is superseded but not finalized. Its own dates still accept routine entries; use the rollover review to finalize it."
+            : `This period is ${period.lifecycle.replaceAll("_", " ")}. Routine settings are closed; use the historical correction path.`}
         </p>
       ) : null}
 
@@ -361,6 +395,90 @@ export function MoneyPeriodPanel({
             </p>
             <div>
               <PendingSubmitButton type="submit" pendingLabel="Saving…">Save period</PendingSubmitButton>
+            </div>
+          </form>
+        </div>
+      ) : null}
+
+      {period &&
+      period.lifecycle === "superseded" &&
+      opening.status === "unknown" ? (
+        <div className="mt-6">
+          <h3 className="text-[length:var(--text-body)] font-semibold">
+            Initialize the historical opening
+          </h3>
+          <p className="mt-1 text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
+            Automatic continuation closed this routine window without an opening.
+            Record it once so finalization can review the period. The active date,
+            settings and later corrections stay closed until that explicit review.
+          </p>
+          <form onSubmit={handleHistoricalOpening} className="mt-2 flex flex-col gap-3" noValidate>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <div className="flex flex-col gap-1.5">
+                <label htmlFor="historical-opening-mode" className="form-label">
+                  Opening cash
+                </label>
+                <select
+                  id="historical-opening-mode"
+                  className="input-instrument"
+                  value={historicalOpeningMode}
+                  onChange={(event) => setHistoricalOpeningMode(event.target.value)}
+                >
+                  <option value="known">Known</option>
+                  <option value="verified">Verified source</option>
+                </select>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label htmlFor="historical-opening-amount" className="form-label">
+                  Opening (MAD)
+                </label>
+                <Input
+                  id="historical-opening-amount"
+                  inputMode="decimal"
+                  placeholder="0.00"
+                  value={historicalOpeningAmount}
+                  onChange={(event) => setHistoricalOpeningAmount(event.target.value)}
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label htmlFor="historical-opening-cutoff" className="form-label">
+                  Cutoff date
+                </label>
+                <Input
+                  id="historical-opening-cutoff"
+                  type="date"
+                  value={historicalOpeningCutoff}
+                  onChange={(event) => setHistoricalOpeningCutoff(event.target.value)}
+                />
+              </div>
+            </div>
+            {historicalOpeningMode === "verified" ? (
+              <Input
+                aria-label="Verified evidence"
+                placeholder="Required statement/evidence reference"
+                value={historicalOpeningEvidence}
+                onChange={(event) => setHistoricalOpeningEvidence(event.target.value)}
+              />
+            ) : null}
+            <Input
+              aria-label="Opening note"
+              placeholder="Optional opening note"
+              value={historicalOpeningNote}
+              onChange={(event) => setHistoricalOpeningNote(event.target.value)}
+            />
+            {historicalOpeningError ? (
+              <p role="alert" className="feedback-block feedback-block-error">
+                {historicalOpeningError}
+              </p>
+            ) : null}
+            <p className="text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
+              Known zero is different from unknown cash. A verified opening needs
+              both a cutoff date and evidence before it is labeled reconciled.
+            </p>
+            <div>
+              <PendingSubmitButton type="submit" pendingLabel="Saving…">
+                Save opening
+              </PendingSubmitButton>
             </div>
           </form>
         </div>

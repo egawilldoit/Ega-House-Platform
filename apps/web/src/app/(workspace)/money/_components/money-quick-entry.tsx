@@ -12,6 +12,8 @@ import {
   EXPENSE_NEED_VS_WANT_OPTIONS,
 } from "@/lib/money/expense-form-validation";
 import { parseMadAmountToMinor } from "@/lib/money/money-amount";
+import { defaultCountsInDaily, type MoneyPurpose } from "@ega/domain/money";
+import type { ExpenseCategory } from "@ega/domain/expenses";
 import type { MoneyMovementDto } from "@ega/contracts/money";
 
 import { createMovementAction } from "../actions";
@@ -98,6 +100,10 @@ export function MoneyQuickEntry({
       setFormError("An expense needs a category and a need or want classification.");
       return;
     }
+    if (knownTime && knownTime.slice(0, 10) !== bookingDate) {
+      setFormError("The exact time must fall on the selected booking date.");
+      return;
+    }
 
     pendingRef.current = true;
     setPending(true);
@@ -107,7 +113,9 @@ export function MoneyQuickEntry({
         ...(kind === "reconciliation_adjustment" ? { direction } : {}),
         amountMinor: amount.value,
         bookingDate,
-        ...(knownTime ? { occurredAt: new Date(knownTime).toISOString() } : {}),
+        // The datetime-local value has no timezone. Send the wall time as
+        // entered; the server converts it with the verified period/owner zone.
+        ...(knownTime ? { occurredAtWallTime: knownTime } : {}),
         ...(kind === "expense"
           ? {
               category: category as MoneyMovementDto["category"],
@@ -139,7 +147,11 @@ export function MoneyQuickEntry({
     }
   }
 
-  const defaultDaily = kind === "expense";
+  const defaultDaily = defaultCountsInDaily(
+    kind,
+    purpose ? (purpose as MoneyPurpose) : null,
+    category ? (category as ExpenseCategory) : null,
+  );
 
   return (
     <section

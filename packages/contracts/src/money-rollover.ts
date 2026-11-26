@@ -1,4 +1,8 @@
-import type { MoneyPeriodLifecycle, MoneyPurpose } from "@ega/domain/money";
+import type {
+  MoneyPeriodInitialization,
+  MoneyPeriodLifecycle,
+  MoneyPurpose,
+} from "@ega/domain/money";
 import type { ExpenseCategory } from "@ega/domain/expenses";
 import type {
   MoneyRolloverOpeningMode,
@@ -196,6 +200,23 @@ export type MoneyRolloverPreviewResponse = Readonly<{
   priorCorrectionBridges: readonly MoneyRolloverBridgeDto[];
   /** True when the bounded bridge read could not prove the full list. */
   priorCorrectionBridgesTruncated: boolean;
+  /** An already-continued immediate successor that finalization adopts. */
+  continuationSuccessor: Readonly<{
+    periodId: string;
+    startDate: string;
+    endDate: string;
+    activeDate: string;
+    initialization: MoneyPeriodInitialization;
+    /** Existing opening amount when the continued period already has one. */
+    openingAmountMinor: number | null;
+  }> | null;
+  /** Immediate predecessor that must be finalized before this period. */
+  unfinalizedPredecessor: Readonly<{
+    periodId: string;
+    startDate: string;
+    endDate: string;
+    lifecycle: MoneyPeriodLifecycle;
+  }> | null;
   generatedObligations: readonly Readonly<{
     templateId: string;
     description: string;

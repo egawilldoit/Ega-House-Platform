@@ -44,6 +44,7 @@ const PERIOD = {
   activeDate: "2026-11-11",
   lifecycle: "tracking",
   initialization: "initialized",
+  dayStartSetupCompleted: true,
   openingMovementId: "00000000-0000-4000-8000-000000000002",
   provenance: {
     opening: {

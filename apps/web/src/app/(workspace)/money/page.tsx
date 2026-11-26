@@ -194,6 +194,8 @@ export default async function MoneyPage({ searchParams }: Props) {
         period: moneyState.period,
         periods: new SupabaseMoneyPeriodRepository(client),
         budgets: new SupabaseMoneyBudgetRepository(client),
+        cutoffDate: moneyState.dateResolution.projectionCutoffDate,
+        localToday: moneyState.localToday,
       }).catch(() => null);
 
       // MONEY-001 ID-09: an explicit review may finalize a tracking period with
@@ -201,6 +203,7 @@ export default async function MoneyPage({ searchParams }: Props) {
       // never closes a day or writes a successor.
       if (
         moneyState.period.lifecycle === "ended" ||
+        moneyState.period.lifecycle === "superseded" ||
         moneyState.period.lifecycle === "tracking"
       ) {
         const previewResult = await getMoneyRolloverPreviewForPeriod(
@@ -440,7 +443,9 @@ export default async function MoneyPage({ searchParams }: Props) {
             truncated={rolloverBridgesTruncated}
             unavailableReason={rolloverBridgesError}
           />
-          {(lifecycle === "tracking" || lifecycle === "ended") ? (
+          {(lifecycle === "tracking" ||
+            lifecycle === "superseded" ||
+            lifecycle === "ended") ? (
             <MoneyRolloverPanel
               preview={rolloverPreview}
               previewUnavailableReason={rolloverPreviewError}

@@ -23,7 +23,7 @@ import {
   type RepositoryFailure,
   type RepositoryResult,
 } from "../shared/result";
-import { assertRoutineEntryAllowed } from "./periods";
+import { resolveRoutineEntry } from "./periods";
 import type {
   MoneyIdempotencyReceipt,
   MoneyMovementRepository,
@@ -62,12 +62,16 @@ export type MovementTotalsOutcome = Readonly<{
 }>;
 
 /**
- * The canonical MONEY-03 period guard, required for movement writes so an
- * ended/rolled-over or out-of-range booking day is answered instead of being
- * silently moved.
+ * The canonical MONEY-03 period guard, required for movement writes so a
+ * finalized or out-of-range booking day is answered instead of being silently
+ * moved. A non-finalized superseded range still accepts its own dates, and a
+ * later date delegates the atomic continuation to the repository.
  */
 export type MovementWriteOptions = Readonly<{
-  periods: Pick<MoneyPeriodRepository, "findTracking" | "list"> &
+  periods: Pick<
+    MoneyPeriodRepository,
+    "findTracking" | "list" | "findOverlapping"
+  > &
     Partial<Pick<MoneyPeriodRepository, "findById">>;
 }>;
 
@@ -135,7 +139,7 @@ export async function createMovement(
   }
   if (existing.value) return replayOutcome(existing.value, createFingerprint);
 
-  const period = await assertRoutineEntryAllowed(
+  const period = await resolveRoutineEntry(
     actor,
     options.periods,
     values.bookingDate,
@@ -143,11 +147,31 @@ export async function createMovement(
   if (!period.ok) {
     return applicationFailure(period.errorMessage, period.code);
   }
+  // A timestamped movement keeps its real instant, but the booking day must be
+  // the day that instant falls on in the target period's authoritative
+  // timezone. Otherwise an explicit date beside a different instant would let
+  // the database trigger move the row outside the date the guard just checked.
+  if (values.occurredAt && period.data) {
+    const derived = getLocalDateInTimezone(
+      new Date(values.occurredAt),
+      period.data.timezone,
+    );
+    if (derived !== values.bookingDate) {
+      return applicationFailure(
+        `Booking date ${values.bookingDate} does not match the supplied occurrence time in the Money period timezone (${derived}).`,
+        "validation",
+      );
+    }
+  }
 
   const created = await repository.create(actor, {
     values,
     createFingerprint,
-    periodId: period.data?.id ?? null,
+    periodId: period.data?.periodId ?? null,
+    // The database continues the calendar and inserts this row in one
+    // transaction. A failed write therefore cannot leave a superseded source
+    // behind.
+    requiresContinuation: period.data?.requiresContinuation ?? false,
   });
   if (created.ok) {
     return applicationSuccess({ movement: created.value, replayed: false });
@@ -337,13 +361,31 @@ export async function updateMovement(
         "validation",
       );
     }
-    const guard = await assertRoutineEntryAllowed(
+    const guard = await resolveRoutineEntry(
       actor,
       options.periods,
       bookingDate,
     );
     if (!guard.ok) {
       return applicationFailure(guard.errorMessage, guard.code);
+    }
+    // Editing a booking date never advances the calendar and never rewrites
+    // `period_id` behind the row. A date that would leave its current period is
+    // an explicit correction, not a routine update; the database therefore
+    // cannot end up with a stale period reference after a failed or partial
+    // edit.
+    const targetPeriodId = guard.data?.periodId ?? null;
+    const staysInOwnPeriod =
+      movement.periodId !== null
+        ? targetPeriodId === movement.periodId
+        : tracking.value
+          ? targetPeriodId === tracking.value.id
+          : targetPeriodId === null;
+    if (guard.data?.requiresContinuation || !staysInOwnPeriod) {
+      return applicationFailure(
+        "Moving this booking date outside its current period is an explicit correction. Record an adjustment instead of moving the date.",
+        "validation",
+      );
     }
   }
 

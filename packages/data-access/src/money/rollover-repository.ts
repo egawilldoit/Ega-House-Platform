@@ -14,6 +14,7 @@ import {
   parseMoneySettings,
   type MoneyPeriod,
 } from "@ega/domain/money";
+import { addDaysToIsoDate } from "@ega/domain/time-context";
 import type {
   MoneyRolloverCloseSnapshotAssessment,
   MoneyRolloverCloseSnapshotDifference,
@@ -414,6 +415,8 @@ export class SupabaseMoneyRolloverRepository implements MoneyRolloverRepository 
       closeSnapshotResult,
       policyResult,
       bridgesResult,
+      continuationResult,
+      predecessorResult,
     ] = await Promise.all([
         period.openingMovementId
           ? this.periods.getOpening(actor, period.openingMovementId)
@@ -448,6 +451,22 @@ export class SupabaseMoneyRolloverRepository implements MoneyRolloverRepository 
           .limit(1)
           .maybeSingle(),
         this.readCorrectionBridges(actor, period.id),
+        this.supabase
+          .from(PERIOD_TABLE)
+          .select(
+            "id, start_date, end_date, active_date, initialization, lifecycle, opening_movement_id",
+          )
+          .eq("owner_user_id", actor.userId)
+          .eq("start_date", addDaysToIsoDate(period.endDate, 1))
+          .maybeSingle(),
+        this.supabase
+          .from(PERIOD_TABLE)
+          .select("id, start_date, end_date, lifecycle, successor_period_id")
+          .eq("owner_user_id", actor.userId)
+          .eq("end_date", addDaysToIsoDate(period.startDate, -1))
+          .order("start_date", { ascending: false })
+          .limit(1)
+          .maybeSingle(),
       ]);
 
     if (!openingResult.ok) return openingResult;
@@ -466,6 +485,12 @@ export class SupabaseMoneyRolloverRepository implements MoneyRolloverRepository 
       return { ok: false, error: failure(policyResult.error) };
     }
     if (!bridgesResult.ok) return bridgesResult;
+    if (continuationResult.error) {
+      return { ok: false, error: failure(continuationResult.error) };
+    }
+    if (predecessorResult.error) {
+      return { ok: false, error: failure(predecessorResult.error) };
+    }
 
     const policyRow = policyResult.data as PolicyRow | null;
     const policySettings =
@@ -486,6 +511,26 @@ export class SupabaseMoneyRolloverRepository implements MoneyRolloverRepository 
       opening === null || totals.truncated
         ? null
         : opening.amountMinor + totals.inflowsMinor - totals.outflowsMinor;
+
+    let continuationOpeningAmountMinor: number | null = null;
+    if (continuationResult.data?.opening_movement_id) {
+      const openingResult = await this.periods.getOpening(
+        actor,
+        String(continuationResult.data.opening_movement_id),
+      );
+      if (!openingResult.ok) return openingResult;
+      continuationOpeningAmountMinor = openingResult.value?.amountMinor ?? null;
+    }
+
+    const predecessor = predecessorResult.data as
+      | {
+          id: string;
+          start_date: string;
+          end_date: string;
+          lifecycle: MoneyPeriod["lifecycle"];
+          successor_period_id: string | null;
+        }
+      | null;
 
     let existingRollover: MoneyRolloverRecord | null = null;
     if (rolloverResult.data) {
@@ -510,6 +555,33 @@ export class SupabaseMoneyRolloverRepository implements MoneyRolloverRepository 
         closeSnapshots: toCloseSnapshotAssessment(closeSnapshotResult.data),
         priorCorrectionBridges: bridgesResult.value.bridges,
         priorCorrectionBridgesTruncated: bridgesResult.value.truncated,
+        continuationSuccessor:
+          continuationResult.data &&
+          (continuationResult.data.lifecycle === "tracking" ||
+            continuationResult.data.lifecycle === "superseded" ||
+            continuationResult.data.lifecycle === "ended")
+            ? {
+                periodId: String(continuationResult.data.id),
+                startDate: String(continuationResult.data.start_date),
+                endDate: String(continuationResult.data.end_date),
+                activeDate: String(continuationResult.data.active_date),
+                initialization: String(
+                  continuationResult.data.initialization,
+                ) as MoneyPeriod["initialization"],
+                openingAmountMinor: continuationOpeningAmountMinor,
+              }
+            : null,
+        unfinalizedPredecessor:
+          predecessor &&
+          predecessor.lifecycle === "superseded" &&
+          predecessor.successor_period_id == null
+            ? {
+                periodId: String(predecessor.id),
+                startDate: String(predecessor.start_date),
+                endDate: String(predecessor.end_date),
+                lifecycle: predecessor.lifecycle,
+              }
+            : null,
         existingSuccessorPeriodId:
           successorResult.data?.successor_period_id == null
             ? null
